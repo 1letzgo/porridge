@@ -247,7 +247,7 @@ private fun ModelsCard() = Card("On-Device Models", footer = "Models run on this
 private fun YouCard() {
     var name by remember { mutableStateOf(Prefs.string(Keys.MY_NAME).orEmpty()) }
     Card("You", footer = "Tasks given to this name show under Mine. Separate other spellings with commas, e.g. “Anna, Anna Berg”.") {
-        OutlinedTextField(name, { name = it; Prefs.set(Keys.MY_NAME, it) }, label = { Text("Your Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(name, { name = it; Prefs.set(Keys.MY_NAME, it); NextcloudSync.syncSoon() }, label = { Text("Your Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     }
 }
 

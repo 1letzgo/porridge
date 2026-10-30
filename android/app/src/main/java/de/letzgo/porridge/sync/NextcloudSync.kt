@@ -2,6 +2,7 @@ package de.letzgo.porridge.sync
 
 import android.content.Context
 import androidx.room.InvalidationTracker
+import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.PorridgeJson
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.model.ActionItem
@@ -195,7 +196,37 @@ object NextcloudSync {
         note.pendingAudioFileName != null || note.status == ProcessingStatus.RECORDED || note.status == ProcessingStatus.TRANSCRIBING
 
     @Serializable
-    private data class State(val base: Map<String, Map<String, SyncBase>> = emptyMap())
+    private data class State(
+        val base: Map<String, Map<String, SyncBase>> = emptyMap(),
+        /** Die Einstellungen beim letzten Lauf (Schlüssel der Datei → Wert). */
+        val settings: Map<String, String> = emptyMap(),
+    )
+
+    // Einstellungen, die dem Nutzer auf alle Geräte folgen: Schlüssel in der Datei → Schlüssel hier. Welche Stimme
+    // seine ist, gilt nur je Plattform (die Stimmen von iPhone und Mac sind andere als die von Android).
+    private val SETTINGS = mapOf(
+        "myName" to Keys.MY_NAME,
+        "myVoiceName" to Keys.MY_VOICE_NAME,
+        "myVoiceAndroid" to Keys.MY_VOICE,
+    )
+
+    /** iOS: `NextcloudSync.mergeSettings` — gleicht die Einstellungen ab, schreibt Geändertes ins Gerät und in [output]. */
+    private fun mergeSettings(file: JsonObject, output: MutableMap<String, JsonElement>, state: State): Map<String, String> {
+        val remote = (file["settings"] as? JsonObject).orEmpty().mapNotNull { (key, element) ->
+            val entry = element as? JsonObject ?: return@mapNotNull null
+            val value = (entry["value"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            key to SyncMerge.Setting(value, (entry["updatedAt"] as? JsonPrimitive)?.longOrNull ?: 0)
+        }.toMap()
+        val local = SETTINGS.mapValues { Prefs.string(it.value).orEmpty() }
+        val result = SyncMerge.mergeSettings(local, remote, state.settings, System.currentTimeMillis())
+        for ((key, value) in result.toApply) SETTINGS[key]?.let { Prefs.set(it, value.ifEmpty { null }) }
+        if (result.file.isNotEmpty() || "settings" in file) {
+            output["settings"] = JsonObject(result.file.mapValues { (_, setting) ->
+                JsonObject(mapOf("value" to JsonPrimitive(setting.value), "updatedAt" to JsonPrimitive(setting.updatedAt)))
+            })
+        }
+        return result.base
+    }
 
     private fun loadState(): State =
         runCatching { PorridgeJson.decodeFromString(State.serializer(), stateFile.readText()) }.getOrDefault(State())
@@ -226,6 +257,7 @@ object NextcloudSync {
             }
             ownWriteAt = System.currentTimeMillis()
             output["deleted"] = JsonObject(deleted)
+            val settingsBase = mergeSettings(file, output, state)
 
             val data = SyncMerge.canonical(JsonObject(output))
             val before = remote?.let { SyncMerge.canonical(file) }
@@ -241,7 +273,7 @@ object NextcloudSync {
                     base[id]?.let { base[id] = it.copy(local = SyncMerge.hash(local.record)) }
                 }
             }
-            saveState(State(newBase))
+            saveState(State(newBase, settingsBase))
             return
         }
         throw SyncConflict()

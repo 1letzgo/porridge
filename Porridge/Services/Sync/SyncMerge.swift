@@ -101,6 +101,45 @@ enum SyncMerge {
         return result
     }
 
+    /// A setting in the file: its value ("" = none) and when it last changed (ms).
+    struct Setting: Equatable {
+        var value: String
+        var updatedAt: Int64
+    }
+
+    struct SettingsResult {
+        /// Values to write into this device.
+        var toApply: [String: String] = [:]
+        /// The settings as they go back into the file (the other platform's included).
+        var file: [String: Setting] = [:]
+        /// The values as the base of the next run.
+        var base: [String: String] = [:]
+    }
+
+    /// Settings that follow the user to every device (their name). Changed on this device since the last run: the
+    /// device wins; otherwise the file does. On the very first run a value in the file wins. Only the keys in
+    /// `local` are merged; the others stay in the file as they are.
+    static func mergeSettings(local: [String: String], remote: [String: Setting], base: [String: String], now: Int64) -> SettingsResult {
+        var result = SettingsResult(file: remote)
+        for (key, mine) in local {
+            let theirs = remote[key]
+            let localWins: Bool
+            if let before = base[key] {
+                localWins = mine != before
+            } else {
+                localWins = theirs == nil || (theirs!.value.isEmpty && !mine.isEmpty)
+            }
+            let value = localWins ? mine : (theirs?.value ?? mine)
+            if localWins {
+                if theirs?.value != mine && !(theirs == nil && mine.isEmpty) { result.file[key] = Setting(value: mine, updatedAt: now) }
+            } else if value != mine {
+                result.toApply[key] = value
+            }
+            result.base[key] = value
+        }
+        return result
+    }
+
     /// Hash of a record's canonical JSON (keys sorted).
     static func hash(_ record: SyncRecord) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])) ?? Data()

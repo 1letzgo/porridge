@@ -99,4 +99,33 @@ class SyncMergeTest {
         assertEquals("""{"a":"x","b":1}""", SyncMerge.canonical(a))
         assertEquals(SyncMerge.hash(a), SyncMerge.hash(b))
     }
+
+    @Test fun nameFollowsTheUser() {
+        val s = SyncMerge::Setting
+        // Erster Lauf: der Name aus der Datei kommt aufs Gerät; der der anderen Plattform bleibt in der Datei.
+        val first = SyncMerge.mergeSettings(
+            local = mapOf("myName" to "", "myVoiceAndroid" to ""),
+            remote = mapOf("myName" to s("Daniel", 5), "myVoiceApple" to s("V1", 5)),
+            base = emptyMap(), now = 10,
+        )
+        assertEquals(mapOf("myName" to "Daniel"), first.toApply)
+        assertEquals(s("V1", 5), first.file["myVoiceApple"])
+        assertEquals("Daniel", first.base["myName"])
+
+        // Auf dem Gerät geändert: das Gerät gewinnt und schreibt mit seiner Zeit.
+        val changed = SyncMerge.mergeSettings(mapOf("myName" to "Dan"), mapOf("myName" to s("Daniel", 5)), mapOf("myName" to "Daniel"), now = 20)
+        assertTrue(changed.toApply.isEmpty())
+        assertEquals(s("Dan", 20), changed.file["myName"])
+
+        // Anderswo geändert, hier nicht: die Datei gewinnt.
+        val elsewhere = SyncMerge.mergeSettings(mapOf("myName" to "Daniel"), mapOf("myName" to s("Dan", 30)), mapOf("myName" to "Daniel"), now = 40)
+        assertEquals(mapOf("myName" to "Dan"), elsewhere.toApply)
+
+        // Erster Lauf, nur das Gerät hat einen Namen: er geht in die Datei.
+        val push = SyncMerge.mergeSettings(mapOf("myName" to "Anna"), emptyMap(), emptyMap(), now = 50)
+        assertEquals(s("Anna", 50), push.file["myName"])
+
+        // Nichts gesetzt, nirgends: die Datei bleibt ohne Eintrag.
+        assertTrue(SyncMerge.mergeSettings(mapOf("myName" to ""), emptyMap(), emptyMap(), now = 60).file.isEmpty())
+    }
 }

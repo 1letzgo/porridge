@@ -165,6 +165,7 @@ final class NextcloudSync {
                 }
             }
             output["deleted"] = deleted
+            let settingsBase = mergeSettings(file, into: &output, base: state.settings ?? [:])
             if context.hasChanges {
                 try context.save()
                 ownSaveAt = Date()
@@ -184,6 +185,7 @@ final class NextcloudSync {
                 }
             }
             state.base = newBase
+            state.settings = settingsBase
             state.save()
             return
         }
@@ -271,6 +273,35 @@ final class NextcloudSync {
         }
     }
 
+    // MARK: Settings
+
+    /// Settings that follow the user to every device: key in the file → key here. Which voice is theirs holds per
+    /// platform only (the voices of iPhone and Mac are other ones than Android's).
+    private static let settings = [
+        "myName": AppSettings.myNameKey,
+        "myVoiceName": AppSettings.myVoiceNameKey,
+        "myVoiceApple": AppSettings.myVoiceKey,
+    ]
+
+    /// Merges the settings, writes what changed elsewhere into this device and the result into `output`.
+    private func mergeSettings(_ file: [String: Any], into output: inout [String: Any], base: [String: String]) -> [String: String] {
+        let remote = (file["settings"] as? [String: [String: Any]] ?? [:]).reduce(into: [String: SyncMerge.Setting]()) { all, entry in
+            guard let value = entry.value["value"] as? String else { return }
+            all[entry.key] = SyncMerge.Setting(value: value, updatedAt: SyncMerge.int64(entry.value["updatedAt"]))
+        }
+        let defaults = UserDefaults.standard
+        let local = Self.settings.mapValues { defaults.string(forKey: $0) ?? "" }
+        let result = SyncMerge.mergeSettings(local: local, remote: remote, base: base, now: SyncRecords.ms(Date()))
+        for (key, value) in result.toApply {
+            guard let name = Self.settings[key] else { continue }
+            if value.isEmpty { defaults.removeObject(forKey: name) } else { defaults.set(value, forKey: name) }
+        }
+        if !result.file.isEmpty || file["settings"] != nil {
+            output["settings"] = result.file.mapValues { ["value": $0.value, "updatedAt": NSNumber(value: $0.updatedAt)] as [String: Any] }
+        }
+        return result.base
+    }
+
     // MARK: Recordings
 
     /// Recordings this device has go up; recordings of synced notes it lacks come down.
@@ -301,6 +332,8 @@ final class NextcloudSync {
     /// What the last run left: the base of the three-way merge, per collection and id.
     private struct State: Codable {
         var base: [String: [String: SyncBase]] = [:]
+        /// The settings at the last run (key in the file → value); nil in a state from before settings synced.
+        var settings: [String: String]?
 
         private static var url: URL {
             let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

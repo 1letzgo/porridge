@@ -107,6 +107,7 @@ enum AppSettings {
     static func setMyVoice(_ profile: VoiceProfile?) {
         UserDefaults.standard.set(profile?.id.uuidString, forKey: myVoiceKey)
         UserDefaults.standard.set(profile?.name, forKey: myVoiceNameKey)
+        Task { @MainActor in NextcloudSync.shared.syncSoon() }
     }
 
     /// Whether a speaker or owner name is the user: the whole name or the first name of either side matches.

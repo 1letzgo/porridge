@@ -101,6 +101,42 @@ object SyncMerge {
         return Result(merged, toApply, toDelete, stones)
     }
 
+    /** Eine Einstellung in der Datei: ihr Wert ("" = keiner) und wann sie zuletzt geändert wurde (ms). */
+    data class Setting(val value: String, val updatedAt: Long)
+
+    data class SettingsResult(
+        /** Werte, die ins Gerät geschrieben werden. */
+        val toApply: Map<String, String>,
+        /** Die Einstellungen, wie sie zurück in die Datei gehen (auch die der anderen Plattform). */
+        val file: Map<String, Setting>,
+        /** Die Werte als Grundlage des nächsten Laufs. */
+        val base: Map<String, String>,
+    )
+
+    /**
+     * iOS: `SyncMerge.mergeSettings` — Einstellungen, die dem Nutzer auf alle Geräte folgen (sein Name). Seit dem letzten
+     * Lauf auf dem Gerät geändert: das Gerät gewinnt; sonst gilt die Datei. Beim ersten Lauf gewinnt ein Wert der Datei.
+     * Nur die Schlüssel in [local] werden abgeglichen; die übrigen bleiben in der Datei, wie sie sind.
+     */
+    fun mergeSettings(local: Map<String, String>, remote: Map<String, Setting>, base: Map<String, String>, now: Long): SettingsResult {
+        val toApply = mutableMapOf<String, String>()
+        val file = remote.toMutableMap()
+        val newBase = mutableMapOf<String, String>()
+        for ((key, mine) in local) {
+            val theirs = remote[key]
+            val before = base[key]
+            val localWins = if (before == null) theirs == null || (theirs.value.isEmpty() && mine.isNotEmpty()) else mine != before
+            val value = if (localWins) mine else theirs?.value ?: mine
+            if (localWins) {
+                if (theirs?.value != mine && !(theirs == null && mine.isEmpty())) file[key] = Setting(mine, now)
+            } else if (value != mine) {
+                toApply[key] = value
+            }
+            newBase[key] = value
+        }
+        return SettingsResult(toApply, file, newBase)
+    }
+
     fun updatedAt(record: JsonObject): Long =
         (record["updatedAt"] as? JsonPrimitive)?.longOrNull ?: (record["createdAt"] as? JsonPrimitive)?.longOrNull ?: 0
 

@@ -3,6 +3,7 @@ package de.letzgo.porridge.data
 import de.letzgo.porridge.logic.ActionItemsLogic
 import de.letzgo.porridge.model.Speaker
 import de.letzgo.porridge.model.VoiceProfile
+import de.letzgo.porridge.sync.NextcloudSync
 
 /** iOS: `AppSettings.myNames` / `isMe` / `setMyVoice` — wer der Nutzer ist: sein Name und die Stimme, die er in den Einstellungen als seine markiert hat. */
 object Me {
@@ -26,5 +27,7 @@ object Me {
     fun setVoice(profile: VoiceProfile?) {
         Prefs.set(Keys.MY_VOICE, profile?.id)
         Prefs.set(Keys.MY_VOICE_NAME, profile?.name)
+        // Der Name folgt dem Nutzer auf seine anderen Geräte.
+        NextcloudSync.syncSoon()
     }
 }

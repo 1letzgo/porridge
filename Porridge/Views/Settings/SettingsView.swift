@@ -233,6 +233,8 @@ struct SettingsView: View {
                 .textContentType(.name)
                 .autocorrectionDisabled()
                 .brandField()
+                // The name follows the user to their other devices.
+                .onChange(of: myName) { NextcloudSync.shared.syncSoon() }
         }
     }
 
