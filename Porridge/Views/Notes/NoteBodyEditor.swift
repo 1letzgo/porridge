@@ -50,22 +50,26 @@ struct NoteBodyEditor: View {
             if isEditable { formatBar.padding(.bottom, 6) }
             #endif
             ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
-                            row(block, number: numbers[index])
+                GeometryReader { geometry in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
+                                row(block, number: numbers[index])
+                            }
                         }
-                        Color.clear
-                            .frame(height: 220)
-                            .contentShape(Rectangle())
-                            .onTapGesture { focusEnd() }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // Room below the last line, and at least the whole visible page: the editor is not
+                        // just the lines of text. A click beside or below them puts the cursor at the end.
+                        .padding(.bottom, 220)
+                        .frame(minHeight: geometry.size.height, alignment: .top)
+                        .contentShape(Rectangle())
+                        .onTapGesture { focusEnd() }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .dismissKeyboardOnScroll()
-                .onChange(of: focus) { _, id in
-                    controller.isEditing = id != nil
-                    if let id { withAnimation { proxy.scrollTo(id, anchor: .center) } } else { flush() }
+                    .dismissKeyboardOnScroll()
+                    .onChange(of: focus) { _, id in
+                        controller.isEditing = id != nil
+                        if let id { withAnimation { proxy.scrollTo(id, anchor: .center) } } else { flush() }
+                    }
                 }
             }
         }
@@ -168,6 +172,7 @@ struct NoteBodyEditor: View {
         return ZStack(alignment: .topLeading) {
             TextField("", text: rawBinding(block.id), selection: selectionBinding(block.id), axis: .vertical)
                 .textFieldStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .focused($focus, equals: block.id)
                 .disabled(!isEditable)
                 .opacity(formatted == nil ? 1 : 0)
