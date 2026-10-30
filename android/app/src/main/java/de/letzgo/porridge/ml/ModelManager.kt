@@ -1,6 +1,8 @@
 package de.letzgo.porridge.ml
 
 import android.content.Context
+import android.os.PowerManager
+import de.letzgo.porridge.audio.RecordingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,12 +32,14 @@ sealed interface ModelState {
 object ModelManager {
     lateinit var root: File
         private set
+    private lateinit var appContext: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val states = HashMap<String, MutableStateFlow<ModelState>>()
     private val locks = HashMap<String, Mutex>()
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         root = File(context.filesDir, "Models").apply { mkdirs() }
         (listOf(ModelCatalog.parakeet, ModelCatalog.diarizer, ModelCatalog.embedder) + LocalModel.entries.map { it.pack }).forEach { pack ->
             states[pack.id] = MutableStateFlow(if (pack.isInstalled(root)) ModelState.Installed else ModelState.NotInstalled)
@@ -54,7 +58,7 @@ object ModelManager {
             try {
                 if (!pack.isInstalled(root)) {
                     state.value = ModelState.Downloading(0f)
-                    ModelDownloader.download(pack, root) { fraction ->
+                    fetch(pack) { fraction ->
                         state.value = ModelState.Downloading(fraction)
                         progress(fraction)
                     }
@@ -77,11 +81,44 @@ object ModelManager {
             if (pack.isInstalled(root)) return
             try {
                 state.value = ModelState.Downloading(0f)
-                ModelDownloader.download(pack, root) { state.value = ModelState.Downloading(it) }
+                fetch(pack) { state.value = ModelState.Downloading(it) }
                 state.value = ModelState.Installed
             } catch (e: Throwable) {
                 state.value = ModelState.Failed(e.message ?: "The download failed.")
             }
+        }
+    }
+
+    /** Startet [download] unabhängig vom Bildschirm, der den Knopf zeigt: er läuft weiter, wenn man ihn verlässt. */
+    fun startDownload(pack: ModelPack) {
+        scope.launch { download(pack) }
+    }
+
+    /**
+     * Lädt herunter, während der Vordergrunddienst (mit Fortschritt in der Benachrichtigung) und ein Wake Lock die App
+     * im Hintergrund und bei ausgeschaltetem Bildschirm am Leben halten. iOS: Hintergrund-`URLSession`.
+     */
+    private suspend fun fetch(pack: ModelPack, onProgress: (Float) -> Unit) {
+        val wake = (appContext.getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "porridge:download").apply { acquire(3 * 60 * 60 * 1000L) }
+        RecordingService.downloads[pack.displayName] = 0f
+        RecordingService.update(appContext)
+        var percent = 0
+        try {
+            ModelDownloader.download(pack, root) { fraction ->
+                onProgress(fraction)
+                RecordingService.downloads[pack.displayName] = fraction
+                // Die Benachrichtigung nur bei jedem neuen Prozent erneuern.
+                val now = (fraction * 100).toInt()
+                if (now != percent) {
+                    percent = now
+                    RecordingService.update(appContext)
+                }
+            }
+        } finally {
+            RecordingService.downloads.remove(pack.displayName)
+            RecordingService.update(appContext)
+            if (wake.isHeld) wake.release()
         }
     }
 

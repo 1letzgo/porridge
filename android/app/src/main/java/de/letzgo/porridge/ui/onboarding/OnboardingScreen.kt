@@ -92,7 +92,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
                 when (step) {
                     0 -> step = 1
                     1 -> mic.launch(Manifest.permission.RECORD_AUDIO)
-                    else -> if (ready) finish() else coroutines.launch { ModelManager.download(SpeechModel.pack) }
+                    else -> if (ready) finish() else ModelManager.startDownload(SpeechModel.pack)
                 }
             },
             enabled = !(step == 2 && asr is ModelState.Downloading),

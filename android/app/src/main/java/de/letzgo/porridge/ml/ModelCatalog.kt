@@ -64,6 +64,12 @@ enum class LocalModel(val raw: String, val displayName: String, val pack: ModelP
         ModelPack("qwen3-4b-instruct-2507", "Qwen3 4B", listOf(ModelFile(hf("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"), "model.gguf", "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597", 2_497_000_000))),
         thinks = false,
     ),
+    /** iOS: `qwen35` (Qwen3.5 4B), als GGUF. */
+    QWEN35(
+        "qwen35", "Qwen3.5 4B",
+        ModelPack("qwen3.5-4b", "Qwen3.5 4B", listOf(ModelFile(hf("unsloth/Qwen3.5-4B-GGUF", "Qwen3.5-4B-Q4_K_M.gguf"), "model.gguf", "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4", 2_740_937_888))),
+        thinks = true,
+    ),
     /** Für Geräte mit weniger als 8 GB Arbeitsspeicher. */
     QWEN3_SMALL(
         "qwen3small", "Qwen3 1.7B",

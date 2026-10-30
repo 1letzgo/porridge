@@ -1,12 +1,15 @@
 package de.letzgo.porridge.ml
 
 import de.letzgo.porridge.data.Net
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
@@ -27,7 +30,7 @@ object ModelDownloader {
                 continue
             }
             val part = File(dir, file.name + ".part")
-            fetch(file, part) { done -> progress(((before + done) / total).coerceIn(0f, 1f)) }
+            fetchRetrying(file, part) { done -> progress(((before + done) / total).coerceIn(0f, 1f)) }
             file.sha256?.let { expected ->
                 val actual = sha256(part)
                 if (!actual.equals(expected, ignoreCase = true)) {
@@ -39,6 +42,27 @@ object ModelDownloader {
             before += file.bytes
         }
         progress(1f)
+    }
+
+    /**
+     * Bricht die Verbindung ab (Netzwechsel, Funkloch, App im Hintergrund), geht es nach einer Pause dort weiter, wo
+     * die `.part`-Datei aufhört. Aufgegeben wird erst nach mehreren Versuchen ohne jeden Fortschritt.
+     */
+    private suspend fun fetchRetrying(file: ModelFile, part: File, progress: (Long) -> Unit) {
+        var failures = 0
+        while (true) {
+            val before = if (part.exists()) part.length() else 0L
+            try {
+                fetch(file, part, progress)
+                return
+            } catch (e: IOException) {
+                val advanced = part.exists() && part.length() > before
+                failures = if (advanced) 1 else failures + 1
+                if (failures > 10) throw e
+                Log.w("Porridge", "download of ${file.name} interrupted (${e.message}), retry $failures")
+                delay(minOf(30_000L, 2_000L * failures))
+            }
+        }
     }
 
     private suspend fun fetch(file: ModelFile, part: File, progress: (Long) -> Unit) {

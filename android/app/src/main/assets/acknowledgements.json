@@ -229,6 +229,13 @@
      "text": "androidx-core"
     },
     {
+     "name": "Qwen3.5 4B (GGUF)",
+     "version": "4B",
+     "license": "Apache 2.0",
+     "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF",
+     "text": "androidx-core"
+    },
+    {
      "name": "Qwen3 Embedding 0.6B (GGUF)",
      "version": "0.6B",
      "license": "Apache 2.0",

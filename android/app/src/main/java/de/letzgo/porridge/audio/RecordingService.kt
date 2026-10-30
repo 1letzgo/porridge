@@ -33,7 +33,7 @@ class RecordingService : Service() {
             ACTION_UPDATE, null -> Unit
         }
         val recording = RecordingSession.isRecording
-        if (!recording && !busy) {
+        if (!recording && !busy && downloads.isEmpty()) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -49,7 +49,7 @@ class RecordingService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL) == null) {
             manager.createNotificationChannel(NotificationChannel(CHANNEL, "Recording", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shown while Porridge records or transcribes."
+                description = "Shown while Porridge records, transcribes or downloads a model."
                 setShowBadge(false)
             })
         }
@@ -67,8 +67,14 @@ class RecordingService : Service() {
                 .setUsesChronometer(true)
                 .setWhen(RecordingSession.startedAt)
                 .addAction(0, "Stop", stop)
-        } else {
+        } else if (busy) {
             builder.setContentTitle("Transcribing …").setContentText("Porridge is working on your recordings").setProgress(0, 0, true)
+        } else {
+            val shown = downloads.toMap()
+            val fraction = if (shown.isEmpty()) 0f else shown.values.sum() / shown.size
+            builder.setContentTitle("Downloading ${shown.keys.joinToString()}")
+                .setContentText("${(fraction * 100).toInt()} %")
+                .setProgress(100, (fraction * 100).toInt(), false)
         }
         return builder.build()
     }
@@ -79,12 +85,15 @@ class RecordingService : Service() {
         const val ACTION_STOP = "de.letzgo.porridge.STOP_RECORDING"
         private const val ACTION_UPDATE = "de.letzgo.porridge.UPDATE"
 
-        /** Transkription, Downloads: der Dienst hält die App am Leben. */
+        /** Transkription: der Dienst hält die App am Leben. */
         @Volatile var busy = false
+
+        /** Modelle, die gerade herunterladen (Name → Anteil); auch dabei bleibt die App im Hintergrund am Leben. */
+        val downloads = java.util.concurrent.ConcurrentHashMap<String, Float>()
 
         fun update(context: Context) {
             val intent = Intent(context, RecordingService::class.java).setAction(ACTION_UPDATE)
-            if (RecordingSession.isRecording || busy) ContextCompat.startForegroundService(context, intent) else context.startService(intent)
+            if (RecordingSession.isRecording || busy || downloads.isNotEmpty()) ContextCompat.startForegroundService(context, intent) else context.startService(intent)
         }
     }
 }
