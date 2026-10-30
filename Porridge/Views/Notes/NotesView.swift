@@ -37,6 +37,8 @@ struct NotesView: View {
     /// The plus button is unfolded into its options.
     @State private var showCreate = false
     @State private var linkText = ""
+    /// The task open on its own page (Tasks tab); a new one is made empty and opened right away.
+    @State private var editingTask: ActionItem?
     @State private var importError: String?
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
@@ -74,6 +76,12 @@ struct NotesView: View {
                 .disabled(LinkImport.webAddress(from: linkText) == nil)
         } message: {
             Text("The page is saved as a note and summarized.")
+        }
+        .sheet(item: $editingTask, onDismiss: finishTask) { item in
+            TaskDetailView(item: item, note: item.noteID.flatMap { id in notes.first { $0.id == id } }) { id in
+                editingTask = nil
+                openFromChat(id)
+            }
         }
         .alert("Import Failed", isPresented: .constant(importError != nil)) {
             Button("OK") { importError = nil }
@@ -124,12 +132,12 @@ struct NotesView: View {
         let shown = visibleNotes
         return VStack(spacing: 0) {
             #if os(iOS)
-            ChromeBar(title: listTitle, systemImage: listIcon) {
+            ChromeBar(title: listTitle, systemImage: listIcon, tint: listTint) {
                 listActions(isEmpty: shown.isEmpty)
             }
             #else
             // The list's name at the top of the sidebar, as in Things; the actions sit in the window's toolbar.
-            ListTitle(title: listTitle, systemImage: listIcon)
+            ListTitle(title: listTitle, systemImage: listIcon, tint: listTint)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
@@ -142,7 +150,7 @@ struct NotesView: View {
             case .chat:
                 ChatView(notes: notes, items: items, store: chat) { openFromChat($0) }
             case .tasks:
-                TasksPane(items: items, notes: notes) { openFromChat($0) }
+                tasksPane
             case .search:
                 SearchPane(
                     text: $search, tokens: $tagTokens,
@@ -185,6 +193,35 @@ struct NotesView: View {
         #else
         listBase(shown)
         #endif
+    }
+
+    /// The tasks list; on iOS with the same floating plus button as the timeline, the Mac has it in the toolbar.
+    private var tasksPane: some View {
+        #if os(iOS)
+        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, onEdit: { editingTask = $0 })
+            .contentMargins(.bottom, 96, for: .scrollContent)
+            .overlay(alignment: .bottomTrailing) {
+                FloatingActionButton(systemImage: "plus", label: "New Task", fill: .brandTask) { addTask() }
+                    .padding(.trailing, 22)
+                    .padding(.bottom, 16)
+            }
+        #else
+        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, onEdit: { editingTask = $0 })
+        #endif
+    }
+
+    private func addTask() {
+        editingTask = ActionItems.newTask(in: context)
+    }
+
+    /// A task left without title and text is not kept.
+    private func finishTask() {
+        let items = (try? context.fetch(FetchDescriptor<ActionItem>(predicate: #Predicate { $0.source == "manual" }))) ?? []
+        for item in items where item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && item.details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            context.delete(item)
+        }
+        try? context.save()
     }
 
     /// Changes when a note's content changed (the index compares hashes, this only wakes it up).
@@ -386,6 +423,13 @@ struct NotesView: View {
                 }
                 .accessibilityLabel("New Chat")
             }
+        } else if mode == .tasks {
+            ToolbarItem(placement: .primaryAction) {
+                Button { addTask() } label: {
+                    Label("New Task", systemImage: "plus")
+                }
+                .accessibilityLabel("New Task")
+            }
         }
         ToolbarItem(placement: .primaryAction) {
             Button { openSettings() } label: {
@@ -451,6 +495,9 @@ struct NotesView: View {
     private var listTitle: String {
         mode == .chat ? "Chat" : mode == .search ? "Search" : mode == .tasks ? "Tasks" : scopeTitle
     }
+
+    /// Color of the square in front of the title: tasks are green, everything else sky blue.
+    private var listTint: Color { mode == .tasks ? .brandTask : .brandSky }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
     private var listIcon: String {
@@ -788,6 +835,7 @@ private struct NoteRow: View {
 private struct ListTitle: View {
     let title: String
     let systemImage: String
+    var tint: Color = .brandSky
 
     var body: some View {
         HStack(spacing: 8) {
@@ -795,7 +843,7 @@ private struct ListTitle: View {
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 22, height: 22)
-                .background(Color.brandSky, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(tint, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             Text(title)
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.primary)
@@ -813,8 +861,8 @@ private struct ListTabs: View {
     var body: some View {
         TabSwitcher(selection: $mode, options: [
             (ListMode.timeline, "Timeline"),
-            (ListMode.chat, "Chat"),
             (ListMode.tasks, "Tasks"),
+            (ListMode.chat, "Chat"),
             (ListMode.search, "Search"),
         ])
         .padding(.horizontal, 20)
@@ -832,7 +880,7 @@ extension Notification.Name {
 
 enum ListMode: Hashable {
     case timeline
-    case chat
     case tasks
+    case chat
     case search
 }

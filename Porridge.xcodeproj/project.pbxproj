@@ -79,6 +79,7 @@
 		5A26E5D30FCA741EF5401FF1 /* AppUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545E56590DAC3E1D46D55236 /* AppUpdate.swift */; };
 		5A7B9BE9EB0170F1333AB154 /* AIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C83E04FA0DB9A9049AD28D /* AIProvider.swift */; };
 		5B54E0B81456FF223843810B /* NoteMediaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E643FF5DE4F5592C95134CAE /* NoteMediaViews.swift */; };
+		5D60D30FCB022405FDF57BE6 /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9A8A966F81D3027C207AA5 /* TaskDetailView.swift */; };
 		5E0DB858F25A8CE3E43F784E /* InlineDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */; };
 		5F08AE849C5ABF0CE8215BE3 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 997D57A54DECA618954AFC81 /* MLXLLM */; };
 		5F1AF2970A46492166EFFEBF /* ChunkRanking.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDE0785CDD22145E749A7E4D /* ChunkRanking.swift */; };
@@ -142,6 +143,7 @@
 		B2336A64EB596AC69B212C59 /* PlaudImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9252D20181C0B25CCC7F3D13 /* PlaudImporter.swift */; };
 		B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB2150AC1E2D50129B73B9 /* SummaryService.swift */; };
 		B50072C1228DE96659168489 /* CloudLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F68F49429875E63DC4CCB6 /* CloudLLM.swift */; };
+		B6F8F74868C87282CDE71D2B /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9A8A966F81D3027C207AA5 /* TaskDetailView.swift */; };
 		B853384F1F895B498A9B94FF /* LinkImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB005D8452E913C0CB4DEE1D /* LinkImport.swift */; };
 		BBD6152CD6E81173947772C9 /* ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2F58296E3FB7B2AA8C6D2F /* ModelManager.swift */; };
 		BCFC2C073824AA9D986AC19A /* PlaudBLE.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C900D2E54C5D9AD70BAB41 /* PlaudBLE.swift */; };
@@ -267,6 +269,7 @@
 		7798D6E60F456BEF335E6F48 /* AudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioStore.swift; sourceTree = "<group>"; };
 		77E911FD08C09447F93B29F2 /* PorridgeWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = PorridgeWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7A86CDD2F6B34BBFD752D1A2 /* NoteTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTextView.swift; sourceTree = "<group>"; };
+		7B9A8A966F81D3027C207AA5 /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
 		7D6A4C0487D0D0E8668554D5 /* SpeakerAssigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAssigner.swift; sourceTree = "<group>"; };
 		7F270B076B4D33FDC2045E8A /* NotesFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesFlowTests.swift; sourceTree = "<group>"; };
 		81A704D1CADCD8534C411F3B /* Porridge.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Porridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -470,6 +473,7 @@
 		ABCC41473A457A84393F53D1 /* Tasks */ = {
 			isa = PBXGroup;
 			children = (
+				7B9A8A966F81D3027C207AA5 /* TaskDetailView.swift */,
 				1E345FCF69334B90FB789F74 /* TasksPane.swift */,
 			);
 			path = Tasks;
@@ -893,6 +897,7 @@
 				2519166D729750B7484FC464 /* SummarizingCard.swift in Sources */,
 				01E0FFCBAB683091E75D4B06 /* SummaryEditorSheet.swift in Sources */,
 				01528762ABBA57FEA7E93C81 /* SummaryService.swift in Sources */,
+				5D60D30FCB022405FDF57BE6 /* TaskDetailView.swift in Sources */,
 				927CFE780AE6D85488AF7E07 /* TasksPane.swift in Sources */,
 				8AA27980DB9CB7C62EAFC09C /* TextEmbedder.swift in Sources */,
 				48F3E5CBA82CC8CF5CB9E15B /* Theme.swift in Sources */,
@@ -990,6 +995,7 @@
 				779DFE96B0F8C7C3AEAE4E03 /* SummarizingCard.swift in Sources */,
 				CDF4C9AAFB9D87728BA12409 /* SummaryEditorSheet.swift in Sources */,
 				B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */,
+				B6F8F74868C87282CDE71D2B /* TaskDetailView.swift in Sources */,
 				000266105C33D24E7CDEF772 /* TasksPane.swift in Sources */,
 				9A6485677604C313A2311584 /* TextEmbedder.swift in Sources */,
 				2697AD78C33F37B438D36D46 /* TextInserter.swift in Sources */,

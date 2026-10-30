@@ -1,8 +1,9 @@
 import Foundation
 import SwiftData
 
-/// A task or a decision taken out of a note's summary, so it can be ticked off and asked for across all
-/// meetings. Ticking an item also ticks its line in the summary (see `ActionItems`).
+/// A task (or a decision) of its own: title, owner, done, and its own text. Most come out of a note's
+/// summary (`noteID` says which, as the place it was born); they can be renamed and written into freely and
+/// stay when their line or note goes. Ticking an item also ticks its line in the summary (see `ActionItems`).
 /// CloudKit-compatible: every property has a default, the note is referenced by id.
 @Model
 final class ActionItem {
@@ -18,8 +19,15 @@ final class ActionItem {
     var createdAt: Date = Date()
     /// Position in the summary, so the order stays the same everywhere.
     var order: Int = 0
-    /// Where the item comes from: "summary" (kept in step with the summary) or "manual".
+    /// Where the item comes from: "summary" (kept in step with the summary), "manual" (typed by hand) or
+    /// "kept" (came from a summary, was edited, and lives on its own since its line is gone).
     var source: String = "summary"
+    /// The task's own text (Markdown, like a note's body): details, links, sub-steps.
+    var details: String = ""
+    /// The summary line the item was made from (`ActionItems.key`); stays when the task is renamed, so the
+    /// summary still finds it. Nil for tasks typed by hand.
+    var summaryKey: String?
+    var updatedAt: Date = Date()
 
     enum Kind: String {
         case task
