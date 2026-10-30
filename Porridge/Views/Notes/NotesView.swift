@@ -813,8 +813,8 @@ private struct ListTabs: View {
     var body: some View {
         TabSwitcher(selection: $mode, options: [
             (ListMode.timeline, "Timeline"),
-            (ListMode.chat, "Chat"),
             (ListMode.tasks, "Tasks"),
+            (ListMode.chat, "Chat"),
             (ListMode.search, "Search"),
         ])
         .padding(.horizontal, 20)
@@ -832,7 +832,7 @@ extension Notification.Name {
 
 enum ListMode: Hashable {
     case timeline
-    case chat
     case tasks
+    case chat
     case search
 }
