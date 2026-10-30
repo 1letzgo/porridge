@@ -83,15 +83,7 @@ struct NoteDetailView: View {
                     DictationStatus(dictation: dictation)
                     dictationPreview
                 } else {
-                    NoteBodyEditor(text: $note.text, isEditable: !note.isDeleted, controller: editor)
-                        .overlay(alignment: .topLeading) {
-                            if note.text.isEmpty {
-                                Text("Start typing or dictate …")
-                                    .foregroundStyle(.tertiary)
-                                    .padding(.top, 3)
-                                    .allowsHitTesting(false)
-                            }
-                        }
+                    NoteBodyEditor(text: $note.text, isEditable: !note.isDeleted, controller: editor, placeholder: "Start typing or dictate …")
                 }
             }
         }

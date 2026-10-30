@@ -109,3 +109,17 @@ struct NoteBlock: Identifiable, Equatable {
         return offset
     }
 }
+
+extension NoteBlock.Kind {
+    var isList: Bool {
+        switch self {
+        case .bullet, .numbered, .checklist: true
+        default: false
+        }
+    }
+
+    var headingLevel: Int {
+        if case .heading(let level) = self { return level }
+        return 0
+    }
+}

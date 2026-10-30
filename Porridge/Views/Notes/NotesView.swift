@@ -93,6 +93,12 @@ struct NotesView: View {
             search = ""
             tagTokens = []
         }
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: .newNote)) { _ in
+            if mode != .timeline { mode = .timeline }
+            addNote()
+        }
+        #endif
         .folderPrompts(folderPrompts, folders: folders, scope: $scope)
         .confirmationDialog("Delete all notes in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
             Button("Delete All", role: .destructive) {
@@ -788,6 +794,13 @@ private struct ListTabs: View {
         .padding(.vertical, Look.headerGap)
     }
 }
+
+#if os(macOS)
+extension Notification.Name {
+    /// File → New Note (⌘N) in the menu bar.
+    static let newNote = Notification.Name("PorridgeNewNote")
+}
+#endif
 
 enum ListMode: Hashable {
     case timeline

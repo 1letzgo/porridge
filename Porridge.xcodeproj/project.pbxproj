@@ -26,6 +26,7 @@
 		156BCEF5F91B9BDA2735490C /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65F0237052007B3FEEEBEB9 /* Transcript.swift */; };
 		15E6896507D8D184530CA9CA /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB9943212CA4D8F37CEE92A1 /* RootView.swift */; };
 		179CF1D750C84E09B9978330 /* OpusOggDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10494DA6CC2C9A9E3562C2C8 /* OpusOggDecoder.swift */; };
+		197DFF9071BF213F1F941055 /* NoteMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A83A9237EEF93450DB302C /* NoteMarkdown.swift */; };
 		1D8752ED4D7454780B6C0379 /* ProcessingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C6D4089FE130492BCC55C9 /* ProcessingService.swift */; };
 		1E8692F45F5B503127575701 /* RecordMeetingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A619A6A5CEB3607BF5EE1E /* RecordMeetingSheet.swift */; };
 		1F98599B6AB8467884A39EED /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 24020A51ADF48C7E0985F398 /* FluidAudio */; };
@@ -35,6 +36,7 @@
 		23E846926253A0D2990F9CD8 /* AudioPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8EFBAAD626DEE8326A57573 /* AudioPlayback.swift */; };
 		2519166D729750B7484FC464 /* SummarizingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD5DE3446BB24F676A9C147 /* SummarizingCard.swift */; };
 		2697AD78C33F37B438D36D46 /* TextInserter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C74B82A922F4E55F934519 /* TextInserter.swift */; };
+		26ABC0455625A7A02B391977 /* NoteTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A86CDD2F6B34BBFD752D1A2 /* NoteTextView.swift */; };
 		27D5D1AEFB9768FB080A333A /* VoiceProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C965C4F93692B80D211F105 /* VoiceProfile.swift */; };
 		29D1DAFE0618718C656EC972 /* PorridgeMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6293669DCA64327678AC9A8B /* PorridgeMacApp.swift */; };
 		2D34B31C045A32C957D87681 /* OpusOggDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10494DA6CC2C9A9E3562C2C8 /* OpusOggDecoder.swift */; };
@@ -63,6 +65,7 @@
 		4DC1ACE4F75865B5BC6C16C5 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58E5D27589A0149DC6CA925F /* ShareViewController.swift */; };
 		4F30D94DD784DAA788E20C8C /* TranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDB3BA98ABE11334BB0297F /* TranscriptionEngine.swift */; };
 		50B35613A498BBAD537CAFC0 /* PlaudImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605D164877965A4BA545584B /* PlaudImportSheet.swift */; };
+		52C32F7688919A572547A95C /* NoteMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A83A9237EEF93450DB302C /* NoteMarkdown.swift */; };
 		54FF5168F7BC40DD5FD5D8F2 /* BrandMenuLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8DCA8F75243E96D40F6CE3A /* BrandMenuLabel.swift */; };
 		55BD322552C76DB7E3EE3C58 /* VoiceProfiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF66A6CA32B03260699EFDE /* VoiceProfiles.swift */; };
 		57BC0DECFDF9627F90CE0CD9 /* TranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDB3BA98ABE11334BB0297F /* TranscriptionEngine.swift */; };
@@ -97,6 +100,7 @@
 		80B6E0734E3D8CC1F45294AA /* NoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B2572B8D2D94B28605C5CAB /* NoteStore.swift */; };
 		80E05524C639A02033C56895 /* Paragraphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247726A150A883574F9E6CC5 /* Paragraphs.swift */; };
 		8144E2DB0C1FCE75110B4B6B /* RecordMeetingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A619A6A5CEB3607BF5EE1E /* RecordMeetingSheet.swift */; };
+		837559DD06FF95DC5B55E02F /* NoteTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A86CDD2F6B34BBFD752D1A2 /* NoteTextView.swift */; };
 		83F0571CA39F7435A5074397 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 7EA54B61F54496C3702CB4ED /* HuggingFace */; };
 		8595D00FE8DD1E7469896BD2 /* PlaudAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6596637851981CC10AC1038D /* PlaudAPI.swift */; };
 		8B2A6EB4962B9468AA35CD81 /* CalendarAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2291E7D9FBD16F3E4B079817 /* CalendarAccess.swift */; };
@@ -230,6 +234,7 @@
 		33144CDDD5CE1296F1220976 /* NoteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteDetailView.swift; sourceTree = "<group>"; };
 		3B965676D5FD4BEB12521F86 /* GlobalHotKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKey.swift; sourceTree = "<group>"; };
 		3CA9C6649F3F5A8A76BBCEA0 /* PlaudLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudLoginView.swift; sourceTree = "<group>"; };
+		47A83A9237EEF93450DB302C /* NoteMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteMarkdown.swift; sourceTree = "<group>"; };
 		4C9AA7BE3FF0CEDF2C2BDF86 /* NotesFeaturesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesFeaturesTests.swift; sourceTree = "<group>"; };
 		4E56BE573144212F81BA70AC /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		50D5387B8FDB2327EE19DAAC /* PlaudAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudAccount.swift; sourceTree = "<group>"; };
@@ -247,6 +252,7 @@
 		73BA30D18D36E40FE4C31BDA /* PorridgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PorridgeApp.swift; sourceTree = "<group>"; };
 		7798D6E60F456BEF335E6F48 /* AudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioStore.swift; sourceTree = "<group>"; };
 		77E911FD08C09447F93B29F2 /* PorridgeWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = PorridgeWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7A86CDD2F6B34BBFD752D1A2 /* NoteTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTextView.swift; sourceTree = "<group>"; };
 		7D6A4C0487D0D0E8668554D5 /* SpeakerAssigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAssigner.swift; sourceTree = "<group>"; };
 		7F270B076B4D33FDC2045E8A /* NotesFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesFlowTests.swift; sourceTree = "<group>"; };
 		81A704D1CADCD8534C411F3B /* Porridge.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Porridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -387,8 +393,10 @@
 				A8AB217EF9CF295C18693CFA /* NoteBlocks.swift */,
 				E8931C85DA151D7EA0E959CA /* NoteBodyEditor.swift */,
 				33144CDDD5CE1296F1220976 /* NoteDetailView.swift */,
+				47A83A9237EEF93450DB302C /* NoteMarkdown.swift */,
 				E643FF5DE4F5592C95134CAE /* NoteMediaViews.swift */,
 				CDFB2FA30B94FE642D6337FC /* NotesView.swift */,
+				7A86CDD2F6B34BBFD752D1A2 /* NoteTextView.swift */,
 				605D164877965A4BA545584B /* PlaudImportSheet.swift */,
 				3CA9C6649F3F5A8A76BBCEA0 /* PlaudLoginView.swift */,
 				32A619A6A5CEB3607BF5EE1E /* RecordMeetingSheet.swift */,
@@ -819,9 +827,11 @@
 				03DCEEDB98E0E488018ABD31 /* NoteBodyEditor.swift in Sources */,
 				30CA02417900CF5C9687001E /* NoteDetailView.swift in Sources */,
 				D8538F472A63388E0207249B /* NoteFolder.swift in Sources */,
+				52C32F7688919A572547A95C /* NoteMarkdown.swift in Sources */,
 				5B54E0B81456FF223843810B /* NoteMediaViews.swift in Sources */,
 				E53D3E365FE85257EF1B74A0 /* NoteMerger.swift in Sources */,
 				08D73ACE26E2EFCE1C8BF991 /* NoteStore.swift in Sources */,
+				837559DD06FF95DC5B55E02F /* NoteTextView.swift in Sources */,
 				486BC3F19E8213085E114EC2 /* NotesView.swift in Sources */,
 				F6654516D356993C3F1E71C9 /* OnboardingView.swift in Sources */,
 				179CF1D750C84E09B9978330 /* OpusOggDecoder.swift in Sources */,
@@ -908,9 +918,11 @@
 				65BC30F146AE3C1342E00BB0 /* NoteBodyEditor.swift in Sources */,
 				0C5BC4A2AC7C6F4155A62955 /* NoteDetailView.swift in Sources */,
 				30784B61C12A8B563C2D135B /* NoteFolder.swift in Sources */,
+				197DFF9071BF213F1F941055 /* NoteMarkdown.swift in Sources */,
 				743DE8E7456D7253247C4652 /* NoteMediaViews.swift in Sources */,
 				2337EF9768B3E546B1CA47E0 /* NoteMerger.swift in Sources */,
 				80B6E0734E3D8CC1F45294AA /* NoteStore.swift in Sources */,
+				26ABC0455625A7A02B391977 /* NoteTextView.swift in Sources */,
 				C5FA453E681C86743C7B6575 /* NotesView.swift in Sources */,
 				ACABC4D5CA966F82669AD960 /* OnboardingView.swift in Sources */,
 				2D34B31C045A32C957D87681 /* OpusOggDecoder.swift in Sources */,

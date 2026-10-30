@@ -57,6 +57,10 @@ struct PorridgeMacApp: App {
         .modelContainer(container)
         .defaultSize(width: 1100, height: 720)
         .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Note") { NotificationCenter.default.post(name: .newNote, object: nil) }
+                    .keyboardShortcut("n")
+            }
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") {
                     Task { await update.check(manual: true) }
