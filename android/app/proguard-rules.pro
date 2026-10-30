@@ -14,3 +14,7 @@
 
 # sherpa-onnx ruft seine Kotlin-Konfigurationsklassen per JNI über Feldnamen auf.
 -keep class com.k2fsa.sherpa.onnx.** { *; }
+
+# security-crypto (Tink) verweist auf Errorprone-Annotationen, die zur Laufzeit nicht gebraucht werden.
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
