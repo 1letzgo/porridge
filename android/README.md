@@ -60,15 +60,35 @@ package installer.
 | `model/VoiceProfile.kt` | `Models/VoiceProfile.swift`, `VoiceMath` |
 | `model/ActionItem.kt` | `Models/ActionItem.swift` |
 | `model/Transcript.kt` | `Models/Transcript.swift` |
-| `store/PorridgeDatabase.kt`, `store/Daos.kt` | `App/AppContainer.swift` (SwiftData container) |
-| `store/NoteStore.kt` | `Services/NoteStore.swift` |
-| `store/AudioStore.kt` | `Services/AudioStore.swift` |
-| `ui/Theme.kt` | `Design/` (Brand colors, "Things 3" direction) |
-| `ui/AppRoot.kt` | `Views/Notes/NotesView.swift` (placeholder until the notes screens are ported) |
+| `store/PorridgeDatabase.kt`, `store/Daos.kt` | `App/AppContainer.swift` (SwiftData container); Room schemas in `app/schemas/` |
+| `store/NoteStore.kt`, `store/AudioStore.kt`, `store/NoteMerger.kt` | `Services/NoteStore.swift`, `AudioStore.swift`, `NoteMerger.swift` |
+| `store/ActionItemStore.kt`, `logic/ActionItemsLogic.kt` | `Services/ActionItems.swift` |
+| `logic/ChatRetrieval.kt`, `logic/ChatPrompt.kt`, `cloud/ChatStore.kt` | `Services/ChatService.swift`, `ChunkRanking.swift` |
+| `logic/SpeakerAssigner.kt`, `logic/Paragraphs.kt`, `logic/SummaryLogic.kt`, `logic/NoteMergeLogic.kt`, `logic/VoiceProfileLogic.kt`, `logic/LanguageDetect.kt` | the matching `Services/*.swift` (pure parts) |
+| `logic/editor/` (`NoteBlock`, `NoteMarkdown`, `NoteEditorEngine`, `EditorBuffer`) | `Views/Notes/NoteBlocks.swift`, `NoteMarkdown.swift`, `NoteTextCoordinator` in `NoteTextView.swift` |
+| `index/NoteIndex.kt` | `Services/NoteIndex.swift` (CBOR file instead of plist) |
+| `cloud/` (`AIProvider`, `CloudLLM`, `SummaryService`) | `Services/AIProvider.swift`, `CloudLLM.swift`, `SummaryService.swift` |
+| `ml/SpeechModel.kt`, `ml/Diarizer.kt`, `ml/VoiceProfiles.kt` | `Services/TranscriptionEngine.swift` (Parakeet via sherpa-onnx instead of FluidAudio) |
+| `ml/LocalLLM.kt`, `ml/TextEmbedder.kt`, `ml/ModelManager.kt`, `ml/ModelCatalog.kt` | `Services/LocalLLM.swift`, `TextEmbedder.swift`, `ModelManager.swift` (llama.cpp instead of MLX) |
+| `audio/` (`AudioRecorder`, `AudioPreprocessor`, `LiveTranscriber`, `RecordingService`, `InlineDictation`) | `Services/AudioRecorder.swift`, `AudioPreprocessor.swift`, `LiveTranscriber.swift`, `InlineDictation.swift`; the foreground service replaces the Live Activity |
+| `processing/ProcessingService.kt` | `Services/ProcessingService.swift` |
+| `plaud/` | `Services/Plaud/*.swift` (BLE with a serial GATT queue, own ChaCha20-Poly1305 for API 26) |
+| `data/Backup.kt` | (Android only) backup and restore as a zip instead of CloudKit |
+| `ui/Theme.kt`, `ui/components/` | `Design/` (brand colors, "Things 3" direction, `ChromeBar`, `TabSwitcher`) |
+| `ui/AppRoot.kt` | `App/RootView.swift` (screen stack) |
+| `ui/notes/` | `Views/Notes/` (`NotesView`, `NoteDetailView`, `NoteBodyEditor`, `NoteTextView`, sheets) |
+| `ui/tasks/` | `Views/Tasks/TasksPane.swift`, `TaskDetailView.swift` |
+| `ui/chat/`, `ui/recording/`, `ui/settings/`, `ui/onboarding/`, `ui/plaud/` | the matching `Views/*` |
 
 ## Port status
 
-Phase 1 (this): Gradle, signing, data layer, update check, release script. Next, in parallel: audio and recording
-service, on-device ML (sherpa-onnx Parakeet v3 + diarization + sentence vectors, llama.cpp), pure logic with
-fixtures (speaker assignment, Markdown/editor rules, chat ranking), cloud providers, Plaud, UI screens, search index.
+Ported with full parity to the iOS state of 30 October 2026, including the TextKit editor, the search index with
+z-score chat ranking, and tasks as items of their own. 62 unit tests.
+
+Checked in the emulator: onboarding, list, plus menu, editor (lists, checklists, headings, tags), Parakeet download,
+audio import with transcription and speakers, playback, tasks with their own page, settings.
+
+Not checked yet: the local LLM on a real phone (needs 8 GB RAM for Qwen3 4B), Plaud with a real recorder over
+Bluetooth, a stereo USB microphone, the update check end to end.
+
 Not ported: Mac dictation, Live Activity (a foreground notification instead), Apple's speech model, CloudKit.
