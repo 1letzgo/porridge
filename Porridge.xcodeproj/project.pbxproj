@@ -70,6 +70,7 @@
 		585F5364410E33606BADF30A /* PorridgeShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CA34303F4D0BAC2C94BD8F69 /* PorridgeShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		58D276FF94FDED5EC26CAE74 /* PlaudProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 899112051F381E37B77B95FC /* PlaudProtocol.swift */; };
 		59F5596A81C875D183FFA518 /* RollingRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE0B07929BC2A88C738323E9 /* RollingRecognizer.swift */; };
+		5A26E5D30FCA741EF5401FF1 /* AppUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545E56590DAC3E1D46D55236 /* AppUpdate.swift */; };
 		5A7B9BE9EB0170F1333AB154 /* AIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C83E04FA0DB9A9049AD28D /* AIProvider.swift */; };
 		5B54E0B81456FF223843810B /* NoteMediaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E643FF5DE4F5592C95134CAE /* NoteMediaViews.swift */; };
 		5E0DB858F25A8CE3E43F784E /* InlineDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */; };
@@ -233,6 +234,7 @@
 		4E56BE573144212F81BA70AC /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		50D5387B8FDB2327EE19DAAC /* PlaudAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudAccount.swift; sourceTree = "<group>"; };
 		536E6D547A46DCF6768AE6C5 /* NoteFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteFolder.swift; sourceTree = "<group>"; };
+		545E56590DAC3E1D46D55236 /* AppUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdate.swift; sourceTree = "<group>"; };
 		58E5D27589A0149DC6CA925F /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		5F0BC0DBAFDF678CBDCAC098 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		605D164877965A4BA545584B /* PlaudImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudImportSheet.swift; sourceTree = "<group>"; };
@@ -337,6 +339,14 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
+		03B1688EBDFF976D3AB6A003 /* Update */ = {
+			isa = PBXGroup;
+			children = (
+				545E56590DAC3E1D46D55236 /* AppUpdate.swift */,
+			);
+			path = Update;
+			sourceTree = "<group>";
+		};
 		1CD4A21946D1F9A8BF2C6A0C /* Chat */ = {
 			isa = PBXGroup;
 			children = (
@@ -435,6 +445,7 @@
 			children = (
 				6293669DCA64327678AC9A8B /* PorridgeMacApp.swift */,
 				C82AC4A9588957AE5C6399BE /* Dictation */,
+				03B1688EBDFF976D3AB6A003 /* Update */,
 			);
 			path = PorridgeMac;
 			sourceTree = "<group>";
@@ -861,6 +872,7 @@
 				5A7B9BE9EB0170F1333AB154 /* AIProvider.swift in Sources */,
 				A82761451E9F7DA554423BAF /* AppContainer.swift in Sources */,
 				D9049BB1247F9D188B44D1A2 /* AppSettings.swift in Sources */,
+				5A26E5D30FCA741EF5401FF1 /* AppUpdate.swift in Sources */,
 				6383679114584EAB9E25C603 /* AppleSpeech.swift in Sources */,
 				E20F1184CF70593779A6BB58 /* AudioPlayback.swift in Sources */,
 				2F4B7E50219173F2A005EE6B /* AudioPreprocessor.swift in Sources */,
@@ -1132,7 +1144,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1256,7 +1268,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

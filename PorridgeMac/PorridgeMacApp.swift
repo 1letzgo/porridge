@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The shortcut works even when no window is open.
         DictationController.shared.reloadShortcut()
+        AppUpdate.shared.start()
         // Loading the speech model takes a moment; do it before the first dictation.
         Task { @MainActor in
             if TranscriptionEngine.asrInstalled || AppSettings.speechEngine == .apple {
@@ -33,6 +34,7 @@ struct PorridgeMacApp: App {
     private let container: ModelContainer
     @State private var processing: ProcessingService
     @State private var dictation = DictationController.shared
+    @State private var update = AppUpdate.shared
 
     init() {
         setvbuf(stdout, nil, _IONBF, 0)
@@ -50,9 +52,18 @@ struct PorridgeMacApp: App {
                 .environment(ModelManager.shared)
                 .frame(minWidth: 860, minHeight: 560)
                 .task { processing.resumePending() }
+                .updateAlert(update)
         }
         .modelContainer(container)
         .defaultSize(width: 1100, height: 720)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Task { await update.check(manual: true) }
+                }
+                .disabled(update.checking)
+            }
+        }
 
         Settings {
             SettingsView(isPushed: true)
@@ -63,15 +74,41 @@ struct PorridgeMacApp: App {
         .modelContainer(container)
 
         MenuBarExtra {
-            MenuBarContent(dictation: dictation)
+            MenuBarContent(dictation: dictation, update: update)
         } label: {
             Image(systemName: dictation.isRecording ? "mic.fill" : "mic")
         }
     }
 }
 
+/// Tells about a newer version once it is found; "Skip" keeps quiet until the version after it.
+private struct UpdateAlert: ViewModifier {
+    let update: AppUpdate
+
+    func body(content: Content) -> some View {
+        content.alert(
+            "Porridge \(update.available?.version ?? "") is available",
+            isPresented: .init(get: { update.available != nil }, set: { if !$0 { update.skip() } })
+        ) {
+            Button("Download") { update.download() }
+            Button("Skip This Version", role: .cancel) { update.skip() }
+        } message: {
+            Text(update.available?.notes.isEmpty == false
+                ? update.available!.notes
+                : "You have \(AppUpdate.currentVersion). The download is a zip with the new app; replace the old one in Applications.")
+        }
+    }
+}
+
+extension View {
+    func updateAlert(_ update: AppUpdate) -> some View {
+        modifier(UpdateAlert(update: update))
+    }
+}
+
 private struct MenuBarContent: View {
     let dictation: DictationController
+    let update: AppUpdate
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
 
@@ -96,6 +133,10 @@ private struct MenuBarContent: View {
         Button("Settings…") {
             NSApp.activate(ignoringOtherApps: true)
             openSettings()
+        }
+        if let release = update.available {
+            Divider()
+            Button("Download Porridge \(release.version)…") { update.download() }
         }
         Divider()
         Button("Quit Porridge") {

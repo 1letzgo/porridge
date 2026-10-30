@@ -447,8 +447,39 @@ struct SettingsView: View {
                 title: "Version",
                 value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
             )
+            #if os(macOS)
+            updateRow
+            #endif
         }
     }
+
+    #if os(macOS)
+    /// Newer versions come as GitHub releases; the app looks for them by itself and on request.
+    private var updateRow: some View {
+        let update = AppUpdate.shared
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Updates").font(.body)
+                Spacer(minLength: 12)
+                if let release = update.available {
+                    Button("Download \(release.version)") { update.download() }
+                        .buttonStyle(PillButtonStyle())
+                } else {
+                    Button(update.checking ? "Checking…" : "Check Now") {
+                        Task { await update.check(manual: true) }
+                    }
+                    .buttonStyle(PillButtonStyle())
+                    .disabled(update.checking)
+                }
+            }
+            if let result = update.lastResult {
+                Text(result)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+    #endif
 
     /// A failed download or load is shown as a warning, not only as small text in the row.
     private func reportFailure(in states: [ModelManager.State]) {

@@ -23,7 +23,7 @@ settings:
   base:
     DEVELOPMENT_TEAM: 699G2QY959
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: 0.1.0
+    MARKETING_VERSION: 0.1.1
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGN_STYLE: Automatic
 targets:
@@ -129,6 +129,9 @@ targets:
       path: PorridgeMac/Info.plist
       properties:
         CFBundleDisplayName: Porridge
+        # The version shown in the app and compared with the GitHub releases (scripts/release-mac.sh).
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your Mac. For dictation it listens while you hold the shortcut.
         NSCalendarsFullAccessUsageDescription: Porridge shows today's appointments so you can record a meeting for one of them.
