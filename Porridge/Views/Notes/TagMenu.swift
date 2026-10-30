@@ -32,7 +32,7 @@ struct TagMenu: View {
         }
         #if os(iOS)
         // A chosen tag fills the button with the view's color, so an active filter is seen at a glance.
-        .buttonStyle(ChromePillButtonStyle(fill: isFiltered ? tint : nil))
+        .buttonStyle(ChromePillButtonStyle(fill: isFiltered ? tint : nil, tint: tint == .brandSky ? nil : tint))
         #endif
         .accessibilityLabel("Filter by Tag")
         .accessibilityValue(isFiltered ? "Active" : "Off")

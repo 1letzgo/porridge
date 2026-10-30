@@ -605,7 +605,15 @@ struct NotesView: View {
     }
 
     /// Color of the square in front of the title: tasks are green, everything else sky blue.
-    private var listTint: Color { mode == .links ? .brandLink : mode == .tasks ? .brandTask : .brandSky }
+    private var listTint: Color {
+        switch mode {
+        case .tasks: .brandTask
+        case .links: .brandLink
+        case .meetings: .brandNavy
+        case .chat: .brandChat
+        default: .brandSky
+        }
+    }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
     private var listIcon: String {
@@ -973,6 +981,8 @@ private struct ListTabs: View {
             switch mode {
             case .tasks: .brandTask
             case .links: .brandLink
+            case .meetings: .brandNavy
+            case .chat: .brandChat
             default: nil
             }
         })

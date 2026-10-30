@@ -12,6 +12,8 @@ extension Color {
     static let brandLink = Color(red: 0.98, green: 0.56, blue: 0.14)
     /// Tasks: a fresh green next to the sky blue.
     static let brandTask = Color(red: 0.16, green: 0.74, blue: 0.50)
+    /// Chat.
+    static let brandChat = Color(red: 0.90, green: 0.25, blue: 0.24)
 
     // System surfaces, the same idea on iOS and macOS.
     #if canImport(UIKit)
@@ -194,6 +196,9 @@ struct ChromeBar<Actions: View>: View {
     var onBack: (() -> Void)?
     @ViewBuilder var actions: Actions
 
+    /// The pills take the screen's color too; the sky screens keep the accent color for contrast.
+    private var buttonTint: Color? { tint == .brandSky ? nil : tint }
+
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             if let onBack {
@@ -201,9 +206,9 @@ struct ChromeBar<Actions: View>: View {
                     Label("Back", systemImage: "chevron.left")
                         .labelStyle(.iconOnly)
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(buttonTint ?? .accentColor)
                 }
-                .buttonStyle(ChromePillButtonStyle())
+                .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
             }
             HStack(spacing: 10) {
                 Image(systemName: systemImage)
@@ -228,9 +233,9 @@ struct ChromeBar<Actions: View>: View {
             }
             .labelStyle(.iconOnly)
             .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(Color.accentColor)
-            .tint(Color.accentColor)
-            .buttonStyle(ChromePillButtonStyle())
+            .foregroundStyle(buttonTint ?? .accentColor)
+            .tint(buttonTint ?? .accentColor)
+            .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
             .menuStyle(.button)
         }
         .padding(.horizontal, 20)
@@ -244,17 +249,18 @@ extension ChromeBar where Actions == EmptyView {
     }
 }
 
-/// Button of the custom bar: the icon on a light sky pill, or white on a full pill of `fill` when the button
-/// stands for something that is switched on (an active filter).
+/// Button of the custom bar: the icon on a light pill of `tint` (sky with the accent color when nil), or white
+/// on a full pill of `fill` when the button stands for something that is switched on (an active filter).
 struct ChromePillButtonStyle: ButtonStyle {
     var fill: Color?
+    var tint: Color?
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(fill == nil ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.white))
+            .foregroundStyle(fill == nil ? AnyShapeStyle(tint ?? .accentColor) : AnyShapeStyle(.white))
             .frame(width: 44, height: 36)
             .background(
-                fill.map { $0.opacity(configuration.isPressed ? 0.8 : 1) } ?? Color.brandSky.opacity(configuration.isPressed ? 0.26 : 0.14),
+                fill.map { $0.opacity(configuration.isPressed ? 0.8 : 1) } ?? (tint ?? .brandSky).opacity(configuration.isPressed ? 0.26 : 0.14),
                 in: Capsule()
             )
             .contentShape(Capsule())

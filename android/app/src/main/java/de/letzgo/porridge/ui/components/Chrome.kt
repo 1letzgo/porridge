@@ -61,7 +61,7 @@ fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, action
 enum class ListMode(val title: String, val isTab: Boolean = true) {
     TASKS("Tasks"), MEETINGS("Meetings"), TIMELINE("Notes"), LINKS("Links"), CHAT("Chat"), SEARCH("Search", isTab = false);
 
-    val color: Color get() = when (this) { TASKS -> Brand.task; LINKS -> LinkOrange; else -> Brand.sky }
+    val color: Color get() = when (this) { TASKS -> Brand.task; LINKS -> LinkOrange; MEETINGS -> Brand.navy; CHAT -> Brand.chat; else -> Brand.sky }
 
     /** Notizen und Meetings folgen dem gewählten Ordner, Tag oder Papierkorb. */
     val showsScope: Boolean get() = this == TIMELINE || this == MEETINGS

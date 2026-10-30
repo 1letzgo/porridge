@@ -216,7 +216,9 @@ fun NotesScreen(
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
-            ChromeBar(title, icon, tint = when (mode) { ListMode.TASKS -> Brand.task; ListMode.LINKS -> LinkOrange; else -> Brand.sky }) {
+            // Die Knöpfe der Leiste in der Farbe der Ansicht; die blauen Ansichten behalten Navy für den Kontrast.
+            val barTint = if (mode.color == Brand.sky) Brand.navy else mode.color
+            ChromeBar(title, icon, tint = mode.color) {
                 if (mode.filtersByTag) {
                     // Gezählt wird, was die Ansicht zeigt (bei Aufgaben: die Notizen, aus denen sie stammen).
                     val listed = when (mode) {
@@ -225,27 +227,27 @@ fun NotesScreen(
                         ListMode.MEETINGS -> notes.filter { it.isRecording && !it.isLink }
                         else -> notes.filter { !it.isRecording && !it.isLink }
                     }
-                    TagMenu(listed, scope, onScope, showsTrash = mode.showsScope, deletedCount = notes.count { it.isDeleted }, tint = mode.color)
+                    TagMenu(listed, scope, onScope, showsTrash = mode.showsScope, deletedCount = notes.count { it.isDeleted }, tint = mode.color, iconTint = barTint)
                 }
                 if (mode.showsScope) {
-                    if (scope != NoteScope.Trash) IconButton(onClick = { importer.launch(arrayOf("audio/*", "video/*")) }) { Icon(Icons.Outlined.Download, "Import Audio", tint = Brand.navy) }
+                    if (scope != NoteScope.Trash) IconButton(onClick = { importer.launch(arrayOf("audio/*", "video/*")) }) { Icon(Icons.Outlined.Download, "Import Audio", tint = barTint) }
                     if (scope == NoteScope.Trash && shown.isNotEmpty()) IconButton(onClick = { confirmEmptyTrash = true }) { Icon(Icons.Outlined.Delete, "Delete All", tint = Brand.danger) }
                 } else if (mode == ListMode.CHAT) {
                     val messages by AppGraph.chat.messages.collectAsState()
-                    if (messages.isNotEmpty()) IconButton(onClick = { AppGraph.chat.reset() }) { Icon(Icons.Outlined.EditNote, "New Chat", tint = Brand.navy) }
+                    if (messages.isNotEmpty()) IconButton(onClick = { AppGraph.chat.reset() }) { Icon(Icons.Outlined.EditNote, "New Chat", tint = barTint) }
                 }
                 // Die Suche ist kein Tab, sondern ein Knopf; nochmals getippt geht es zurück, woher man kam.
                 IconButton(onClick = {
                     if (mode == ListMode.SEARCH) { onMode(modeBeforeSearch); search = ""; tagTokens = emptyList() }
                     else { modeBeforeSearch = mode; onMode(ListMode.SEARCH) }
                 }) {
-                    Icon(if (mode == ListMode.SEARCH) Icons.Filled.Close else Icons.Filled.Search, if (mode == ListMode.SEARCH) "Close Search" else "Search", tint = Brand.navy)
+                    Icon(if (mode == ListMode.SEARCH) Icons.Filled.Close else Icons.Filled.Search, if (mode == ListMode.SEARCH) "Close Search" else "Search", tint = barTint)
                 }
-                IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings", tint = Brand.navy) }
+                IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings", tint = barTint) }
             }
             ListTabs(mode) { onMode(it); if (it != ListMode.SEARCH) { search = ""; tagTokens = emptyList() } }
             when (mode) {
-                ListMode.MEETINGS, ListMode.TIMELINE -> NoteList(shown, scope, stages, onOpen, Modifier.weight(1f))
+                ListMode.MEETINGS, ListMode.TIMELINE -> NoteList(shown, scope, stages, onOpen, Modifier.weight(1f), tint = mode.color)
                 ListMode.LINKS -> NoteList(shown, NoteScope.All, stages, onOpen, Modifier.weight(1f), tint = LinkOrange)
                 ListMode.CHAT -> ChatScreen(notes, items, onOpen, Modifier.weight(1f))
                 ListMode.TASKS -> TasksScreen(items, notes, onOpen, { onEditTask(it.id) }, Modifier.weight(1f), tag = (scope as? NoteScope.Tag)?.name)

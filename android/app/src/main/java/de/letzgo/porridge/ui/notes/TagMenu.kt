@@ -29,7 +29,7 @@ import de.letzgo.porridge.ui.Brand
  * füllt den Knopf mit der Farbe der Ansicht ([tint]).
  */
 @Composable
-fun TagMenu(notes: List<Note>, scope: NoteScope, onScope: (NoteScope) -> Unit, showsTrash: Boolean = false, deletedCount: Int = 0, tint: Color = Brand.sky) {
+fun TagMenu(notes: List<Note>, scope: NoteScope, onScope: (NoteScope) -> Unit, showsTrash: Boolean = false, deletedCount: Int = 0, tint: Color = Brand.sky, iconTint: Color = Brand.navy) {
     var open by remember { mutableStateOf(false) }
     val filtered = scope is NoteScope.Tag
     if (filtered) {
@@ -37,7 +37,7 @@ fun TagMenu(notes: List<Note>, scope: NoteScope, onScope: (NoteScope) -> Unit, s
             Icon(Icons.Outlined.Tag, contentDescription = "Filter by Tag, active")
         }
     } else {
-        IconButton(onClick = { open = true }) { Icon(Icons.Outlined.Tag, contentDescription = "Filter by Tag", tint = Brand.navy) }
+        IconButton(onClick = { open = true }) { Icon(Icons.Outlined.Tag, contentDescription = "Filter by Tag", tint = iconTint) }
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
         @Composable fun item(title: String, target: NoteScope, icon: androidx.compose.ui.graphics.vector.ImageVector) =
