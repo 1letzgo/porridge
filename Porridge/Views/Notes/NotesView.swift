@@ -138,12 +138,12 @@ struct NotesView: View {
         let shown = visibleNotes
         return VStack(spacing: 0) {
             #if os(iOS)
-            ChromeBar(title: listTitle, systemImage: listIcon) {
+            ChromeBar(title: listTitle, systemImage: listIcon, tint: listTint) {
                 listActions(isEmpty: shown.isEmpty)
             }
             #else
             // The list's name at the top of the sidebar, as in Things; the actions sit in the window's toolbar.
-            ListTitle(title: listTitle, systemImage: listIcon)
+            ListTitle(title: listTitle, systemImage: listIcon, tint: listTint)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
@@ -207,7 +207,7 @@ struct NotesView: View {
         TasksPane(items: items, notes: notes) { openFromChat($0) }
             .contentMargins(.bottom, 96, for: .scrollContent)
             .overlay(alignment: .bottomTrailing) {
-                FloatingActionButton(systemImage: "plus", label: "New Task") { showAddTask = true }
+                FloatingActionButton(systemImage: "plus", label: "New Task", fill: .brandTask) { showAddTask = true }
                     .padding(.trailing, 22)
                     .padding(.bottom, 16)
             }
@@ -487,6 +487,9 @@ struct NotesView: View {
     private var listTitle: String {
         mode == .chat ? "Chat" : mode == .search ? "Search" : mode == .tasks ? "Tasks" : scopeTitle
     }
+
+    /// Color of the square in front of the title: tasks are green, everything else sky blue.
+    private var listTint: Color { mode == .tasks ? .brandTask : .brandSky }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
     private var listIcon: String {
@@ -824,6 +827,7 @@ private struct NoteRow: View {
 private struct ListTitle: View {
     let title: String
     let systemImage: String
+    var tint: Color = .brandSky
 
     var body: some View {
         HStack(spacing: 8) {
@@ -831,7 +835,7 @@ private struct ListTitle: View {
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 22, height: 22)
-                .background(Color.brandSky, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(tint, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             Text(title)
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.primary)

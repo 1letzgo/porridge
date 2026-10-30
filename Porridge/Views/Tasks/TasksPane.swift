@@ -80,7 +80,7 @@ struct TasksPane: View {
                 Text("\(count)").foregroundStyle(.secondary)
             }
             .font(.subheadline.weight(.bold))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(Color.brandTask)
             Rectangle().fill(Look.hairline).frame(height: 0.5)
         }
         .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
@@ -94,7 +94,7 @@ struct TasksPane: View {
             } label: {
                 Image(systemName: item.isDone ? "checkmark.square.fill" : "square")
                     .font(.title3)
-                    .foregroundStyle(Color.brandSky)
+                    .foregroundStyle(Color.brandTask)
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
@@ -111,7 +111,7 @@ struct TasksPane: View {
                             .foregroundStyle(Color.brandNavy)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
-                            .chunkyPill(fill: .brandSky)
+                            .chunkyPill(fill: .brandTask)
                     }
                     if let note {
                         Text(note.displayTitle)

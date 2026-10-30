@@ -10,6 +10,8 @@ extension Color {
     static let brandNavy = Color("BrandNavy")
     /// Saved links.
     static let brandLink = Color(red: 0.98, green: 0.56, blue: 0.14)
+    /// Tasks: a fresh green next to the sky blue.
+    static let brandTask = Color(red: 0.16, green: 0.74, blue: 0.50)
 
     // System surfaces, the same idea on iOS and macOS.
     #if canImport(UIKit)
@@ -186,6 +188,8 @@ struct ListRowLink<Content: View>: View {
 struct ChromeBar<Actions: View>: View {
     let title: String
     let systemImage: String
+    /// Color of the square behind the symbol.
+    var tint: Color = .brandSky
     /// Shows a back pill in front of the title.
     var onBack: (() -> Void)?
     @ViewBuilder var actions: Actions
@@ -206,7 +210,7 @@ struct ChromeBar<Actions: View>: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 34, height: 34)
-                    .background(Color.brandSky, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .background(tint, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 Text(title)
                     .font(.system(size: 30, weight: .bold))
                     .tracking(-0.5)
