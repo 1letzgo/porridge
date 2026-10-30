@@ -6,8 +6,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // sherpa-onnx (Spracherkennung, Sprecher, Satzvektoren) als AAR aus den GitHub-Releases.
-        flatDir { dirs("app/libs") }
     }
 }
 rootProject.name = "porridge"

@@ -19,3 +19,5 @@ android/llama/build/
 CLAUDE.md
 AGENTS.md
 .claude/
+android/app/libs/*.aar
+android/app/libs/*.part
