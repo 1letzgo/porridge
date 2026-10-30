@@ -20,7 +20,7 @@ struct TasksPane: View {
     private var tasks: [(item: ActionItem, note: Note)] {
         let notes = byID
         return items.compactMap { item -> (ActionItem, Note)? in
-            guard item.kind == .task, let id = item.noteID, let note = notes[id], !note.isDeleted else { return nil }
+            guard item.kind == .task, let id = item.noteID, let note = notes[id], !note.isDeleted, !note.isLink else { return nil }
             return (item, note)
         }
         .sorted { a, b in

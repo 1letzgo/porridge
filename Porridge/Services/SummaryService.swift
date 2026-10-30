@@ -99,7 +99,7 @@ enum SummaryService {
             header: hasTranscript ? header(for: note)
                 : "Date: \(note.createdAt.formatted(date: .long, time: .shortened))" + (note.url.map { "\nSource: \($0)" } ?? ""),
             material: material, language: language,
-            system: hasTranscript ? systemPrompt(language) : notePrompt(language),
+            system: hasTranscript ? systemPrompt(language) : notePrompt(language, isLink: note.isLink),
             noun: hasTranscript ? "meeting" : "note", progress: progress
         )
 
@@ -233,10 +233,20 @@ enum SummaryService {
         """
     }
 
-    private static func notePrompt(_ language: SummaryLanguage) -> String {
+    /// A saved page is only summarized: a page never gives the user tasks (`isLink`).
+    private static func notePrompt(_ language: SummaryLanguage, isLink: Bool) -> String {
+        let intro = isLink
+            ? "You summarize a web page the user saved. Write the whole summary in \(language.name) and in no other language, even though these instructions are in English.\nOnly use what is on the page. Do not write tasks or to-dos: a page is read, not worked on."
+            : "You summarize a personal note. The note is written in \(language.name). Write the whole summary in \(language.name) and in no other language, even though these instructions are in English.\nThe note may come from dictation and contain recognition mistakes; silently fix obvious ones. Only use what is in the note."
+        let tasks = isLink ? "" : """
+
+        ## \(language.headings.actionItems)
+        - [ ] Task
+        (omit if there are none)
+
         """
-        You summarize a personal note. The note is written in \(language.name). Write the whole summary in \(language.name) and in no other language, even though these instructions are in English.
-        The note may come from dictation and contain recognition mistakes; silently fix obvious ones. Only use what is in the note.
+        return """
+        \(intro)
 
         Reply in exactly this format (Markdown), with all headings in \(language.name):
 
@@ -244,12 +254,8 @@ enum SummaryService {
         <1–3 sentences>
 
         ## \(language.headings.keyPoints)
-        - … (omit if the note is very short)
-
-        ## \(language.headings.actionItems)
-        - [ ] Task
-        (omit if there are none)
-
+        - … (omit if the \(isLink ? "page" : "note") is very short)
+        \(tasks)
         TAGS: <3 to 5 short keywords in \(language.name), separated by commas, without # signs>
         """
     }

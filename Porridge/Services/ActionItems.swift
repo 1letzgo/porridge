@@ -120,17 +120,27 @@ enum ActionItems {
     /// lines that are gone take their item with them. Items ticked in the app keep their state as long as
     /// their line is a plain bullet. Cheap when nothing changed.
     static func sync(_ note: Note, in context: ModelContext) {
-        let parsed = parse(note.summary ?? "")
+        // A saved page never gives tasks: whatever its summary lists is reading matter, not work.
+        let parsed = note.isLink ? [] : parse(note.summary ?? "")
         var remaining: [String: [ActionItem]] = [:]
         for item in items(of: note.id, in: context) where item.isFromSummary {
             remaining[key(kind: item.kind, text: item.text, owner: item.owner), default: []].append(item)
         }
+        // Two devices may both have made the items before iCloud brought the other's: every device keeps the
+        // same one (the smallest id), so the copies go and nothing is lost on both sides.
+        for key in remaining.keys { remaining[key]?.sort { $0.id.uuidString < $1.id.uuidString } }
         var changed = false
         for (order, line) in parsed.enumerated() {
             let item: ActionItem
             if var list = remaining[line.key], !list.isEmpty {
                 item = list.removeFirst()
                 remaining[line.key] = list
+                // A copy ticked on the other device counts.
+                if let copy = list.first(where: \.isDone), !item.isDone, !line.isCheckbox {
+                    item.isDone = true
+                    item.doneAt = copy.doneAt
+                    changed = true
+                }
             } else {
                 item = ActionItem()
                 item.noteID = note.id
@@ -155,10 +165,12 @@ enum ActionItems {
         if changed { try? context.save() }
     }
 
-    /// Gives every note with a summary its items, for notes summarized before there were items.
+    /// Brings every note's items in step with its summary at launch: notes summarized before there were
+    /// items get theirs, copies from another device go, pages lose theirs. Cheap: nothing is written
+    /// when nothing changed.
     static func backfill(_ notes: [Note], in context: ModelContext) {
-        for note in notes where !note.isDeleted && !(note.summary ?? "").isEmpty {
-            if items(of: note.id, in: context).isEmpty { sync(note, in: context) }
+        for note in notes where !note.isDeleted {
+            if note.isLink || !(note.summary ?? "").isEmpty { sync(note, in: context) }
         }
     }
 
@@ -213,7 +225,7 @@ enum ActionItems {
             return "- \(item.line) («\(note.displayTitle)», \(note.createdAt.formatted(date: .abbreviated, time: .omitted)))"
         }
         let dated = items.compactMap { item -> (Date, ActionItem)? in
-            guard let id = item.noteID, let note = byID[id], !note.isDeleted else { return nil }
+            guard let id = item.noteID, let note = byID[id], !note.isDeleted, !note.isLink else { return nil }
             return (note.createdAt, item)
         }.sorted { $0.0 > $1.0 }.map(\.1)
         let open = dated.filter { $0.kind == .task && !$0.isDone }.compactMap(line)
