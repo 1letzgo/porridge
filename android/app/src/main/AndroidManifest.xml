@@ -2,6 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Aufnahme und Transkription im Vordergrunddienst (audio/RecordingService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Termine von heute für „Record Meeting“ (iOS: EventKit). -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
 
     <application
         android:name=".PorridgeApplication"
@@ -10,6 +19,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/Theme.Porridge"
         android:allowBackup="false"
+        android:largeHeap="true"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
@@ -21,6 +31,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".audio.RecordingService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|dataSync" />
 
         <!-- App-Update aus GitHub-Releases an den Paketinstaller übergeben (data/AppUpdate.kt). -->
         <provider

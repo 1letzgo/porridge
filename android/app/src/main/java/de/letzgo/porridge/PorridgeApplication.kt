@@ -1,7 +1,9 @@
 package de.letzgo.porridge
 
 import android.app.Application
+import de.letzgo.porridge.audio.RecordingSession
 import de.letzgo.porridge.data.Keys
+import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.data.SecureStore
 import de.letzgo.porridge.ml.LocalLLM
@@ -26,6 +28,8 @@ class PorridgeApplication : Application() {
         if (Prefs.string(Keys.LOCAL_MODEL) == null || !hasChosenModel()) Prefs.set(Keys.LOCAL_MODEL, LocalModel.recommended(this).raw)
         selectLocalModel()
         SentenceEmbedders.current = TextEmbedder
+        RecordingSession.init(this)
+        ProcessingService.onBusyChanged = { RecordingSession.setBusy(it) }
     }
 
     private fun hasChosenModel() = getSharedPreferences("porridge", MODE_PRIVATE).contains(Keys.LOCAL_MODEL)
