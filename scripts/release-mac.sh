@@ -93,18 +93,16 @@ fi
 
 git tag -a "$TAG" -m "Porridge Mac $VERSION ($BUILD)"
 git push origin HEAD "$TAG"
-
-NOTES_FILE=$(mktemp)
-{
-  echo "Porridge for Mac $VERSION (build $BUILD), signed with ${DEVELOPER_ID:-Apple Development}."
-  echo
-  if [[ -z $DEVELOPER_ID ]]; then
-    echo "Not notarized: after downloading, right-click Porridge.app → Open the first time."
-    echo
-  fi
-  echo "SHA-256: $(shasum -a 256 "$OUT/$ASSET" | cut -d' ' -f1)"
-} > "$NOTES_FILE"
-
-gh release create "$TAG" "$OUT/$ASSET" --repo "$REPO" --title "Porridge Mac $VERSION" --notes-file "$NOTES_FILE"
+# Notes go inline and the asset is uploaded in a second step: creating the release with a notes file and
+# the asset in one call answered HTTP 500 from GitHub (seen with 0.3.0).
+NOTES="Porridge for Mac $VERSION (build $BUILD), signed with ${DEVELOPER_ID:-Apple Development}."
+if [[ -z $DEVELOPER_ID ]]; then
+  NOTES+=$'\n\n'"Not notarized: after downloading, right-click Porridge.app and choose Open the first time."
+fi
+NOTES+=$'\n\n'"SHA-256: $(shasum -a 256 "$OUT/$ASSET" | cut -d' ' -f1)"
+if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+  gh release create "$TAG" --repo "$REPO" --title "Porridge Mac $VERSION" --notes "$NOTES"
+fi
+gh release upload "$TAG" "$OUT/$ASSET" --repo "$REPO" --clobber
 rm -f "$NOTES_FILE"
 gh release view "$TAG" --repo "$REPO" --json url --jq .url
