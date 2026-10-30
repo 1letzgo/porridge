@@ -103,6 +103,18 @@ enum ActionItems {
         return (body, nil)
     }
 
+    /// What a summary line is matched by: the line it was made from, even after the task was renamed.
+    static func matchKey(_ item: ActionItem) -> String {
+        item.summaryKey ?? key(kind: item.kind, text: item.text, owner: item.owner)
+    }
+
+    /// Nothing was changed by hand: still the summary's wording, no text of its own, not ticked.
+    static func isUntouched(_ item: ActionItem) -> Bool {
+        item.details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !item.isDone
+            && key(kind: item.kind, text: item.text, owner: item.owner) == matchKey(item)
+    }
+
     static func key(kind: ActionItem.Kind, text: String, owner: String?) -> String {
         let words = (text + " " + (owner ?? "")).lowercased()
             .components(separatedBy: .alphanumerics.inverted).filter { !$0.isEmpty }
@@ -116,15 +128,15 @@ enum ActionItems {
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    /// Makes the note's items match its summary: new lines become items, ticked lines tick their item,
-    /// lines that are gone take their item with them. Items ticked in the app keep their state as long as
-    /// their line is a plain bullet. Cheap when nothing changed.
+    /// Brings the note's items in step with its summary: new lines become items, ticked lines tick their
+    /// item. A line that is gone takes its item with it only while nobody touched it; an edited, ticked or
+    /// written-into task stays as a task of its own. Cheap when nothing changed.
     static func sync(_ note: Note, in context: ModelContext) {
         // A saved page never gives tasks: whatever its summary lists is reading matter, not work.
         let parsed = note.isLink ? [] : parse(note.summary ?? "")
         var remaining: [String: [ActionItem]] = [:]
         for item in items(of: note.id, in: context) where item.isFromSummary {
-            remaining[key(kind: item.kind, text: item.text, owner: item.owner), default: []].append(item)
+            remaining[matchKey(item), default: []].append(item)
         }
         // Two devices may both have made the items before iCloud brought the other's: every device keeps the
         // same one (the smallest id), so the copies go and nothing is lost on both sides.
@@ -147,6 +159,7 @@ enum ActionItems {
                 item.kind = line.kind
                 item.text = line.text
                 item.owner = line.owner
+                item.summaryKey = line.key
                 item.createdAt = note.summarizedAt ?? Date()
                 context.insert(item)
                 changed = true
@@ -159,7 +172,11 @@ enum ActionItems {
             }
         }
         for item in remaining.values.flatMap({ $0 }) {
-            context.delete(item)
+            if isUntouched(item) || note.isLink {
+                context.delete(item)
+            } else {
+                item.source = "kept"
+            }
             changed = true
         }
         if changed { try? context.save() }
@@ -174,17 +191,11 @@ enum ActionItems {
         }
     }
 
-    /// A task typed by hand: not tied to a note, never touched by `sync`. "Text – Name" sets the owner.
-    @discardableResult
-    static func addManual(_ body: String, in context: ModelContext) -> ActionItem? {
-        let (text, owner) = splitOwner(body.trimmingCharacters(in: .whitespacesAndNewlines))
-        guard !text.isEmpty else { return nil }
+    /// Makes a task typed by hand and returns it, ready to be filled in.
+    static func newTask(in context: ModelContext) -> ActionItem {
         let item = ActionItem()
-        item.text = text
-        item.owner = owner
         item.source = "manual"
         context.insert(item)
-        try? context.save()
         return item
     }
 
@@ -193,19 +204,28 @@ enum ActionItems {
         try? context.save()
     }
 
+    /// The note (or its summary) goes: untouched tasks go with it, the others stay as tasks of their own.
     static func remove(of noteID: UUID, in context: ModelContext) {
-        for item in items(of: noteID, in: context) { context.delete(item) }
+        for item in items(of: noteID, in: context) {
+            if isUntouched(item) {
+                context.delete(item)
+            } else {
+                item.noteID = nil
+                item.source = "kept"
+            }
+        }
     }
 
     /// Ticks or unticks an item and its line in the summary.
     static func setDone(_ item: ActionItem, _ done: Bool, note: Note?, in context: ModelContext) {
         item.isDone = done
         item.doneAt = done ? Date() : nil
+        item.updatedAt = Date()
         if let note, item.isFromSummary, var summary = note.summary {
-            let target = key(kind: item.kind, text: item.text, owner: item.owner)
+            let target = matchKey(item)
             var lines = summary.components(separatedBy: "\n")
             // The n-th item with the same wording ticks the n-th line with it.
-            let siblings = items(of: note.id, in: context).filter { key(kind: $0.kind, text: $0.text, owner: $0.owner) == target }
+            let siblings = items(of: note.id, in: context).filter { $0.isFromSummary && matchKey($0) == target }
             let position = siblings.firstIndex { $0.id == item.id } ?? 0
             let matches = parse(summary).filter { $0.key == target }
             if position < matches.count {
@@ -240,15 +260,17 @@ enum ActionItems {
     static func contextBlock(items: [ActionItem], notes: [Note], limit: Int) -> String {
         let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         func line(_ item: ActionItem) -> String? {
-            guard let id = item.noteID else {
-                return "- \(item.line) (added by hand, \(item.createdAt.formatted(date: .abbreviated, time: .omitted)))"
+            let details = item.details.trimmingCharacters(in: .whitespacesAndNewlines)
+            let more = details.isEmpty ? "" : "\n  " + String(details.prefix(240)).replacingOccurrences(of: "\n", with: " ")
+            guard let id = item.noteID, let note = byID[id] else {
+                return "- \(item.line) (task of its own, \(item.createdAt.formatted(date: .abbreviated, time: .omitted)))" + more
             }
-            guard let note = byID[id], !note.isDeleted else { return nil }
-            return "- \(item.line) («\(note.displayTitle)», \(note.createdAt.formatted(date: .abbreviated, time: .omitted)))"
+            guard !note.isDeleted else { return nil }
+            return "- \(item.line) («\(note.displayTitle)», \(note.createdAt.formatted(date: .abbreviated, time: .omitted)))" + more
         }
         let dated = items.compactMap { item -> (Date, ActionItem)? in
-            guard let id = item.noteID else { return (item.createdAt, item) }
-            guard let note = byID[id], !note.isDeleted, !note.isLink else { return nil }
+            guard let id = item.noteID, let note = byID[id] else { return (item.createdAt, item) }
+            guard !note.isDeleted, !note.isLink else { return nil }
             return (note.createdAt, item)
         }.sorted { $0.0 > $1.0 }.map(\.1)
         let open = dated.filter { $0.kind == .task && !$0.isDone }.compactMap(line)

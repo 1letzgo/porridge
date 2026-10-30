@@ -669,7 +669,7 @@ struct NoteDetailView: View {
         guard let task = parsed.first(where: { $0.line == line }) else { return }
         let before = parsed.prefix { $0.line < line }.filter { $0.key == task.key }.count
         let siblings = ActionItems.items(of: note.id, in: context).filter {
-            ActionItems.key(kind: $0.kind, text: $0.text, owner: $0.owner) == task.key
+            $0.isFromSummary && ActionItems.matchKey($0) == task.key
         }
         if before < siblings.count {
             ActionItems.setDone(siblings[before], !task.done, note: note, in: context)

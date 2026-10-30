@@ -37,9 +37,8 @@ struct NotesView: View {
     /// The plus button is unfolded into its options.
     @State private var showCreate = false
     @State private var linkText = ""
-    /// Dialog for a task typed by hand (Tasks tab).
-    @State private var showAddTask = false
-    @State private var taskText = ""
+    /// The task open on its own page (Tasks tab); a new one is made empty and opened right away.
+    @State private var editingTask: ActionItem?
     @State private var importError: String?
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
@@ -78,16 +77,11 @@ struct NotesView: View {
         } message: {
             Text("The page is saved as a note and summarized.")
         }
-        .alert("New Task", isPresented: $showAddTask) {
-            TextField("Task – owner", text: $taskText)
-            Button("Cancel", role: .cancel) { taskText = "" }
-            Button("Add") {
-                ActionItems.addManual(taskText, in: context)
-                taskText = ""
+        .sheet(item: $editingTask, onDismiss: finishTask) { item in
+            TaskDetailView(item: item, note: item.noteID.flatMap { id in notes.first { $0.id == id } }) { id in
+                editingTask = nil
+                openFromChat(id)
             }
-            .disabled(taskText.trimmingCharacters(in: .whitespaces).isEmpty)
-        } message: {
-            Text("A name after a dash sets who is responsible.")
         }
         .alert("Import Failed", isPresented: .constant(importError != nil)) {
             Button("OK") { importError = nil }
@@ -204,16 +198,30 @@ struct NotesView: View {
     /// The tasks list; on iOS with the same floating plus button as the timeline, the Mac has it in the toolbar.
     private var tasksPane: some View {
         #if os(iOS)
-        TasksPane(items: items, notes: notes) { openFromChat($0) }
+        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, onEdit: { editingTask = $0 })
             .contentMargins(.bottom, 96, for: .scrollContent)
             .overlay(alignment: .bottomTrailing) {
-                FloatingActionButton(systemImage: "plus", label: "New Task", fill: .brandTask) { showAddTask = true }
+                FloatingActionButton(systemImage: "plus", label: "New Task", fill: .brandTask) { addTask() }
                     .padding(.trailing, 22)
                     .padding(.bottom, 16)
             }
         #else
-        TasksPane(items: items, notes: notes) { openFromChat($0) }
+        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, onEdit: { editingTask = $0 })
         #endif
+    }
+
+    private func addTask() {
+        editingTask = ActionItems.newTask(in: context)
+    }
+
+    /// A task left without title and text is not kept.
+    private func finishTask() {
+        let items = (try? context.fetch(FetchDescriptor<ActionItem>(predicate: #Predicate { $0.source == "manual" }))) ?? []
+        for item in items where item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && item.details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            context.delete(item)
+        }
+        try? context.save()
     }
 
     /// Changes when a note's content changed (the index compares hashes, this only wakes it up).
@@ -417,7 +425,7 @@ struct NotesView: View {
             }
         } else if mode == .tasks {
             ToolbarItem(placement: .primaryAction) {
-                Button { showAddTask = true } label: {
+                Button { addTask() } label: {
                     Label("New Task", systemImage: "plus")
                 }
                 .accessibilityLabel("New Task")

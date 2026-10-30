@@ -8,6 +8,8 @@ struct TasksPane: View {
     let notes: [Note]
     /// Opens the note of a task.
     var onOpen: (UUID) -> Void
+    /// Opens a task on its own page.
+    var onEdit: (ActionItem) -> Void
 
     @Environment(\.modelContext) private var context
     @State private var showDone = false
@@ -21,8 +23,9 @@ struct TasksPane: View {
         let notes = byID
         return items.compactMap { item -> (ActionItem, Note?, Date)? in
             guard item.kind == .task else { return nil }
-            guard let id = item.noteID else { return (item, nil, item.createdAt) }
-            guard let note = notes[id], !note.isDeleted, !note.isLink else { return nil }
+            // A task whose note is gone stays as a task of its own.
+            guard let id = item.noteID, let note = notes[id] else { return (item, nil, item.createdAt) }
+            guard !note.isDeleted, !note.isLink else { return nil }
             return (item, note, note.createdAt)
         }
         .sorted { a, b in
@@ -101,9 +104,16 @@ struct TasksPane: View {
             .buttonStyle(.plain)
             .accessibilityLabel(item.isDone ? "Mark as Open" : "Mark as Done")
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.text)
+                Text(item.text.isEmpty ? "Untitled Task" : item.text)
                     .strikethrough(item.isDone, color: .secondary)
-                    .foregroundStyle(item.isDone ? .secondary : .primary)
+                    .foregroundStyle(item.isDone || item.text.isEmpty ? .secondary : .primary)
+                let details = NoteText.plainLines(item.details).joined(separator: " ")
+                if !details.isEmpty {
+                    Text(details)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
                 HStack(spacing: 6) {
                     if let owner = item.owner {
                         Text(owner)
@@ -126,23 +136,20 @@ struct TasksPane: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .onTapGesture { if let note { onOpen(note.id) } }
+            .onTapGesture { onEdit(item) }
         }
         .cardListRow()
         .swipeActions(edge: .trailing) {
-            if note == nil {
-                Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
-            }
+            Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
         }
         .contextMenu {
+            Button { onEdit(item) } label: { Label("Open Task", systemImage: "checklist") }
             if let note {
                 Button { onOpen(note.id) } label: { Label("Open Note", systemImage: "note.text") }
             }
             Button { Clipboard.copy(item.line) } label: { Label("Copy", systemImage: "doc.on.doc") }
-            if note == nil {
-                Divider()
-                Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
-            }
+            Divider()
+            Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
         }
     }
 }
