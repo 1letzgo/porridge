@@ -15,7 +15,11 @@ class NoteEditorEngineTest {
     }
 
     private fun replace(start: Int, end: Int, replacement: String) {
-        if (engine.shouldChange(start, end, replacement)) {
+        // Android fängt nur ab, was die Engine selbst ausführt; beide Prüfungen müssen übereinstimmen.
+        val intercepted = engine.intercepts(start, end, replacement)
+        val letThrough = engine.shouldChange(start, end, replacement)
+        assertEquals("intercepts($start, $end, '$replacement')", intercepted, !letThrough)
+        if (letThrough) {
             buffer.replace(start, end, if (replacement.isEmpty()) emptyList() else listOf(StyledText(replacement, buffer.typingStyle)))
             buffer.selectionStart = start + replacement.length
             buffer.selectionEnd = buffer.selectionStart

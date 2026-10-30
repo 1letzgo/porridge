@@ -244,6 +244,25 @@ class NoteEditorEngine(private val buffer: EditorBuffer, private val onCommit: (
         return true
     }
 
+    /**
+     * Ob [shouldChange] diese Änderung selbst ausführen (oder verwerfen) würde — ohne etwas zu ändern. Auf Android
+     * fängt der Editor nur diese Fälle ab; alles andere tippt die Tastatur selbst (die Komposition bleibt heil).
+     */
+    fun intercepts(start: Int, end: Int, replacement: String): Boolean {
+        if (isAdjusting) return false
+        val paragraph = paragraphRange(start)
+        val (kind, _) = kind(paragraph)
+        val textStart = textStart(paragraph)
+        val length = end - start
+        return when {
+            replacement == "\n" && length == 0 -> kind.isList || kind is Kind.Heading || kind == Kind.Quote
+            replacement.isEmpty() && length == 1 ->
+                (kind.isList && start == textStart - 1) || ((kind == Kind.Quote || kind.headingLevel > 0) && start == paragraph.first - 1)
+            replacement == "\t" -> true
+            else -> start < textStart && length == 0 && replacement.isNotEmpty()
+        }
+    }
+
     /** Nach einer Änderung: „- “, „1. “, „[] “, „# “ oder „> “ am Zeilenanfang macht die Zeile zu dieser Art. */
     fun didChange() {
         if (isAdjusting) return

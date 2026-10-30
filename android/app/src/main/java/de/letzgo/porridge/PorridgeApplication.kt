@@ -29,6 +29,7 @@ class PorridgeApplication : Application() {
         selectLocalModel()
         SentenceEmbedders.current = TextEmbedder
         RecordingSession.init(this)
+        AppGraph.init(this)
         ProcessingService.onBusyChanged = { RecordingSession.setBusy(it) }
     }
 

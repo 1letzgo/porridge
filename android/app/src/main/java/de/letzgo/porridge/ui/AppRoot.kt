@@ -1,97 +1,121 @@
 package de.letzgo.porridge.ui
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.Icon
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import de.letzgo.porridge.BuildConfig
-import de.letzgo.porridge.data.AppUpdate
+import de.letzgo.porridge.data.Keys
+import de.letzgo.porridge.data.LinkImport
+import de.letzgo.porridge.data.Prefs
+import de.letzgo.porridge.logic.SpeakerAssigner
 import de.letzgo.porridge.model.Note
-import de.letzgo.porridge.store.NoteStore
+import de.letzgo.porridge.model.NoteScope
+import de.letzgo.porridge.model.ProcessingStatus
+import de.letzgo.porridge.model.Speaker
+import de.letzgo.porridge.model.SpeakerMode
+import de.letzgo.porridge.model.TranscriptSegment
+import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.store.PorridgeDatabase
+import de.letzgo.porridge.ui.components.ListMode
+import de.letzgo.porridge.ui.notes.NoteDetailScreen
+import de.letzgo.porridge.ui.notes.NotesScreen
+import de.letzgo.porridge.ui.onboarding.OnboardingScreen
+import de.letzgo.porridge.ui.plaud.PlaudImportScreen
+import de.letzgo.porridge.ui.recording.RecordMeetingSheet
+import de.letzgo.porridge.ui.recording.RecordingScreen
+import de.letzgo.porridge.ui.settings.SettingsScreen
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
-/**
- * Hülle bis die Bildschirme aus Track F (NotesScreen, NoteDetailScreen, Settings …) da sind: zeigt die
- * Notizen, legt leere an und prüft auf Updates. iOS: `NotesView` (stark vereinfacht).
- */
+/** Bildschirme über der Liste (iOS: `NavigationSplitView` + Sheets). */
+sealed interface Screen {
+    data class Detail(val id: String, val draft: Note?) : Screen
+    data class Recording(val title: String?) : Screen
+    data object Settings : Screen
+    data object Plaud : Screen
+}
+
+/** Ein geteilter Link, der noch geöffnet werden will (aus `MainActivity`, `ACTION_SEND`). */
+object SharedLinks {
+    val pending = MutableStateFlow<String?>(null)
+}
+
+/** iOS: `RootView` + `NotesView`-Navigation. */
 @Composable
 fun AppRoot() {
-    val db = PorridgeDatabase.shared
-    val notes by db.notes().observeAll().collectAsState(initial = emptyList())
-    val scope = rememberCoroutineScope()
-    var manualResult by remember { mutableStateOf<String?>(null) }
-    var manualRelease by remember { mutableStateOf<AppUpdate.Release?>(null) }
+    var onboarded by remember { mutableStateOf(Prefs.bool(Keys.ONBOARDING_DONE)) }
+    if (!onboarded) {
+        OnboardingScreen { onboarded = true }
+        return
+    }
+    val stack = remember { mutableStateListOf<Screen>() }
+    var scope by remember { mutableStateOf<NoteScope>(NoteScope.All) }
+    var mode by remember { mutableStateOf(ListMode.TIMELINE) }
+    var showCalendar by remember { mutableStateOf(false) }
+    val coroutines = rememberCoroutineScope()
+    fun push(screen: Screen) = stack.add(screen)
+    fun pop() { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
+    fun open(id: String) {
+        mode = ListMode.TIMELINE
+        stack.removeAll { it is Screen.Detail }
+        push(Screen.Detail(id, null))
+    }
 
     AppUpdateCheck()
-    manualRelease?.let { AppUpdateDialog(it) { manualRelease = null } }
+    val pending by SharedLinks.pending.collectAsState()
+    LaunchedEffect(pending) {
+        val address = pending ?: return@LaunchedEffect
+        SharedLinks.pending.value = null
+        open(LinkImport.add(address, (scope as? NoteScope.Folder)?.id).id)
+    }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { scope.launch { NoteStore().save(Note()) } },
-                containerColor = Brand.sky,
-                contentColor = Color.White,
-            ) { Icon(Icons.Filled.Add, contentDescription = "New Note") }
-        },
-    ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 16.dp, bottom = 96.dp)) {
-            item {
-                Text("All Notes", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(horizontal = 20.dp))
-                Spacer(Modifier.height(12.dp))
-            }
-            items(notes.filter { !it.isDeleted }, key = { it.id }) { note ->
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
-                    Text(note.displayTitle, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (note.preview.isNotEmpty()) {
-                        Text(note.preview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    AnimatedContent(stack.lastOrNull(), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "screen") { top ->
+        when (top) {
+            null -> NotesScreen(
+                scope = scope, onScope = { scope = it }, mode = mode, onMode = { mode = it },
+                onOpen = ::open,
+                onNewNote = { folderID -> val draft = Note(folderID = folderID); push(Screen.Detail(draft.id, draft)) },
+                onRecord = { showCalendar = true },
+                onSettings = { push(Screen.Settings) },
+            )
+            is Screen.Detail -> NoteDetailScreen(top.id, top.draft) { pop() }
+            is Screen.Settings -> SettingsScreen(onBack = { pop() }, onPlaud = { push(Screen.Plaud) })
+            is Screen.Plaud -> PlaudImportScreen(onBack = { pop() }) { id -> stack.clear(); open(id) }
+            is Screen.Recording -> RecordingScreen(top.title, onFinish = { result, names, liveText ->
+                coroutines.launch {
+                    // Ein aufgenommenes Meeting wird eine Notiz, die mit Sprechern transkribiert wird.
+                    var note = Note(
+                        folderID = (scope as? NoteScope.Folder)?.id,
+                        title = top.title ?: Note.defaultMeetingTitle(System.currentTimeMillis()), titleIsCustom = top.title != null,
+                        statusRaw = ProcessingStatus.RECORDED.raw, audioFileName = result.fileName, duration = result.duration,
+                        channelCount = result.channelCount, inputName = result.inputName,
+                    )
+                    if (result.isSplitStereo) {
+                        note = note.copy(speakerModeRaw = SpeakerMode.CHANNELS.raw).withSpeakers(
+                            listOf(Speaker(SpeakerAssigner.LEFT_CHANNEL_ID, names[0], 0), Speaker(SpeakerAssigner.RIGHT_CHANNEL_ID, names[1], 1)),
+                        )
                     }
+                    // Bis das Transkript mit Sprechern fertig ist, steht der Live-Text da.
+                    if (liveText.isNotEmpty()) note = note.withSegments(listOf(TranscriptSegment(start = 0.0, end = result.duration, text = liveText)))
+                    PorridgeDatabase.shared.notes().upsert(note)
+                    ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
+                    pop()
+                    open(note.id)
                 }
-                HorizontalDivider(Modifier.padding(start = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            }
-            item {
-                Column(Modifier.padding(20.dp)) {
-                    Text("ABOUT", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
-                    Text("Porridge ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodyMedium)
-                    if (BuildConfig.SIDELOAD) {
-                        TextButton(onClick = {
-                            scope.launch {
-                                manualResult = null
-                                runCatching { AppUpdate.checkManually() }
-                                    .onSuccess { if (it == null) manualResult = "Porridge ${BuildConfig.VERSION_NAME} is up to date." else manualRelease = it }
-                                    .onFailure { manualResult = "Could not check: ${it.message}" }
-                            }
-                        }) { Text("Check for Updates") }
-                        manualResult?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    }
-                }
-            }
+            }, onCancel = { pop() })
         }
+    }
+    if (showCalendar) RecordMeetingSheet(onDismiss = { showCalendar = false }) { title ->
+        showCalendar = false
+        push(Screen.Recording(title))
     }
 }
