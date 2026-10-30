@@ -1,24 +1,24 @@
 import SwiftData
 import SwiftUI
 
-/// One task as a page of its own: title, done, who is responsible, where it comes from, and its own text
-/// (the same editor as notes).
+/// One task as a page of its own, shown like a note in the detail column (pushed with a back button on the
+/// iPhone): title, done, who is responsible, where it comes from, and its own text (the same editor as notes).
 struct TaskDetailView: View {
     @Bindable var item: ActionItem
     /// The note the task comes from, if it still exists.
     let note: Note?
     /// Opens the note of the task.
     var onOpenNote: (UUID) -> Void = { _ in }
+    /// Called after the task was deleted, so the list can close it.
+    var onClose: () -> Void = {}
 
     @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
     @State private var editor = NoteEditorController()
     @State private var confirmDelete = false
     @FocusState private var titleFocused: Bool
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(alignment: .top, spacing: 12) {
                         Button { toggleDone() } label: {
@@ -73,39 +73,35 @@ struct TaskDetailView: View {
                         .frame(minHeight: 280)
                 }
                 .padding()
-                .frame(maxWidth: 720)
+                .frame(maxWidth: 820)
                 .frame(maxWidth: .infinity)
+        }
+        .background(Color.appBackground)
+        .navigationTitle("")
+        .inlineNavigationTitle()
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(role: .destructive) { confirmDelete = true } label: {
+                    Label("Delete Task", systemImage: "trash")
+                }
+                .accessibilityLabel("Delete Task")
             }
-            .background(Color.appBackground)
-            .brandNavigationTitle("Task")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        editor.blur()
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                }
-                ToolbarItem(placement: .destructiveAction) {
-                    Button(role: .destructive) { confirmDelete = true } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                }
-            }
-            .confirmationDialog("Delete this task?", isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("Delete", role: .destructive) {
-                    ActionItems.delete(item, in: context)
-                    dismiss()
-                }
+        }
+        .confirmationDialog("Delete this task?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                editor.blur()
+                ActionItems.delete(item, in: context)
+                onClose()
             }
         }
         .onAppear { if item.text.isEmpty { titleFocused = true } }
+        .onDisappear {
+            editor.blur()
+            try? context.save()
+        }
         .onChange(of: item.text) { item.updatedAt = Date() }
         .onChange(of: item.details) { item.updatedAt = Date() }
         .onChange(of: item.owner) { item.updatedAt = Date() }
-        #if os(macOS)
-        .frame(minWidth: 520, minHeight: 560)
-        #endif
     }
 
     private func toggleDone() {

@@ -199,6 +199,18 @@ enum ActionItems {
         return item
     }
 
+    /// Tasks typed by hand that were left without title and text (a plus tapped and closed again).
+    static func dropEmptyManual(in context: ModelContext) {
+        let items = (try? context.fetch(FetchDescriptor<ActionItem>(predicate: #Predicate { $0.source == "manual" }))) ?? []
+        var changed = false
+        for item in items where item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && item.details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            context.delete(item)
+            changed = true
+        }
+        if changed { try? context.save() }
+    }
+
     static func delete(_ item: ActionItem, in context: ModelContext) {
         context.delete(item)
         try? context.save()

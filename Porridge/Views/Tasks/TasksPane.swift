@@ -8,6 +8,8 @@ struct TasksPane: View {
     let notes: [Note]
     /// Opens the note of a task.
     var onOpen: (UUID) -> Void
+    /// The task open in the detail column, marked in the list.
+    var selectedID: UUID?
     /// Opens a task on its own page.
     var onEdit: (ActionItem) -> Void
 
@@ -138,6 +140,13 @@ struct TasksPane: View {
             .contentShape(Rectangle())
             .onTapGesture { onEdit(item) }
         }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .background(
+            selectedID == item.id ? Color.brandTask.opacity(0.12) : .clear,
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .padding(.horizontal, -6)
         .cardListRow()
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }

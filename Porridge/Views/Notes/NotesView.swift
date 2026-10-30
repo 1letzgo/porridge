@@ -7,6 +7,9 @@ struct NotesView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
     @Environment(ProcessingService.self) private var processing
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
     @Query(sort: \NoteFolder.name) private var folders: [NoteFolder]
@@ -37,8 +40,8 @@ struct NotesView: View {
     /// The plus button is unfolded into its options.
     @State private var showCreate = false
     @State private var linkText = ""
-    /// The task open on its own page (Tasks tab); a new one is made empty and opened right away.
-    @State private var editingTask: ActionItem?
+    /// The task open in the detail column (Tasks tab), like a note; a new one is made empty and opened right away.
+    @State private var openTaskItem: ActionItem?
     @State private var importError: String?
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
@@ -47,7 +50,15 @@ struct NotesView: View {
         NavigationSplitView(preferredCompactColumn: $column) {
             list
         } detail: {
-            if let selection, let note = notes.first(where: { $0.id == selection }) ?? (draft?.id == selection ? draft : nil) {
+            if let item = openTaskItem, item.modelContext != nil {
+                TaskDetailView(
+                    item: item,
+                    note: item.noteID.flatMap { id in notes.first { $0.id == id } },
+                    onOpenNote: { openFromChat($0) },
+                    onClose: { closeTask() }
+                )
+                .id(item.id)
+            } else if let selection, let note = notes.first(where: { $0.id == selection }) ?? (draft?.id == selection ? draft : nil) {
                 NoteDetailView(note: note) { close(note) }
                     .id(note.id)
             } else {
@@ -77,12 +88,6 @@ struct NotesView: View {
         } message: {
             Text("The page is saved as a note and summarized.")
         }
-        .sheet(item: $editingTask, onDismiss: finishTask) { item in
-            TaskDetailView(item: item, note: item.noteID.flatMap { id in notes.first { $0.id == id } }) { id in
-                editingTask = nil
-                openFromChat(id)
-            }
-        }
         .alert("Import Failed", isPresented: .constant(importError != nil)) {
             Button("OK") { importError = nil }
         } message: {
@@ -95,6 +100,7 @@ struct NotesView: View {
             NoteStore.purgeExpired(in: context)
             LinkImport.importInbox(context: context, processing: processing)
             ActionItems.backfill(notes, in: context)
+            ActionItems.dropEmptyManual(in: context)
         }
         // The search index follows the notes: only what changed is cut and embedded again.
         .task(id: indexSignature) {
@@ -104,6 +110,9 @@ struct NotesView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { LinkImport.importInbox(context: context, processing: processing) }
+        }
+        .onChange(of: selection) { _, new in
+            if new != nil { openTaskItem = nil }
         }
         .onChange(of: scope) {
             selection = nil
@@ -175,7 +184,18 @@ struct NotesView: View {
             listToolbar(isEmpty: shown.isEmpty)
         }
         #endif
+        #if os(iOS)
+        .onChange(of: column) { _, new in
+            // Back from a task on the iPhone: the list is shown again, the task is closed.
+            if new == .sidebar, sizeClass == .compact { openTaskItem = nil }
+        }
+        #endif
+        .onChange(of: openTaskItem) { old, _ in
+            // Leaving a new task without title or text leaves nothing behind.
+            if let old { dropIfEmpty(old) }
+        }
         .onChange(of: mode) { _, new in
+            if new != .tasks { openTaskItem = nil }
             if new != .chat { chat.release() }
             if new != .search {
                 search = ""
@@ -198,7 +218,7 @@ struct NotesView: View {
     /// The tasks list; on iOS with the same floating plus button as the timeline, the Mac has it in the toolbar.
     private var tasksPane: some View {
         #if os(iOS)
-        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, onEdit: { editingTask = $0 })
+        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
             .contentMargins(.bottom, 96, for: .scrollContent)
             .overlay(alignment: .bottomTrailing) {
                 FloatingActionButton(systemImage: "plus", label: "New Task", fill: .brandTask) { addTask() }
@@ -206,22 +226,34 @@ struct NotesView: View {
                     .padding(.bottom, 16)
             }
         #else
-        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, onEdit: { editingTask = $0 })
+        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
         #endif
     }
 
     private func addTask() {
-        editingTask = ActionItems.newTask(in: context)
+        let item = ActionItems.newTask(in: context)
+        try? context.save()
+        openTask(item)
     }
 
-    /// A task left without title and text is not kept.
-    private func finishTask() {
-        let items = (try? context.fetch(FetchDescriptor<ActionItem>(predicate: #Predicate { $0.source == "manual" }))) ?? []
-        for item in items where item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && item.details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            context.delete(item)
-        }
-        try? context.save()
+    /// Shows a task in the detail column (pushed with a back button on the iPhone).
+    private func openTask(_ item: ActionItem) {
+        selection = nil
+        openTaskItem = item
+        column = .detail
+    }
+
+    private func closeTask() {
+        openTaskItem = nil
+        column = .sidebar
+    }
+
+    /// A task typed by hand that was left without title and text is not kept.
+    private func dropIfEmpty(_ item: ActionItem) {
+        guard item.modelContext != nil, item.source == "manual",
+              item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              item.details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        ActionItems.delete(item, in: context)
     }
 
     /// Changes when a note's content changed (the index compares hashes, this only wakes it up).
