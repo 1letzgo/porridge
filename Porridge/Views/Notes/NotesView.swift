@@ -10,6 +10,8 @@ struct NotesView: View {
     @Environment(ProcessingService.self) private var processing
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
     @Query(sort: \NoteFolder.name) private var folders: [NoteFolder]
+    /// The tasks and decisions of all notes, taken from their summaries.
+    @Query private var items: [ActionItem]
 
     @State private var scope = NoteScope.all
     @State private var selection: UUID?
@@ -84,6 +86,7 @@ struct NotesView: View {
             removeEmptyNotes()
             NoteStore.purgeExpired(in: context)
             LinkImport.importInbox(context: context, processing: processing)
+            ActionItems.backfill(notes, in: context)
         }
         // The search index follows the notes: only what changed is cut and embedded again.
         .task(id: indexSignature) {
@@ -137,7 +140,9 @@ struct NotesView: View {
             case .timeline:
                 timeline(shown)
             case .chat:
-                ChatView(notes: notes, store: chat) { openFromChat($0) }
+                ChatView(notes: notes, items: items, store: chat) { openFromChat($0) }
+            case .tasks:
+                TasksPane(items: items, notes: notes) { openFromChat($0) }
             case .search:
                 SearchPane(
                     text: $search, tokens: $tagTokens,
@@ -444,7 +449,7 @@ struct NotesView: View {
     // MARK: - Content of the list
 
     private var listTitle: String {
-        mode == .chat ? "Chat" : mode == .search ? "Search" : scopeTitle
+        mode == .chat ? "Chat" : mode == .search ? "Search" : mode == .tasks ? "Tasks" : scopeTitle
     }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
@@ -452,6 +457,7 @@ struct NotesView: View {
         switch mode {
         case .chat: return "bubble.left.and.bubble.right.fill"
         case .search: return "magnifyingglass"
+        case .tasks: return "checklist"
         case .timeline:
             switch scope {
             case .all: return "tray.full.fill"
@@ -800,7 +806,7 @@ private struct ListTitle: View {
     }
 }
 
-/// The three views of the list as quiet text tabs below the bar, sharing the full width.
+/// The views of the list as quiet text tabs below the bar, sharing the full width.
 private struct ListTabs: View {
     @Binding var mode: ListMode
 
@@ -808,6 +814,7 @@ private struct ListTabs: View {
         TabSwitcher(selection: $mode, options: [
             (ListMode.timeline, "Timeline"),
             (ListMode.chat, "Chat"),
+            (ListMode.tasks, "Tasks"),
             (ListMode.search, "Search"),
         ])
         .padding(.horizontal, 20)
@@ -826,5 +833,6 @@ extension Notification.Name {
 enum ListMode: Hashable {
     case timeline
     case chat
+    case tasks
     case search
 }

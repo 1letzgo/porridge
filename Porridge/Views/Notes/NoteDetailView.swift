@@ -538,7 +538,7 @@ struct NoteDetailView: View {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
-                            MarkdownText(markdown: summary)
+                            MarkdownText(markdown: summary, onToggleTask: note.isDeleted ? nil : { toggleSummaryTask(line: $0) })
                             Menu {
                                 Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
                                 Button { insertSummary() } label: { Label("Insert into Note", systemImage: "text.insert") }
@@ -613,6 +613,7 @@ struct NoteDetailView: View {
         } else {
             note.summary = text
         }
+        ActionItems.sync(note, in: context)
         try? context.save()
     }
 
@@ -658,7 +659,25 @@ struct NoteDetailView: View {
         note.summary = nil
         note.summaryModel = nil
         note.summarizedAt = nil
+        ActionItems.remove(of: note.id, in: context)
         try? context.save()
+    }
+
+    /// A checkbox in the summary was tapped: the n-th task line ticks the n-th item with the same wording.
+    private func toggleSummaryTask(line: Int) {
+        let parsed = ActionItems.parse(note.summary ?? "")
+        guard let task = parsed.first(where: { $0.line == line }) else { return }
+        let before = parsed.prefix { $0.line < line }.filter { $0.key == task.key }.count
+        let siblings = ActionItems.items(of: note.id, in: context).filter {
+            ActionItems.key(kind: $0.kind, text: $0.text, owner: $0.owner) == task.key
+        }
+        if before < siblings.count {
+            ActionItems.setDone(siblings[before], !task.done, note: note, in: context)
+        } else {
+            // No item yet (an old summary): make them first, then tick.
+            ActionItems.sync(note, in: context)
+            toggleSummaryTask(line: line)
+        }
     }
 
     /// The note while dictating: live text in the accent color and a blinking cursor where it appears.

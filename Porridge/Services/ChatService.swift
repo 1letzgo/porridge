@@ -102,7 +102,7 @@ final class ChatStore {
         Task { await ModelManager.shared.releaseLLM() }
     }
 
-    func ask(_ question: String, notes: [Note]) async {
+    func ask(_ question: String, notes: [Note], items: [ActionItem] = []) async {
         let question = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty, !isThinking else { return }
         let history = messages.suffix(4)
@@ -116,8 +116,10 @@ final class ChatStore {
 
         let index = NoteIndex.shared
         await index.refresh(notes)
-        var context = await index.search(question)
-        if context.isEmpty { context = index.recent() }
+        // The tasks and decisions always go along: "what is still open?" needs the list, not passages.
+        let tasks = ActionItems.contextBlock(items: items, notes: notes, limit: 2200)
+        var context = await index.search(question, budget: 6500 - tasks.count)
+        if context.isEmpty { context = index.recent(budget: 4500 - tasks.count) }
         guard !context.isEmpty else {
             messages.append(ChatMessage(role: .assistant, text: "There is nothing in your notes yet."))
             return
@@ -125,7 +127,7 @@ final class ChatStore {
 
         do {
             usedLocalModel = AppSettings.billing == .local
-            let text = try await Self.complete(question: question, history: Array(history), context: context) { [weak self] status in
+            let text = try await Self.complete(question: question, history: Array(history), context: context, tasks: tasks) { [weak self] status in
                 self?.status = status
             }
             messages.append(ChatMessage(role: .assistant, text: text, sources: Self.sources(in: text, context: context)))
@@ -156,13 +158,13 @@ final class ChatStore {
         }
     }
 
-    private static func complete(question: String, history: [ChatMessage], context: [ChatChunk], progress: @escaping (String) -> Void) async throws -> String {
+    private static func complete(question: String, history: [ChatMessage], context: [ChatChunk], tasks: String, progress: @escaping (String) -> Void) async throws -> String {
         let system = """
-        You are the assistant of a private notes app. Answer the question using only the excerpts from the user's notes and meeting transcripts below.
-        Every excerpt starts with a number in brackets. Name the numbers of the excerpts you used, like [2].
+        You are the assistant of a private notes app. Answer the question using only the excerpts from the user's notes and meeting transcripts below\(tasks.isEmpty ? "" : ", and the list of tasks and decisions taken from their summaries").
+        Every excerpt starts with a number in brackets. Name the numbers of the excerpts you used, like [2].\(tasks.isEmpty ? "" : " For a task or decision name the note it comes from.")
         If the excerpts do not contain the answer, say so briefly. Answer in the language of the question and be concise.
         """
-        var user = ""
+        var user = tasks
         if !history.isEmpty {
             user += "Conversation so far:\n"
             for message in history {

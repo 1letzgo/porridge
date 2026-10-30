@@ -3,6 +3,8 @@ import SwiftUI
 /// Chat with all notes and meetings: the questions are answered by the model chosen in Settings.
 struct ChatView: View {
     let notes: [Note]
+    /// The tasks and decisions of all notes; they go along with every question.
+    var items: [ActionItem] = []
     let store: ChatStore
     /// Opens a note (a source of an answer) in the timeline.
     var onOpen: (UUID) -> Void
@@ -166,6 +168,6 @@ struct ChatView: View {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty, !store.isThinking else { return }
         input = ""
-        Task { await store.ask(question, notes: notes) }
+        Task { await store.ask(question, notes: notes, items: items) }
     }
 }

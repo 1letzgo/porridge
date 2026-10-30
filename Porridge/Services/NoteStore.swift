@@ -26,6 +26,7 @@ enum NoteStore {
     static func deletePermanently(_ note: Note, in context: ModelContext) {
         note.audioFileNames.forEach(AudioStore.delete)
         AudioStore.delete(note.pendingAudioFileName)
+        ActionItems.remove(of: note.id, in: context)
         context.delete(note)
         try? context.save()
     }

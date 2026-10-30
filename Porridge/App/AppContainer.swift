@@ -3,7 +3,7 @@ import SwiftData
 enum AppContainer {
     /// SwiftData store synced through the private CloudKit database (container from the entitlements).
     static func make() -> ModelContainer {
-        let schema = Schema([Meeting.self, Note.self, NoteFolder.self, VoiceProfile.self])
+        let schema = Schema([ActionItem.self, Meeting.self, Note.self, NoteFolder.self, VoiceProfile.self])
         do {
             return try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, cloudKitDatabase: .automatic))
         } catch {
