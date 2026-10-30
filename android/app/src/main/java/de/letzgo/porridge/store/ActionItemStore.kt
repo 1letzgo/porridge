@@ -26,6 +26,16 @@ class ActionItemStore(private val db: PorridgeDatabase = PorridgeDatabase.shared
 
     suspend fun delete(item: ActionItem) = db.actionItems().delete(item)
 
+    /** Übernimmt neue Aufgaben: sie wandern von „New“ zu den offenen. */
+    suspend fun accept(items: List<ActionItem>) {
+        val now = System.currentTimeMillis()
+        db.actionItems().upsertAll(items.filter { it.review != ActionItem.Review.ACCEPTED }.map { it.copy(reviewRaw = ActionItem.Review.ACCEPTED.raw, updatedAt = now) })
+    }
+
+    /** Verwirft eine neue Aufgabe. Sie bleibt ausgeblendet gespeichert, damit ihre Zeile sie nicht neu anlegt. */
+    suspend fun dismiss(item: ActionItem) =
+        db.actionItems().upsert(item.copy(reviewRaw = ActionItem.Review.DISMISSED.raw, updatedAt = System.currentTimeMillis()))
+
     suspend fun save(item: ActionItem) = db.actionItems().upsert(item.copy(updatedAt = System.currentTimeMillis()))
 
     /** Eine von Hand angelegte Aufgabe ohne Titel und Text wird nicht behalten. */
@@ -44,7 +54,9 @@ class ActionItemStore(private val db: PorridgeDatabase = PorridgeDatabase.shared
     /** Hakt einen Eintrag ab (oder nicht) und seine Zeile in der Zusammenfassung mit. */
     suspend fun setDone(item: ActionItem, done: Boolean) {
         val now = System.currentTimeMillis()
-        db.actionItems().upsert(item.copy(isDone = done, doneAt = if (done) now else null, updatedAt = now))
+        // Abhaken übernimmt die Aufgabe, auch eine verworfene, die in der Zusammenfassung abgehakt wird.
+        val review = if (done) ActionItem.Review.ACCEPTED.raw else item.reviewRaw
+        db.actionItems().upsert(item.copy(isDone = done, doneAt = if (done) now else null, updatedAt = now, reviewRaw = review))
         val note = item.noteID?.let { db.notes().get(it) } ?: return
         val summary = note.summary ?: return
         val updated = ActionItemsLogic.summaryAfterSetDone(summary, item, done, db.actionItems().forNote(note.id))

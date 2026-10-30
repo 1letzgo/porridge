@@ -28,10 +28,21 @@ final class ActionItem {
     /// summary still finds it. Nil for tasks typed by hand.
     var summaryKey: String?
     var updatedAt: Date = Date()
+    /// Whether a task the summary brought in was looked at (`Review`). Items from before there was a review
+    /// count as accepted.
+    var reviewRaw: String = Review.accepted.rawValue
 
     enum Kind: String {
         case task
         case decision
+    }
+
+    /// A task out of a summary is a suggestion first: it waits under "New" until it is taken on or dropped.
+    enum Review: String {
+        case pending
+        case accepted
+        /// Dropped: hidden everywhere, but kept so its summary line does not bring it back.
+        case dismissed
     }
 
     init() {
@@ -43,7 +54,15 @@ final class ActionItem {
         set { kindRaw = newValue.rawValue }
     }
 
+    var review: Review {
+        get { Review(rawValue: reviewRaw) ?? .accepted }
+        set { reviewRaw = newValue.rawValue }
+    }
+
     var isFromSummary: Bool { source == "summary" }
+
+    /// New out of a summary and not looked at yet (a ticked one needs no review).
+    var needsReview: Bool { review == .pending && !isDone }
 
     /// The text with the owner, as it stands in the summary.
     var line: String {

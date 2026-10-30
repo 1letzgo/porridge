@@ -1,8 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// All tasks from the summaries in one list: open first, then the ones done, each with the note it comes
-/// from. Ticking here ticks the line in the summary too.
+/// All tasks from the summaries in one list: new ones to look at first, then open, then the ones done, each
+/// with the note it comes from. Ticking here ticks the line in the summary too.
 struct TasksPane: View {
     let items: [ActionItem]
     let notes: [Note]
@@ -24,7 +24,7 @@ struct TasksPane: View {
     private var tasks: [(item: ActionItem, note: Note?)] {
         let notes = byID
         return items.compactMap { item -> (ActionItem, Note?, Date)? in
-            guard item.kind == .task else { return nil }
+            guard item.kind == .task, item.review != .dismissed else { return nil }
             // A task whose note is gone stays as a task of its own.
             guard let id = item.noteID, let note = notes[id] else { return (item, nil, item.createdAt) }
             guard !note.isDeleted, !note.isLink else { return nil }
@@ -39,9 +39,23 @@ struct TasksPane: View {
 
     var body: some View {
         let all = tasks
-        let open = all.filter { !$0.item.isDone }
+        let new = all.filter { $0.item.needsReview }
+        let open = all.filter { !$0.item.isDone && !$0.item.needsReview }
         let done = all.filter { $0.item.isDone }
         List {
+            if !new.isEmpty {
+                Section { ForEach(new, id: \.item.id) { row($0.item, note: $0.note) } } header: {
+                    HStack(alignment: .firstTextBaseline) {
+                        header("New", count: new.count)
+                        Button("Accept All") {
+                            withAnimation(.snappy) { ActionItems.accept(new.map(\.item), in: context) }
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.brandTask)
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
             if !open.isEmpty {
                 Section { ForEach(open, id: \.item.id) { row($0.item, note: $0.note) } } header: { header("Open", count: open.count) }
             }
@@ -139,6 +153,7 @@ struct TasksPane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture { onEdit(item) }
+            if item.needsReview { reviewButtons(item) }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
@@ -148,10 +163,25 @@ struct TasksPane: View {
         )
         .padding(.horizontal, -6)
         .cardListRow()
+        .swipeActions(edge: .leading) {
+            if item.needsReview {
+                Button { withAnimation(.snappy) { ActionItems.accept([item], in: context) } } label: { Label("Accept", systemImage: "checkmark") }
+                    .tint(.brandTask)
+            }
+        }
         .swipeActions(edge: .trailing) {
-            Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
+            if item.needsReview {
+                Button(role: .destructive) { withAnimation(.snappy) { ActionItems.dismiss(item, in: context) } } label: { Label("Dismiss", systemImage: "xmark") }
+            } else {
+                Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
+            }
         }
         .contextMenu {
+            if item.needsReview {
+                Button { ActionItems.accept([item], in: context) } label: { Label("Accept", systemImage: "checkmark") }
+                Button { ActionItems.dismiss(item, in: context) } label: { Label("Dismiss", systemImage: "xmark") }
+                Divider()
+            }
             Button { onEdit(item) } label: { Label("Open Task", systemImage: "checklist") }
             if let note {
                 Button { onOpen(note.id) } label: { Label("Open Note", systemImage: "note.text") }
@@ -160,5 +190,28 @@ struct TasksPane: View {
             Divider()
             Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
         }
+    }
+
+    /// Take a new task on or drop it, right in its row.
+    private func reviewButtons(_ item: ActionItem) -> some View {
+        HStack(spacing: 4) {
+            Button { withAnimation(.snappy) { ActionItems.dismiss(item, in: context) } } label: {
+                Image(systemName: "xmark")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Dismiss")
+            Button { withAnimation(.snappy) { ActionItems.accept([item], in: context) } } label: {
+                Image(systemName: "checkmark")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Color.brandTask)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Accept")
+        }
+        .buttonStyle(.plain)
     }
 }

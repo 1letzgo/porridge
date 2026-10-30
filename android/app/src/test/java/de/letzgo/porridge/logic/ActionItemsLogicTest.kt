@@ -96,4 +96,26 @@ class ActionItemsLogicTest {
         assertTrue("- Steuer (task of its own" in block)
         assertTrue("Belege sammeln" in block)
     }
+
+    @Test fun newTasksWaitForReview() {
+        val note = Note(id = "N", summary = summary, summarizedAt = 5)
+        val byText = ActionItemsLogic.sync(note, emptyList()).upserts.associateBy { it.text }
+        assertTrue(byText.getValue("Angebot schicken").needsReview)
+        // Already ticked in the summary, and decisions, need no review.
+        assertEquals(ActionItem.Review.ACCEPTED, byText.getValue("Raum buchen").review)
+        assertEquals(ActionItem.Review.ACCEPTED, byText.getValue("Wir nehmen Variante B").review)
+        // Items from before the review count as accepted.
+        assertEquals(ActionItem.Review.ACCEPTED, ActionItem().review)
+    }
+
+    @Test fun dismissedTasksStayHiddenAndAreNotMadeAgain() {
+        val note = Note(id = "N", summary = summary, summarizedAt = 5)
+        val stored = ActionItemsLogic.sync(note, emptyList()).upserts.map {
+            if (it.text == "Angebot schicken") it.copy(reviewRaw = ActionItem.Review.DISMISSED.raw) else it
+        }
+        assertTrue(ActionItemsLogic.sync(note, stored).isEmpty)
+        val block = ActionItemsLogic.contextBlock(stored, listOf(note), 4000)
+        assertTrue("Angebot schicken" !in block)
+        assertTrue("Bericht schreiben" in block)
+    }
 }

@@ -147,6 +147,8 @@ object ActionItemsLogic {
             var item = found ?: ActionItem(
                 noteID = note.id, kindRaw = line.kind.raw, text = line.text, owner = line.owner,
                 summaryKey = line.key, createdAt = note.summarizedAt ?: now,
+                // Eine neue Aufgabe wartet unter „New“, bis sie übernommen wird; eine abgehakte ist schon erledigt.
+                reviewRaw = (if (line.kind == ActionItem.Kind.TASK && !line.done) ActionItem.Review.PENDING else ActionItem.Review.ACCEPTED).raw,
             )
             var changed = found == null
             // Eine anderswo abgehakte Kopie zählt.
@@ -210,6 +212,7 @@ object ActionItemsLogic {
             return "- ${item.line} («${note.displayTitle}», ${format.format(Date(note.createdAt))})" + more
         }
         val dated = items.mapNotNull { item ->
+            if (item.review == ActionItem.Review.DISMISSED) return@mapNotNull null
             val note = item.noteID?.let { byID[it] } ?: return@mapNotNull item.createdAt to item
             if (note.isDeleted || note.isLink) null else note.createdAt to item
         }.sortedByDescending { it.first }.map { it.second }

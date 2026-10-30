@@ -161,6 +161,8 @@ enum ActionItems {
                 item.owner = line.owner
                 item.summaryKey = line.key
                 item.createdAt = note.summarizedAt ?? Date()
+                // A new task waits under "New" until it is taken on; a ticked one is settled already.
+                if line.kind == .task, !line.done { item.review = .pending }
                 context.insert(item)
                 changed = true
             }
@@ -211,6 +213,22 @@ enum ActionItems {
         if changed { try? context.save() }
     }
 
+    /// Takes new tasks on: they move from "New" to the open tasks.
+    static func accept(_ items: [ActionItem], in context: ModelContext) {
+        for item in items where item.review != .accepted {
+            item.review = .accepted
+            item.updatedAt = Date()
+        }
+        try? context.save()
+    }
+
+    /// Drops a new task. It stays in the store, hidden, so the summary line does not make it again.
+    static func dismiss(_ item: ActionItem, in context: ModelContext) {
+        item.review = .dismissed
+        item.updatedAt = Date()
+        try? context.save()
+    }
+
     static func delete(_ item: ActionItem, in context: ModelContext) {
         context.delete(item)
         try? context.save()
@@ -233,6 +251,8 @@ enum ActionItems {
         item.isDone = done
         item.doneAt = done ? Date() : nil
         item.updatedAt = Date()
+        // Ticking a task takes it on, also one that was dropped and is ticked in the summary.
+        if done { item.review = .accepted }
         if let note, item.isFromSummary, var summary = note.summary {
             let target = matchKey(item)
             var lines = summary.components(separatedBy: "\n")
@@ -281,6 +301,7 @@ enum ActionItems {
             return "- \(item.line) («\(note.displayTitle)», \(note.createdAt.formatted(date: .abbreviated, time: .omitted)))" + more
         }
         let dated = items.compactMap { item -> (Date, ActionItem)? in
+            guard item.review != .dismissed else { return nil }
             guard let id = item.noteID, let note = byID[id] else { return (item.createdAt, item) }
             guard !note.isDeleted, !note.isLink else { return nil }
             return (note.createdAt, item)

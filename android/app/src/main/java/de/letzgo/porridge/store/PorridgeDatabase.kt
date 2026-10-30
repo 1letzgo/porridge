@@ -16,7 +16,7 @@ import de.letzgo.porridge.model.VoiceProfile
  * iOS: `AppContainer` (SwiftData + CloudKit). Auf Android eine lokale Room-Datenbank ohne Sync;
  * Sicherung über `data/Backup.kt`. Schema in `app/schemas/` (Migrationen ab Version 2 dort prüfen).
  */
-@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class, ActionItem::class], version = 2, exportSchema = true)
+@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class, ActionItem::class], version = 3, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class PorridgeDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
@@ -32,7 +32,7 @@ abstract class PorridgeDatabase : RoomDatabase() {
         fun init(context: Context) {
             if (instance != null) return
             instance = Room.databaseBuilder(context.applicationContext, PorridgeDatabase::class.java, "porridge.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
         }
 
@@ -43,6 +43,13 @@ abstract class PorridgeDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE action_items ADD COLUMN summaryKey TEXT")
                 db.execSQL("ALTER TABLE action_items ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("UPDATE action_items SET updatedAt = createdAt")
+            }
+        }
+
+        /** Neue Aufgaben aus Zusammenfassungen werden erst geprüft; alle vorhandenen gelten als übernommen. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE action_items ADD COLUMN reviewRaw TEXT NOT NULL DEFAULT 'accepted'")
             }
         }
 

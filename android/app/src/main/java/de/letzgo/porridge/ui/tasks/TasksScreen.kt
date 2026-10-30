@@ -16,10 +16,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
@@ -36,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,11 +73,12 @@ fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> 
     val byID = notes.associateBy { it.id }
     // Eine Aufgabe, deren Notiz weg ist, bleibt eigenständig; Seiten geben keine Aufgaben.
     val tasks = items.mapNotNull { item ->
-        if (item.kind != ActionItem.Kind.TASK) return@mapNotNull null
+        if (item.kind != ActionItem.Kind.TASK || item.review == ActionItem.Review.DISMISSED) return@mapNotNull null
         val note = item.noteID?.let { byID[it] } ?: return@mapNotNull Triple(item, null, item.createdAt)
         if (note.isDeleted || note.isLink) null else Triple(item, note, note.createdAt)
     }.sortedWith(compareByDescending<Triple<ActionItem, Note?, Long>> { it.third }.thenBy { it.first.order }).map { it.first to it.second }
-    val open = tasks.filter { !it.first.isDone }
+    val new = tasks.filter { it.first.needsReview }
+    val open = tasks.filter { !it.first.isDone && !it.first.needsReview }
     val done = tasks.filter { it.first.isDone }
     var showDone by remember { mutableStateOf(false) }
     val coroutines = rememberCoroutineScope()
@@ -92,8 +96,20 @@ fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> 
         item, note, onOpen = onOpen, onEdit = onEdit,
         onToggle = { coroutines.launch { store.setDone(item, !item.isDone) } },
         onDelete = { coroutines.launch { store.delete(item) } },
+        onAccept = { coroutines.launch { store.accept(listOf(item)) } },
+        onDismiss = { coroutines.launch { store.dismiss(item) } },
     )
     LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 96.dp)) {
+        if (new.isNotEmpty()) {
+            item {
+                SectionHeader("New", new.size, color = Brand.task) {
+                    TextButton(onClick = { coroutines.launch { store.accept(new.map { it.first }) } }) {
+                        Text("Accept All", color = Brand.task, style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+            items(new, key = { it.first.id }) { (item, note) -> row(item, note) }
+        }
         if (open.isNotEmpty()) {
             item { SectionHeader("Open", open.size, color = Brand.task) }
             items(open, key = { it.first.id }) { (item, note) -> row(item, note) }
@@ -111,17 +127,33 @@ fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> 
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun TaskRow(item: ActionItem, note: Note?, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit, onToggle: () -> Unit, onDelete: () -> Unit) {
+private fun TaskRow(
+    item: ActionItem, note: Note?, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit, onToggle: () -> Unit, onDelete: () -> Unit,
+    onAccept: () -> Unit, onDismiss: () -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val review = item.needsReview
+    // Eine neue Aufgabe: nach rechts übernehmen, nach links verwerfen. Sonst nach links löschen.
     val swipe = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
-        if (value == SwipeToDismissBoxValue.EndToStart) { onDelete(); true } else false
+        when (value) {
+            SwipeToDismissBoxValue.EndToStart -> { if (review) onDismiss() else onDelete(); true }
+            SwipeToDismissBoxValue.StartToEnd -> { if (review) onAccept(); review }
+            else -> false
+        }
     })
     SwipeToDismissBox(
-        swipe, enableDismissFromStartToEnd = false,
+        swipe, enableDismissFromStartToEnd = review,
         backgroundContent = {
-            Box(Modifier.fillMaxSize().background(Brand.danger).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
-                Icon(Icons.Outlined.Delete, "Delete", tint = androidx.compose.ui.graphics.Color.White)
+            if (swipe.dismissDirection == SwipeToDismissBoxValue.StartToEnd) {
+                Box(Modifier.fillMaxSize().background(Brand.task).padding(start = 24.dp), contentAlignment = Alignment.CenterStart) {
+                    Icon(Icons.Filled.Check, "Accept", tint = androidx.compose.ui.graphics.Color.White)
+                }
+            } else {
+                Box(Modifier.fillMaxSize().background(Brand.danger).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
+                    if (review) Icon(Icons.Filled.Close, "Dismiss", tint = androidx.compose.ui.graphics.Color.White)
+                    else Icon(Icons.Outlined.Delete, "Delete", tint = androidx.compose.ui.graphics.Color.White)
+                }
             }
         },
     ) {
@@ -156,6 +188,11 @@ private fun TaskRow(item: ActionItem, note: Note?, onOpen: (String) -> Unit, onE
                         }
                     }
                     DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                        if (review) {
+                            DropdownMenuItem(text = { Text("Accept") }, onClick = { menu = false; onAccept() })
+                            DropdownMenuItem(text = { Text("Dismiss") }, onClick = { menu = false; onDismiss() })
+                            HorizontalDivider()
+                        }
                         DropdownMenuItem(text = { Text("Open Task") }, onClick = { menu = false; onEdit(item) })
                         note?.let { n -> DropdownMenuItem(text = { Text("Open Note") }, onClick = { menu = false; onOpen(n.id) }) }
                         DropdownMenuItem(text = { Text("Copy") }, onClick = {
@@ -166,6 +203,10 @@ private fun TaskRow(item: ActionItem, note: Note?, onOpen: (String) -> Unit, onE
                         HorizontalDivider()
                         DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { menu = false; onDelete() })
                     }
+                }
+                if (review) {
+                    IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Dismiss", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    IconButton(onClick = onAccept) { Icon(Icons.Filled.Check, "Accept", tint = Brand.task) }
                 }
             }
             HorizontalDivider(Modifier.padding(start = 56.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)

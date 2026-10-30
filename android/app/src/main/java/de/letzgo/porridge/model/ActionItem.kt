@@ -37,6 +37,8 @@ data class ActionItem(
     /** Die Zusammenfassungs-Zeile, aus der der Eintrag entstand (`ActionItemsLogic.key`); bleibt beim Umbenennen. */
     val summaryKey: String? = null,
     val updatedAt: Long = System.currentTimeMillis(),
+    /** Ob eine Aufgabe aus der Zusammenfassung angesehen wurde ([Review]). Einträge von vor der Prüfung gelten als übernommen. */
+    val reviewRaw: String = Review.ACCEPTED.raw,
 ) {
     enum class Kind(val raw: String) {
         TASK("task"),
@@ -47,8 +49,24 @@ data class ActionItem(
         }
     }
 
+    /** Eine Aufgabe aus der Zusammenfassung ist erst ein Vorschlag: sie wartet unter „New“, bis sie übernommen oder verworfen wird. */
+    enum class Review(val raw: String) {
+        PENDING("pending"),
+        ACCEPTED("accepted"),
+        /** Verworfen: überall ausgeblendet, aber behalten, damit ihre Zeile sie nicht wiederbringt. */
+        DISMISSED("dismissed");
+
+        companion object {
+            fun of(raw: String?) = entries.firstOrNull { it.raw == raw } ?: ACCEPTED
+        }
+    }
+
     val kind: Kind get() = Kind.of(kindRaw)
+    val review: Review get() = Review.of(reviewRaw)
     val isFromSummary: Boolean get() = source == "summary"
+
+    /** Neu aus einer Zusammenfassung und noch nicht angesehen (eine abgehakte braucht keine Prüfung). */
+    val needsReview: Boolean get() = review == Review.PENDING && !isDone
 
     /** Text mit Zuständigem, wie er in der Zusammenfassung steht. */
     val line: String get() = owner?.let { "$text – $it" } ?: text
