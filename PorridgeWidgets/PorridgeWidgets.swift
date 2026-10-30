@@ -7,6 +7,9 @@ import WidgetKit
 struct PorridgeWidgets: WidgetBundle {
     var body: some Widget {
         RecordingLiveActivity()
+        QuickActionsWidget()
+        NewNoteControl()
+        StartMeetingControl()
     }
 }
 

@@ -121,6 +121,11 @@ struct NotesView: View {
             search = ""
             tagTokens = []
         }
+        #if os(iOS)
+        // From a widget, a control or a shortcut; on a cold launch the action waits until the list appears.
+        .onReceive(NotificationCenter.default.publisher(for: .porridgeQuickAction)) { _ in runQuickAction() }
+        .onAppear { runQuickAction() }
+        #endif
         #if os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: .newNote)) { _ in
             if mode != .timeline { mode = .timeline }
@@ -748,6 +753,22 @@ struct NotesView: View {
         selection = note.id
         column = .detail
     }
+
+    #if os(iOS)
+    private func runQuickAction() {
+        switch QuickActionCenter.take() {
+        case .newNote:
+            addNote()
+        case .startMeeting:
+            guard !showRecorder else { return }
+            mode = .meetings
+            showCalendar = false
+            startRecording(titled: nil)
+        case nil:
+            break
+        }
+    }
+    #endif
 
     /// Opens the recorder once the sheet with the appointments is gone.
     private func startRecording(titled title: String?) {
