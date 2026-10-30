@@ -91,6 +91,7 @@ dependencies {
     implementation("androidx.compose.animation:animation")
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-cbor:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     val room = "2.6.1"
     implementation("androidx.room:room-runtime:$room")
