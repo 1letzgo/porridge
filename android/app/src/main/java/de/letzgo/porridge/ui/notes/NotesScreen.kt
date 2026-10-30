@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Close
@@ -77,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.letzgo.porridge.AppGraph
 import de.letzgo.porridge.data.LinkImport
+import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteScope
 import de.letzgo.porridge.model.ProcessingStatus
@@ -114,14 +114,13 @@ fun NotesScreen(
     mode: ListMode,
     onMode: (ListMode) -> Unit,
     onOpen: (String) -> Unit,
-    onNewNote: (folderID: String?) -> Unit,
+    onNewNote: () -> Unit,
     onRecord: () -> Unit,
     onSettings: () -> Unit,
     onEditTask: (String) -> Unit,
 ) {
     val db = PorridgeDatabase.shared
     val notes by db.notes().observeAll().collectAsState(initial = emptyList())
-    val folders by db.folders().observeAll().collectAsState(initial = emptyList())
     val items by db.actionItems().observeAll().collectAsState(initial = emptyList())
     val stages by ProcessingService.stages.collectAsState()
     val indexVersion by AppGraph.index.version.collectAsState()
@@ -135,7 +134,6 @@ fun NotesScreen(
     var showAddLink by remember { mutableStateOf(false) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
-    val folderID = (scope as? NoteScope.Folder)?.id
 
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -150,7 +148,7 @@ fun NotesScreen(
                 val info = AudioStore.audioInfo(fileName)
                 val note = Note(
                     title = name.substringBeforeLast('.'), titleIsCustom = true, statusRaw = ProcessingStatus.RECORDED.raw,
-                    audioFileName = fileName, inputName = "Import", duration = info?.first ?: 0.0, channelCount = info?.second ?: 1, folderID = folderID,
+                    audioFileName = fileName, inputName = "Import", duration = info?.first ?: 0.0, channelCount = info?.second ?: 1,
                 )
                 db.notes().upsert(note)
                 ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
@@ -174,12 +172,10 @@ fun NotesScreen(
         AppGraph.index.refresh(notes)
     }
 
-    val folderIDs = folders.map { it.id }.toSet()
     val shown = remember(notes, scope, mode, search, tagTokens, indexVersion) {
-        var result = when (if (mode == ListMode.SEARCH || mode == ListMode.LINKS) NoteScope.All else scope) {
+        // Die Suche sieht alles; die Listen zeigen den gewählten Tag (Links haben keinen eigenen Papierkorb).
+        var result = when (if (mode == ListMode.SEARCH || (mode == ListMode.LINKS && scope == NoteScope.Trash)) NoteScope.All else scope) {
             NoteScope.All -> notes.filter { !it.isDeleted }
-            NoteScope.Unfiled -> notes.filter { !it.isDeleted && (it.folderID == null || it.folderID !in folderIDs) }
-            is NoteScope.Folder -> notes.filter { !it.isDeleted && it.folderID == (scope as NoteScope.Folder).id }
             is NoteScope.Tag -> notes.filter { n -> !n.isDeleted && n.tags.any { it.lowercase() == (scope as NoteScope.Tag).name } }
             NoteScope.Trash -> notes.filter { it.isDeleted }
         }
@@ -202,8 +198,6 @@ fun NotesScreen(
         ListMode.LINKS -> "Links"
         ListMode.MEETINGS, ListMode.TIMELINE -> when (scope) {
             NoteScope.All -> if (mode == ListMode.MEETINGS) "Meetings" else "Notes"
-            NoteScope.Unfiled -> "Notes"
-            is NoteScope.Folder -> folders.firstOrNull { it.id == scope.id }?.name ?: "Notes"
             is NoteScope.Tag -> "#" + scope.name
             NoteScope.Trash -> "Recently Deleted"
         }
@@ -215,8 +209,6 @@ fun NotesScreen(
         ListMode.LINKS -> Icons.Filled.Link
         ListMode.MEETINGS, ListMode.TIMELINE -> when (scope) {
             NoteScope.All -> if (mode == ListMode.MEETINGS) Icons.Filled.Mic else Icons.Filled.Inbox
-            NoteScope.Unfiled -> Icons.AutoMirrored.Filled.Notes
-            is NoteScope.Folder -> Icons.Filled.Folder
             is NoteScope.Tag -> Icons.Filled.Tag
             NoteScope.Trash -> Icons.Filled.Delete
         }
@@ -225,8 +217,17 @@ fun NotesScreen(
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
             ChromeBar(title, icon, tint = when (mode) { ListMode.TASKS -> Brand.task; ListMode.LINKS -> LinkOrange; else -> Brand.sky }) {
+                if (mode.filtersByTag) {
+                    // Gezählt wird, was die Ansicht zeigt (bei Aufgaben: die Notizen, aus denen sie stammen).
+                    val listed = when (mode) {
+                        ListMode.TASKS -> items.filter { it.kind == ActionItem.Kind.TASK }.mapNotNull { it.noteID }.toSet().let { ids -> notes.filter { it.id in ids } }
+                        ListMode.LINKS -> notes.filter { it.isLink }
+                        ListMode.MEETINGS -> notes.filter { it.isRecording && !it.isLink }
+                        else -> notes.filter { !it.isRecording && !it.isLink }
+                    }
+                    TagMenu(listed, scope, onScope, showsTrash = mode.showsScope, deletedCount = notes.count { it.isDeleted }, tint = mode.color)
+                }
                 if (mode.showsScope) {
-                    FolderMenu(notes, folders, scope, onScope)
                     if (scope != NoteScope.Trash) IconButton(onClick = { importer.launch(arrayOf("audio/*", "video/*")) }) { Icon(Icons.Outlined.Download, "Import Audio", tint = Brand.navy) }
                     if (scope == NoteScope.Trash && shown.isNotEmpty()) IconButton(onClick = { confirmEmptyTrash = true }) { Icon(Icons.Outlined.Delete, "Delete All", tint = Brand.danger) }
                 } else if (mode == ListMode.CHAT) {
@@ -244,14 +245,14 @@ fun NotesScreen(
             }
             ListTabs(mode) { onMode(it); if (it != ListMode.SEARCH) { search = ""; tagTokens = emptyList() } }
             when (mode) {
-                ListMode.MEETINGS, ListMode.TIMELINE -> NoteList(shown, scope, stages, folders.associate { it.id to it.name }, onOpen, Modifier.weight(1f))
-                ListMode.LINKS -> NoteList(shown, NoteScope.All, stages, folders.associate { it.id to it.name }, onOpen, Modifier.weight(1f), tint = LinkOrange)
+                ListMode.MEETINGS, ListMode.TIMELINE -> NoteList(shown, scope, stages, onOpen, Modifier.weight(1f))
+                ListMode.LINKS -> NoteList(shown, NoteScope.All, stages, onOpen, Modifier.weight(1f), tint = LinkOrange)
                 ListMode.CHAT -> ChatScreen(notes, items, onOpen, Modifier.weight(1f))
-                ListMode.TASKS -> TasksScreen(items, notes, onOpen, { onEditTask(it.id) }, Modifier.weight(1f))
+                ListMode.TASKS -> TasksScreen(items, notes, onOpen, { onEditTask(it.id) }, Modifier.weight(1f), tag = (scope as? NoteScope.Tag)?.name)
                 ListMode.SEARCH -> Column(Modifier.weight(1f)) {
                     SearchBar(search, { search = it }, tagTokens, { tagTokens = it }, tagCounts(notes.filter { !it.isDeleted }))
                     if (search.isBlank() && tagTokens.isEmpty()) Spacer(Modifier.height(1.dp))
-                    else NoteList(shown, NoteScope.All, stages, folders.associate { it.id to it.name }, onOpen, Modifier.weight(1f), searching = true)
+                    else NoteList(shown, NoteScope.All, stages, onOpen, Modifier.weight(1f), searching = true)
                 }
             }
         }
@@ -264,7 +265,7 @@ fun NotesScreen(
                     if (mode != ListMode.TASKS) onMode(ListMode.TASKS)
                     coroutines.launch { onEditTask(ActionItemStore().newTask().id) }
                 },
-                onNote = { if (mode != ListMode.TIMELINE) onMode(ListMode.TIMELINE); onNewNote(folderID) }, onMeeting = onRecord, onLink = { showAddLink = true },
+                onNote = { if (mode != ListMode.TIMELINE) onMode(ListMode.TIMELINE); onNewNote() }, onMeeting = onRecord, onLink = { showAddLink = true },
             )
         }
     }
@@ -273,7 +274,7 @@ fun NotesScreen(
         showAddLink = false
         // Der neue Link zeigt sich dort, wo Links wohnen.
         if (mode != ListMode.LINKS) onMode(ListMode.LINKS)
-        coroutines.launch { onOpen(LinkImport.add(address, folderID).id) }
+        coroutines.launch { onOpen(LinkImport.add(address).id) }
     }
     if (confirmEmptyTrash) AlertDialog(
         onDismissRequest = { confirmEmptyTrash = false },
@@ -291,7 +292,6 @@ private fun NoteList(
     shown: List<Note>,
     scope: NoteScope,
     stages: Map<String, String>,
-    folderNames: Map<String, String>,
     onOpen: (String) -> Unit,
     modifier: Modifier,
     searching: Boolean = false,
@@ -300,7 +300,6 @@ private fun NoteList(
 ) {
     val coroutines = rememberCoroutineScope()
     val store = remember { NoteStore() }
-    val showsFolder = scope == NoteScope.All || scope is NoteScope.Tag || scope == NoteScope.Trash
     if (shown.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             if (searching) EmptyState("No Results", "Nothing matches your search.", Icons.Filled.Search)
@@ -312,16 +311,16 @@ private fun NoteList(
     LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 110.dp)) {
         if (scope == NoteScope.Trash) {
             item { Text("Notes are deleted after ${NoteStore.TRASH_DAYS} days.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) }
-            items(shown, key = { it.id }) { note -> SwipeRow(note, stages[note.id], showsFolder, folderNames, onOpen, store, coroutines) }
+            items(shown, key = { it.id }) { note -> SwipeRow(note, stages[note.id], onOpen, store, coroutines) }
         } else {
             val pinned = shown.filter { it.isPinned }
             if (pinned.isNotEmpty() && !searching) {
                 item(key = "h-pinned") { SectionHeader("Pinned", color = tint) }
-                items(pinned, key = { it.id }) { note -> SwipeRow(note, stages[note.id], showsFolder, folderNames, onOpen, store, coroutines) }
+                items(pinned, key = { it.id }) { note -> SwipeRow(note, stages[note.id], onOpen, store, coroutines) }
             }
             for ((title, group) in groups(if (searching) shown else shown.filter { !it.isPinned })) {
                 item(key = "h-$title") { SectionHeader(title, color = tint) }
-                items(group, key = { it.id }) { note -> SwipeRow(note, stages[note.id], showsFolder, folderNames, onOpen, store, coroutines) }
+                items(group, key = { it.id }) { note -> SwipeRow(note, stages[note.id], onOpen, store, coroutines) }
             }
         }
     }
@@ -330,7 +329,7 @@ private fun NoteList(
 /** iOS: Zeile mit Wischen — nach rechts anpinnen (oder wiederherstellen), nach links löschen. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun SwipeRow(note: Note, stage: String?, showsFolder: Boolean, folderNames: Map<String, String>, onOpen: (String) -> Unit, store: NoteStore, coroutines: kotlinx.coroutines.CoroutineScope) {
+private fun SwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, store: NoteStore, coroutines: kotlinx.coroutines.CoroutineScope) {
     val state = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
         when (value) {
             SwipeToDismissBoxValue.StartToEnd -> {
@@ -358,7 +357,7 @@ private fun SwipeRow(note: Note, stage: String?, showsFolder: Boolean, folderNam
         },
     ) {
         Box {
-            NoteRow(note, stage, if (showsFolder) note.folderID?.let { folderNames[it] } else null, Modifier.combinedClickable(onClick = { onOpen(note.id) }, onLongClick = { menu = true }))
+            NoteRow(note, stage, Modifier.combinedClickable(onClick = { onOpen(note.id) }, onLongClick = { menu = true }))
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (note.isDeleted) {
                     DropdownMenuItem(text = { Text("Recover") }, onClick = { menu = false; coroutines.launch { store.restore(note) } })
@@ -374,7 +373,7 @@ private fun SwipeRow(note: Note, stage: String?, showsFolder: Boolean, folderNam
 
 /** iOS: `NoteRow` — Notizen in Sky, Meetings in Navy, Links in Orange. */
 @Composable
-private fun NoteRow(note: Note, stage: String?, folderName: String?, modifier: Modifier) {
+private fun NoteRow(note: Note, stage: String?, modifier: Modifier) {
     val (icon, tint) = when {
         note.isLink -> Icons.Filled.Link to LinkOrange
         note.isRecording -> Icons.Outlined.GraphicEq to Brand.navy
@@ -396,7 +395,6 @@ private fun NoteRow(note: Note, stage: String?, folderName: String?, modifier: M
                             val left = NoteStore.TRASH_DAYS - TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - deletedAt).toInt()
                             add(if (left <= 1) "Deleted tomorrow" else "$left days left")
                         } else add(SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(note.updatedAt)))
-                        folderName?.let { add(it) }
                         note.domain?.let { add(it) }
                         if (note.isRecording && note.duration > 0) add(note.duration.durationText)
                         stage?.let { add(it) } ?: if (note.status == ProcessingStatus.FAILED) add("Failed") else Unit

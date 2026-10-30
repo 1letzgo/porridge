@@ -72,12 +72,14 @@ import java.util.Locale
  * öffnet die Aufgabe als eigene Seite.
  */
 @Composable
-fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit, modifier: Modifier = Modifier) {
+fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit, modifier: Modifier = Modifier, tag: String? = null) {
     val byID = notes.associateBy { it.id }
     // Eine Aufgabe, deren Notiz weg ist, bleibt eigenständig; Seiten geben keine Aufgaben.
     val tasks = items.mapNotNull { item ->
         if (item.kind != ActionItem.Kind.TASK || item.review == ActionItem.Review.DISMISSED) return@mapNotNull null
-        val note = item.noteID?.let { byID[it] } ?: return@mapNotNull Triple(item, null, item.createdAt)
+        // [tag]: nur Aufgaben aus Notizen mit diesem Tag; eigene ohne Notiz fallen dann weg.
+        val note = item.noteID?.let { byID[it] } ?: return@mapNotNull if (tag == null) Triple(item, null, item.createdAt) else null
+        if (tag != null && note.tags.none { it.lowercase() == tag }) return@mapNotNull null
         if (note.isDeleted || note.isLink) null else Triple(item, note, note.createdAt)
     }.sortedWith(compareByDescending<Triple<ActionItem, Note?, Long>> { it.third }.thenBy { it.first.order }).map { it.first to it.second }
     val new = tasks.filter { it.first.needsReview }

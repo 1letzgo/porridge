@@ -12,7 +12,6 @@ struct NotesView: View {
     #endif
     @Environment(ProcessingService.self) private var processing
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
-    @Query(sort: \NoteFolder.name) private var folders: [NoteFolder]
     /// The tasks and decisions of all notes, taken from their summaries.
     @Query private var items: [ActionItem]
 
@@ -22,7 +21,6 @@ struct NotesView: View {
     @State private var draft: Note?
     /// Which column is shown on a narrow screen. Set from code so a new note opens reliably.
     @State private var column = NavigationSplitViewColumn.sidebar
-    @State private var folderPrompts = FolderPromptState()
     @State private var search = ""
     /// Tags picked in the search field; a note must have all of them.
     @State private var tagTokens: [TagToken] = []
@@ -129,7 +127,6 @@ struct NotesView: View {
             addNote()
         }
         #endif
-        .folderPrompts(folderPrompts, folders: folders, scope: $scope)
         .confirmationDialog("Delete all notes in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
             Button("Delete All", role: .destructive) {
                 notes.filter(\.isDeleted).forEach { NoteStore.deletePermanently($0, in: context) }
@@ -169,7 +166,7 @@ struct NotesView: View {
             case .search:
                 SearchPane(
                     text: $search, tokens: $tagTokens,
-                    tags: FolderMenu.tagCounts(notes.filter { !$0.isDeleted }),
+                    tags: TagMenu.tagCounts(notes.filter { !$0.isDeleted }),
                     hasQuery: hasQuery
                 ) {
                     listBase(shown)
@@ -206,6 +203,8 @@ struct NotesView: View {
         }
         .onChange(of: mode) { _, new in
             if new != .tasks { openTaskItem = nil }
+            // Only notes and meetings have a trash; elsewhere the list starts with everything.
+            if !new.showsScope, new != .search, scope == .trash { scope = .all }
             if new != .chat { chat.release() }
             if new != .search {
                 search = ""
@@ -237,10 +236,10 @@ struct NotesView: View {
     /// The tasks list; on iOS with the same floating plus button as the timeline, the Mac has it in the toolbar.
     private var tasksPane: some View {
         #if os(iOS)
-        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
+        TasksPane(items: items, notes: notes, tag: tagFilter, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
             .contentMargins(.bottom, 96, for: .scrollContent)
         #else
-        TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
+        TasksPane(items: items, notes: notes, tag: tagFilter, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
         #endif
     }
 
@@ -413,8 +412,10 @@ struct NotesView: View {
     /// The actions of the list, shown as plain icons at the right of the custom bar (iOS).
     @ViewBuilder
     private func listActions(isEmpty: Bool) -> some View {
+        if mode.filtersByTag {
+            tagMenu
+        }
         if mode.showsScope {
-            FolderMenu(notes: notes, folders: folders, scope: $scope, state: folderPrompts)
             if scope != .trash {
                 Button { showImporter = true } label: {
                     Label("Import Audio", systemImage: "square.and.arrow.down")
@@ -442,6 +443,11 @@ struct NotesView: View {
             timelineToolbar(isEmpty: isEmpty)
         }
         modeToolbar
+        if mode.filtersByTag {
+            ToolbarItem(placement: .primaryAction) {
+                tagMenu
+            }
+        }
         ToolbarItem(placement: .primaryAction) {
             searchButton
         }
@@ -456,9 +462,6 @@ struct NotesView: View {
 
     @ToolbarContentBuilder
     private func timelineToolbar(isEmpty: Bool) -> some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            FolderMenu(notes: notes, folders: folders, scope: $scope, state: folderPrompts)
-        }
         if scope != .trash {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -483,6 +486,20 @@ struct NotesView: View {
                 }
             }
         }
+    }
+
+    /// The filter by tag, counting the tags of what the view lists (for tasks: the notes they come from).
+    private var tagMenu: some View {
+        let listed: [Note]
+        switch mode {
+        case .tasks:
+            let ids = Set(items.compactMap { $0.kind == .task ? $0.noteID : nil })
+            listed = notes.filter { ids.contains($0.id) }
+        case .links: listed = notes.filter(\.isLink)
+        case .meetings: listed = notes.filter { $0.isRecording && !$0.isLink }
+        default: listed = notes.filter { !$0.isRecording && !$0.isLink }
+        }
+        return TagMenu(notes: listed, scope: $scope, showsTrash: mode.showsScope, deletedCount: notes.filter(\.isDeleted).count, tint: listTint)
     }
 
     /// The search is no tab but a button in the bar; tapped again it goes back to where it came from.
@@ -543,10 +560,7 @@ struct NotesView: View {
 
     private func row(_ note: Note) -> some View {
         ListRowLink(value: note.id) {
-            NoteRow(
-                note: note, stage: processing.stages[note.id],
-                folderName: showsFolder ? folderName(of: note) : nil
-            )
+            NoteRow(note: note, stage: processing.stages[note.id])
         }
         .swipeActions(edge: .leading) {
             if note.isDeleted {
@@ -568,7 +582,6 @@ struct NotesView: View {
                 Button(role: .destructive) { remove(note) } label: { Label("Delete Now", systemImage: "trash") }
             } else {
                 Button { togglePin(note) } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
-                MoveToFolderMenu(note: note)
                 ShareLink(item: note.title.isEmpty ? note.text : "\(note.title)\n\n\(note.text)") {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -604,19 +617,21 @@ struct NotesView: View {
         case .timeline, .meetings:
             switch scope {
             case .all: return mode == .meetings ? "waveform" : "tray.full.fill"
-            case .unfiled: return "note.text"
-            case .folder: return "folder.fill"
             case .tag: return "number"
             case .trash: return "trash.fill"
             }
         }
     }
 
+    /// The tag the lists are filtered by, if any.
+    private var tagFilter: String? {
+        if case .tag(let tag) = scope { return tag }
+        return nil
+    }
+
     private var scopeTitle: String {
         switch scope {
         case .all: "Notes"
-        case .unfiled: "Notes"
-        case .folder(let id): folders.first { $0.id == id }?.name ?? "Notes"
         case .tag(let tag): "#" + tag
         case .trash: "Recently Deleted"
         }
@@ -632,25 +647,11 @@ struct NotesView: View {
             : scope == .trash ? "Deleted notes stay here for \(NoteStore.trashDays) days." : "Speak a thought – Porridge writes it down for you."
     }
 
-    private var showsFolder: Bool {
-        switch scope {
-        case .all, .tag, .trash: true
-        default: false
-        }
-    }
-
-    private func folderName(of note: Note) -> String? {
-        note.folderID.flatMap { id in folders.first { $0.id == id }?.name }
-    }
-
     private var visibleNotes: [Note] {
-        let folderIDs = Set(folders.map(\.id))
         var result: [Note]
-        // The search looks through everything; the timeline shows the chosen folder.
-        switch mode == .search || mode == .links ? .all : scope {
+        // The search looks through everything; the lists show the chosen tag (links have no trash of their own).
+        switch mode == .search || (mode == .links && scope == .trash) ? .all : scope {
         case .all: result = notes.filter { !$0.isDeleted }
-        case .unfiled: result = notes.filter { !$0.isDeleted && ($0.folderID.map { !folderIDs.contains($0) } ?? true) }
-        case .folder(let id): result = notes.filter { !$0.isDeleted && $0.folderID == id }
         case .tag(let tag): result = notes.filter { !$0.isDeleted && $0.tags.contains { $0.lowercased() == tag } }
         case .trash: result = notes.filter(\.isDeleted)
         }
@@ -725,7 +726,6 @@ struct NotesView: View {
         guard let address = LinkImport.webAddress(from: linkText) else { return }
         linkText = ""
         let note = LinkImport.add(address, context: context, processing: processing)
-        if case .folder(let id) = scope, note.folderID == nil { note.folderID = id }
         // The new link shows where links live.
         if mode != .links { mode = .links }
         selection = note.id
@@ -736,7 +736,6 @@ struct NotesView: View {
         // The new note shows where notes live.
         if mode != .timeline { mode = .timeline }
         let note = Note()
-        if case .folder(let id) = scope { note.folderID = id }
         draft = note
         selection = note.id
         column = .detail
@@ -754,7 +753,6 @@ struct NotesView: View {
     /// A recorded meeting becomes a note that is transcribed with speakers.
     private func addRecording(from result: RecordingResult, speakerNames: [String], liveText: String) {
         let note = Note()
-        if case .folder(let id) = scope { note.folderID = id }
         note.title = appointmentTitle ?? Note.defaultMeetingTitle(for: note.createdAt)
         note.titleIsCustom = appointmentTitle != nil
         appointmentTitle = nil
@@ -782,7 +780,6 @@ struct NotesView: View {
             let url = try result.get()
             let fileName = try AudioStore.importFile(from: url)
             let note = Note()
-            if case .folder(let id) = scope { note.folderID = id }
             note.title = url.deletingPathExtension().lastPathComponent
             note.titleIsCustom = true
             note.statusRaw = ProcessingStatus.recorded.rawValue
@@ -846,7 +843,6 @@ struct NotesView: View {
 private struct NoteRow: View {
     let note: Note
     let stage: String?
-    let folderName: String?
 
     var body: some View {
         // Plain notes are sky blue, recorded meetings navy, saved links orange.
@@ -872,7 +868,7 @@ private struct NoteRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
-                // The full line when there is room (narrow sidebar on the Mac); otherwise without folder and speakers.
+                // The full line when there is room (narrow sidebar on the Mac); otherwise without domain and speakers.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) { footer(compact: false) }
                     HStack(spacing: 8) { footer(compact: true) }
@@ -903,10 +899,6 @@ private struct NoteRow: View {
             Text(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
                 .fixedSize()
         }
-        if let folderName, !compact {
-            Label(folderName, systemImage: "folder")
-                .labelStyle(.titleAndIcon)
-        }
         if let domain = note.domain, !compact {
             Label(domain, systemImage: "link")
                 .labelStyle(.titleAndIcon)
@@ -920,7 +912,7 @@ private struct NoteRow: View {
             }
         }
         Spacer(minLength: 8)
-        // The state keeps its width; the folder and the domain give way first.
+        // The state keeps its width; the domain gives way first.
         Group {
             if let stage {
                 StatusBadge(text: stage, color: .accentColor, spinning: true)
@@ -1009,6 +1001,9 @@ enum ListMode: Hashable {
     /// The search, opened from the button in the bar (no tab of its own).
     case search
 
-    /// Notes and meetings follow the chosen folder, tag or trash.
+    /// Notes and meetings follow the chosen tag or show the trash.
     var showsScope: Bool { self == .timeline || self == .meetings }
+
+    /// The lists with the filter by tag in the bar.
+    var filtersByTag: Bool { showsScope || self == .tasks || self == .links }
 }

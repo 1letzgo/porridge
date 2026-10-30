@@ -16,12 +16,9 @@ data class NoteFolder(
     val parentID: String? = null,
 )
 
-/** iOS: `NoteScope` — was die Notizliste gerade zeigt. */
+/** iOS: `NoteScope` — was eine Liste zeigt: alles, einen Tag oder „Recently Deleted“. Ordner werden nicht mehr gezeigt; `NoteFolder` bleibt in der Datenbank. */
 sealed interface NoteScope {
     data object All : NoteScope
-    /** Der Standardordner „Notes“ (Notizen ohne Ordner). */
-    data object Unfiled : NoteScope
-    data class Folder(val id: String) : NoteScope
     data class Tag(val name: String) : NoteScope
     data object Trash : NoteScope
 }

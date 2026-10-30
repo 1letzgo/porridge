@@ -60,7 +60,6 @@
 		43A31E8EDAA99B1248E0275F /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = FD620C050B477DF07C977B9D /* FluidAudio */; };
 		44D79AE1434B19F9AA1141C1 /* ChatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19743A48BFB08A4F1939EE6D /* ChatService.swift */; };
 		4514B9DFEEC2340B0988A27F /* NoteBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8AB217EF9CF295C18693CFA /* NoteBlocks.swift */; };
-		457B923F1FDD603E01D2802A /* MoveToFolderMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C68FB774E30DBAF929E607 /* MoveToFolderMenu.swift */; };
 		486BC3F19E8213085E114EC2 /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDFB2FA30B94FE642D6337FC /* NotesView.swift */; };
 		48C60C370EC336B5F9465953 /* RecordingActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */; };
 		48F3E5CBA82CC8CF5CB9E15B /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF96B31F1E8B578583505E98 /* Theme.swift */; };
@@ -114,6 +113,7 @@
 		8B2A6EB4962B9468AA35CD81 /* CalendarAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2291E7D9FBD16F3E4B079817 /* CalendarAccess.swift */; };
 		8D3086BAD19B572EB7675FBB /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 1367D89BB806BE6B6ADEE7D7 /* MLXLMCommon */; };
 		8D6FDA68556EC145BEC5EBC0 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2141F7919F1EE60B134F704 /* MarkdownText.swift */; };
+		8DF84086E0386DB8B91F7D08 /* TagMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E41F5467CB0E4ECCA32D57 /* TagMenu.swift */; };
 		8FF358692F372B899D81D1C6 /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65F0237052007B3FEEEBEB9 /* Transcript.swift */; };
 		91FC2BEA779454531B25DC71 /* AudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7798D6E60F456BEF335E6F48 /* AudioStore.swift */; };
 		927CFE780AE6D85488AF7E07 /* TasksPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E345FCF69334B90FB789F74 /* TasksPane.swift */; };
@@ -135,11 +135,9 @@
 		A7720AA8BECDC3567796EB50 /* ActionItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB4AFAFFCB1422B3F429D3F /* ActionItem.swift */; };
 		A82761451E9F7DA554423BAF /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */; };
 		AAB43F4E07F1580829B4EAAD /* AudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7798D6E60F456BEF335E6F48 /* AudioStore.swift */; };
-		AAE8B635C72F18E11C73DCE5 /* FolderMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D26F69BE8BF54F979BD93E5 /* FolderMenu.swift */; };
 		ACABC4D5CA966F82669AD960 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083A5EA9DC62D07B9150CDAB /* OnboardingView.swift */; };
 		B01020125443820618A7D679 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF96B31F1E8B578583505E98 /* Theme.swift */; };
 		B0B3CD0F6FF2F45318E89E34 /* TimelineSearchBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8577540515D71C4E5FE3504A /* TimelineSearchBar.swift */; };
-		B10CB1BC7E948D785D7FDB7C /* MoveToFolderMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C68FB774E30DBAF929E607 /* MoveToFolderMenu.swift */; };
 		B2336A64EB596AC69B212C59 /* PlaudImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9252D20181C0B25CCC7F3D13 /* PlaudImporter.swift */; };
 		B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB2150AC1E2D50129B73B9 /* SummaryService.swift */; };
 		B50072C1228DE96659168489 /* CloudLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F68F49429875E63DC4CCB6 /* CloudLLM.swift */; };
@@ -172,7 +170,6 @@
 		E3002DFA4AC2CB6F61BFF32A /* InlineDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */; };
 		E53D3E365FE85257EF1B74A0 /* NoteMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */; };
 		E6AB44344775FD2E3AE87BFE /* LiveTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC34B2F819480B429CF98E03 /* LiveTranscriber.swift */; };
-		E6DA79B3830EEEB11F30A0BA /* FolderMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D26F69BE8BF54F979BD93E5 /* FolderMenu.swift */; };
 		E8627E20B8F2D15E59D7A4C6 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 891664E182A92898397DE9A2 /* Tokenizers */; };
 		EBDC4F7260BCB5488F6713FD /* PlaudProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 899112051F381E37B77B95FC /* PlaudProtocol.swift */; };
 		EBF0A277FEF80C9CC457802B /* PlaudCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E144B5C4A5FF19E6E4CAB606 /* PlaudCrypto.swift */; };
@@ -183,6 +180,7 @@
 		F6654516D356993C3F1E71C9 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083A5EA9DC62D07B9150CDAB /* OnboardingView.swift */; };
 		F760CDCC6A711FC977ADBAB7 /* LinkFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FAB0F466A89E3E6D592CAA /* LinkFetcher.swift */; };
 		F7A901BD8BE9D4CB443696B9 /* LinkImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB005D8452E913C0CB4DEE1D /* LinkImport.swift */; };
+		F94E719F68613C1E7D153BA8 /* TagMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E41F5467CB0E4ECCA32D57 /* TagMenu.swift */; };
 		FA915CE27493CD8BDCB57CC1 /* MergeNotesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2856F523A997C75014865C4 /* MergeNotesSheet.swift */; };
 		FCAF1163B93D9F066722A15F /* DictationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DBACE83C4AC1FD231B7AC2F /* DictationController.swift */; };
 		FE2EF42824495C546C8435CB /* GlobalHotKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B965676D5FD4BEB12521F86 /* GlobalHotKey.swift */; };
@@ -274,11 +272,11 @@
 		7F270B076B4D33FDC2045E8A /* NotesFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesFlowTests.swift; sourceTree = "<group>"; };
 		81A704D1CADCD8534C411F3B /* Porridge.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Porridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8577540515D71C4E5FE3504A /* TimelineSearchBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineSearchBar.swift; sourceTree = "<group>"; };
+		86E41F5467CB0E4ECCA32D57 /* TagMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagMenu.swift; sourceTree = "<group>"; };
 		879AEC0D2821AB51F69F4E74 /* AudioPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPreprocessor.swift; sourceTree = "<group>"; };
 		88C74B82A922F4E55F934519 /* TextInserter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInserter.swift; sourceTree = "<group>"; };
 		8971203514F93451723E779A /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		899112051F381E37B77B95FC /* PlaudProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudProtocol.swift; sourceTree = "<group>"; };
-		8D26F69BE8BF54F979BD93E5 /* FolderMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderMenu.swift; sourceTree = "<group>"; };
 		8DBACE83C4AC1FD231B7AC2F /* DictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationController.swift; sourceTree = "<group>"; };
 		8FC0CDF01F99DDB03520D478 /* Porridge.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Porridge.entitlements; sourceTree = "<group>"; };
 		909961185A18E43F10BBAEAE /* PorridgeMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PorridgeMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -294,7 +292,6 @@
 		B0ED4598E551D4BB46B97957 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B2856F523A997C75014865C4 /* MergeNotesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeNotesSheet.swift; sourceTree = "<group>"; };
 		B6ABCD033E415B78A0498E44 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		B6C68FB774E30DBAF929E607 /* MoveToFolderMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoveToFolderMenu.swift; sourceTree = "<group>"; };
 		B7794E23DA38BED1951839EF /* LegacyMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyMigration.swift; sourceTree = "<group>"; };
 		BDB4AFAFFCB1422B3F429D3F /* ActionItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionItem.swift; sourceTree = "<group>"; };
 		BE0B07929BC2A88C738323E9 /* RollingRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RollingRecognizer.swift; sourceTree = "<group>"; };
@@ -408,9 +405,7 @@
 		4DFEF292DB0D27A6CC950573 /* Notes */ = {
 			isa = PBXGroup;
 			children = (
-				8D26F69BE8BF54F979BD93E5 /* FolderMenu.swift */,
 				B2856F523A997C75014865C4 /* MergeNotesSheet.swift */,
-				B6C68FB774E30DBAF929E607 /* MoveToFolderMenu.swift */,
 				A8AB217EF9CF295C18693CFA /* NoteBlocks.swift */,
 				E8931C85DA151D7EA0E959CA /* NoteBodyEditor.swift */,
 				33144CDDD5CE1296F1220976 /* NoteDetailView.swift */,
@@ -422,6 +417,7 @@
 				3CA9C6649F3F5A8A76BBCEA0 /* PlaudLoginView.swift */,
 				32A619A6A5CEB3607BF5EE1E /* RecordMeetingSheet.swift */,
 				D2A5616AFD8592E91EE7A9D4 /* SummaryEditorSheet.swift */,
+				86E41F5467CB0E4ECCA32D57 /* TagMenu.swift */,
 				8577540515D71C4E5FE3504A /* TimelineSearchBar.swift */,
 			);
 			path = Notes;
@@ -846,7 +842,6 @@
 				D27B72D61365263EE5DF92B3 /* ChatView.swift in Sources */,
 				5F1AF2970A46492166EFFEBF /* ChunkRanking.swift in Sources */,
 				C4E10CCEFC65F264710F1627 /* CloudLLM.swift in Sources */,
-				E6DA79B3830EEEB11F30A0BA /* FolderMenu.swift in Sources */,
 				E3002DFA4AC2CB6F61BFF32A /* InlineDictation.swift in Sources */,
 				3FDE8583E5D07C2472D0629A /* Keychain.swift in Sources */,
 				F16711786BE4C4DB571B4282 /* LegacyMigration.swift in Sources */,
@@ -860,7 +855,6 @@
 				BED5D79B02D400BBDDFA13AB /* Meeting.swift in Sources */,
 				57C92E9BB6FD62EC51FF26A7 /* MergeNotesSheet.swift in Sources */,
 				BBD6152CD6E81173947772C9 /* ModelManager.swift in Sources */,
-				457B923F1FDD603E01D2802A /* MoveToFolderMenu.swift in Sources */,
 				7A4D4772B9D9191E708AC1A0 /* Note.swift in Sources */,
 				4514B9DFEEC2340B0988A27F /* NoteBlocks.swift in Sources */,
 				03DCEEDB98E0E488018ABD31 /* NoteBodyEditor.swift in Sources */,
@@ -897,6 +891,7 @@
 				2519166D729750B7484FC464 /* SummarizingCard.swift in Sources */,
 				01E0FFCBAB683091E75D4B06 /* SummaryEditorSheet.swift in Sources */,
 				01528762ABBA57FEA7E93C81 /* SummaryService.swift in Sources */,
+				8DF84086E0386DB8B91F7D08 /* TagMenu.swift in Sources */,
 				5D60D30FCB022405FDF57BE6 /* TaskDetailView.swift in Sources */,
 				927CFE780AE6D85488AF7E07 /* TasksPane.swift in Sources */,
 				8AA27980DB9CB7C62EAFC09C /* TextEmbedder.swift in Sources */,
@@ -942,7 +937,6 @@
 				FCAF1163B93D9F066722A15F /* DictationController.swift in Sources */,
 				EF9954E3ED1CE9A4A825FFA2 /* DictationOverlay.swift in Sources */,
 				3429A25D4EF65DA7B58F988C /* DictationSettings.swift in Sources */,
-				AAE8B635C72F18E11C73DCE5 /* FolderMenu.swift in Sources */,
 				FE2EF42824495C546C8435CB /* GlobalHotKey.swift in Sources */,
 				5E0DB858F25A8CE3E43F784E /* InlineDictation.swift in Sources */,
 				36B30FC20E90D4B7715DE90E /* Keychain.swift in Sources */,
@@ -958,7 +952,6 @@
 				FA915CE27493CD8BDCB57CC1 /* MergeNotesSheet.swift in Sources */,
 				36FD98F4525C00F87F761EB3 /* ModelManager.swift in Sources */,
 				2316760D8F08477ACACBA86F /* ModifierKeyMonitor.swift in Sources */,
-				B10CB1BC7E948D785D7FDB7C /* MoveToFolderMenu.swift in Sources */,
 				9A578A8C057C87985C1FC180 /* Note.swift in Sources */,
 				CC848E098BBC5DB798C31925 /* NoteBlocks.swift in Sources */,
 				65BC30F146AE3C1342E00BB0 /* NoteBodyEditor.swift in Sources */,
@@ -995,6 +988,7 @@
 				779DFE96B0F8C7C3AEAE4E03 /* SummarizingCard.swift in Sources */,
 				CDF4C9AAFB9D87728BA12409 /* SummaryEditorSheet.swift in Sources */,
 				B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */,
+				F94E719F68613C1E7D153BA8 /* TagMenu.swift in Sources */,
 				B6F8F74868C87282CDE71D2B /* TaskDetailView.swift in Sources */,
 				000266105C33D24E7CDEF772 /* TasksPane.swift in Sources */,
 				9A6485677604C313A2311584 /* TextEmbedder.swift in Sources */,

@@ -34,23 +34,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.letzgo.porridge.ui.Brand
 
-/** iOS: `ChromeBar` — eigene Leiste wie in Things: farbiges Listen-Icon und großer Titel links, schlichte Icons rechts. */
+/** iOS: `ChromeBar` — eigene Leiste wie in Things: farbiges Listen-Icon und Titel links, schlichte Icons rechts, alles in einer Zeile. */
 @Composable
 fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, actions: @Composable RowScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 8.dp, top = 8.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.weight(1f))
-            actions()
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)) {
-            if (icon != null) {
-                Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(tint), contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                }
-                Spacer(Modifier.width(10.dp))
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(tint), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
-            Text(title, style = MaterialTheme.typography.headlineLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.width(10.dp))
         }
+        Text(
+            title, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        actions()
     }
 }
 
@@ -63,6 +65,9 @@ enum class ListMode(val title: String, val isTab: Boolean = true) {
 
     /** Notizen und Meetings folgen dem gewählten Ordner, Tag oder Papierkorb. */
     val showsScope: Boolean get() = this == TIMELINE || this == MEETINGS
+
+    /** Die Listen mit dem Filter nach Tag in der Leiste. */
+    val filtersByTag: Boolean get() = showsScope || this == TASKS || this == LINKS
 }
 
 @Composable

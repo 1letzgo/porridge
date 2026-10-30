@@ -17,12 +17,10 @@ final class NoteFolder {
     }
 }
 
-/// What the notes list currently shows.
+/// What a list shows: everything, one tag, or "Recently Deleted". (Folders are no longer shown; `NoteFolder`
+/// stays in the store so synced data keeps its shape.)
 enum NoteScope: Hashable {
     case all
-    /// The default "Notes" folder (notes without a folder).
-    case unfiled
-    case folder(UUID)
     case tag(String)
     case trash
 }

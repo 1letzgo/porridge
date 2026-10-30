@@ -147,7 +147,6 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     var editingSummary by remember { mutableStateOf(false) }
     var showMerge by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
-    var showMove by remember { mutableStateOf(false) }
 
     val opensOnSummary = note.isRecording || note.isLink
     val tabs = buildList {
@@ -240,7 +239,6 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                                 DropdownMenuItem(text = { Text("Copy Transcript") }, onClick = { act { copy(context, note.transcriptText()) } })
                                 DropdownMenuItem(text = { Text("Merge with …") }, enabled = stage == null && note.status == ProcessingStatus.READY, onClick = { act { showMerge = true } })
                             }
-                            DropdownMenuItem(text = { Text("Move to Folder …") }, onClick = { act { showMove = true } })
                             if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Delete Recording", color = Brand.danger) }, onClick = { act { confirmDeleteAudio = true } })
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { act { coroutines.launch { if (stored != null) NoteStore().trash(note); onClose() } } })
@@ -340,7 +338,6 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
         }
     }
     if (showMerge) MergeNotesSheet(note, onDismiss = { showMerge = false }) { player.stop(); tab = NoteTab.TRANSCRIPT }
-    if (showMove) MoveToFolderSheet(note, onDismiss = { showMove = false })
 }
 
 private fun canSummarize(note: Note) = !(note.text.isEmpty() && note.title.isEmpty() && note.segments.isEmpty() && note.pageText.isNullOrEmpty())

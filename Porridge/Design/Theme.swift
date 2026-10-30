@@ -244,12 +244,19 @@ extension ChromeBar where Actions == EmptyView {
     }
 }
 
-/// Button of the custom bar: the icon on a light sky pill.
+/// Button of the custom bar: the icon on a light sky pill, or white on a full pill of `fill` when the button
+/// stands for something that is switched on (an active filter).
 struct ChromePillButtonStyle: ButtonStyle {
+    var fill: Color?
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .foregroundStyle(fill == nil ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.white))
             .frame(width: 44, height: 36)
-            .background(Color.brandSky.opacity(configuration.isPressed ? 0.26 : 0.14), in: Capsule())
+            .background(
+                fill.map { $0.opacity(configuration.isPressed ? 0.8 : 1) } ?? Color.brandSky.opacity(configuration.isPressed ? 0.26 : 0.14),
+                in: Capsule()
+            )
             .contentShape(Capsule())
             .animation(.snappy(duration: 0.12), value: configuration.isPressed)
     }

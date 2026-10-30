@@ -6,6 +6,8 @@ import SwiftUI
 struct TasksPane: View {
     let items: [ActionItem]
     let notes: [Note]
+    /// Only the tasks out of notes with this tag (lowercased), when set.
+    var tag: String?
     /// Opens the note of a task.
     var onOpen: (UUID) -> Void
     /// The task open in the detail column, marked in the list.
@@ -27,8 +29,9 @@ struct TasksPane: View {
         return items.compactMap { item -> (ActionItem, Note?, Date)? in
             guard item.kind == .task, item.review != .dismissed else { return nil }
             // A task whose note is gone stays as a task of its own.
-            guard let id = item.noteID, let note = notes[id] else { return (item, nil, item.createdAt) }
+            guard let id = item.noteID, let note = notes[id] else { return tag == nil ? (item, nil, item.createdAt) : nil }
             guard !note.isDeleted, !note.isLink else { return nil }
+            if let tag, !note.tags.contains(where: { $0.lowercased() == tag }) { return nil }
             return (item, note, note.createdAt)
         }
         .sorted { a, b in

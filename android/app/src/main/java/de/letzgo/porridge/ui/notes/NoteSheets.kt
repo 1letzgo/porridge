@@ -106,27 +106,3 @@ fun MergeNotesSheet(base: Note, onDismiss: () -> Unit, onMerged: () -> Unit) {
         }
     }
 }
-
-/** iOS: `MoveToFolderMenu`. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun MoveToFolderSheet(note: Note, onDismiss: () -> Unit) {
-    val folders by PorridgeDatabase.shared.folders().observeAll().collectAsState(initial = emptyList())
-    val coroutines = rememberCoroutineScope()
-    fun move(id: String?) {
-        coroutines.launch { PorridgeDatabase.shared.notes().upsert(note.copy(folderID = id, updatedAt = System.currentTimeMillis())) }
-        onDismiss()
-    }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding()) {
-            Text("Move to Folder", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
-            @Composable fun row(title: String, id: String?, depth: Int = 0) =
-                Row(Modifier.fillMaxWidth().clickable { move(id) }.padding(start = (depth * 16).dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (note.folderID == id) Icons.Filled.CheckCircle else Icons.Outlined.Folder, null, tint = if (note.folderID == id) Brand.sky else MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("  $title")
-                }
-            row("Notes", null)
-            for ((folder, depth) in folders.tree()) row(folders.path(folder).substringAfterLast(" › "), folder.id, depth)
-        }
-    }
-}

@@ -404,7 +404,6 @@ struct NoteDetailView: View {
                         }
                         .disabled(processing.stages[note.id] != nil || note.status != .ready)
                     }
-                    MoveToFolderMenu(note: note)
                     if note.hasLocalAudio {
                         Button(role: .destructive) { confirmDeleteAudio = true } label: {
                             Label("Delete Recording", systemImage: "waveform.slash")

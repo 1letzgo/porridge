@@ -80,15 +80,19 @@ fun AppRoot() {
     LaunchedEffect(pending) {
         val address = pending ?: return@LaunchedEffect
         SharedLinks.pending.value = null
-        open(LinkImport.add(address, (scope as? NoteScope.Folder)?.id).id, ListMode.LINKS)
+        open(LinkImport.add(address).id, ListMode.LINKS)
     }
 
     AnimatedContent(stack.lastOrNull(), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "screen") { top ->
         when (top) {
             null -> NotesScreen(
-                scope = scope, onScope = { scope = it }, mode = mode, onMode = { mode = it },
+                scope = scope, onScope = { scope = it }, mode = mode, onMode = {
+                    mode = it
+                    // Nur Notizen und Meetings haben einen Papierkorb; anderswo beginnt die Liste mit allem.
+                    if (!it.showsScope && it != ListMode.SEARCH && scope == NoteScope.Trash) scope = NoteScope.All
+                },
                 onOpen = ::open,
-                onNewNote = { folderID -> val draft = Note(folderID = folderID); push(Screen.Detail(draft.id, draft)) },
+                onNewNote = { val draft = Note(); push(Screen.Detail(draft.id, draft)) },
                 onRecord = { showCalendar = true },
                 onSettings = { push(Screen.Settings) },
                 onEditTask = { push(Screen.Task(it)) },
@@ -101,7 +105,6 @@ fun AppRoot() {
                 coroutines.launch {
                     // Ein aufgenommenes Meeting wird eine Notiz, die mit Sprechern transkribiert wird.
                     var note = Note(
-                        folderID = (scope as? NoteScope.Folder)?.id,
                         title = top.title ?: Note.defaultMeetingTitle(System.currentTimeMillis()), titleIsCustom = top.title != null,
                         statusRaw = ProcessingStatus.RECORDED.raw, audioFileName = result.fileName, duration = result.duration,
                         channelCount = result.channelCount, inputName = result.inputName,
