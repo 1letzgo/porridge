@@ -62,13 +62,15 @@ fun AppRoot() {
     }
     val stack = remember { mutableStateListOf<Screen>() }
     var scope by remember { mutableStateOf<NoteScope>(NoteScope.All) }
-    var mode by remember { mutableStateOf(ListMode.TIMELINE) }
+    // The app opens on the tasks; the notes are where they come from.
+    var mode by remember { mutableStateOf(ListMode.TASKS) }
     var showCalendar by remember { mutableStateOf(false) }
     val coroutines = rememberCoroutineScope()
     fun push(screen: Screen) = stack.add(screen)
     fun pop() { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
     fun open(id: String) {
-        mode = ListMode.TIMELINE
+        // From a task the list stays on the tasks, so back returns there.
+        if (mode != ListMode.TASKS) mode = ListMode.TIMELINE
         stack.removeAll { it is Screen.Detail }
         push(Screen.Detail(id, null))
     }

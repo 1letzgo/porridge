@@ -55,7 +55,7 @@ fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, action
 }
 
 /** iOS: `ListTabs` — Timeline, Tasks, Chat, Search. */
-enum class ListMode(val title: String) { TIMELINE("Timeline"), TASKS("Tasks"), CHAT("Chat"), SEARCH("Search") }
+enum class ListMode(val title: String) { TASKS("Tasks"), TIMELINE("Notes"), CHAT("Chat"), SEARCH("Search") }
 
 @Composable
 fun ListTabs(mode: ListMode, onChange: (ListMode) -> Unit) {

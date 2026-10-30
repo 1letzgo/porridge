@@ -26,8 +26,8 @@ struct NotesView: View {
     @State private var search = ""
     /// Tags picked in the search field; a note must have all of them.
     @State private var tagTokens: [TagToken] = []
-    /// Timeline of all notes, or a chat with them.
-    @State private var mode = ListMode.timeline
+    /// The tasks come first: the app opens on them; the notes are where they come from.
+    @State private var mode = ListMode.tasks
     @State private var chat = ChatStore()
     @State private var confirmEmptyTrash = false
     @State private var showRecorder = false
@@ -61,6 +61,8 @@ struct NotesView: View {
             } else if let selection, let note = notes.first(where: { $0.id == selection }) ?? (draft?.id == selection ? draft : nil) {
                 NoteDetailView(note: note) { close(note) }
                     .id(note.id)
+            } else if mode == .tasks {
+                EmptyStateView(title: "No Task Selected", message: "Pick a task from the list.", systemImage: "checklist")
             } else {
                 EmptyStateView(title: "No Note Selected", message: "Pick a note from the list.", systemImage: "note.text")
             }
@@ -267,9 +269,9 @@ struct NotesView: View {
         !search.trimmingCharacters(in: .whitespaces).isEmpty || !tagTokens.isEmpty
     }
 
-    /// Opens a source of a chat answer in the timeline.
+    /// Opens a source of a chat answer in the timeline; from a task the list stays on the tasks.
     private func openFromChat(_ id: UUID) {
-        mode = .timeline
+        if mode != .tasks { mode = .timeline }
         if scope != .all { scope = .all }
         Task {
             selection = id
@@ -892,8 +894,8 @@ private struct ListTabs: View {
 
     var body: some View {
         TabSwitcher(selection: $mode, options: [
-            (ListMode.timeline, "Timeline"),
             (ListMode.tasks, "Tasks"),
+            (ListMode.timeline, "Notes"),
             (ListMode.chat, "Chat"),
             (ListMode.search, "Search"),
         ])
@@ -911,8 +913,8 @@ extension Notification.Name {
 #endif
 
 enum ListMode: Hashable {
-    case timeline
     case tasks
+    case timeline
     case chat
     case search
 }
