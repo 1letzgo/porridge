@@ -532,6 +532,17 @@ final class NotePlatformTextView: NSTextView {
     }
 }
 
+/// The text view fills the visible height (a click below the last line still lands in the editor);
+/// the scroller only shows once the text is taller than that.
+final class NoteScrollView: NSScrollView {
+    override func layout() {
+        super.layout()
+        if let textView = documentView as? NSTextView {
+            textView.minSize = NSSize(width: 0, height: contentSize.height)
+        }
+    }
+}
+
 struct NoteTextView: NSViewRepresentable {
     @Binding var text: String
     var isEditable = true
@@ -553,7 +564,7 @@ struct NoteTextView: NSViewRepresentable {
         textView.isAutomaticTextReplacementEnabled = true
         textView.isContinuousSpellCheckingEnabled = true
         textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 0, height: 4)
+        textView.textContainerInset = NSSize(width: 0, height: 6)
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.isVerticallyResizable = true
@@ -563,13 +574,12 @@ struct NoteTextView: NSViewRepresentable {
         textView.minSize = .zero
         textView.font = NoteMarkdown.baseFont(kind: .paragraph)
 
-        let scrollView = NSScrollView()
+        let scrollView = NoteScrollView()
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
-        scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 200, right: 0)
 
         context.coordinator.textView = textView
         context.coordinator.load(text)
