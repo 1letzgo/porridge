@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
@@ -128,6 +129,8 @@ fun NotesScreen(
     val context = LocalContext.current
     var search by remember { mutableStateOf("") }
     var tagTokens by remember { mutableStateOf(listOf<String>()) }
+    /** Die Ansicht, zu der der Such-Knopf zurückführt. */
+    var modeBeforeSearch by remember { mutableStateOf(ListMode.TASKS) }
     var showCreate by remember { mutableStateOf(false) }
     var showAddLink by remember { mutableStateOf(false) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
@@ -151,6 +154,7 @@ fun NotesScreen(
                 )
                 db.notes().upsert(note)
                 ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
+                onMode(ListMode.MEETINGS)
                 onOpen(note.id)
             }.onFailure { importError = it.message }
         }
@@ -172,13 +176,17 @@ fun NotesScreen(
 
     val folderIDs = folders.map { it.id }.toSet()
     val shown = remember(notes, scope, mode, search, tagTokens, indexVersion) {
-        var result = when (if (mode == ListMode.SEARCH) NoteScope.All else scope) {
+        var result = when (if (mode == ListMode.SEARCH || mode == ListMode.LINKS) NoteScope.All else scope) {
             NoteScope.All -> notes.filter { !it.isDeleted }
             NoteScope.Unfiled -> notes.filter { !it.isDeleted && (it.folderID == null || it.folderID !in folderIDs) }
             is NoteScope.Folder -> notes.filter { !it.isDeleted && it.folderID == (scope as NoteScope.Folder).id }
             is NoteScope.Tag -> notes.filter { n -> !n.isDeleted && n.tags.any { it.lowercase() == (scope as NoteScope.Tag).name } }
             NoteScope.Trash -> notes.filter { it.isDeleted }
         }
+        // Links haben eine eigene Liste; Notizen und Papierkorb lassen sie weg, die Suche findet beides.
+        if (mode == ListMode.LINKS) result = result.filter { it.isLink }
+        // Meetings und Notizen getrennt; Papierkorb und Suche halten alles.
+        else if (mode.showsScope && scope != NoteScope.Trash) result = result.filter { !it.isLink && it.isRecording == (mode == ListMode.MEETINGS) }
         if (mode == ListMode.SEARCH && tagTokens.isNotEmpty()) result = result.filter { n -> tagTokens.all { t -> n.tags.any { it.lowercase() == t } } }
         if (mode == ListMode.SEARCH && search.isNotBlank()) {
             val ids = AppGraph.index.noteIDs(search)
@@ -191,8 +199,10 @@ fun NotesScreen(
         ListMode.CHAT -> "Chat"
         ListMode.SEARCH -> "Search"
         ListMode.TASKS -> "Tasks"
-        ListMode.TIMELINE -> when (scope) {
-            NoteScope.All, NoteScope.Unfiled -> "Notes"
+        ListMode.LINKS -> "Links"
+        ListMode.MEETINGS, ListMode.TIMELINE -> when (scope) {
+            NoteScope.All -> if (mode == ListMode.MEETINGS) "Meetings" else "Notes"
+            NoteScope.Unfiled -> "Notes"
             is NoteScope.Folder -> folders.firstOrNull { it.id == scope.id }?.name ?: "Notes"
             is NoteScope.Tag -> "#" + scope.name
             NoteScope.Trash -> "Recently Deleted"
@@ -202,8 +212,9 @@ fun NotesScreen(
         ListMode.CHAT -> Icons.Filled.ChatBubble
         ListMode.SEARCH -> Icons.Filled.Search
         ListMode.TASKS -> Icons.Filled.Checklist
-        ListMode.TIMELINE -> when (scope) {
-            NoteScope.All -> Icons.Filled.Inbox
+        ListMode.LINKS -> Icons.Filled.Link
+        ListMode.MEETINGS, ListMode.TIMELINE -> when (scope) {
+            NoteScope.All -> if (mode == ListMode.MEETINGS) Icons.Filled.Mic else Icons.Filled.Inbox
             NoteScope.Unfiled -> Icons.AutoMirrored.Filled.Notes
             is NoteScope.Folder -> Icons.Filled.Folder
             is NoteScope.Tag -> Icons.Filled.Tag
@@ -213,8 +224,8 @@ fun NotesScreen(
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
-            ChromeBar(title, icon, tint = if (mode == ListMode.TASKS) Brand.task else Brand.sky) {
-                if (mode == ListMode.TIMELINE) {
+            ChromeBar(title, icon, tint = when (mode) { ListMode.TASKS -> Brand.task; ListMode.LINKS -> LinkOrange; else -> Brand.sky }) {
+                if (mode.showsScope) {
                     FolderMenu(notes, folders, scope, onScope)
                     if (scope != NoteScope.Trash) IconButton(onClick = { importer.launch(arrayOf("audio/*", "video/*")) }) { Icon(Icons.Outlined.Download, "Import Audio", tint = Brand.navy) }
                     if (scope == NoteScope.Trash && shown.isNotEmpty()) IconButton(onClick = { confirmEmptyTrash = true }) { Icon(Icons.Outlined.Delete, "Delete All", tint = Brand.danger) }
@@ -222,11 +233,19 @@ fun NotesScreen(
                     val messages by AppGraph.chat.messages.collectAsState()
                     if (messages.isNotEmpty()) IconButton(onClick = { AppGraph.chat.reset() }) { Icon(Icons.Outlined.EditNote, "New Chat", tint = Brand.navy) }
                 }
+                // Die Suche ist kein Tab, sondern ein Knopf; nochmals getippt geht es zurück, woher man kam.
+                IconButton(onClick = {
+                    if (mode == ListMode.SEARCH) { onMode(modeBeforeSearch); search = ""; tagTokens = emptyList() }
+                    else { modeBeforeSearch = mode; onMode(ListMode.SEARCH) }
+                }) {
+                    Icon(if (mode == ListMode.SEARCH) Icons.Filled.Close else Icons.Filled.Search, if (mode == ListMode.SEARCH) "Close Search" else "Search", tint = Brand.navy)
+                }
                 IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings", tint = Brand.navy) }
             }
             ListTabs(mode) { onMode(it); if (it != ListMode.SEARCH) { search = ""; tagTokens = emptyList() } }
             when (mode) {
-                ListMode.TIMELINE -> NoteList(shown, scope, stages, folders.associate { it.id to it.name }, onOpen, Modifier.weight(1f))
+                ListMode.MEETINGS, ListMode.TIMELINE -> NoteList(shown, scope, stages, folders.associate { it.id to it.name }, onOpen, Modifier.weight(1f))
+                ListMode.LINKS -> NoteList(shown, NoteScope.All, stages, folders.associate { it.id to it.name }, onOpen, Modifier.weight(1f), tint = LinkOrange)
                 ListMode.CHAT -> ChatScreen(notes, items, onOpen, Modifier.weight(1f))
                 ListMode.TASKS -> TasksScreen(items, notes, onOpen, { onEditTask(it.id) }, Modifier.weight(1f))
                 ListMode.SEARCH -> Column(Modifier.weight(1f)) {
@@ -236,19 +255,24 @@ fun NotesScreen(
                 }
             }
         }
-        if (mode == ListMode.TIMELINE && scope != NoteScope.Trash) {
-            CreateMenu(showCreate, { showCreate = it }, onNote = { onNewNote(folderID) }, onMeeting = onRecord, onLink = { showAddLink = true })
-        }
-        // iOS: derselbe schwebende Plus-Knopf im Tasks-Tab, in Grün.
-        if (mode == ListMode.TASKS) {
-            SkyFab(Icons.Filled.Add, "New Task", Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), container = Brand.task) {
-                coroutines.launch { onEditTask(ActionItemStore().newTask().id) }
-            }
+        // Derselbe Plus-Knopf in jeder Ansicht mit Liste (iOS: `createMenu`).
+        if (mode == ListMode.TASKS || mode == ListMode.LINKS || (mode.showsScope && scope != NoteScope.Trash)) {
+            CreateMenu(
+                showCreate, { showCreate = it },
+                onTask = {
+                    // Die neue Aufgabe zeigt sich dort, wo Aufgaben wohnen.
+                    if (mode != ListMode.TASKS) onMode(ListMode.TASKS)
+                    coroutines.launch { onEditTask(ActionItemStore().newTask().id) }
+                },
+                onNote = { if (mode != ListMode.TIMELINE) onMode(ListMode.TIMELINE); onNewNote(folderID) }, onMeeting = onRecord, onLink = { showAddLink = true },
+            )
         }
     }
 
     if (showAddLink) AddLinkDialog(onDismiss = { showAddLink = false }) { address ->
         showAddLink = false
+        // Der neue Link zeigt sich dort, wo Links wohnen.
+        if (mode != ListMode.LINKS) onMode(ListMode.LINKS)
         coroutines.launch { onOpen(LinkImport.add(address, folderID).id) }
     }
     if (confirmEmptyTrash) AlertDialog(
@@ -271,6 +295,8 @@ private fun NoteList(
     onOpen: (String) -> Unit,
     modifier: Modifier,
     searching: Boolean = false,
+    /** Farbe der Abschnittstitel: die der Ansicht (Links orange). */
+    tint: Color = Brand.sky,
 ) {
     val coroutines = rememberCoroutineScope()
     val store = remember { NoteStore() }
@@ -290,11 +316,11 @@ private fun NoteList(
         } else {
             val pinned = shown.filter { it.isPinned }
             if (pinned.isNotEmpty() && !searching) {
-                item(key = "h-pinned") { SectionHeader("Pinned") }
+                item(key = "h-pinned") { SectionHeader("Pinned", color = tint) }
                 items(pinned, key = { it.id }) { note -> SwipeRow(note, stages[note.id], showsFolder, folderNames, onOpen, store, coroutines) }
             }
             for ((title, group) in groups(if (searching) shown else shown.filter { !it.isPinned })) {
-                item(key = "h-$title") { SectionHeader(title) }
+                item(key = "h-$title") { SectionHeader(title, color = tint) }
                 items(group, key = { it.id }) { note -> SwipeRow(note, stages[note.id], showsFolder, folderNames, onOpen, store, coroutines) }
             }
         }
@@ -406,12 +432,13 @@ private fun groups(list: List<Note>): List<Pair<String, List<Note>>> {
 
 /** iOS: `createMenu` — ein Plus-Knopf unten rechts, der sich in Notiz, Meeting und Link aufklappt. */
 @Composable
-private fun CreateMenu(open: Boolean, onOpen: (Boolean) -> Unit, onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit) {
+private fun CreateMenu(open: Boolean, onOpen: (Boolean) -> Unit, onTask: () -> Unit, onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         if (open) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.08f)).combinedClickableNoRipple { onOpen(false) })
         Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             AnimatedVisibility(open) {
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    CreateOption("Task", Icons.Filled.Checklist) { onOpen(false); onTask() }
                     CreateOption("Link", Icons.Filled.Link) { onOpen(false); onLink() }
                     CreateOption("Meeting", Icons.Filled.Mic) { onOpen(false); onMeeting() }
                     CreateOption("Note", Icons.Outlined.EditNote) { onOpen(false); onNote() }

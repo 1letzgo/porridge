@@ -95,6 +95,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaud: () -> Unit) {
             Text("Settings", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+            YouCard()
             TranscriptionCard()
             VoicesCard()
             ModelsCard()
@@ -221,6 +222,15 @@ private fun ModelsCard() = Card("On-Device Models", footer = "Models run on this
     ModelRow(Diarizer.pack, "pyannote") { Diarizer.release() }
     HorizontalDivider()
     ModelRow(TextEmbedder.pack, "Finds notes by meaning in chat and search") {}
+}
+
+/** iOS: `youCard` — wer der Nutzer ist: seine Aufgaben stehen unter „Mine“, die Zusammenfassungen nennen ihn. */
+@Composable
+private fun YouCard() {
+    var name by remember { mutableStateOf(Prefs.string(Keys.MY_NAME).orEmpty()) }
+    Card("You", footer = "Tasks given to this name show under Mine. Separate other spellings with commas, e.g. “Anna, Anna Berg”.") {
+        OutlinedTextField(name, { name = it; Prefs.set(Keys.MY_NAME, it) }, label = { Text("Your Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    }
 }
 
 @Composable

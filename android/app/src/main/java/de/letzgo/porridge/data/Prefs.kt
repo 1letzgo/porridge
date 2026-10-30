@@ -17,6 +17,8 @@ object Keys {
     const val LOCAL_MODEL = "localModel"
     const val PROVIDER = "aiProvider"
     const val CUSTOM_BASE_URL = "aiCustomBaseURL"
+    /** Eigener Name (weitere Schreibweisen mit Komma): seine Aufgaben stehen unter „Mine“ (iOS: `myName`). */
+    const val MY_NAME = "myName"
     const val TRANSCRIPTION_BILLING = "transcriptionBilling"
     const val PLAUD_IMPORTED = "plaud.importedSessions"
     const val PLAUD_LAST_PERIPHERAL = "lastHandshakenPeripheralId"

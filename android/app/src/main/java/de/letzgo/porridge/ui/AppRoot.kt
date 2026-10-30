@@ -68,9 +68,9 @@ fun AppRoot() {
     val coroutines = rememberCoroutineScope()
     fun push(screen: Screen) = stack.add(screen)
     fun pop() { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
-    fun open(id: String) {
-        // From a task the list stays on the tasks, so back returns there.
-        if (mode != ListMode.TASKS) mode = ListMode.TIMELINE
+    /** Öffnet eine Notiz; [into]: die Liste, in der sie danach steht (ein neues Meeting unter Meetings). */
+    fun open(id: String, into: ListMode? = null) {
+        if (into != null) mode = into
         stack.removeAll { it is Screen.Detail }
         push(Screen.Detail(id, null))
     }
@@ -80,7 +80,7 @@ fun AppRoot() {
     LaunchedEffect(pending) {
         val address = pending ?: return@LaunchedEffect
         SharedLinks.pending.value = null
-        open(LinkImport.add(address, (scope as? NoteScope.Folder)?.id).id)
+        open(LinkImport.add(address, (scope as? NoteScope.Folder)?.id).id, ListMode.LINKS)
     }
 
     AnimatedContent(stack.lastOrNull(), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "screen") { top ->
@@ -96,7 +96,7 @@ fun AppRoot() {
             is Screen.Task -> TaskDetailScreen(top.id, onOpenNote = { id -> pop(); open(id) }) { pop() }
             is Screen.Detail -> NoteDetailScreen(top.id, top.draft) { pop() }
             is Screen.Settings -> SettingsScreen(onBack = { pop() }, onPlaud = { push(Screen.Plaud) })
-            is Screen.Plaud -> PlaudImportScreen(onBack = { pop() }) { id -> stack.clear(); open(id) }
+            is Screen.Plaud -> PlaudImportScreen(onBack = { pop() }) { id -> stack.clear(); open(id, ListMode.MEETINGS) }
             is Screen.Recording -> RecordingScreen(top.title, onFinish = { result, names, liveText ->
                 coroutines.launch {
                     // Ein aufgenommenes Meeting wird eine Notiz, die mit Sprechern transkribiert wird.
@@ -116,7 +116,7 @@ fun AppRoot() {
                     PorridgeDatabase.shared.notes().upsert(note)
                     ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
                     pop()
-                    open(note.id)
+                    open(note.id, ListMode.MEETINGS)
                 }
             }, onCancel = { pop() })
         }

@@ -21,6 +21,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.billingKey) private var billing: SummaryBilling = .local
     @AppStorage(AppSettings.providerKey) private var provider = AIProvider.openRouter
     @AppStorage(AppSettings.customBaseURLKey) private var customBaseURL = ""
+    @AppStorage(AppSettings.myNameKey) private var myName = ""
 
 
     @State private var apiKey = AIProvider.current.apiKey
@@ -209,6 +210,7 @@ struct SettingsView: View {
         #if os(macOS)
         dictationCard
         #endif
+        youCard
         transcriptionCard
         speakersCard
         summaryCard
@@ -222,6 +224,16 @@ struct SettingsView: View {
 
 
     // MARK: - Cards
+
+    /// Who the user is: their tasks go under "Mine", and the summaries name them.
+    private var youCard: some View {
+        SettingsCard(title: "You", footer: "Tasks given to this name show under Mine. Separate other spellings with commas, e.g. “Anna, Anna Berg”.") {
+            TextField("Your Name", text: $myName)
+                .textContentType(.name)
+                .autocorrectionDisabled()
+                .brandField()
+        }
+    }
 
     private var transcriptionCard: some View {
         SettingsCard(title: "Transcription") {

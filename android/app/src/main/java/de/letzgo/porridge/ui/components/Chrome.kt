@@ -55,15 +55,24 @@ fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, action
 }
 
 /** iOS: `ListTabs` — Timeline, Tasks, Chat, Search. */
-enum class ListMode(val title: String) { TASKS("Tasks"), TIMELINE("Notes"), CHAT("Chat"), SEARCH("Search") }
+/** MEETINGS: die Aufnahmen; TIMELINE: die geschriebenen Notizen. [SEARCH] hat keinen Tab: sie öffnet sich über den Knopf in der Leiste. */
+enum class ListMode(val title: String, val isTab: Boolean = true) {
+    TASKS("Tasks"), MEETINGS("Meetings"), TIMELINE("Notes"), LINKS("Links"), CHAT("Chat"), SEARCH("Search", isTab = false);
+
+    val color: Color get() = when (this) { TASKS -> Brand.task; LINKS -> LinkOrange; else -> Brand.sky }
+
+    /** Notizen und Meetings folgen dem gewählten Ordner, Tag oder Papierkorb. */
+    val showsScope: Boolean get() = this == TIMELINE || this == MEETINGS
+}
 
 @Composable
 fun ListTabs(mode: ListMode, onChange: (ListMode) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (m in ListMode.entries) {
+        for (m in ListMode.entries.filter { it.isTab }) {
             FilterChip(
                 selected = m == mode, onClick = { onChange(m) }, label = { Text(m.title) },
-                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Brand.sky.copy(alpha = 0.16f), selectedLabelColor = Brand.navy),
+                // Jeder Tab in seiner Farbe, wie sein Titel-Quadrat (iOS: `TabSwitcher.tint`).
+                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = m.color.copy(alpha = 0.16f), selectedLabelColor = Brand.navy),
                 border = null,
             )
         }

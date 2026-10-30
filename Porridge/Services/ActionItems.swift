@@ -286,6 +286,27 @@ enum ActionItems {
         return indent + "- " + (done ? "[x] " : "[ ] ") + rest.dropFirst(mark.count)
     }
 
+    // MARK: - Mine or general
+
+    /// A task is the user's when its owner is one of their names ("Anna" also matches "Anna Berg" and
+    /// "Anna, Ben"), or when nobody is named and it is their own: typed by hand or out of a note they wrote
+    /// (not a recording, where it could be anyone's).
+    static func isMine(_ item: ActionItem, note: Note?, names: [String]) -> Bool {
+        guard let owner = item.owner?.lowercased(), !owner.isEmpty else {
+            return item.source == "manual" || (note.map { !$0.isRecording } ?? false)
+        }
+        let parts = owner
+            .replacingOccurrences(of: " und ", with: ",").replacingOccurrences(of: " and ", with: ",")
+            .split(whereSeparator: { ",&/+".contains($0) })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        return names.contains { name in
+            parts.contains { part in
+                part == name || part.split(separator: " ").first.map(String.init) == name
+                    || name.split(separator: " ").first.map(String.init) == part
+            }
+        }
+    }
+
     // MARK: - For the chat
 
     /// The open tasks and the decisions as a block of text for the model, newest note first, at most `limit` characters.

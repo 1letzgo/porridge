@@ -69,7 +69,7 @@ object SummaryLogic {
     }
 
     /** Wirft [SummaryException], wenn nichts zum Zusammenfassen da ist. */
-    fun request(note: Note, transcriptionLanguage: String): Request {
+    fun request(note: Note, transcriptionLanguage: String, myName: String? = null): Request {
         val transcript = note.transcriptText()
         val title = note.title.trim()
         val own = ((if (note.titleIsCustom && title.isNotEmpty()) "$title\n\n" else "") + note.text).trim()
@@ -88,7 +88,7 @@ object SummaryLogic {
         }
         val language = SummaryLanguage.detect(material, transcriptionLanguage)
         val date = DateFormat.getDateTimeInstance(DateFormat.LONG, DateFormat.SHORT).format(Date(note.createdAt))
-        val header = if (hasTranscript) meetingHeader(note, date) else "Date: $date" + (note.url?.let { "\nSource: $it" } ?: "")
+        val header = if (hasTranscript) meetingHeader(note, date, myName) else "Date: $date" + (note.url?.let { "\nSource: $it" } ?: "")
         return Request(
             header = header, material = material, language = language,
             system = if (hasTranscript) systemPrompt(language) else notePrompt(language, note.isLink),
@@ -96,10 +96,12 @@ object SummaryLogic {
         )
     }
 
-    private fun meetingHeader(meeting: Note, date: String): String {
+    /** [myName]: wer aufnimmt (der Nutzer), damit seine Aufgaben seinen Namen tragen. */
+    private fun meetingHeader(meeting: Note, date: String, myName: String?): String {
         var header = "Date: $date\nDuration: ${meeting.duration.durationText}"
         val names = meeting.speakers.map { it.name }
         if (names.isNotEmpty()) header += "\nParticipants: ${names.joinToString(", ")}"
+        myName?.split(",")?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { header += "\nRecorded by: $it" }
         return header
     }
 
@@ -168,7 +170,7 @@ object SummaryLogic {
 
         ## ${language.headings.actionItems}
         - [ ] Task – owner (if known)
-        (omit if there are none)
+        (omit if there are none; a task for the person who recorded, see "Recorded by", gets that name as owner)
 
         TAGS: <3 to 5 short keywords in ${language.name}, separated by commas, without # signs>
     """.trimIndent()

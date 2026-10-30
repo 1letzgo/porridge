@@ -199,6 +199,23 @@ object ActionItemsLogic {
         return indent + "- " + (if (done) "[x] " else "[ ] ") + rest.drop(mark.length)
     }
 
+    /** iOS: `AppSettings.myNames` — die Namen des Nutzers, klein geschrieben; leer, wenn keiner gesetzt ist. */
+    fun myNames(raw: String?): List<String> = raw.orEmpty().split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+
+    /**
+     * iOS: `isMine` — eine Aufgabe gehört dem Nutzer, wenn ihr Zuständiger einer seiner Namen ist („Anna“ passt auch
+     * zu „Anna Berg“ und „Anna, Ben“), oder wenn niemand genannt ist und sie seine eigene ist: von Hand angelegt oder
+     * aus einer Notiz, die er geschrieben hat (keine Aufnahme, dort könnte sie jedem gehören).
+     */
+    fun isMine(item: ActionItem, note: Note?, names: List<String>): Boolean {
+        val owner = item.owner?.lowercase()?.takeIf { it.isNotBlank() }
+            ?: return item.source == "manual" || (note != null && !note.isRecording)
+        val parts = owner.replace(" und ", ",").replace(" and ", ",").split(',', '&', '/', '+').map { it.trim() }
+        return names.any { name ->
+            parts.any { part -> part == name || part.split(" ").first() == name || name.split(" ").first() == part }
+        }
+    }
+
     /** iOS: `contextBlock` — offene Aufgaben und Entscheidungen als Text für das Modell, neueste Notiz zuerst. */
     fun contextBlock(items: List<ActionItem>, notes: List<Note>, limit: Int): String {
         val byID = notes.associateBy { it.id }

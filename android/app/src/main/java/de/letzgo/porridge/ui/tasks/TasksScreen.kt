@@ -52,6 +52,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import de.letzgo.porridge.data.Keys
+import de.letzgo.porridge.data.Prefs
+import de.letzgo.porridge.logic.ActionItemsLogic
 import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.store.ActionItemStore
@@ -79,6 +82,8 @@ fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> 
     }.sortedWith(compareByDescending<Triple<ActionItem, Note?, Long>> { it.third }.thenBy { it.first.order }).map { it.first to it.second }
     val new = tasks.filter { it.first.needsReview }
     val open = tasks.filter { !it.first.isDone && !it.first.needsReview }
+    val names = ActionItemsLogic.myNames(Prefs.string(Keys.MY_NAME))
+    val (mine, general) = open.partition { ActionItemsLogic.isMine(it.first, it.second, names) }
     val done = tasks.filter { it.first.isDone }
     var showDone by remember { mutableStateOf(false) }
     val coroutines = rememberCoroutineScope()
@@ -110,9 +115,13 @@ fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> 
             }
             items(new, key = { it.first.id }) { (item, note) -> row(item, note) }
         }
-        if (open.isNotEmpty()) {
-            item { SectionHeader("Open", open.size, color = Brand.task) }
-            items(open, key = { it.first.id }) { (item, note) -> row(item, note) }
+        if (mine.isNotEmpty()) {
+            item { SectionHeader("Mine", mine.size, color = Brand.task) }
+            items(mine, key = { it.first.id }) { (item, note) -> row(item, note) }
+        }
+        if (general.isNotEmpty()) {
+            item { SectionHeader("General", general.size, color = Brand.task) }
+            items(general, key = { it.first.id }) { (item, note) -> row(item, note) }
         }
         if (done.isNotEmpty()) {
             item {

@@ -14,6 +14,7 @@ struct TasksPane: View {
     var onEdit: (ActionItem) -> Void
 
     @Environment(\.modelContext) private var context
+    @AppStorage(AppSettings.myNameKey) private var myName = ""
     @State private var showDone = false
 
     private var byID: [UUID: Note] {
@@ -41,6 +42,9 @@ struct TasksPane: View {
         let all = tasks
         let new = all.filter { $0.item.needsReview }
         let open = all.filter { !$0.item.isDone && !$0.item.needsReview }
+        let names = AppSettings.myNames(from: myName)
+        let mine = open.filter { ActionItems.isMine($0.item, note: $0.note, names: names) }
+        let general = open.filter { !ActionItems.isMine($0.item, note: $0.note, names: names) }
         let done = all.filter { $0.item.isDone }
         List {
             if !new.isEmpty {
@@ -56,8 +60,11 @@ struct TasksPane: View {
                     }
                 }
             }
-            if !open.isEmpty {
-                Section { ForEach(open, id: \.item.id) { row($0.item, note: $0.note) } } header: { header("Open", count: open.count) }
+            if !mine.isEmpty {
+                Section { ForEach(mine, id: \.item.id) { row($0.item, note: $0.note) } } header: { header("Mine", count: mine.count) }
+            }
+            if !general.isEmpty {
+                Section { ForEach(general, id: \.item.id) { row($0.item, note: $0.note) } } header: { header("General", count: general.count) }
             }
             if !done.isEmpty {
                 Section {

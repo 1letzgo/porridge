@@ -260,6 +260,8 @@ struct ChromePillButtonStyle: ButtonStyle {
 struct TabSwitcher<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
+    /// Color of a selected tab; nil keeps the accent color.
+    var tint: (Value) -> Color? = { _ in nil }
 
     var body: some View {
         #if os(macOS)
@@ -285,15 +287,16 @@ struct TabSwitcher<Value: Hashable>: View {
     #if os(iOS)
     private func tab(_ value: Value, _ label: String) -> some View {
         let selected = selection == value
+        let color = tint(value)
         return Button {
             withAnimation(.snappy) { selection = value }
         } label: {
             Text(label)
                 .font(.subheadline.weight(selected ? .semibold : .regular))
-                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                .foregroundStyle(selected ? color ?? Color.accentColor : Color.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 7)
-                .background(selected ? Color.brandSky.opacity(0.14) : .clear, in: Capsule())
+                .background(selected ? (color ?? Color.brandSky).opacity(0.14) : .clear, in: Capsule())
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -522,32 +525,6 @@ struct BarBackground: ViewModifier {
         } else {
             content.background(.ultraThinMaterial, in: Capsule())
         }
-    }
-}
-
-extension View {
-    /// Label of a list section in the index along the right edge (iOS 26): the timeline scrubber.
-    @ViewBuilder
-    func timelineIndex(_ label: Text) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            sectionIndexLabel(label)
-        } else {
-            self
-        }
-    }
-
-    /// Shows the section index of a list.
-    @ViewBuilder
-    func timelineIndexVisible() -> some View {
-        #if os(iOS)
-        if #available(iOS 26.0, *) {
-            listSectionIndexVisibility(.visible)
-        } else {
-            self
-        }
-        #else
-        self
-        #endif
     }
 }
 

@@ -28,6 +28,8 @@ struct NotesView: View {
     @State private var tagTokens: [TagToken] = []
     /// The tasks come first: the app opens on them; the notes are where they come from.
     @State private var mode = ListMode.tasks
+    /// The view the search button goes back to.
+    @State private var modeBeforeSearch = ListMode.tasks
     @State private var chat = ChatStore()
     @State private var confirmEmptyTrash = false
     @State private var showRecorder = false
@@ -156,8 +158,10 @@ struct NotesView: View {
             ListTabs(mode: $mode)
 
             switch mode {
-            case .timeline:
+            case .timeline, .meetings:
                 timeline(shown)
+            case .links:
+                linksList(shown)
             case .chat:
                 ChatView(notes: notes, items: items, store: chat) { openFromChat($0) }
             case .tasks:
@@ -173,6 +177,10 @@ struct NotesView: View {
             }
         }
         .background(Color.appBackground)
+        #if os(iOS)
+        // Over the whole list column, bar and tabs included, so the dimming while it is open covers all of it.
+        .overlay { createMenu }
+        #endif
         .navigationTitle(listTitle)
         #if os(iOS)
         // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
@@ -211,7 +219,16 @@ struct NotesView: View {
         listBase(shown)
             // Room below the last row, so it can scroll out from under the plus button.
             .contentMargins(.bottom, 96, for: .scrollContent)
-            .overlay { createMenu }
+        #else
+        listBase(shown)
+        #endif
+    }
+
+    /// The saved links on their own, away from the notes; the plus adds a link right away.
+    private func linksList(_ shown: [Note]) -> some View {
+        #if os(iOS)
+        listBase(shown)
+            .contentMargins(.bottom, 96, for: .scrollContent)
         #else
         listBase(shown)
         #endif
@@ -222,17 +239,14 @@ struct NotesView: View {
         #if os(iOS)
         TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
             .contentMargins(.bottom, 96, for: .scrollContent)
-            .overlay(alignment: .bottomTrailing) {
-                FloatingActionButton(systemImage: "plus", label: "New Task", fill: .brandTask) { addTask() }
-                    .padding(.trailing, 22)
-                    .padding(.bottom, 16)
-            }
         #else
         TasksPane(items: items, notes: notes, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
         #endif
     }
 
     private func addTask() {
+        // The new task shows where tasks live.
+        if mode != .tasks { mode = .tasks }
         let item = ActionItems.newTask(in: context)
         try? context.save()
         openTask(item)
@@ -269,9 +283,11 @@ struct NotesView: View {
         !search.trimmingCharacters(in: .whitespaces).isEmpty || !tagTokens.isEmpty
     }
 
-    /// Opens a source of a chat answer in the timeline; from a task the list stays on the tasks.
+    /// Opens a source of a chat answer in its list (notes, meetings or links); from a task the list stays on the tasks.
     private func openFromChat(_ id: UUID) {
-        if mode != .tasks { mode = .timeline }
+        if mode != .tasks, let note = notes.first(where: { $0.id == id }) {
+            mode = note.isLink ? .links : note.isRecording ? .meetings : .timeline
+        }
         if scope != .all { scope = .all }
         Task {
             selection = id
@@ -284,7 +300,6 @@ struct NotesView: View {
             listContent(shown)
         }
         .cardList()
-        .timelineIndexVisible()
         .overlay { emptyOverlay(isEmpty: shown.isEmpty) }
         .onChange(of: selection) {
             // Leaving an empty new note leaves nothing behind.
@@ -307,10 +322,11 @@ struct NotesView: View {
         }
     }
 
-    /// The ways to start a note: one plus button bottom right that unfolds into note, meeting and link.
+    /// The ways to start something: one plus button bottom right, the same in every view, that unfolds into
+    /// task, link, meeting and note.
     @ViewBuilder
     private var createMenu: some View {
-        if scope != .trash {
+        if mode == .tasks || mode == .links || (mode.showsScope && scope != .trash) {
             ZStack(alignment: .bottomTrailing) {
                 if showCreate {
                     // Tapping anywhere else folds the menu again.
@@ -321,6 +337,7 @@ struct NotesView: View {
                 }
                 VStack(alignment: .trailing, spacing: 14) {
                     if showCreate {
+                        createOption("Task", systemImage: "checklist") { addTask() }
                         createOption("Link", systemImage: "link") { showAddLink = true }
                         createOption("Meeting", systemImage: "mic.fill") { showCalendar = true }
                         createOption("Note", systemImage: "square.and.pencil") { addNote() }
@@ -381,7 +398,6 @@ struct NotesView: View {
                 } header: {
                     header("Pinned", isFirst: true)
                 }
-                .timelineIndex(Text(Image(systemName: "pin.fill")))
             }
             let grouped = groups(shown.filter { !$0.isPinned })
             ForEach(grouped, id: \.title) { group in
@@ -390,7 +406,6 @@ struct NotesView: View {
                 } header: {
                     header(group.title, isFirst: pinned.isEmpty && group.title == grouped.first?.title)
                 }
-                .timelineIndex(Text(verbatim: group.label))
             }
         }
     }
@@ -398,7 +413,7 @@ struct NotesView: View {
     /// The actions of the list, shown as plain icons at the right of the custom bar (iOS).
     @ViewBuilder
     private func listActions(isEmpty: Bool) -> some View {
-        if mode == .timeline {
+        if mode.showsScope {
             FolderMenu(notes: notes, folders: folders, scope: $scope, state: folderPrompts)
             if scope != .trash {
                 Button { showImporter = true } label: {
@@ -415,6 +430,7 @@ struct NotesView: View {
                 Label("New Chat", systemImage: "square.and.pencil")
             }
         }
+        searchButton
         Button { showSettings = true } label: {
             Label("Settings", systemImage: "gearshape")
         }
@@ -422,48 +438,12 @@ struct NotesView: View {
 
     @ToolbarContentBuilder
     private func listToolbar(isEmpty: Bool) -> some ToolbarContent {
-        if mode == .timeline {
-            ToolbarItem(placement: .primaryAction) {
-                FolderMenu(notes: notes, folders: folders, scope: $scope, state: folderPrompts)
-            }
-            if scope != .trash {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button { addNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
-                            .keyboardShortcut("n")
-                        Button { showCalendar = true } label: { Label("Record Meeting", systemImage: "mic.fill") }
-                            .keyboardShortcut("r")
-                        Button { showAddLink = true } label: { Label("Add Link", systemImage: "link") }
-                            .keyboardShortcut("l")
-                        Divider()
-                        Button { showImporter = true } label: { Label("Import Audio…", systemImage: "square.and.arrow.down") }
-                    } label: {
-                        Label("New", systemImage: "plus")
-                    }
-                    .accessibilityLabel("New")
-                }
-            }
-            if scope == .trash, !isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(role: .destructive) { confirmEmptyTrash = true } label: {
-                        Label("Delete All", systemImage: "trash")
-                    }
-                }
-            }
-        } else if mode == .chat, !chat.messages.isEmpty {
-            ToolbarItem(placement: .primaryAction) {
-                Button { chat.reset() } label: {
-                    Label("New Chat", systemImage: "square.and.pencil")
-                }
-                .accessibilityLabel("New Chat")
-            }
-        } else if mode == .tasks {
-            ToolbarItem(placement: .primaryAction) {
-                Button { addTask() } label: {
-                    Label("New Task", systemImage: "plus")
-                }
-                .accessibilityLabel("New Task")
-            }
+        if mode.showsScope {
+            timelineToolbar(isEmpty: isEmpty)
+        }
+        modeToolbar
+        ToolbarItem(placement: .primaryAction) {
+            searchButton
         }
         ToolbarItem(placement: .primaryAction) {
             Button { openSettings() } label: {
@@ -473,13 +453,87 @@ struct NotesView: View {
         }
     }
 
+
+    @ToolbarContentBuilder
+    private func timelineToolbar(isEmpty: Bool) -> some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            FolderMenu(notes: notes, folders: folders, scope: $scope, state: folderPrompts)
+        }
+        if scope != .trash {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button { addNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
+                        .keyboardShortcut("n")
+                    Button { showCalendar = true } label: { Label("Record Meeting", systemImage: "mic.fill") }
+                        .keyboardShortcut("r")
+                    Button { showAddLink = true } label: { Label("Add Link", systemImage: "link") }
+                        .keyboardShortcut("l")
+                    Divider()
+                    Button { showImporter = true } label: { Label("Import Audio…", systemImage: "square.and.arrow.down") }
+                } label: {
+                    Label("New", systemImage: "plus")
+                }
+                .accessibilityLabel("New")
+            }
+        }
+        if scope == .trash, !isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                Button(role: .destructive) { confirmEmptyTrash = true } label: {
+                    Label("Delete All", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    /// The search is no tab but a button in the bar; tapped again it goes back to where it came from.
+    private var searchButton: some View {
+        Button {
+            if mode == .search {
+                mode = modeBeforeSearch
+            } else {
+                modeBeforeSearch = mode
+                mode = .search
+            }
+        } label: {
+            Label(mode == .search ? "Close Search" : "Search", systemImage: mode == .search ? "xmark" : "magnifyingglass")
+        }
+        .accessibilityLabel(mode == .search ? "Close Search" : "Search")
+    }
+
+    @ToolbarContentBuilder
+    private var modeToolbar: some ToolbarContent {
+        if mode == .chat, !chat.messages.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                Button { chat.reset() } label: {
+                    Label("New Chat", systemImage: "square.and.pencil")
+                }
+                .accessibilityLabel("New Chat")
+            }
+        } else if mode == .links {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showAddLink = true } label: {
+                    Label("Add Link", systemImage: "plus")
+                }
+                .accessibilityLabel("Add Link")
+            }
+        } else if mode == .tasks {
+            ToolbarItem(placement: .primaryAction) {
+                Button { addTask() } label: {
+                    Label("New Task", systemImage: "plus")
+                }
+                .accessibilityLabel("New Task")
+            }
+        }
+    }
+
     /// Things: bold title over a hairline, no symbol. The first one sits right under the tabs
     /// (the gap comes from the header, `Look.headerGap`); later ones keep air from the section above.
     private func header(_ title: String, isFirst: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(Color.accentColor)
+                // In the color of the view, like its title square (links orange).
+                .foregroundStyle(listTint)
             Rectangle().fill(Look.hairline).frame(height: 0.5)
         }
         .padding(.top, isFirst ? 0 : 16)
@@ -527,11 +581,18 @@ struct NotesView: View {
     // MARK: - Content of the list
 
     private var listTitle: String {
-        mode == .chat ? "Chat" : mode == .search ? "Search" : mode == .tasks ? "Tasks" : scopeTitle
+        switch mode {
+        case .chat: "Chat"
+        case .search: "Search"
+        case .tasks: "Tasks"
+        case .links: "Links"
+        case .meetings: scope == .all ? "Meetings" : scopeTitle
+        case .timeline: scopeTitle
+        }
     }
 
     /// Color of the square in front of the title: tasks are green, everything else sky blue.
-    private var listTint: Color { mode == .tasks ? .brandTask : .brandSky }
+    private var listTint: Color { mode == .links ? .brandLink : mode == .tasks ? .brandTask : .brandSky }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
     private var listIcon: String {
@@ -539,9 +600,10 @@ struct NotesView: View {
         case .chat: return "bubble.left.and.bubble.right.fill"
         case .search: return "magnifyingglass"
         case .tasks: return "checklist"
-        case .timeline:
+        case .links: return "link"
+        case .timeline, .meetings:
             switch scope {
-            case .all: return "tray.full.fill"
+            case .all: return mode == .meetings ? "waveform" : "tray.full.fill"
             case .unfiled: return "note.text"
             case .folder: return "folder.fill"
             case .tag: return "number"
@@ -561,11 +623,13 @@ struct NotesView: View {
     }
 
     private var emptyTitle: String {
-        scope == .trash ? "Nothing Deleted" : "No Notes Yet"
+        mode == .links ? "No Links Yet" : scope == .trash ? "Nothing Deleted" : mode == .meetings ? "No Meetings Yet" : "No Notes Yet"
     }
 
     private var emptyMessage: String {
-        scope == .trash ? "Deleted notes stay here for \(NoteStore.trashDays) days." : "Speak a thought – Porridge writes it down for you."
+        mode == .links ? "Share a page to Porridge or add one with the plus button – it is saved and summarized."
+            : mode == .meetings && scope != .trash ? "Record a meeting with the plus button – Porridge transcribes and summarizes it."
+            : scope == .trash ? "Deleted notes stay here for \(NoteStore.trashDays) days." : "Speak a thought – Porridge writes it down for you."
     }
 
     private var showsFolder: Bool {
@@ -583,12 +647,19 @@ struct NotesView: View {
         let folderIDs = Set(folders.map(\.id))
         var result: [Note]
         // The search looks through everything; the timeline shows the chosen folder.
-        switch mode == .search ? .all : scope {
+        switch mode == .search || mode == .links ? .all : scope {
         case .all: result = notes.filter { !$0.isDeleted }
         case .unfiled: result = notes.filter { !$0.isDeleted && ($0.folderID.map { !folderIDs.contains($0) } ?? true) }
         case .folder(let id): result = notes.filter { !$0.isDeleted && $0.folderID == id }
         case .tag(let tag): result = notes.filter { !$0.isDeleted && $0.tags.contains { $0.lowercased() == tag } }
         case .trash: result = notes.filter(\.isDeleted)
+        }
+        // Links and meetings have lists of their own; the notes are what is written. The trash and the search
+        // hold everything.
+        if mode == .links {
+            result = result.filter(\.isLink)
+        } else if mode.showsScope, scope != .trash {
+            result = result.filter { !$0.isLink && $0.isRecording == (mode == .meetings) }
         }
         if mode == .search, !tagTokens.isEmpty {
             result = result.filter { note in
@@ -655,11 +726,15 @@ struct NotesView: View {
         linkText = ""
         let note = LinkImport.add(address, context: context, processing: processing)
         if case .folder(let id) = scope, note.folderID == nil { note.folderID = id }
+        // The new link shows where links live.
+        if mode != .links { mode = .links }
         selection = note.id
         column = .detail
     }
 
     private func addNote() {
+        // The new note shows where notes live.
+        if mode != .timeline { mode = .timeline }
         let note = Note()
         if case .folder(let id) = scope { note.folderID = id }
         draft = note
@@ -723,7 +798,9 @@ struct NotesView: View {
         }
     }
 
+    /// A recorded or imported meeting: stored, opened, transcribed, and shown under Meetings.
     private func insertAndProcess(_ note: Note) {
+        if mode != .meetings { mode = .meetings }
         context.insert(note)
         try? context.save()
         draft = nil
@@ -895,10 +972,18 @@ private struct ListTabs: View {
     var body: some View {
         TabSwitcher(selection: $mode, options: [
             (ListMode.tasks, "Tasks"),
+            (ListMode.meetings, "Meetings"),
             (ListMode.timeline, "Notes"),
+            (ListMode.links, "Links"),
             (ListMode.chat, "Chat"),
-            (ListMode.search, "Search"),
-        ])
+        ], tint: { mode in
+            // Each tab in its own color, the same as its title square.
+            switch mode {
+            case .tasks: .brandTask
+            case .links: .brandLink
+            default: nil
+            }
+        })
         .padding(.horizontal, 20)
         // The same gap above and below the tabs, whatever comes next (timeline, chat or search).
         .padding(.vertical, Look.headerGap)
@@ -914,7 +999,16 @@ extension Notification.Name {
 
 enum ListMode: Hashable {
     case tasks
+    /// The recordings (and imported audio).
+    case meetings
+    /// The notes that are written.
     case timeline
+    /// The saved links, apart from the notes.
+    case links
     case chat
+    /// The search, opened from the button in the bar (no tab of its own).
     case search
+
+    /// Notes and meetings follow the chosen folder, tag or trash.
+    var showsScope: Bool { self == .timeline || self == .meetings }
 }

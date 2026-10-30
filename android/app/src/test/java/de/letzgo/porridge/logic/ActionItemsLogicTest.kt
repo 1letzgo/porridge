@@ -118,4 +118,19 @@ class ActionItemsLogicTest {
         assertTrue("Angebot schicken" !in block)
         assertTrue("Bericht schreiben" in block)
     }
+
+    @Test fun mineByNameOrOwnNote() {
+        val names = ActionItemsLogic.myNames("Anna, Anna Berg")
+        val meeting = Note(id = "M", segmentsData = "[]")
+        val own = Note(id = "O")
+        fun task(owner: String?, source: String = "summary") = ActionItem(text = "x", owner = owner, source = source)
+        assertTrue(ActionItemsLogic.isMine(task("Anna"), meeting, names))
+        assertTrue(ActionItemsLogic.isMine(task("anna berg"), meeting, names))
+        assertTrue(ActionItemsLogic.isMine(task("Ben und Anna"), meeting, names))
+        assertTrue(!ActionItemsLogic.isMine(task("Ben"), meeting, names))
+        // Nobody named: a meeting's task is general, one out of an own note or typed by hand is mine.
+        assertTrue(!ActionItemsLogic.isMine(task(null), meeting, names))
+        assertTrue(ActionItemsLogic.isMine(task(null), own, names))
+        assertTrue(ActionItemsLogic.isMine(task(null, source = "manual"), null, emptyList()))
+    }
 }

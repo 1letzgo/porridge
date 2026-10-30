@@ -279,7 +279,7 @@ enum SummaryService {
 
         ## \(language.headings.actionItems)
         - [ ] Task – owner (if known)
-        (omit if there are none)
+        (omit if there are none; a task for the person who recorded, see "Recorded by", gets that name as owner)
 
         TAGS: <3 to 5 short keywords in \(language.name), separated by commas, without # signs>
         """
@@ -290,6 +290,9 @@ enum SummaryService {
         let names = meeting.speakers.map(\.name)
         if !names.isEmpty {
             header += "\nParticipants: \(names.joined(separator: ", "))"
+        }
+        if let me = AppSettings.myName {
+            header += "\nRecorded by: \(me)"
         }
         return header
     }

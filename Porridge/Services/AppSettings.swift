@@ -53,6 +53,8 @@ enum AppSettings {
     static let voiceRecognitionKey = "voiceRecognition"
     static let providerKey = "aiProvider"
     static let customBaseURLKey = "aiCustomBaseURL"
+    /// The user's own name (and other ways it is written, comma separated): their tasks go under "Mine".
+    static let myNameKey = "myName"
 
     static let languages: [(code: String, name: String)] = [
         ("auto", "Automatic"),
@@ -78,6 +80,21 @@ enum AppSettings {
             voiceRecognitionKey: true,
             providerKey: AIProvider.openRouter.rawValue,
         ])
+    }
+
+    /// The names the user goes by, lowercased; empty when none is set.
+    static var myNames: [String] { myNames(from: UserDefaults.standard.string(forKey: myNameKey) ?? "") }
+
+    /// The user's name as they wrote it first, for the summaries; nil when none is set.
+    static var myName: String? {
+        (UserDefaults.standard.string(forKey: myNameKey) ?? "").split(separator: ",").first
+            .map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    static func myNames(from raw: String) -> [String] {
+        raw.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            .filter { !$0.isEmpty }
     }
 
     static var language: Language? {

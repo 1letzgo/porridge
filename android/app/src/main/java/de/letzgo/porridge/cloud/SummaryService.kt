@@ -1,5 +1,6 @@
 package de.letzgo.porridge.cloud
 
+import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.data.SummaryBilling
 import de.letzgo.porridge.logic.SummaryException
@@ -22,7 +23,7 @@ object SummaryService {
         }
 
     suspend fun summarize(note: Note, progress: (String) -> Unit = {}): Note {
-        val request = SummaryLogic.request(note, Prefs.language)
+        val request = SummaryLogic.request(note, Prefs.language, Prefs.string(Keys.MY_NAME))
         val (raw, model) = when (Prefs.billing) {
             SummaryBilling.LOCAL -> {
                 val local = TextModels.selected ?: throw SummaryException("No on-device model is available.")
