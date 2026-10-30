@@ -63,6 +63,9 @@ import de.letzgo.porridge.cloud.AIProvider
 import de.letzgo.porridge.cloud.CloudLLM
 import de.letzgo.porridge.data.AppUpdate
 import de.letzgo.porridge.data.Backup
+import de.letzgo.porridge.sync.NextcloudLogin
+import de.letzgo.porridge.sync.NextcloudSync
+import de.letzgo.porridge.sync.SyncMode
 import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.data.SummaryBilling
@@ -103,6 +106,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaud: () -> Unit) {
             ModelsCard()
             SummaryCard()
             Card("Plaud") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Import Recordings", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", onPlaud) } }
+            SyncCard()
             BackupCard()
             AboutCard()
             Card("Acknowledgements") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Open Source Licenses", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", { showAcknowledgements = true }) } }
@@ -282,6 +286,86 @@ private fun SummaryCard() {
                 }
             }) { Text("Load Models") }
             loadError?.let { Text(it, color = Brand.danger, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
+
+/** iOS: `SyncCard` — Sync über eine Nextcloud mit iPhone und Mac; Anmeldung im Browser (Login Flow v2). */
+@Composable
+private fun SyncCard() {
+    val coroutines = rememberCoroutineScope()
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val status by NextcloudSync.status.collectAsState()
+    var mode by remember { mutableStateOf(SyncMode.chosen) }
+    var server by remember { mutableStateOf("") }
+    var login by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var loginError by remember { mutableStateOf<String?>(null) }
+    Card(
+        "Sync",
+        footer = if (mode == SyncMode.NEXTCLOUD) null else "Notes stay on this phone.",
+    ) {
+        Picker("Sync With", SyncMode.entries.map { it to it.label }, mode) {
+            mode = it
+            Prefs.set(SyncMode.KEY, it.raw)
+            NextcloudSync.syncSoon(0)
+        }
+        if (mode == SyncMode.NEXTCLOUD) {
+            val account = status.account
+            if (account != null) {
+                HorizontalDivider()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Account", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text(account.label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Status", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text(
+                        when {
+                            status.syncing -> "Syncing…"
+                            status.error != null -> status.error!!
+                            status.lastSync != null -> "Synced " + android.text.format.DateUtils.getRelativeTimeSpanString(status.lastSync!!)
+                            else -> "Not synced yet"
+                        },
+                        color = if (status.error != null && !status.syncing) Brand.danger else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(2f, fill = false),
+                    )
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
+                    Pill(if (status.syncing) "Syncing…" else "Sync Now", { coroutines.launch { NextcloudSync.sync() } }, enabled = !status.syncing)
+                    Pill("Disconnect", { NextcloudSync.disconnect() })
+                }
+            } else {
+                androidx.compose.material3.OutlinedTextField(
+                    value = server, onValueChange = { server = it }, singleLine = true,
+                    placeholder = { Text("Server, e.g. cloud.example.com") }, modifier = Modifier.fillMaxWidth(),
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                    if (login == null) {
+                        Pill("Connect", {
+                            val url = NextcloudLogin.normalize(server) ?: return@Pill
+                            loginError = null
+                            login = coroutines.launch {
+                                try {
+                                    val pending = NextcloudLogin.start(url)
+                                    uriHandler.openUri(pending.loginUrl)
+                                    NextcloudSync.connect(NextcloudLogin.finish(pending))
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    loginError = e.message
+                                } finally {
+                                    login = null
+                                }
+                            }
+                        }, enabled = NextcloudLogin.normalize(server) != null)
+                    } else {
+                        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Brand.sky)
+                        Text("Confirm the login in your browser.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        Pill("Cancel", { login?.cancel(); login = null })
+                    }
+                }
+                loginError?.let { Text(it, color = Brand.danger, style = MaterialTheme.typography.bodySmall) }
+            }
         }
     }
 }

@@ -5,6 +5,7 @@ import SwiftUI
 struct PorridgeApp: App {
     private let container: ModelContainer
     @State private var processing: ProcessingService
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         setvbuf(stdout, nil, _IONBF, 0)
@@ -12,6 +13,7 @@ struct PorridgeApp: App {
         let container = AppContainer.make()
         self.container = container
         _processing = State(initialValue: ProcessingService(container: container))
+        NextcloudSync.shared.attach(container)
     }
 
     var body: some Scene {
@@ -29,5 +31,9 @@ struct PorridgeApp: App {
                 }
         }
         .modelContainer(container)
+        .onChange(of: scenePhase) { _, phase in
+            // Back in the app: pick up what the other devices did.
+            if phase == .active { NextcloudSync.shared.syncSoon(after: .zero) }
+        }
     }
 }

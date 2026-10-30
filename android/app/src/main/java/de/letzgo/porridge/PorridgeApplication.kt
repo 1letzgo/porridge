@@ -1,6 +1,9 @@
 package de.letzgo.porridge
 
 import android.app.Application
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import de.letzgo.porridge.audio.RecordingSession
 import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.processing.ProcessingService
@@ -14,6 +17,7 @@ import de.letzgo.porridge.ml.TextEmbedder
 import de.letzgo.porridge.ml.TextModels
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.PorridgeDatabase
+import de.letzgo.porridge.sync.NextcloudSync
 
 /** iOS: `PorridgeApp` (App/PorridgeApp.swift) — einmalige Einrichtung beim Start. */
 class PorridgeApplication : Application() {
@@ -31,6 +35,11 @@ class PorridgeApplication : Application() {
         RecordingSession.init(this)
         AppGraph.init(this)
         ProcessingService.onBusyChanged = { RecordingSession.setBusy(it) }
+        NextcloudSync.init(this)
+        // Zurück in der App: holen, was die anderen Geräte getan haben.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) = NextcloudSync.syncSoon(0)
+        })
     }
 
     private fun hasChosenModel() = getSharedPreferences("porridge", MODE_PRIVATE).contains(Keys.LOCAL_MODEL)

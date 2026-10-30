@@ -29,6 +29,7 @@
 		15E6896507D8D184530CA9CA /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB9943212CA4D8F37CEE92A1 /* RootView.swift */; };
 		179CF1D750C84E09B9978330 /* OpusOggDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10494DA6CC2C9A9E3562C2C8 /* OpusOggDecoder.swift */; };
 		197DFF9071BF213F1F941055 /* NoteMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A83A9237EEF93450DB302C /* NoteMarkdown.swift */; };
+		19F84BB04DA93ACAC859DAEE /* SyncMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010311FFC97C720AE3AE3A85 /* SyncMerge.swift */; };
 		1D8752ED4D7454780B6C0379 /* ProcessingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C6D4089FE130492BCC55C9 /* ProcessingService.swift */; };
 		1E8692F45F5B503127575701 /* RecordMeetingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A619A6A5CEB3607BF5EE1E /* RecordMeetingSheet.swift */; };
 		1F98599B6AB8467884A39EED /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 24020A51ADF48C7E0985F398 /* FluidAudio */; };
@@ -69,6 +70,7 @@
 		5040DE79BC16EA0C956E253A /* Acknowledgements.json in Resources */ = {isa = PBXBuildFile; fileRef = 5F165597B4025A92862665A9 /* Acknowledgements.json */; };
 		50B35613A498BBAD537CAFC0 /* PlaudImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605D164877965A4BA545584B /* PlaudImportSheet.swift */; };
 		52C32F7688919A572547A95C /* NoteMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A83A9237EEF93450DB302C /* NoteMarkdown.swift */; };
+		5372217789D3AC6D5E71BB7D /* SyncRecords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93CC5FDACE4A6D721DC26E56 /* SyncRecords.swift */; };
 		54FF5168F7BC40DD5FD5D8F2 /* BrandMenuLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8DCA8F75243E96D40F6CE3A /* BrandMenuLabel.swift */; };
 		55BD322552C76DB7E3EE3C58 /* VoiceProfiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF66A6CA32B03260699EFDE /* VoiceProfiles.swift */; };
 		57BC0DECFDF9627F90CE0CD9 /* TranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDB3BA98ABE11334BB0297F /* TranscriptionEngine.swift */; };
@@ -117,6 +119,7 @@
 		8D6FDA68556EC145BEC5EBC0 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2141F7919F1EE60B134F704 /* MarkdownText.swift */; };
 		8DF84086E0386DB8B91F7D08 /* TagMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E41F5467CB0E4ECCA32D57 /* TagMenu.swift */; };
 		8FF358692F372B899D81D1C6 /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65F0237052007B3FEEEBEB9 /* Transcript.swift */; };
+		91727816F4DBB415832A4774 /* Nextcloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13563BB4DFFA76CB2DF27623 /* Nextcloud.swift */; };
 		91FC2BEA779454531B25DC71 /* AudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7798D6E60F456BEF335E6F48 /* AudioStore.swift */; };
 		927CFE780AE6D85488AF7E07 /* TasksPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E345FCF69334B90FB789F74 /* TasksPane.swift */; };
 		92B3006D21C3C78C0354DF27 /* LinkFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FAB0F466A89E3E6D592CAA /* LinkFetcher.swift */; };
@@ -134,6 +137,7 @@
 		9F0CAEC35F305D4614EBEF80 /* RecordingActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */; };
 		9F30118C94310D8B5444C267 /* NotesFeaturesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C9AA7BE3FF0CEDF2C2BDF86 /* NotesFeaturesTests.swift */; };
 		A09D17E28DD0230E04FBC0BE /* VoiceProfiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF66A6CA32B03260699EFDE /* VoiceProfiles.swift */; };
+		A7339E7104693D8D60FBE453 /* SyncMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010311FFC97C720AE3AE3A85 /* SyncMerge.swift */; };
 		A7720AA8BECDC3567796EB50 /* ActionItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB4AFAFFCB1422B3F429D3F /* ActionItem.swift */; };
 		A82761451E9F7DA554423BAF /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */; };
 		AAB43F4E07F1580829B4EAAD /* AudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7798D6E60F456BEF335E6F48 /* AudioStore.swift */; };
@@ -144,6 +148,7 @@
 		B2336A64EB596AC69B212C59 /* PlaudImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9252D20181C0B25CCC7F3D13 /* PlaudImporter.swift */; };
 		B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB2150AC1E2D50129B73B9 /* SummaryService.swift */; };
 		B50072C1228DE96659168489 /* CloudLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F68F49429875E63DC4CCB6 /* CloudLLM.swift */; };
+		B51D315CA24D44E106459E01 /* NextcloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 990B254429F49AE3C45A70F4 /* NextcloudSync.swift */; };
 		B6F8F74868C87282CDE71D2B /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9A8A966F81D3027C207AA5 /* TaskDetailView.swift */; };
 		B853384F1F895B498A9B94FF /* LinkImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB005D8452E913C0CB4DEE1D /* LinkImport.swift */; };
 		BBD6152CD6E81173947772C9 /* ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2F58296E3FB7B2AA8C6D2F /* ModelManager.swift */; };
@@ -171,6 +176,7 @@
 		E084B7EC49D9B594EF056D8C /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF941D555D2BB61CC2812CAA /* AudioRecorder.swift */; };
 		E20F1184CF70593779A6BB58 /* AudioPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8EFBAAD626DEE8326A57573 /* AudioPlayback.swift */; };
 		E3002DFA4AC2CB6F61BFF32A /* InlineDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */; };
+		E50AF96D5D67C0C4E6CD632F /* NextcloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 990B254429F49AE3C45A70F4 /* NextcloudSync.swift */; };
 		E53D3E365FE85257EF1B74A0 /* NoteMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */; };
 		E6AB44344775FD2E3AE87BFE /* LiveTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC34B2F819480B429CF98E03 /* LiveTranscriber.swift */; };
 		E8627E20B8F2D15E59D7A4C6 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 891664E182A92898397DE9A2 /* Tokenizers */; };
@@ -178,7 +184,9 @@
 		EBF0A277FEF80C9CC457802B /* PlaudCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E144B5C4A5FF19E6E4CAB606 /* PlaudCrypto.swift */; };
 		EF45EAE7CB9616F7F2916CCB /* PlaudLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A969612AE20E4060E62676 /* PlaudLog.swift */; };
 		EF9954E3ED1CE9A4A825FFA2 /* DictationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A3283911FDEDADF5689EB3 /* DictationOverlay.swift */; };
+		F15100809895699899FEF1FA /* Nextcloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13563BB4DFFA76CB2DF27623 /* Nextcloud.swift */; };
 		F16711786BE4C4DB571B4282 /* LegacyMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7794E23DA38BED1951839EF /* LegacyMigration.swift */; };
+		F28A7396A2E0E36DEECC5791 /* SyncRecords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93CC5FDACE4A6D721DC26E56 /* SyncRecords.swift */; };
 		F3EC18F8B4C4395435A76CA3 /* PlaudImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9252D20181C0B25CCC7F3D13 /* PlaudImporter.swift */; };
 		F618CA06F779C53FD359A9D9 /* Acknowledgements.json in Resources */ = {isa = PBXBuildFile; fileRef = 5F165597B4025A92862665A9 /* Acknowledgements.json */; };
 		F6654516D356993C3F1E71C9 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083A5EA9DC62D07B9150CDAB /* OnboardingView.swift */; };
@@ -231,12 +239,14 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		010311FFC97C720AE3AE3A85 /* SyncMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMerge.swift; sourceTree = "<group>"; };
 		05F68F49429875E63DC4CCB6 /* CloudLLM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudLLM.swift; sourceTree = "<group>"; };
 		07FDF58B6FB80F0BA8223760 /* LiveRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRecording.swift; sourceTree = "<group>"; };
 		083A5EA9DC62D07B9150CDAB /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteMerger.swift; sourceTree = "<group>"; };
 		10494DA6CC2C9A9E3562C2C8 /* OpusOggDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpusOggDecoder.swift; sourceTree = "<group>"; };
 		108DEC7169C9E157AD66174F /* LocalLLM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLM.swift; sourceTree = "<group>"; };
+		13563BB4DFFA76CB2DF27623 /* Nextcloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Nextcloud.swift; sourceTree = "<group>"; };
 		1871870FC6707C39D01FE52E /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
 		19743A48BFB08A4F1939EE6D /* ChatService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatService.swift; sourceTree = "<group>"; };
 		19E1E9FC1D1AD53F0633B275 /* ModifierKeyMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModifierKeyMonitor.swift; sourceTree = "<group>"; };
@@ -288,9 +298,11 @@
 		909961185A18E43F10BBAEAE /* PorridgeMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PorridgeMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9252D20181C0B25CCC7F3D13 /* PlaudImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudImporter.swift; sourceTree = "<group>"; };
 		93B8DFE97590EDE5A2D24620 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		93CC5FDACE4A6D721DC26E56 /* SyncRecords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecords.swift; sourceTree = "<group>"; };
 		97476C5D0384FCC292170B1A /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
 		97FAB0F466A89E3E6D592CAA /* LinkFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkFetcher.swift; sourceTree = "<group>"; };
 		987A111F4ACA578E340E5A7E /* AppleSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeech.swift; sourceTree = "<group>"; };
+		990B254429F49AE3C45A70F4 /* NextcloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextcloudSync.swift; sourceTree = "<group>"; };
 		99A027F964ABF9D4B96589D2 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A8AB217EF9CF295C18693CFA /* NoteBlocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteBlocks.swift; sourceTree = "<group>"; };
 		A8DCA8F75243E96D40F6CE3A /* BrandMenuLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandMenuLabel.swift; sourceTree = "<group>"; };
@@ -384,6 +396,17 @@
 				99A027F964ABF9D4B96589D2 /* ChatView.swift */,
 			);
 			path = Chat;
+			sourceTree = "<group>";
+		};
+		2504C6F24B46B15ACB566738 /* Sync */ = {
+			isa = PBXGroup;
+			children = (
+				13563BB4DFFA76CB2DF27623 /* Nextcloud.swift */,
+				990B254429F49AE3C45A70F4 /* NextcloudSync.swift */,
+				010311FFC97C720AE3AE3A85 /* SyncMerge.swift */,
+				93CC5FDACE4A6D721DC26E56 /* SyncRecords.swift */,
+			);
+			path = Sync;
 			sourceTree = "<group>";
 		};
 		38238A3C1B4737571CF13A99 /* Products */ = {
@@ -550,6 +573,7 @@
 				CCDB3BA98ABE11334BB0297F /* TranscriptionEngine.swift */,
 				6DF66A6CA32B03260699EFDE /* VoiceProfiles.swift */,
 				E8A6D73C695F219C4C3B9D60 /* Plaud */,
+				2504C6F24B46B15ACB566738 /* Sync */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -866,6 +890,8 @@
 				BED5D79B02D400BBDDFA13AB /* Meeting.swift in Sources */,
 				57C92E9BB6FD62EC51FF26A7 /* MergeNotesSheet.swift in Sources */,
 				BBD6152CD6E81173947772C9 /* ModelManager.swift in Sources */,
+				91727816F4DBB415832A4774 /* Nextcloud.swift in Sources */,
+				E50AF96D5D67C0C4E6CD632F /* NextcloudSync.swift in Sources */,
 				7A4D4772B9D9191E708AC1A0 /* Note.swift in Sources */,
 				4514B9DFEEC2340B0988A27F /* NoteBlocks.swift in Sources */,
 				03DCEEDB98E0E488018ABD31 /* NoteBodyEditor.swift in Sources */,
@@ -902,6 +928,8 @@
 				2519166D729750B7484FC464 /* SummarizingCard.swift in Sources */,
 				01E0FFCBAB683091E75D4B06 /* SummaryEditorSheet.swift in Sources */,
 				01528762ABBA57FEA7E93C81 /* SummaryService.swift in Sources */,
+				19F84BB04DA93ACAC859DAEE /* SyncMerge.swift in Sources */,
+				F28A7396A2E0E36DEECC5791 /* SyncRecords.swift in Sources */,
 				8DF84086E0386DB8B91F7D08 /* TagMenu.swift in Sources */,
 				5D60D30FCB022405FDF57BE6 /* TaskDetailView.swift in Sources */,
 				927CFE780AE6D85488AF7E07 /* TasksPane.swift in Sources */,
@@ -964,6 +992,8 @@
 				FA915CE27493CD8BDCB57CC1 /* MergeNotesSheet.swift in Sources */,
 				36FD98F4525C00F87F761EB3 /* ModelManager.swift in Sources */,
 				2316760D8F08477ACACBA86F /* ModifierKeyMonitor.swift in Sources */,
+				F15100809895699899FEF1FA /* Nextcloud.swift in Sources */,
+				B51D315CA24D44E106459E01 /* NextcloudSync.swift in Sources */,
 				9A578A8C057C87985C1FC180 /* Note.swift in Sources */,
 				CC848E098BBC5DB798C31925 /* NoteBlocks.swift in Sources */,
 				65BC30F146AE3C1342E00BB0 /* NoteBodyEditor.swift in Sources */,
@@ -1000,6 +1030,8 @@
 				779DFE96B0F8C7C3AEAE4E03 /* SummarizingCard.swift in Sources */,
 				CDF4C9AAFB9D87728BA12409 /* SummaryEditorSheet.swift in Sources */,
 				B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */,
+				A7339E7104693D8D60FBE453 /* SyncMerge.swift in Sources */,
+				5372217789D3AC6D5E71BB7D /* SyncRecords.swift in Sources */,
 				F94E719F68613C1E7D153BA8 /* TagMenu.swift in Sources */,
 				B6F8F74868C87282CDE71D2B /* TaskDetailView.swift in Sources */,
 				000266105C33D24E7CDEF772 /* TasksPane.swift in Sources */,

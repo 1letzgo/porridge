@@ -218,7 +218,7 @@ struct SettingsView: View {
             cloudCard
         }
         importCard
-        iCloudCard
+        SyncCard()
         aboutCard
     }
 
@@ -438,18 +438,6 @@ struct SettingsView: View {
         }
     }
 
-    private var iCloudCard: some View {
-        let available = FileManager.default.ubiquityIdentityToken != nil
-        return SettingsCard(title: "iCloud") {
-            Label(
-                available ? "Notes are synced" : "Not signed in to iCloud",
-                systemImage: available ? "checkmark.icloud.fill" : "xmark.icloud"
-            )
-            .font(.body)
-            .foregroundStyle(available ? Color.accentColor : Color.accentColor.opacity(0.6))
-        }
-    }
-
     private var aboutCard: some View {
         SettingsCard(
             title: "About",
@@ -536,6 +524,103 @@ struct SettingsView: View {
 // MARK: - Building blocks
 
 /// Settings group in the style of the list: a section head with a hairline, rows on the white page.
+/// Where the notes go: iCloud between Apple devices, a Nextcloud for every platform, or nowhere. Switching
+/// takes effect at the next launch.
+private struct SyncCard: View {
+    @AppStorage(SyncMode.key) private var mode: SyncMode = .iCloud
+    @Environment(\.openURL) private var openURL
+    @State private var sync = NextcloudSync.shared
+    @State private var server = ""
+    @State private var login: Task<Void, Never>?
+    @State private var loginError: String?
+
+    var body: some View {
+        SettingsCard(title: "Sync", footer: footer) {
+            MenuRow(title: "Sync With", selection: $mode, options: SyncMode.allCases.map { (value: $0, title: $0.label) })
+            if mode != SyncMode.active {
+                Label("Restart Porridge to switch to \(mode.label).", systemImage: "arrow.clockwise")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            switch mode {
+            case .off:
+                EmptyView()
+            case .iCloud:
+                let available = FileManager.default.ubiquityIdentityToken != nil
+                Label(
+                    available ? "Signed in to iCloud" : "Not signed in to iCloud",
+                    systemImage: available ? "checkmark.icloud.fill" : "xmark.icloud"
+                )
+                .foregroundStyle(available ? Color.accentColor : Color.accentColor.opacity(0.6))
+            case .nextcloud:
+                if let account = sync.account {
+                    ValueRow(title: "Account", value: account.label)
+                    ValueRow(title: "Status", value: status)
+                    HStack(spacing: 10) {
+                        Spacer()
+                        Button(sync.isSyncing ? "Syncing…" : "Sync Now") { Task { await sync.sync() } }
+                            .disabled(sync.isSyncing || SyncMode.active != .nextcloud)
+                        Button("Disconnect", role: .destructive) { sync.disconnect() }
+                    }
+                    .buttonStyle(PillButtonStyle())
+                } else {
+                    TextField("Server, e.g. cloud.example.com", text: $server)
+                        .urlFieldStyle()
+                        .brandField()
+                    HStack(spacing: 10) {
+                        Spacer()
+                        if login == nil {
+                            Button("Connect") { connect() }
+                                .disabled(NextcloudLogin.normalize(server) == nil)
+                        } else {
+                            ProgressView().controlSize(.small)
+                            Text("Confirm the login in your browser.").font(.subheadline).foregroundStyle(.secondary)
+                            Button("Cancel") { login?.cancel(); login = nil }
+                        }
+                    }
+                    .buttonStyle(PillButtonStyle())
+                    if let loginError {
+                        Text(loginError).font(.subheadline).foregroundStyle(.red)
+                    }
+                }
+            }
+        }
+    }
+
+    private var footer: String? {
+        switch mode {
+        case .off: "Notes stay on this device."
+        case .iCloud: "Notes, tasks and transcripts sync between your Apple devices. Recordings stay on the device that made them."
+        case .nextcloud: nil
+        }
+    }
+
+    private var status: String {
+        if sync.isSyncing { return "Syncing…" }
+        if SyncMode.active != .nextcloud { return "After restart" }
+        if let error = sync.lastError { return error }
+        guard let last = sync.lastSync else { return "Not synced yet" }
+        return "Synced \(last.formatted(.relative(presentation: .named)))"
+    }
+
+    private func connect() {
+        guard let url = NextcloudLogin.normalize(server) else { return }
+        loginError = nil
+        login = Task {
+            defer { login = nil }
+            do {
+                let pending = try await NextcloudLogin.start(server: url)
+                openURL(pending.loginURL)
+                let account = try await NextcloudLogin.finish(pending)
+                sync.connect(account)
+            } catch is CancellationError {
+            } catch {
+                loginError = error.localizedDescription
+            }
+        }
+    }
+}
+
 private struct SettingsCard<Content: View>: View {
     let title: String
     var footer: String?

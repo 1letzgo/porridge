@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Back from System Settings: a permission may have been given in the meantime.
     func applicationDidBecomeActive(_ notification: Notification) {
+        NextcloudSync.shared.syncSoon(after: .zero)
         if DictationController.shared.shortcutNeedsAccessibility || DictationController.shared.shortcutUnavailable {
             DictationController.shared.reloadShortcut()
         }
@@ -43,6 +44,7 @@ struct PorridgeMacApp: App {
         let container = AppContainer.make()
         self.container = container
         _processing = State(initialValue: ProcessingService(container: container))
+        NextcloudSync.shared.attach(container)
     }
 
     var body: some Scene {
