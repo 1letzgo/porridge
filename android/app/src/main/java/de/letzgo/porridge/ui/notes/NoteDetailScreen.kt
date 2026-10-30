@@ -88,6 +88,9 @@ import de.letzgo.porridge.audio.AudioPlayback
 import de.letzgo.porridge.audio.InlineDictation
 import de.letzgo.porridge.audio.RecordingSession
 import de.letzgo.porridge.logic.ActionItemsLogic
+import de.letzgo.porridge.data.Keys
+import de.letzgo.porridge.data.Me
+import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.ProcessingStatus
 import de.letzgo.porridge.model.Speaker
@@ -489,6 +492,7 @@ private fun SpeakerChips(speakers: List<Speaker>, onRename: (Speaker) -> Unit) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(speakerColor(speaker.colorIndex)))
                     Text("  ${speaker.name}  ", style = MaterialTheme.typography.labelLarge, color = Brand.navy)
+                    if (Me.isMe(speaker)) { MeBadge(); Spacer(Modifier.width(6.dp)) }
                     Icon(Icons.Filled.Edit, "Rename", tint = Brand.navy, modifier = Modifier.size(14.dp))
                 }
             }
@@ -584,6 +588,7 @@ private fun TranscriptTab(note: Note, player: AudioPlayback, onAssign: (Transcri
                         if (speaker != null) {
                             Box(Modifier.size(8.dp).clip(CircleShape).background(speakerColor(speaker.colorIndex)))
                             Text("  ${speaker.name}", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = speakerColor(speaker.colorIndex))
+                            if (Me.isMe(speaker)) { Spacer(Modifier.width(6.dp)); MeBadge() }
                             Spacer(Modifier.width(8.dp))
                         }
                         Text(segment.start.clockString, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -668,5 +673,14 @@ fun TextPrompt(title: String, initial: String, confirm: String, onDismiss: () ->
         text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true) },
         confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onConfirm(text.trim()) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** iOS: `MeBadge` — kennzeichnet den Nutzer unter den Sprechern. */
+@Composable
+fun MeBadge() {
+    Text(
+        "Me", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color.White,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(Brand.task).padding(horizontal = 6.dp, vertical = 1.dp),
     )
 }

@@ -23,7 +23,7 @@ object SummaryService {
         }
 
     suspend fun summarize(note: Note, progress: (String) -> Unit = {}): Note {
-        val request = SummaryLogic.request(note, Prefs.language, Prefs.string(Keys.MY_NAME))
+        val request = SummaryLogic.request(note, Prefs.language, de.letzgo.porridge.data.Me.name)
         val (raw, model) = when (Prefs.billing) {
             SummaryBilling.LOCAL -> {
                 val local = TextModels.selected ?: throw SummaryException("No on-device model is available.")

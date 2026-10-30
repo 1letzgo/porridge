@@ -210,6 +210,7 @@ enum VoiceProfiles {
     static func rename(_ profile: VoiceProfile, to name: String, context: ModelContext) {
         profile.name = name
         profile.updatedAt = Date()
+        if UserDefaults.standard.string(forKey: AppSettings.myVoiceKey) == profile.id.uuidString { AppSettings.setMyVoice(profile) }
         for meeting in (try? context.fetch(FetchDescriptor<Note>())) ?? [] {
             var speakers = meeting.speakers
             var changed = false
@@ -224,6 +225,7 @@ enum VoiceProfiles {
 
     /// Forgets a person's voice. Names already given in meetings stay.
     static func delete(_ profile: VoiceProfile, context: ModelContext) {
+        if UserDefaults.standard.string(forKey: AppSettings.myVoiceKey) == profile.id.uuidString { AppSettings.setMyVoice(nil) }
         for meeting in (try? context.fetch(FetchDescriptor<Note>())) ?? [] {
             var speakers = meeting.speakers
             var changed = false

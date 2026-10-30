@@ -14,6 +14,7 @@ struct SegmentRow: View {
                     Text(speaker.name)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.brandNavy)
+                    if AppSettings.isMe(speaker) { MeBadge() }
                 }
                 Spacer()
                 Text(segment.start.clockString)
@@ -30,6 +31,19 @@ struct SegmentRow: View {
             isActive ? Color.brandSky.opacity(0.22) : (speaker.map { Color.speaker($0.colorIndex) } ?? .gray).opacity(0.08),
             in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous)
         )
+    }
+}
+
+/// Marks the user among the speakers.
+struct MeBadge: View {
+    var body: some View {
+        Text("Me")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.brandTask, in: Capsule())
+            .accessibilityLabel("You")
     }
 }
 

@@ -211,9 +211,14 @@ object ActionItemsLogic {
         val owner = item.owner?.lowercase()?.takeIf { it.isNotBlank() }
             ?: return item.source == "manual" || (note != null && !note.isRecording)
         val parts = owner.replace(" und ", ",").replace(" and ", ",").split(',', '&', '/', '+').map { it.trim() }
-        return names.any { name ->
-            parts.any { part -> part == name || part.split(" ").first() == name || name.split(" ").first() == part }
-        }
+        return parts.any { isMe(it, names) }
+    }
+
+    /** iOS: `AppSettings.isMe` — ob ein Sprecher- oder Zuständigen-Name der Nutzer ist: ganzer Name oder Vorname einer Seite. */
+    fun isMe(name: String, names: List<String>): Boolean {
+        val value = name.trim().lowercase()
+        if (value.isEmpty()) return false
+        return names.any { mine -> value == mine || value.split(" ").first() == mine || mine.split(" ").first() == value }
     }
 
     /** iOS: `contextBlock` — offene Aufgaben und Entscheidungen als Text für das Modell, neueste Notiz zuerst. */

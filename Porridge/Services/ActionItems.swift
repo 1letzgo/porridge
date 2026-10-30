@@ -299,12 +299,7 @@ enum ActionItems {
             .replacingOccurrences(of: " und ", with: ",").replacingOccurrences(of: " and ", with: ",")
             .split(whereSeparator: { ",&/+".contains($0) })
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        return names.contains { name in
-            parts.contains { part in
-                part == name || part.split(separator: " ").first.map(String.init) == name
-                    || name.split(separator: " ").first.map(String.init) == part
-            }
-        }
+        return parts.contains { AppSettings.isMe($0, names: names) }
     }
 
     // MARK: - For the chat

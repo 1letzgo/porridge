@@ -12,6 +12,7 @@ struct SettingsView: View {
     @Environment(ProcessingService.self) private var processing
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \VoiceProfile.name) private var voices: [VoiceProfile]
+    @AppStorage(AppSettings.myVoiceKey) private var myVoice = ""
 
     @AppStorage(AppSettings.languageKey) private var language = "auto"
     @AppStorage(AppSettings.speechEngineKey) private var engine = SpeechEngine.parakeet
@@ -286,15 +287,24 @@ struct SettingsView: View {
                 Toggle("Recognize Known Voices", isOn: $voiceRecognition)
                     .font(.body)
                     .tint(Color.brandSky)
-                ForEach(voices) { voice in
+                // The user's own voice on top.
+                ForEach(voices.sorted { ($0.id.uuidString == myVoice ? 0 : 1) < ($1.id.uuidString == myVoice ? 0 : 1) }) { voice in
+                    let isMe = voice.id.uuidString == myVoice
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(voice.name).font(.body)
+                            Text(isMe ? "\(voice.name) (me)" : voice.name).font(.body)
                             Text("\(voice.seconds.clockString) of speech")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 8)
+                        Button {
+                            withAnimation(.snappy) { AppSettings.setMyVoice(isMe ? nil : voice) }
+                        } label: {
+                            Image(systemName: isMe ? "person.crop.circle.fill" : "person.crop.circle")
+                                .foregroundStyle(isMe ? Color.brandTask : Color.accentColor)
+                        }
+                        .accessibilityLabel(isMe ? "Not Me" : "This Is Me")
                         Button {
                             voiceName = voice.name
                             renamingVoice = voice

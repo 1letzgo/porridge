@@ -63,6 +63,9 @@ import de.letzgo.porridge.cloud.AIProvider
 import de.letzgo.porridge.cloud.CloudLLM
 import de.letzgo.porridge.data.AppUpdate
 import de.letzgo.porridge.data.Backup
+import de.letzgo.porridge.data.Me
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.outlined.AccountCircle
 import de.letzgo.porridge.sync.NextcloudLogin
 import de.letzgo.porridge.sync.NextcloudSync
 import de.letzgo.porridge.sync.SyncMode
@@ -168,12 +171,21 @@ private fun VoicesCard() {
     var forgetting by remember { mutableStateOf<de.letzgo.porridge.model.VoiceProfile?>(null) }
     Card("Voices", footer = "Naming a speaker teaches Porridge the voice. Only a voice print is stored, never audio.") {
         ToggleRow("Recognize Voices", Keys.VOICE_RECOGNITION)
-        for (profile in profiles) {
+        // Die eigene Stimme oben.
+        var myVoice by remember { mutableStateOf(Me.voiceID) }
+        for (profile in profiles.sortedBy { if (it.id == myVoice) 0 else 1 }) {
+            val isMe = profile.id == myVoice
             HorizontalDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(profile.name, fontWeight = FontWeight.SemiBold)
+                    Text(if (isMe) "${profile.name} (me)" else profile.name, fontWeight = FontWeight.SemiBold)
                     Text("${profile.seconds.toInt()} s of speech", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = { Me.setVoice(if (isMe) null else profile); myVoice = Me.voiceID }) {
+                    Icon(
+                        if (isMe) Icons.Filled.AccountCircle else Icons.Outlined.AccountCircle,
+                        if (isMe) "Not Me" else "This Is Me", tint = if (isMe) Brand.task else Brand.navy,
+                    )
                 }
                 TextButton(onClick = { renaming = profile }) { Text("Rename") }
                 IconButton(onClick = { forgetting = profile }) { Icon(Icons.Outlined.Delete, "Forget Voice", tint = Brand.danger) }
@@ -194,7 +206,6 @@ private fun VoicesCard() {
 @Composable
 private fun ModelRow(pack: ModelPack, subtitle: String, unload: () -> Unit) {
     val state by ModelManager.state(pack).collectAsState()
-    val coroutines = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -207,7 +218,7 @@ private fun ModelRow(pack: ModelPack, subtitle: String, unload: () -> Unit) {
             }
         }
         when (state) {
-            ModelState.NotInstalled, is ModelState.Failed -> Pill("Download", { coroutines.launch { ModelManager.download(pack) } })
+            ModelState.NotInstalled, is ModelState.Failed -> Pill("Download", { ModelManager.startDownload(pack) })
             is ModelState.Downloading, ModelState.Loading -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Brand.sky)
             ModelState.Installed, ModelState.Ready -> {
                 Icon(Icons.Filled.CheckCircle, "Installed", tint = Brand.sky)

@@ -285,6 +285,7 @@ struct NoteDetailView: View {
                         HStack(spacing: 6) {
                             Circle().fill(Color.speaker(speaker.colorIndex)).frame(width: 10, height: 10)
                             Text(speaker.name).font(.subheadline.weight(.semibold))
+                            if AppSettings.isMe(speaker) { MeBadge() }
                             Image(systemName: "pencil").font(.caption2.weight(.bold))
                         }
                         .foregroundStyle(Color.brandNavy)

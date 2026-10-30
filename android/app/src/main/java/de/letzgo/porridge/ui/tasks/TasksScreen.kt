@@ -84,7 +84,7 @@ fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> 
     }.sortedWith(compareByDescending<Triple<ActionItem, Note?, Long>> { it.third }.thenBy { it.first.order }).map { it.first to it.second }
     val new = tasks.filter { it.first.needsReview }
     val open = tasks.filter { !it.first.isDone && !it.first.needsReview }
-    val names = ActionItemsLogic.myNames(Prefs.string(Keys.MY_NAME))
+    val names = de.letzgo.porridge.data.Me.names
     val (mine, general) = open.partition { ActionItemsLogic.isMine(it.first, it.second, names) }
     val done = tasks.filter { it.first.isDone }
     var showDone by remember { mutableStateOf(false) }

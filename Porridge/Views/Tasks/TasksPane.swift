@@ -17,6 +17,7 @@ struct TasksPane: View {
 
     @Environment(\.modelContext) private var context
     @AppStorage(AppSettings.myNameKey) private var myName = ""
+    @AppStorage(AppSettings.myVoiceNameKey) private var myVoiceName = ""
     @State private var showDone = false
 
     private var byID: [UUID: Note] {
@@ -45,7 +46,7 @@ struct TasksPane: View {
         let all = tasks
         let new = all.filter { $0.item.needsReview }
         let open = all.filter { !$0.item.isDone && !$0.item.needsReview }
-        let names = AppSettings.myNames(from: myName)
+        let names = AppSettings.myNames(from: myName, voice: myVoiceName)
         let mine = open.filter { ActionItems.isMine($0.item, note: $0.note, names: names) }
         let general = open.filter { !ActionItems.isMine($0.item, note: $0.note, names: names) }
         let done = all.filter { $0.item.isDone }

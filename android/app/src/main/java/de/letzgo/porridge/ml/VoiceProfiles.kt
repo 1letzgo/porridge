@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ml
 
+import de.letzgo.porridge.data.Me
+
 import de.letzgo.porridge.logic.VoiceProfileLogic
 import de.letzgo.porridge.model.Speaker
 import de.letzgo.porridge.model.TranscriptSegment
@@ -56,6 +58,7 @@ class VoiceProfiles(private val db: PorridgeDatabase = PorridgeDatabase.shared) 
     /** Benennt eine Person überall um. */
     suspend fun rename(profile: VoiceProfile, name: String) {
         db.voiceProfiles().upsert(profile.copy(name = name, updatedAt = System.currentTimeMillis()))
+        if (Me.voiceID == profile.id) Me.setVoice(profile.copy(name = name))
         for (note in db.notes().all()) {
             val speakers = note.speakers
             if (speakers.none { it.profileID == profile.id }) continue
@@ -65,6 +68,7 @@ class VoiceProfiles(private val db: PorridgeDatabase = PorridgeDatabase.shared) 
 
     /** Vergisst die Stimme einer Person; schon vergebene Namen bleiben. */
     suspend fun delete(profile: VoiceProfile) {
+        if (Me.voiceID == profile.id) Me.setVoice(null)
         for (note in db.notes().all()) {
             val speakers = note.speakers
             if (speakers.none { it.profileID == profile.id }) continue
