@@ -104,5 +104,4 @@ if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   gh release create "$TAG" --repo "$REPO" --title "Porridge Mac $VERSION" --notes "$NOTES"
 fi
 gh release upload "$TAG" "$OUT/$ASSET" --repo "$REPO" --clobber
-rm -f "$NOTES_FILE"
 gh release view "$TAG" --repo "$REPO" --json url --jq .url
