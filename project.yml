@@ -1,0 +1,224 @@
+name: Porridge
+options:
+  bundleIdPrefix: de.letzgo
+  developmentLanguage: en
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio.git
+    # Newer than release 0.17.7: needed for `OfflineDiarizerManager.embedSpans` (voice recognition).
+    revision: c9cad1bb62cedb283fa557cd37df0a63241ab592
+    traits: [NemoTextProcessing, Diarizer]
+  MLXSwiftLM:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    majorVersion: 3.32.3
+  HuggingFace:
+    url: https://github.com/huggingface/swift-huggingface
+    from: 0.9.0
+  SwiftTransformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.3.0
+settings:
+  base:
+    DEVELOPMENT_TEAM: 699G2QY959
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Porridge:
+    type: application
+    platform: iOS
+    sources:
+      - path: Porridge
+      - path: Shared
+    dependencies:
+      - package: FluidAudio
+      - package: MLXSwiftLM
+        product: MLXLLM
+      - package: MLXSwiftLM
+        product: MLXLMCommon
+      - package: HuggingFace
+      - package: SwiftTransformers
+        product: Tokenizers
+      - target: PorridgeWidgets
+        embed: true
+      - target: PorridgeShare
+        embed: true
+    entitlements:
+      path: Porridge/Porridge.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.de.letzgo.porridge
+        aps-environment: development
+        com.apple.developer.kernel.increased-memory-limit: true
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.de.letzgo.porridge
+        com.apple.developer.icloud-services:
+          - CloudKit
+        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
+    info:
+      path: Porridge/Info.plist
+      properties:
+        CFBundleDisplayName: Porridge
+        ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
+        NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your device.
+        NSCalendarsFullAccessUsageDescription: Porridge shows today's appointments so you can record a meeting for one of them.
+        NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
+        UIBackgroundModes:
+          - audio
+          - remote-notification
+        UILaunchScreen:
+          UIColorName: BrandSky
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.letzgo.porridge
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        ENABLE_PREVIEWS: YES
+  PorridgeMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: Porridge
+        excludes:
+          - App/PorridgeApp.swift
+          - Info.plist
+          - Porridge.entitlements
+      - path: Shared
+      - path: PorridgeMac
+        excludes:
+          - Info.plist
+          - PorridgeMac.entitlements
+    dependencies:
+      - package: FluidAudio
+      - package: MLXSwiftLM
+        product: MLXLLM
+      - package: MLXSwiftLM
+        product: MLXLMCommon
+      - package: HuggingFace
+      - package: SwiftTransformers
+        product: Tokenizers
+    entitlements:
+      path: PorridgeMac/PorridgeMac.entitlements
+      properties:
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.de.letzgo.porridge
+        com.apple.developer.icloud-services:
+          - CloudKit
+        com.apple.developer.aps-environment: development
+        com.apple.security.device.audio-input: true
+        com.apple.security.personal-information.calendars: true
+        com.apple.security.device.bluetooth: true
+    info:
+      path: PorridgeMac/Info.plist
+      properties:
+        CFBundleDisplayName: Porridge
+        LSApplicationCategoryType: public.app-category.productivity
+        NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your Mac. For dictation it listens while you hold the shortcut.
+        NSCalendarsFullAccessUsageDescription: Porridge shows today's appointments so you can record a meeting for one of them.
+        NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
+        NSAppleEventsUsageDescription: Porridge pastes the dictated text into the app you are using.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.letzgo.porridge
+        PRODUCT_NAME: Porridge
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        COMBINE_HIDPI_IMAGES: YES
+  PorridgeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: PorridgeUITests
+    dependencies:
+      - target: Porridge
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.letzgo.porridge.uitests
+        TEST_TARGET_NAME: Porridge
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+  PorridgeWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PorridgeWidgets
+      - path: Shared
+    info:
+      path: PorridgeWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Porridge
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.letzgo.porridge.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+  PorridgeShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PorridgeShare
+      - path: Shared/LinkInbox.swift
+    entitlements:
+      path: PorridgeShare/PorridgeShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.de.letzgo.porridge
+    info:
+      path: PorridgeShare/Info.plist
+      properties:
+        CFBundleDisplayName: Porridge
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.letzgo.porridge.share
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+schemes:
+  Porridge:
+    build:
+      targets:
+        Porridge: all
+    test:
+      targets:
+        - PorridgeUITests
+    run:
+      config: Debug
+    archive:
+      config: Release
+  PorridgeMac:
+    build:
+      targets:
+        PorridgeMac: all
+    run:
+      config: Debug
+    archive:
+      config: Release
