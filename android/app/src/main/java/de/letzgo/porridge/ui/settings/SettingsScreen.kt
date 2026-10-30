@@ -88,6 +88,8 @@ import java.util.Locale
 /** iOS: `SettingsView` (Views/Settings/SettingsView.swift) — Karten wie auf iOS; statt iCloud eine Sicherung. */
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onPlaud: () -> Unit) {
+    var showAcknowledgements by remember { mutableStateOf(false) }
+    if (showAcknowledgements) return AcknowledgementsScreen { showAcknowledgements = false }
     BackHandler { onBack() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -103,6 +105,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaud: () -> Unit) {
             Card("Plaud") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Import Recordings", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", onPlaud) } }
             BackupCard()
             AboutCard()
+            Card("Acknowledgements") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Open Source Licenses", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", { showAcknowledgements = true }) } }
         }
     }
 }

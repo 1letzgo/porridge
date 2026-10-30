@@ -462,6 +462,8 @@ struct SettingsView: View {
             #if os(macOS)
             updateRow
             #endif
+            CardDivider()
+            AcknowledgementsRow()
         }
     }
 
