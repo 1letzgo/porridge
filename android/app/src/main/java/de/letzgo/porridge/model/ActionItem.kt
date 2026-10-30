@@ -7,8 +7,10 @@ import kotlinx.serialization.Serializable
 import java.util.UUID
 
 /**
- * iOS: `ActionItem` (Models/ActionItem.swift) — eine Aufgabe oder Entscheidung aus der Zusammenfassung einer
- * Notiz, abhakbar und über alle Meetings abfragbar. Abhaken setzt auch die Zeile in der Zusammenfassung.
+ * iOS: `ActionItem` (Models/ActionItem.swift) — eine Aufgabe (oder Entscheidung) mit eigenem Titel, Zuständigem,
+ * Erledigt-Stand und eigenem Text. Die meisten stammen aus der Zusammenfassung einer Notiz (`noteID`); sie lassen
+ * sich umbenennen und beschreiben und bleiben, wenn ihre Zeile oder Notiz geht. Abhaken setzt auch die Zeile in
+ * der Zusammenfassung.
  */
 @Serializable
 @Entity(tableName = "action_items", indices = [Index("noteID")])
@@ -25,8 +27,16 @@ data class ActionItem(
     val createdAt: Long = System.currentTimeMillis(),
     /** Position in der Zusammenfassung, damit die Reihenfolge überall gleich bleibt. */
     val order: Int = 0,
-    /** Herkunft: "summary" (folgt der Zusammenfassung) oder "manual". */
+    /**
+     * Herkunft: "summary" (folgt der Zusammenfassung), "manual" (von Hand angelegt) oder "kept" (kam aus einer
+     * Zusammenfassung, wurde bearbeitet und lebt eigenständig weiter, weil ihre Zeile weg ist).
+     */
     val source: String = "summary",
+    /** Eigener Text der Aufgabe (Markdown wie der Text einer Notiz): Details, Links, Teilschritte. */
+    val details: String = "",
+    /** Die Zusammenfassungs-Zeile, aus der der Eintrag entstand (`ActionItemsLogic.key`); bleibt beim Umbenennen. */
+    val summaryKey: String? = null,
+    val updatedAt: Long = System.currentTimeMillis(),
 ) {
     enum class Kind(val raw: String) {
         TASK("task"),

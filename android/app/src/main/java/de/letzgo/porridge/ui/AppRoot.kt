@@ -26,7 +26,9 @@ import de.letzgo.porridge.model.TranscriptSegment
 import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.ui.components.ListMode
+import de.letzgo.porridge.ui.tasks.TaskDetailScreen
 import de.letzgo.porridge.ui.notes.NoteDetailScreen
+import de.letzgo.porridge.ui.tasks.TaskDetailScreen
 import de.letzgo.porridge.ui.notes.NotesScreen
 import de.letzgo.porridge.ui.onboarding.OnboardingScreen
 import de.letzgo.porridge.ui.plaud.PlaudImportScreen
@@ -42,6 +44,7 @@ sealed interface Screen {
     data class Recording(val title: String?) : Screen
     data object Settings : Screen
     data object Plaud : Screen
+    data class Task(val id: String) : Screen
 }
 
 /** Ein geteilter Link, der noch geöffnet werden will (aus `MainActivity`, `ACTION_SEND`). */
@@ -86,7 +89,9 @@ fun AppRoot() {
                 onNewNote = { folderID -> val draft = Note(folderID = folderID); push(Screen.Detail(draft.id, draft)) },
                 onRecord = { showCalendar = true },
                 onSettings = { push(Screen.Settings) },
+                onEditTask = { push(Screen.Task(it)) },
             )
+            is Screen.Task -> TaskDetailScreen(top.id, onOpenNote = { id -> pop(); open(id) }) { pop() }
             is Screen.Detail -> NoteDetailScreen(top.id, top.draft) { pop() }
             is Screen.Settings -> SettingsScreen(onBack = { pop() }, onPlaud = { push(Screen.Plaud) })
             is Screen.Plaud -> PlaudImportScreen(onBack = { pop() }) { id -> stack.clear(); open(id) }

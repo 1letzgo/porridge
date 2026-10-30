@@ -91,7 +91,7 @@ object SummaryLogic {
         val header = if (hasTranscript) meetingHeader(note, date) else "Date: $date" + (note.url?.let { "\nSource: $it" } ?: "")
         return Request(
             header = header, material = material, language = language,
-            system = if (hasTranscript) systemPrompt(language) else notePrompt(language),
+            system = if (hasTranscript) systemPrompt(language) else notePrompt(language, note.isLink),
             noun = if (hasTranscript) "meeting" else "note", hasTranscript = hasTranscript,
         )
     }
@@ -136,24 +136,19 @@ object SummaryLogic {
         The text is in ${language.name}; write the notes in ${language.name} only.
     """.trimIndent()
 
-    fun notePrompt(language: SummaryLanguage) = """
-        You summarize a personal note. The note is written in ${language.name}. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.
-        The note may come from dictation and contain recognition mistakes; silently fix obvious ones. Only use what is in the note.
-
-        Reply in exactly this format (Markdown), with all headings in ${language.name}:
-
-        ## ${language.headings.summary}
-        <1–3 sentences>
-
-        ## ${language.headings.keyPoints}
-        - … (omit if the note is very short)
-
-        ## ${language.headings.actionItems}
-        - [ ] Task
-        (omit if there are none)
-
-        TAGS: <3 to 5 short keywords in ${language.name}, separated by commas, without # signs>
-    """.trimIndent()
+    /** Eine gespeicherte Seite wird nur zusammengefasst: eine Seite gibt nie Aufgaben (`isLink`). */
+    fun notePrompt(language: SummaryLanguage, isLink: Boolean = false): String {
+        val intro = if (isLink) {
+            "You summarize a web page the user saved. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.\nOnly use what is on the page. Do not write tasks or to-dos: a page is read, not worked on."
+        } else {
+            "You summarize a personal note. The note is written in ${language.name}. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.\nThe note may come from dictation and contain recognition mistakes; silently fix obvious ones. Only use what is in the note."
+        }
+        val tasks = if (isLink) "" else "\n## ${language.headings.actionItems}\n- [ ] Task\n(omit if there are none)\n"
+        return intro + "\n\nReply in exactly this format (Markdown), with all headings in ${language.name}:\n\n" +
+            "## ${language.headings.summary}\n<1–3 sentences>\n\n" +
+            "## ${language.headings.keyPoints}\n- … (omit if the ${if (isLink) "page" else "note"} is very short)\n" +
+            tasks + "\nTAGS: <3 to 5 short keywords in ${language.name}, separated by commas, without # signs>"
+    }
 
     fun systemPrompt(language: SummaryLanguage) = """
         You summarize meeting transcripts. The meeting was held in ${language.name}. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.

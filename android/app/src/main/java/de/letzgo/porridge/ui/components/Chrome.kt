@@ -36,7 +36,7 @@ import de.letzgo.porridge.ui.Brand
 
 /** iOS: `ChromeBar` — eigene Leiste wie in Things: farbiges Listen-Icon und großer Titel links, schlichte Icons rechts. */
 @Composable
-fun ChromeBar(title: String, icon: ImageVector?, actions: @Composable RowScope.() -> Unit) {
+fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, actions: @Composable RowScope.() -> Unit) {
     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 8.dp, top = 8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Spacer(Modifier.weight(1f))
@@ -44,7 +44,7 @@ fun ChromeBar(title: String, icon: ImageVector?, actions: @Composable RowScope.(
         }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)) {
             if (icon != null) {
-                Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(Brand.sky), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(tint), contentAlignment = Alignment.Center) {
                     Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(10.dp))
@@ -54,8 +54,8 @@ fun ChromeBar(title: String, icon: ImageVector?, actions: @Composable RowScope.(
     }
 }
 
-/** iOS: `ListTabs` — Timeline, Chat, Tasks, Search. */
-enum class ListMode(val title: String) { TIMELINE("Timeline"), CHAT("Chat"), TASKS("Tasks"), SEARCH("Search") }
+/** iOS: `ListTabs` — Timeline, Tasks, Chat, Search. */
+enum class ListMode(val title: String) { TIMELINE("Timeline"), TASKS("Tasks"), CHAT("Chat"), SEARCH("Search") }
 
 @Composable
 fun ListTabs(mode: ListMode, onChange: (ListMode) -> Unit) {
@@ -72,10 +72,10 @@ fun ListTabs(mode: ListMode, onChange: (ListMode) -> Unit) {
 
 /** iOS: Abschnittstitel wie in Things — klein, fett, in der Akzentfarbe, über einer Haarlinie. */
 @Composable
-fun SectionHeader(title: String, count: Int? = null, modifier: Modifier = Modifier, trailing: @Composable () -> Unit = {}) {
+fun SectionHeader(title: String, count: Int? = null, modifier: Modifier = Modifier, color: Color = Brand.sky, trailing: @Composable () -> Unit = {}) {
     Column(modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.labelLarge, color = Brand.sky)
+            Text(title, style = MaterialTheme.typography.labelLarge, color = color)
             if (count != null) Text("  $count", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
             trailing()

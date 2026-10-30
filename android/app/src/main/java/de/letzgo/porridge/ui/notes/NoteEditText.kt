@@ -30,7 +30,9 @@ import de.letzgo.porridge.model.NoteText
  * die Engine selbst ausführt, und lässt alles andere die Tastatur tippen.
  */
 @SuppressLint("ViewConstructor")
-class NoteEditText(context: Context, private val colors: Colors, private val onMarkdown: (String) -> Unit) : AppCompatEditText(context) {
+class NoteEditText(context: Context, private val colors: Colors, private val onMarkdown: (String) -> Unit) :
+    // Der Plattform-Stil des Felds: das App-Theme ist kein AppCompat-Theme, ohne ihn wäre das Feld per Tipp nicht fokussierbar.
+    AppCompatEditText(context, null, android.R.attr.editTextStyle) {
     data class Colors(val text: Int, val secondary: Int, val heading: Int, val accent: Int, val tag: Int)
 
     private val buffer = EditableBuffer(editableText)

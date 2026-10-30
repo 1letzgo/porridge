@@ -25,7 +25,7 @@ class NoteStore(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
         note.audioFileNames.forEach(AudioStore::delete)
         AudioStore.delete(note.pendingAudioFileName)
         AudioStore.delete(note.audioFileName)
-        db.actionItems().deleteForNote(note.id)
+        ActionItemStore(db).remove(note.id)
         db.notes().delete(note)
     }
 

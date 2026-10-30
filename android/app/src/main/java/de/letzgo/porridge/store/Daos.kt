@@ -88,6 +88,12 @@ interface ActionItemDao {
     @Query("SELECT * FROM action_items")
     suspend fun all(): List<ActionItem>
 
+    @Query("SELECT * FROM action_items WHERE id = :id")
+    suspend fun get(id: String): ActionItem?
+
+    @Query("SELECT * FROM action_items WHERE id = :id")
+    fun observe(id: String): Flow<ActionItem?>
+
     @Query("SELECT * FROM action_items WHERE noteID = :noteID ORDER BY `order`")
     suspend fun forNote(noteID: String): List<ActionItem>
 

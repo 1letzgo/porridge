@@ -115,6 +115,7 @@ fun NoteBodyEditor(
         accent = Brand.sky.toArgb(), tag = Brand.sky.toArgb(),
     )
     var isEmpty by remember { mutableStateOf(text.isEmpty()) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     Column(modifier) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             AndroidView(
@@ -127,6 +128,11 @@ fun NoteBodyEditor(
                         load(text)
                         controller.view = this
                         setOnFocusChangeListener { _, focused -> controller.isEditing = focused }
+                        // Ein Compose-Feld (Titel) hält sonst den Fokus fest, und der Tipp hier bliebe wirkungslos.
+                        setOnTouchListener { v, event ->
+                            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN && !v.hasFocus()) focusManager.clearFocus(force = true)
+                            false
+                        }
                     }
                 },
                 update = { view ->

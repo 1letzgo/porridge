@@ -116,6 +116,7 @@ fun NotesScreen(
     onNewNote: (folderID: String?) -> Unit,
     onRecord: () -> Unit,
     onSettings: () -> Unit,
+    onEditTask: (String) -> Unit,
 ) {
     val db = PorridgeDatabase.shared
     val notes by db.notes().observeAll().collectAsState(initial = emptyList())
@@ -210,7 +211,7 @@ fun NotesScreen(
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
-            ChromeBar(title, icon) {
+            ChromeBar(title, icon, tint = if (mode == ListMode.TASKS) Brand.task else Brand.sky) {
                 if (mode == ListMode.TIMELINE) {
                     FolderMenu(notes, folders, scope, onScope)
                     if (scope != NoteScope.Trash) IconButton(onClick = { importer.launch(arrayOf("audio/*", "video/*")) }) { Icon(Icons.Outlined.Download, "Import Audio", tint = Brand.navy) }
@@ -225,7 +226,7 @@ fun NotesScreen(
             when (mode) {
                 ListMode.TIMELINE -> NoteList(shown, scope, stages, folders.associate { it.id to it.name }, onOpen, Modifier.weight(1f))
                 ListMode.CHAT -> ChatScreen(notes, items, onOpen, Modifier.weight(1f))
-                ListMode.TASKS -> TasksScreen(items, notes, onOpen, Modifier.weight(1f))
+                ListMode.TASKS -> TasksScreen(items, notes, onOpen, { onEditTask(it.id) }, Modifier.weight(1f))
                 ListMode.SEARCH -> Column(Modifier.weight(1f)) {
                     SearchBar(search, { search = it }, tagTokens, { tagTokens = it }, tagCounts(notes.filter { !it.isDeleted }))
                     if (search.isBlank() && tagTokens.isEmpty()) Spacer(Modifier.height(1.dp))
@@ -235,6 +236,12 @@ fun NotesScreen(
         }
         if (mode == ListMode.TIMELINE && scope != NoteScope.Trash) {
             CreateMenu(showCreate, { showCreate = it }, onNote = { onNewNote(folderID) }, onMeeting = onRecord, onLink = { showAddLink = true })
+        }
+        // iOS: derselbe schwebende Plus-Knopf im Tasks-Tab, in Grün.
+        if (mode == ListMode.TASKS) {
+            SkyFab(Icons.Filled.Add, "New Task", Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), container = Brand.task) {
+                coroutines.launch { onEditTask(ActionItemStore().newTask().id) }
+            }
         }
     }
 

@@ -260,7 +260,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                         NoteTab.SUMMARY -> SummaryTab(note, isSummarizing, summaryStatus ?: stage, onSummarize = { coroutines.launch { if (note.summary == null) summarize() else confirmResummarize = true } },
                             onEdit = { editingSummary = true }, onInsert = { update { n -> n.copy(text = if (n.text.isEmpty()) n.summary.orEmpty() else n.text + "\n\n" + n.summary) } },
                             onCopy = { copy(context, note.summary.orEmpty()) },
-                            onDelete = { coroutines.launch { db.notes().upsert(note.copy(summary = null, summaryModel = null, summarizedAt = null)); db.actionItems().deleteForNote(note.id) } },
+                            onDelete = { coroutines.launch { db.notes().upsert(note.copy(summary = null, summaryModel = null, summarizedAt = null)); ActionItemStore().remove(note.id) } },
                             onToggleTask = { line -> coroutines.launch { toggleSummaryTask(note, line) } })
                         NoteTab.TRANSCRIPT -> TranscriptTab(note, player) { segment, speaker -> update { n -> n.withSegments(n.segments.map { if (it.id == segment.id) it.copy(speakerId = speaker.id) else it }) } }
                         NoteTab.ARTICLE -> ArticleTab(note, stage, context)
@@ -361,11 +361,11 @@ private suspend fun toggleSummaryTask(note: Note, line: Int) {
     val task = parsed.firstOrNull { it.line == line } ?: return
     val before = parsed.takeWhile { it.line < line }.count { it.key == task.key }
     val store = ActionItemStore()
-    var siblings = db.actionItems().forNote(note.id).filter { ActionItemsLogic.key(it) == task.key }
+    var siblings = db.actionItems().forNote(note.id).filter { it.isFromSummary && ActionItemsLogic.matchKey(it) == task.key }
     if (before >= siblings.size) {
         // Noch keine Einträge (alte Zusammenfassung): erst anlegen, dann abhaken.
         store.sync(note)
-        siblings = db.actionItems().forNote(note.id).filter { ActionItemsLogic.key(it) == task.key }
+        siblings = db.actionItems().forNote(note.id).filter { it.isFromSummary && ActionItemsLogic.matchKey(it) == task.key }
     }
     siblings.getOrNull(before)?.let { store.setDone(it, !task.done) }
 }

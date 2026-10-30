@@ -61,4 +61,39 @@ class ActionItemsLogicTest {
         val box = items.first { it.text == "Raum buchen" }
         assertTrue("- [ ] Raum buchen" in ActionItemsLogic.summaryAfterSetDone(summary, box, false, items))
     }
+
+    @Test fun renamedTaskStillMatchesItsLine() {
+        val note = Note(summary = summary)
+        val items = ActionItemsLogic.sync(note, emptyList()).upserts
+        assertTrue(items.all { it.summaryKey != null })
+        val renamed = items.map { if (it.text == "Bericht schreiben") it.copy(text = "Quartalsbericht") else it }
+        val plan = ActionItemsLogic.sync(note, renamed)
+        assertTrue(plan.deletes.isEmpty())
+        assertTrue(plan.upserts.none { it.text == "Bericht schreiben" })
+    }
+
+    @Test fun touchedTasksStayWhenTheirLineGoes() {
+        val note = Note(summary = summary)
+        val items = ActionItemsLogic.sync(note, emptyList()).upserts
+            .map { if (it.text == "Bericht schreiben") it.copy(details = "Zahlen von Q3") else it }
+        val plan = ActionItemsLogic.sync(note.copy(summary = "## Aufgaben\n- Angebot schicken – Anna"), items)
+        val kept = plan.upserts.single { it.text == "Bericht schreiben" }
+        assertEquals("kept", kept.source)
+        assertTrue(plan.deletes.none { it.text == "Bericht schreiben" })
+        assertTrue(plan.deletes.any { it.text == "Wir nehmen Variante B" })
+    }
+
+    @Test fun pagesNeverGiveTasks() {
+        val page = Note(summary = summary, url = "https://example.com")
+        assertTrue(ActionItemsLogic.sync(page, emptyList()).isEmpty)
+        val items = ActionItemsLogic.sync(Note(id = page.id, summary = summary), emptyList()).upserts.map { it.copy(isDone = true) }
+        assertEquals(items.size, ActionItemsLogic.sync(page, items).deletes.size)
+    }
+
+    @Test fun ownTasksShowInTheChatContext() {
+        val own = ActionItem(text = "Steuer", details = "Belege sammeln", source = "manual")
+        val block = ActionItemsLogic.contextBlock(listOf(own), emptyList(), 2000)
+        assertTrue("- Steuer (task of its own" in block)
+        assertTrue("Belege sammeln" in block)
+    }
 }

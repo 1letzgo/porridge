@@ -115,6 +115,12 @@ object ActionItemsLogic {
 
     fun key(item: ActionItem) = key(item.kind, item.text, item.owner)
 
+    /** Woran eine Zusammenfassungs-Zeile den Eintrag erkennt: die Zeile, aus der er entstand, auch nach Umbenennen. */
+    fun matchKey(item: ActionItem) = item.summaryKey ?: key(item)
+
+    /** Nichts von Hand geändert: noch der Wortlaut der Zusammenfassung, kein eigener Text, nicht abgehakt. */
+    fun isUntouched(item: ActionItem) = item.details.isBlank() && !item.isDone && key(item) == matchKey(item)
+
     /** Was [sync] am Speicher ändern will. */
     data class SyncPlan(val upserts: List<ActionItem>, val deletes: List<ActionItem>) {
         val isEmpty get() = upserts.isEmpty() && deletes.isEmpty()
@@ -122,23 +128,30 @@ object ActionItemsLogic {
 
     /**
      * iOS: `ActionItems.sync` — bringt die Einträge einer Notiz in Einklang mit ihrer Zusammenfassung: neue
-     * Zeilen werden Einträge, abgehakte Zeilen haken ihren Eintrag ab, verschwundene Zeilen nehmen ihren
-     * Eintrag mit. In der App abgehakte Einträge behalten ihren Stand, solange ihre Zeile ein einfacher Punkt ist.
+     * Zeilen werden Einträge, abgehakte Zeilen haken ihren Eintrag ab. Eine verschwundene Zeile nimmt ihren
+     * Eintrag nur mit, solange niemand ihn angefasst hat; ein bearbeiteter, abgehakter oder beschriebener
+     * Eintrag bleibt als eigenständige Aufgabe ("kept"). Eine gespeicherte Seite gibt nie Aufgaben.
      */
     fun sync(note: Note, existing: List<ActionItem>, now: Long = System.currentTimeMillis()): SyncPlan {
-        val parsed = parse(note.summary.orEmpty())
+        val parsed = if (note.isLink) emptyList() else parse(note.summary.orEmpty())
         val remaining = LinkedHashMap<String, ArrayDeque<ActionItem>>()
-        for (item in existing.filter { it.isFromSummary }.sortedBy { it.order }) {
-            remaining.getOrPut(key(item)) { ArrayDeque() }.addLast(item)
+        // Wie iOS: unter Kopien gleichen Wortlauts gewinnt die kleinste id (Kopien entstehen dort durch iCloud).
+        for (item in existing.filter { it.isFromSummary }.sortedWith(compareBy<ActionItem> { it.order }.thenBy { it.id })) {
+            remaining.getOrPut(matchKey(item)) { ArrayDeque() }.addLast(item)
         }
+        for (list in remaining.values) { val sorted = list.sortedBy { it.id }; list.clear(); list.addAll(sorted) }
         val upserts = mutableListOf<ActionItem>()
         parsed.forEachIndexed { order, line ->
-            val found = remaining[line.key]?.removeFirstOrNull()
+            val list = remaining[line.key]
+            val found = list?.removeFirstOrNull()
             var item = found ?: ActionItem(
                 noteID = note.id, kindRaw = line.kind.raw, text = line.text, owner = line.owner,
-                createdAt = note.summarizedAt ?: now,
+                summaryKey = line.key, createdAt = note.summarizedAt ?: now,
             )
             var changed = found == null
+            // Eine anderswo abgehakte Kopie zählt.
+            val copy = list?.firstOrNull { it.isDone }
+            if (copy != null && !item.isDone && !line.isCheckbox) { item = item.copy(isDone = true, doneAt = copy.doneAt); changed = true }
             if (item.order != order) { item = item.copy(order = order); changed = true }
             if (line.isCheckbox && item.isDone != line.done) {
                 item = item.copy(isDone = line.done, doneAt = if (line.done) now else null)
@@ -146,7 +159,11 @@ object ActionItemsLogic {
             }
             if (changed) upserts += item
         }
-        return SyncPlan(upserts, remaining.values.flatten())
+        val deletes = mutableListOf<ActionItem>()
+        for (item in remaining.values.flatten()) {
+            if (isUntouched(item) || note.isLink) deletes += item else upserts += item.copy(source = "kept")
+        }
+        return SyncPlan(upserts, deletes)
     }
 
     /**
@@ -155,8 +172,8 @@ object ActionItemsLogic {
      */
     fun summaryAfterSetDone(summary: String, item: ActionItem, done: Boolean, siblings: List<ActionItem>): String {
         if (!item.isFromSummary) return summary
-        val target = key(item)
-        val position = siblings.filter { key(it) == target }.sortedBy { it.order }.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
+        val target = matchKey(item)
+        val position = siblings.filter { it.isFromSummary && matchKey(it) == target }.sortedBy { it.order }.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
         val matches = parse(summary).filter { it.key == target }
         if (position >= matches.size) return summary
         val line = matches[position]
@@ -185,12 +202,16 @@ object ActionItemsLogic {
         val byID = notes.associateBy { it.id }
         val format = DateFormat.getDateInstance(DateFormat.MEDIUM)
         fun line(item: ActionItem): String? {
-            val note = item.noteID?.let { byID[it] }?.takeIf { !it.isDeleted } ?: return null
-            return "- ${item.line} («${note.displayTitle}», ${format.format(Date(note.createdAt))})"
+            val details = item.details.trim()
+            val more = if (details.isEmpty()) "" else "\n  " + details.take(240).replace("\n", " ")
+            val note = item.noteID?.let { byID[it] }
+                ?: return "- ${item.line} (task of its own, ${format.format(Date(item.createdAt))})" + more
+            if (note.isDeleted) return null
+            return "- ${item.line} («${note.displayTitle}», ${format.format(Date(note.createdAt))})" + more
         }
         val dated = items.mapNotNull { item ->
-            val note = item.noteID?.let { byID[it] }?.takeIf { !it.isDeleted } ?: return@mapNotNull null
-            note.createdAt to item
+            val note = item.noteID?.let { byID[it] } ?: return@mapNotNull item.createdAt to item
+            if (note.isDeleted || note.isLink) null else note.createdAt to item
         }.sortedByDescending { it.first }.map { it.second }
         val open = dated.filter { it.kind == ActionItem.Kind.TASK && !it.isDone }.mapNotNull(::line)
         val done = dated.filter { it.kind == ActionItem.Kind.TASK && it.isDone }.take(10).mapNotNull(::line)

@@ -1,12 +1,15 @@
 package de.letzgo.porridge.ui.tasks
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,7 +20,17 @@ import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.foundation.background
+import androidx.compose.ui.platform.LocalContext
+import de.letzgo.porridge.model.NoteText
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,16 +61,19 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * iOS: `TasksPane` (Views/Tasks/TasksPane.swift) — alle Aufgaben aus den Zusammenfassungen: offen zuerst, dann
- * erledigt, je mit ihrer Notiz. Abhaken hier hakt auch die Zeile in der Zusammenfassung ab.
+ * iOS: `TasksPane` (Views/Tasks/TasksPane.swift) — alle Aufgaben: aus den Zusammenfassungen und von Hand
+ * angelegte, offen zuerst, dann erledigt. Abhaken hier hakt auch die Zeile in der Zusammenfassung ab; ein Tipp
+ * öffnet die Aufgabe als eigene Seite.
  */
 @Composable
-fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
+fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit, modifier: Modifier = Modifier) {
     val byID = notes.associateBy { it.id }
+    // Eine Aufgabe, deren Notiz weg ist, bleibt eigenständig; Seiten geben keine Aufgaben.
     val tasks = items.mapNotNull { item ->
-        val note = item.noteID?.let { byID[it] }?.takeIf { item.kind == ActionItem.Kind.TASK && !it.isDeleted } ?: return@mapNotNull null
-        item to note
-    }.sortedWith(compareByDescending<Pair<ActionItem, Note>> { it.second.createdAt }.thenBy { it.first.order })
+        if (item.kind != ActionItem.Kind.TASK) return@mapNotNull null
+        val note = item.noteID?.let { byID[it] } ?: return@mapNotNull Triple(item, null, item.createdAt)
+        if (note.isDeleted || note.isLink) null else Triple(item, note, note.createdAt)
+    }.sortedWith(compareByDescending<Triple<ActionItem, Note?, Long>> { it.third }.thenBy { it.first.order }).map { it.first to it.second }
     val open = tasks.filter { !it.first.isDone }
     val done = tasks.filter { it.first.isDone }
     var showDone by remember { mutableStateOf(false) }
@@ -67,52 +83,92 @@ fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> 
 
     if (tasks.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            EmptyState("No Tasks Yet", "Tasks come from the summaries of your meetings and notes. Summarize a meeting and its action items show up here.", Icons.Filled.Checklist)
+            EmptyState("No Tasks Yet", "Tasks come from the summaries of your meetings and notes, or you add one with the plus button.", Icons.Filled.Checklist)
         }
         return
     }
-    LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 32.dp)) {
+    @Composable
+    fun row(item: ActionItem, note: Note?) = TaskRow(
+        item, note, onOpen = onOpen, onEdit = onEdit,
+        onToggle = { coroutines.launch { store.setDone(item, !item.isDone) } },
+        onDelete = { coroutines.launch { store.delete(item) } },
+    )
+    LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 96.dp)) {
         if (open.isNotEmpty()) {
-            item { SectionHeader("Open", open.size) }
-            items(open, key = { it.first.id }) { (item, note) -> TaskRow(item, note, onOpen) { coroutines.launch { store.setDone(item, !item.isDone) } } }
+            item { SectionHeader("Open", open.size, color = Brand.task) }
+            items(open, key = { it.first.id }) { (item, note) -> row(item, note) }
         }
         if (done.isNotEmpty()) {
             item {
-                SectionHeader("Done", done.size, Modifier.clickable { showDone = !showDone }) {
+                SectionHeader("Done", done.size, Modifier.clickable { showDone = !showDone }, color = Brand.task) {
                     Icon(Icons.Filled.ChevronRight, if (showDone) "Hide" else "Show", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.rotate(rotation))
                 }
             }
-            if (showDone) items(done, key = { it.first.id }) { (item, note) -> TaskRow(item, note, onOpen) { coroutines.launch { store.setDone(item, !item.isDone) } } }
+            if (showDone) items(done, key = { it.first.id }) { (item, note) -> row(item, note) }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun TaskRow(item: ActionItem, note: Note, onOpen: (String) -> Unit, onToggle: () -> Unit) {
-    Column {
-        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 20.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.Top) {
-            IconButton(onClick = onToggle) {
-                Icon(if (item.isDone) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, if (item.isDone) "Mark as Open" else "Mark as Done", tint = Brand.sky)
+private fun TaskRow(item: ActionItem, note: Note?, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit, onToggle: () -> Unit, onDelete: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val swipe = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
+        if (value == SwipeToDismissBoxValue.EndToStart) { onDelete(); true } else false
+    })
+    SwipeToDismissBox(
+        swipe, enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(Modifier.fillMaxSize().background(Brand.danger).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
+                Icon(Icons.Outlined.Delete, "Delete", tint = androidx.compose.ui.graphics.Color.White)
             }
-            Column(Modifier.weight(1f).clickable { onOpen(note.id) }.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    item.text, style = MaterialTheme.typography.bodyLarge,
-                    color = if (item.isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                    textDecoration = if (item.isDone) TextDecoration.LineThrough else null,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    item.owner?.let {
-                        Surface(shape = RoundedCornerShape(50), color = Brand.sky.copy(alpha = 0.18f)) {
-                            Text(it, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold), color = Brand.navy, modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp))
+        },
+    ) {
+        Column(Modifier.background(MaterialTheme.colorScheme.background)) {
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 20.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.Top) {
+                IconButton(onClick = onToggle) {
+                    Icon(if (item.isDone) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, if (item.isDone) "Mark as Open" else "Mark as Done", tint = Brand.task)
+                }
+                Box(Modifier.weight(1f)) {
+                    Column(
+                        Modifier.fillMaxWidth().combinedClickable(onClick = { onEdit(item) }, onLongClick = { menu = true }).padding(top = 10.dp, bottom = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            item.text.ifEmpty { "Untitled Task" }, style = MaterialTheme.typography.bodyLarge,
+                            color = if (item.isDone || item.text.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            textDecoration = if (item.isDone) TextDecoration.LineThrough else null,
+                        )
+                        val details = NoteText.plainLines(item.details).joinToString(" ")
+                        if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            item.owner?.let {
+                                Surface(shape = RoundedCornerShape(50), color = Brand.task.copy(alpha = 0.18f)) {
+                                    Text(it, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold), color = Brand.navy, modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp))
+                                }
+                            }
+                            val date = SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(note?.createdAt ?: item.createdAt))
+                            Text(
+                                note?.let { "${it.displayTitle} · $date" } ?: date,
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
-                    Text(
-                        "${note.displayTitle} · ${SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(note.createdAt))}",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
+                    DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Open Task") }, onClick = { menu = false; onEdit(item) })
+                        note?.let { n -> DropdownMenuItem(text = { Text("Open Note") }, onClick = { menu = false; onOpen(n.id) }) }
+                        DropdownMenuItem(text = { Text("Copy") }, onClick = {
+                            menu = false
+                            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                            clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Task", item.line))
+                        })
+                        HorizontalDivider()
+                        DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { menu = false; onDelete() })
+                    }
                 }
             }
+            HorizontalDivider(Modifier.padding(start = 56.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
         }
-        HorizontalDivider(Modifier.padding(start = 56.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
     }
 }

@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.sp
 object Brand {
     val sky = Color(0xFF24B4E9)
     val navy = Color(0xFF1F3667)
+    /** Aufgaben: frisches Grün neben dem Sky-Blau (iOS: `brandTask`). */
+    val task = Color(0xFF29BD80)
     val hairline = Color(0x1F000000)
     val danger = Color(0xFFD93025)
 }
