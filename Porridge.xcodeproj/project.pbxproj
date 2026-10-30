@@ -53,6 +53,7 @@
 		38B23287BF81DABBB03B2A36 /* SpeakerAssigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6A4C0487D0D0E8668554D5 /* SpeakerAssigner.swift */; };
 		3A8582C4FD61789E72C491BF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB0384279FBB5C1A2424DD1B /* SettingsView.swift */; };
 		3FDE8583E5D07C2472D0629A /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8971203514F93451723E779A /* Keychain.swift */; };
+		41AB354387CD2280E2711BBE /* NoteIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE59B16FB8350F8617863947 /* NoteIndex.swift */; };
 		42572ADF40DC2CE03400BA23 /* RollingRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE0B07929BC2A88C738323E9 /* RollingRecognizer.swift */; };
 		43A31E8EDAA99B1248E0275F /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = FD620C050B477DF07C977B9D /* FluidAudio */; };
 		44D79AE1434B19F9AA1141C1 /* ChatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19743A48BFB08A4F1939EE6D /* ChatService.swift */; };
@@ -78,6 +79,7 @@
 		5B54E0B81456FF223843810B /* NoteMediaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E643FF5DE4F5592C95134CAE /* NoteMediaViews.swift */; };
 		5E0DB858F25A8CE3E43F784E /* InlineDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */; };
 		5F08AE849C5ABF0CE8215BE3 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 997D57A54DECA618954AFC81 /* MLXLLM */; };
+		5F1AF2970A46492166EFFEBF /* ChunkRanking.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDE0785CDD22145E749A7E4D /* ChunkRanking.swift */; };
 		6095E937F8EA4C5E145018F6 /* LinkInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */; };
 		60A353545E64B9FFCCCD7F5D /* LinkInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */; };
 		6383679114584EAB9E25C603 /* AppleSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 987A111F4ACA578E340E5A7E /* AppleSpeech.swift */; };
@@ -94,6 +96,7 @@
 		79526CE821281139A756197E /* AIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C83E04FA0DB9A9049AD28D /* AIProvider.swift */; };
 		7A2E95FF9288D62B7706CAD9 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */; };
 		7A4D4772B9D9191E708AC1A0 /* Note.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC13F58C29B631B8770FF72D /* Note.swift */; };
+		7C6894DEEE8113190780FEB5 /* NoteIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE59B16FB8350F8617863947 /* NoteIndex.swift */; };
 		7CD39759D235CC9673532366 /* BrandMenuLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8DCA8F75243E96D40F6CE3A /* BrandMenuLabel.swift */; };
 		7D5BF7C631178ECD1A777639 /* VoiceProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C965C4F93692B80D211F105 /* VoiceProfile.swift */; };
 		7E76BA80B6ABB14ACA09AA5A /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1871870FC6707C39D01FE52E /* Meeting.swift */; };
@@ -103,6 +106,7 @@
 		837559DD06FF95DC5B55E02F /* NoteTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A86CDD2F6B34BBFD752D1A2 /* NoteTextView.swift */; };
 		83F0571CA39F7435A5074397 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 7EA54B61F54496C3702CB4ED /* HuggingFace */; };
 		8595D00FE8DD1E7469896BD2 /* PlaudAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6596637851981CC10AC1038D /* PlaudAPI.swift */; };
+		8AA27980DB9CB7C62EAFC09C /* TextEmbedder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F348E2B8078890EB52DF60B6 /* TextEmbedder.swift */; };
 		8B2A6EB4962B9468AA35CD81 /* CalendarAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2291E7D9FBD16F3E4B079817 /* CalendarAccess.swift */; };
 		8D3086BAD19B572EB7675FBB /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 1367D89BB806BE6B6ADEE7D7 /* MLXLMCommon */; };
 		8D6FDA68556EC145BEC5EBC0 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2141F7919F1EE60B134F704 /* MarkdownText.swift */; };
@@ -116,6 +120,7 @@
 		99C1D010666F997C7A901777 /* LegacyMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7794E23DA38BED1951839EF /* LegacyMigration.swift */; };
 		9A032FA63BDD575AB74043C9 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 06D0FF8071CA15060D21EBC3 /* MLXLMCommon */; };
 		9A578A8C057C87985C1FC180 /* Note.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC13F58C29B631B8770FF72D /* Note.swift */; };
+		9A6485677604C313A2311584 /* TextEmbedder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F348E2B8078890EB52DF60B6 /* TextEmbedder.swift */; };
 		9AB821A5996B06FA3F60D76B /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97476C5D0384FCC292170B1A /* RecordingView.swift */; };
 		9D2861EFFABAC0F25E72B4B6 /* RecordingActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */; };
 		9F0CAEC35F305D4614EBEF80 /* RecordingActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */; };
@@ -152,6 +157,7 @@
 		DB6938B9AC92BCEB6746DB92 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 2427A3FCC5ED0DDDB863785E /* MLXLLM */; };
 		DBC79736A01211FE26D4F937 /* PlaudAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6596637851981CC10AC1038D /* PlaudAPI.swift */; };
 		DE3F69E86587FE94B028F914 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E56BE573144212F81BA70AC /* AppSettings.swift */; };
+		DEDD5A44E9AFFAA88149722A /* ChunkRanking.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDE0785CDD22145E749A7E4D /* ChunkRanking.swift */; };
 		DEE92396CC7B983A7F6B4969 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5F0BC0DBAFDF678CBDCAC098 /* Assets.xcassets */; };
 		E084B7EC49D9B594EF056D8C /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF941D555D2BB61CC2812CAA /* AudioRecorder.swift */; };
 		E20F1184CF70593779A6BB58 /* AudioPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8EFBAAD626DEE8326A57573 /* AudioPlayback.swift */; };
@@ -281,6 +287,7 @@
 		B7794E23DA38BED1951839EF /* LegacyMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyMigration.swift; sourceTree = "<group>"; };
 		BE0B07929BC2A88C738323E9 /* RollingRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RollingRecognizer.swift; sourceTree = "<group>"; };
 		BE30527826F4248766C59EC0 /* PorridgeShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PorridgeShare.entitlements; sourceTree = "<group>"; };
+		BE59B16FB8350F8617863947 /* NoteIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteIndex.swift; sourceTree = "<group>"; };
 		C65F0237052007B3FEEEBEB9 /* Transcript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcript.swift; sourceTree = "<group>"; };
 		C8A969612AE20E4060E62676 /* PlaudLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudLog.swift; sourceTree = "<group>"; };
 		C8EFBAAD626DEE8326A57573 /* AudioPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayback.swift; sourceTree = "<group>"; };
@@ -302,10 +309,12 @@
 		EE2F58296E3FB7B2AA8C6D2F /* ModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManager.swift; sourceTree = "<group>"; };
 		F0C6D4089FE130492BCC55C9 /* ProcessingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingService.swift; sourceTree = "<group>"; };
 		F2141F7919F1EE60B134F704 /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
+		F348E2B8078890EB52DF60B6 /* TextEmbedder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextEmbedder.swift; sourceTree = "<group>"; };
 		F83837EE911EAAFDE58C455D /* PorridgeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PorridgeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FB9943212CA4D8F37CEE92A1 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkInbox.swift; sourceTree = "<group>"; };
 		FC13F58C29B631B8770FF72D /* Note.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Note.swift; sourceTree = "<group>"; };
+		FDE0785CDD22145E749A7E4D /* ChunkRanking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkRanking.swift; sourceTree = "<group>"; };
 		FF941D555D2BB61CC2812CAA /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -493,6 +502,7 @@
 				7798D6E60F456BEF335E6F48 /* AudioStore.swift */,
 				2291E7D9FBD16F3E4B079817 /* CalendarAccess.swift */,
 				19743A48BFB08A4F1939EE6D /* ChatService.swift */,
+				FDE0785CDD22145E749A7E4D /* ChunkRanking.swift */,
 				05F68F49429875E63DC4CCB6 /* CloudLLM.swift */,
 				32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */,
 				8971203514F93451723E779A /* Keychain.swift */,
@@ -503,12 +513,14 @@
 				CC34B2F819480B429CF98E03 /* LiveTranscriber.swift */,
 				108DEC7169C9E157AD66174F /* LocalLLM.swift */,
 				EE2F58296E3FB7B2AA8C6D2F /* ModelManager.swift */,
+				BE59B16FB8350F8617863947 /* NoteIndex.swift */,
 				0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */,
 				6B2572B8D2D94B28605C5CAB /* NoteStore.swift */,
 				F0C6D4089FE130492BCC55C9 /* ProcessingService.swift */,
 				BE0B07929BC2A88C738323E9 /* RollingRecognizer.swift */,
 				7D6A4C0487D0D0E8668554D5 /* SpeakerAssigner.swift */,
 				1CDB2150AC1E2D50129B73B9 /* SummaryService.swift */,
+				F348E2B8078890EB52DF60B6 /* TextEmbedder.swift */,
 				CCDB3BA98ABE11334BB0297F /* TranscriptionEngine.swift */,
 				6DF66A6CA32B03260699EFDE /* VoiceProfiles.swift */,
 				E8A6D73C695F219C4C3B9D60 /* Plaud */,
@@ -806,6 +818,7 @@
 				8B2A6EB4962B9468AA35CD81 /* CalendarAccess.swift in Sources */,
 				44D79AE1434B19F9AA1141C1 /* ChatService.swift in Sources */,
 				D27B72D61365263EE5DF92B3 /* ChatView.swift in Sources */,
+				5F1AF2970A46492166EFFEBF /* ChunkRanking.swift in Sources */,
 				C4E10CCEFC65F264710F1627 /* CloudLLM.swift in Sources */,
 				E6DA79B3830EEEB11F30A0BA /* FolderMenu.swift in Sources */,
 				E3002DFA4AC2CB6F61BFF32A /* InlineDictation.swift in Sources */,
@@ -827,6 +840,7 @@
 				03DCEEDB98E0E488018ABD31 /* NoteBodyEditor.swift in Sources */,
 				30CA02417900CF5C9687001E /* NoteDetailView.swift in Sources */,
 				D8538F472A63388E0207249B /* NoteFolder.swift in Sources */,
+				7C6894DEEE8113190780FEB5 /* NoteIndex.swift in Sources */,
 				52C32F7688919A572547A95C /* NoteMarkdown.swift in Sources */,
 				5B54E0B81456FF223843810B /* NoteMediaViews.swift in Sources */,
 				E53D3E365FE85257EF1B74A0 /* NoteMerger.swift in Sources */,
@@ -857,6 +871,7 @@
 				2519166D729750B7484FC464 /* SummarizingCard.swift in Sources */,
 				01E0FFCBAB683091E75D4B06 /* SummaryEditorSheet.swift in Sources */,
 				01528762ABBA57FEA7E93C81 /* SummaryService.swift in Sources */,
+				8AA27980DB9CB7C62EAFC09C /* TextEmbedder.swift in Sources */,
 				48F3E5CBA82CC8CF5CB9E15B /* Theme.swift in Sources */,
 				C288EDA60E7FBB915FD15ED9 /* TimelineSearchBar.swift in Sources */,
 				156BCEF5F91B9BDA2735490C /* Transcript.swift in Sources */,
@@ -892,6 +907,7 @@
 				C40DEB5C1AADA1AB8D0A6DBB /* CalendarAccess.swift in Sources */,
 				07B8DD735121DA2BD171F161 /* ChatService.swift in Sources */,
 				C99A6DB0BD10211C3F967D4A /* ChatView.swift in Sources */,
+				DEDD5A44E9AFFAA88149722A /* ChunkRanking.swift in Sources */,
 				B50072C1228DE96659168489 /* CloudLLM.swift in Sources */,
 				FCAF1163B93D9F066722A15F /* DictationController.swift in Sources */,
 				EF9954E3ED1CE9A4A825FFA2 /* DictationOverlay.swift in Sources */,
@@ -918,6 +934,7 @@
 				65BC30F146AE3C1342E00BB0 /* NoteBodyEditor.swift in Sources */,
 				0C5BC4A2AC7C6F4155A62955 /* NoteDetailView.swift in Sources */,
 				30784B61C12A8B563C2D135B /* NoteFolder.swift in Sources */,
+				41AB354387CD2280E2711BBE /* NoteIndex.swift in Sources */,
 				197DFF9071BF213F1F941055 /* NoteMarkdown.swift in Sources */,
 				743DE8E7456D7253247C4652 /* NoteMediaViews.swift in Sources */,
 				2337EF9768B3E546B1CA47E0 /* NoteMerger.swift in Sources */,
@@ -948,6 +965,7 @@
 				779DFE96B0F8C7C3AEAE4E03 /* SummarizingCard.swift in Sources */,
 				CDF4C9AAFB9D87728BA12409 /* SummaryEditorSheet.swift in Sources */,
 				B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */,
+				9A6485677604C313A2311584 /* TextEmbedder.swift in Sources */,
 				2697AD78C33F37B438D36D46 /* TextInserter.swift in Sources */,
 				B01020125443820618A7D679 /* Theme.swift in Sources */,
 				B0B3CD0F6FF2F45318E89E34 /* TimelineSearchBar.swift in Sources */,

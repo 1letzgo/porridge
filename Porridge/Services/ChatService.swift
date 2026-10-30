@@ -2,37 +2,7 @@ import Foundation
 import NaturalLanguage
 import Observation
 
-/// A passage of a note or a meeting transcript the chat can quote.
-struct ChatChunk {
-    let noteID: UUID
-    let title: String
-    let date: Date
-    let text: String
-    fileprivate let frequencies: [String: Int]
-    fileprivate let prefixFrequencies: [String: Int]
-    fileprivate let length: Int
-}
-
-/// Finds the passages of all notes and meetings that fit a question (keyword ranking, BM25).
-enum ChatRetrieval {
-    private static let chunkSize = 700
-
-    static func tokens(_ text: String) -> [String] {
-        let tokenizer = NLTokenizer(unit: .word)
-        tokenizer.string = text
-        var result: [String] = []
-        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
-            let word = text[range].lowercased()
-            if word.count >= 2 { result.append(word) }
-            return true
-        }
-        return result
-    }
-
-    private static func prefix(_ token: String) -> String? {
-        token.count >= 5 ? String(token.prefix(5)) : nil
-    }
-
+extension ChatRetrieval {
     private static func chunk(_ note: Note, text: String) -> ChatChunk {
         let words = tokens(note.displayTitle + " " + note.tags.joined(separator: " ") + " " + text)
         var frequencies: [String: Int] = [:]
@@ -92,58 +62,6 @@ enum ChatRetrieval {
         return result
     }
 
-    /// The passages that fit `query` best, within `budget` characters.
-    static func search(_ query: String, in chunks: [ChatChunk], budget: Int = 6500) -> [ChatChunk] {
-        let words = Array(Set(tokens(query)))
-        guard !words.isEmpty, !chunks.isEmpty else { return [] }
-
-        let average = Double(chunks.reduce(0) { $0 + $1.length }) / Double(chunks.count)
-        let count = Double(chunks.count)
-        // A word counts in a chunk when it is there, or another word with the same first five letters (word forms).
-        func frequency(_ word: String, _ chunk: ChatChunk) -> Double {
-            let exact = Double(chunk.frequencies[word] ?? 0)
-            guard let key = prefix(word) else { return exact }
-            return exact + 0.5 * Double(chunk.prefixFrequencies[key] ?? 0)
-        }
-
-        var scores = [Double](repeating: 0, count: chunks.count)
-        for word in words {
-            let containing = chunks.filter { frequency(word, $0) > 0 }.count
-            guard containing > 0 else { continue }
-            let idf = log(1 + (count - Double(containing) + 0.5) / (Double(containing) + 0.5))
-            for (index, chunk) in chunks.enumerated() {
-                let tf = frequency(word, chunk)
-                guard tf > 0 else { continue }
-                let k1 = 1.4, b = 0.75
-                scores[index] += idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * Double(chunk.length) / max(average, 1)))
-            }
-        }
-
-        let ranked = chunks.indices.filter { scores[$0] > 0 }.sorted { scores[$0] > scores[$1] }
-        var picked: [ChatChunk] = []
-        var used = 0
-        for index in ranked {
-            let chunk = chunks[index]
-            if used + chunk.text.count > budget, !picked.isEmpty { break }
-            picked.append(chunk)
-            used += chunk.text.count
-            if picked.count >= 10 { break }
-        }
-        return picked
-    }
-
-    /// With nothing matching ("what happened this week?"), the newest summaries and notes are the context.
-    static func recent(from chunks: [ChatChunk], budget: Int = 4500) -> [ChatChunk] {
-        var picked: [ChatChunk] = []
-        var used = 0
-        for chunk in chunks.sorted(by: { $0.date > $1.date }) {
-            if used + chunk.text.count > budget, !picked.isEmpty { break }
-            picked.append(chunk)
-            used += chunk.text.count
-            if picked.count >= 8 { break }
-        }
-        return picked
-    }
 }
 
 struct ChatSource: Identifiable, Hashable {
@@ -171,8 +89,6 @@ final class ChatStore {
     private(set) var status = ""
 
     @ObservationIgnored private var usedLocalModel = false
-    @ObservationIgnored private var chunks: [ChatChunk] = []
-    @ObservationIgnored private var signature = ""
 
     func reset() {
         guard !isThinking else { return }
@@ -198,14 +114,10 @@ final class ChatStore {
             status = ""
         }
 
-        let current = notes.filter { !$0.isDeleted }
-        let newSignature = "\(current.count)-\(current.map { $0.updatedAt.timeIntervalSince1970 + Double($0.summary?.count ?? 0) }.reduce(0, +))"
-        if newSignature != signature {
-            chunks = ChatRetrieval.chunks(from: current)
-            signature = newSignature
-        }
-        var context = ChatRetrieval.search(question, in: chunks)
-        if context.isEmpty { context = ChatRetrieval.recent(from: chunks) }
+        let index = NoteIndex.shared
+        await index.refresh(notes)
+        var context = await index.search(question)
+        if context.isEmpty { context = index.recent() }
         guard !context.isEmpty else {
             messages.append(ChatMessage(role: .assistant, text: "There is nothing in your notes yet."))
             return

@@ -85,6 +85,12 @@ struct NotesView: View {
             NoteStore.purgeExpired(in: context)
             LinkImport.importInbox(context: context, processing: processing)
         }
+        // The search index follows the notes: only what changed is cut and embedded again.
+        .task(id: indexSignature) {
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            await NoteIndex.shared.refresh(notes)
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { LinkImport.importInbox(context: context, processing: processing) }
         }
@@ -174,6 +180,13 @@ struct NotesView: View {
         #else
         listBase(shown)
         #endif
+    }
+
+    /// Changes when a note's content changed (the index compares hashes, this only wakes it up).
+    private var indexSignature: String {
+        notes.reduce(into: "") { result, note in
+            result += "\(note.id)\(note.updatedAt.timeIntervalSince1970)\(note.summary?.count ?? 0)\(note.segmentsData?.count ?? 0)\(note.pageText?.count ?? 0)\(note.isDeleted)|"
+        }
     }
 
     private var hasQuery: Bool {
@@ -496,7 +509,15 @@ struct NotesView: View {
                 return tagTokens.allSatisfy { tags.contains($0.id) }
             }
         }
-        if mode == .search, !search.isEmpty { result = result.filter { $0.matches(search) } }
+        if mode == .search, !search.isEmpty {
+            // The index knows the words of every passage (transcripts included) without decoding anything.
+            if let ids = NoteIndex.shared.noteIDs(matching: search) {
+                _ = NoteIndex.shared.version
+                result = result.filter { ids.contains($0.id) || $0.title.localizedCaseInsensitiveContains(search) || ($0.url?.localizedCaseInsensitiveContains(search) ?? false) }
+            } else {
+                result = result.filter { $0.matches(search) }
+            }
+        }
         // Strictly a timeline: the newest on top.
         if scope == .trash {
             result.sort { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
