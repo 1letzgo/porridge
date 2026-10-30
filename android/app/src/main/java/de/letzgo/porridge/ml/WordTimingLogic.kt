@@ -52,7 +52,11 @@ object WordTimingLogic {
  * durchgeschnitten wird. FluidAudio tut das auf iOS intern; sherpa-onnx erwartet kurze Stücke.
  */
 object ChunkPlanner {
-    fun cuts(samples: FloatArray, sampleRate: Int = 16_000, maxSeconds: Double = 25.0, searchSeconds: Double = 5.0): List<IntRange> {
+    fun cuts(samples: FloatArray, sampleRate: Int = 16_000, maxSeconds: Double = 25.0, searchSeconds: Double = 5.0): List<IntRange> =
+        cuts(samples.size, { samples[it] }, sampleRate, maxSeconds, searchSeconds)
+
+    fun cuts(size: Int, sample: (Int) -> Float, sampleRate: Int = 16_000, maxSeconds: Double = 25.0, searchSeconds: Double = 5.0): List<IntRange> {
+        val samples = object { val size = size; operator fun get(i: Int) = sample(i) }
         val max = (maxSeconds * sampleRate).toInt()
         val search = (searchSeconds * sampleRate).toInt()
         val frame = sampleRate / 20 // 50 ms

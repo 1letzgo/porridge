@@ -54,15 +54,29 @@ object SpeechModel : SpeechRecognizer {
         ModelManager.markUnloaded(pack)
     }
 
-    override suspend fun transcribe(samples: FloatArray, language: String?): List<Word> {
+    override suspend fun transcribe(samples: FloatArray, language: String?): List<Word> =
+        transcribe(samples.size, language, {}, { samples[it] }) { from, to -> samples.copyOfRange(from, to) }
+
+    /** Eine ganze Aufnahme (16-Bit, 16 kHz), abschnittsweise — nur der aktuelle Abschnitt liegt als Float vor; `progress` 0…1. */
+    suspend fun transcribe(pcm: ShortArray, language: String?, progress: (Float) -> Unit = {}): List<Word> =
+        transcribe(pcm.size, language, progress, { pcm[it] / 32768f }) { from, to -> FloatArray(to - from) { pcm[from + it] / 32768f } }
+
+    private suspend fun transcribe(
+        size: Int,
+        language: String?,
+        progress: (Float) -> Unit,
+        sample: (Int) -> Float,
+        slice: (Int, Int) -> FloatArray,
+    ): List<Word> {
         ensure()
         return mutex.withLock {
             val recognizer = checkNotNull(recognizer)
             withContext(Dispatchers.Default) {
                 val words = mutableListOf<Word>()
-                for (range in ChunkPlanner.cuts(samples, SAMPLE_RATE)) {
+                for (range in ChunkPlanner.cuts(size, sample, SAMPLE_RATE)) {
+                    progress(range.first.toFloat() / maxOf(size, 1))
                     // Sehr kurze Stücke füllt iOS auf eine Sekunde auf; das Modell braucht etwas Ton.
-                    var chunk = samples.copyOfRange(range.first, range.last + 1)
+                    var chunk = slice(range.first, range.last + 1)
                     if (chunk.size < SAMPLE_RATE) chunk = chunk.copyOf(SAMPLE_RATE)
                     val stream = recognizer.createStream()
                     try {
@@ -77,6 +91,7 @@ object SpeechModel : SpeechRecognizer {
                         stream.release()
                     }
                 }
+                progress(1f)
                 words
             }
         }
