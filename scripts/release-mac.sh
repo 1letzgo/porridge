@@ -65,7 +65,7 @@ echo "Building $SCHEME $VERSION ($BUILD) …"
 rm -rf "$DERIVED/Build/Products/Release"
 xcodebuild -scheme "$SCHEME" -configuration Release -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED" "${SIGN_ARGS[@]}" build 2>&1 \
-  | grep -E '^\*\* BUILD|error:' || true
+  | grep -E '^\*\* BUILD|^/.* error:' || true
 APP="$DERIVED/Build/Products/Release/Porridge.app"
 [[ -d $APP ]] || { echo "Build failed: $APP missing" >&2; exit 1; }
 codesign --verify --deep --strict "$APP"
