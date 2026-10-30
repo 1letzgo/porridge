@@ -156,7 +156,7 @@ struct NotesView: View {
             case .chat:
                 ChatView(notes: notes, items: items, store: chat) { openFromChat($0) }
             case .tasks:
-                TasksPane(items: items, notes: notes) { openFromChat($0) }
+                tasksPane
             case .search:
                 SearchPane(
                     text: $search, tokens: $tagTokens,
@@ -198,6 +198,21 @@ struct NotesView: View {
             .overlay { createMenu }
         #else
         listBase(shown)
+        #endif
+    }
+
+    /// The tasks list; on iOS with the same floating plus button as the timeline, the Mac has it in the toolbar.
+    private var tasksPane: some View {
+        #if os(iOS)
+        TasksPane(items: items, notes: notes) { openFromChat($0) }
+            .contentMargins(.bottom, 96, for: .scrollContent)
+            .overlay(alignment: .bottomTrailing) {
+                FloatingActionButton(systemImage: "plus", label: "New Task") { showAddTask = true }
+                    .padding(.trailing, 22)
+                    .padding(.bottom, 16)
+            }
+        #else
+        TasksPane(items: items, notes: notes) { openFromChat($0) }
         #endif
     }
 
@@ -356,10 +371,6 @@ struct NotesView: View {
         } else if mode == .chat, !chat.messages.isEmpty {
             Button { chat.reset() } label: {
                 Label("New Chat", systemImage: "square.and.pencil")
-            }
-        } else if mode == .tasks {
-            Button { showAddTask = true } label: {
-                Label("New Task", systemImage: "plus")
             }
         }
         Button { showSettings = true } label: {
