@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -59,7 +60,7 @@ fun ChatScreen(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> U
     val list = rememberLazyListState()
     LaunchedEffect(messages.size, thinking) { if (messages.isNotEmpty()) list.animateScrollToItem(messages.size) }
 
-    Column(modifier.fillMaxWidth().imePadding()) {
+    Column(modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (messages.isEmpty() && !thinking) {
                 EmptyState("Ask Your Notes", "Ask about your meetings, notes and saved pages. Answers name the notes they come from.", Icons.Filled.ChatBubble, Modifier.align(Alignment.Center))

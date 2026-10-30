@@ -1,6 +1,7 @@
 package de.letzgo.porridge.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -72,14 +73,23 @@ enum class ListMode(val title: String, val isTab: Boolean = true) {
 
 @Composable
 fun ListTabs(mode: ListMode, onChange: (ListMode) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Wie iOS teilen sich die Tabs die volle Breite, damit auch auf schmalen Handys alle (bis Chat) sichtbar sind.
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         for (m in ListMode.entries.filter { it.isTab }) {
-            FilterChip(
-                selected = m == mode, onClick = { onChange(m) }, label = { Text(m.title) },
-                // Jeder Tab in seiner Farbe, wie sein Titel-Quadrat (iOS: `TabSwitcher.tint`).
-                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = m.color.copy(alpha = 0.16f), selectedLabelColor = Brand.navy),
-                border = null,
-            )
+            val selected = m == mode
+            Box(
+                // Breite nach Länge der Beschriftung, damit „Meetings" nicht abgeschnitten wird.
+                Modifier.weight(m.title.length + 3f).height(36.dp).clip(RoundedCornerShape(8.dp))
+                    // Jeder Tab in seiner Farbe, wie sein Titel-Quadrat (iOS: `TabSwitcher.tint`).
+                    .background(if (selected) m.color.copy(alpha = 0.16f) else Color.Transparent)
+                    .clickable { onChange(m) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    m.title, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false,
+                    color = if (selected) Brand.navy else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
