@@ -238,7 +238,10 @@ private fun SummaryCard() {
     Card("AI Summary", footer = if (billing == SummaryBilling.BYOK) "Your key is stored on this phone, encrypted. One key per service." else "${LocalModel.totalMemoryGB(context).let { "%.0f".format(it) }} GB memory: ${LocalModel.recommended(context).displayName} recommended.") {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             SummaryBilling.entries.forEachIndexed { i, b ->
-                SegmentedButton(selected = billing == b, onClick = { billing = b; Prefs.set(Keys.BILLING, b.raw) }, shape = SegmentedButtonDefaults.itemShape(i, 2), icon = {}) { Text(b.label) }
+                SegmentedButton(
+                    selected = billing == b, onClick = { billing = b; Prefs.set(Keys.BILLING, b.raw) }, shape = SegmentedButtonDefaults.itemShape(i, 2), icon = {},
+                    colors = SegmentedButtonDefaults.colors(activeContainerColor = Brand.sky.copy(alpha = 0.18f), activeContentColor = Brand.navy),
+                ) { Text(b.label) }
             }
         }
         if (billing == SummaryBilling.LOCAL) {

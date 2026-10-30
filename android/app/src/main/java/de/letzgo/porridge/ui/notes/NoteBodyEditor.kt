@@ -62,6 +62,14 @@ class NoteEditorController {
         return de.letzgo.porridge.logic.editor.NoteMarkdown.markdown(PrefixBuffer(v, sel)).length
     }
 
+    /** Fokus an den Textanfang mit Tastatur (Return im Titel). */
+    fun focusStart() {
+        val v = view ?: return
+        v.requestFocus()
+        v.setSelection(0)
+        (v.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(v, 0)
+    }
+
     fun blur() {
         val v = view ?: return
         v.clearFocus()
@@ -124,7 +132,7 @@ fun NoteBodyEditor(
                 update = { view ->
                     view.isEnabled = isEditable
                     // Text von außen (Diktat, Zusammenfassung eingefügt): neu laden.
-                    if (text != view.lastWritten) {
+                    if (view.isExternal(text)) {
                         view.load(text)
                         isEmpty = text.isEmpty()
                     }

@@ -36,11 +36,18 @@ class NoteEditText(context: Context, private val colors: Colors, private val onM
     private val buffer = EditableBuffer(editableText)
     val engine = NoteEditorEngine(buffer) { markdown ->
         lastWritten = markdown
+        written.addLast(markdown)
+        if (written.size > 64) written.removeFirst()
         onMarkdown(markdown)
     }
     /** Das Markdown, das dieses Feld zuletzt geschrieben hat; anderes kam von außen (Diktat). */
     var lastWritten = ""
         private set
+    /** Alles, was dieses Feld zuletzt geschrieben hat: verspätete Rückmeldungen davon sind kein Text von außen. */
+    private val written = ArrayDeque<String>()
+
+    /** Ob [markdown] von außen kommt (Diktat, eingefügte Zusammenfassung) und das Feld neu laden muss. */
+    fun isExternal(markdown: String) = markdown != lastWritten && markdown !in written
     private var rendering = false
     private var pendingInsert: IntRange? = null
     private val density = resources.displayMetrics.density
@@ -48,6 +55,8 @@ class NoteEditText(context: Context, private val colors: Colors, private val onM
 
     init {
         background = null
+        // Keine graue Fokus-Fläche über dem ganzen Text.
+        defaultFocusHighlightEnabled = false
         setPadding(dp(4f), dp(8f), dp(4f), dp(96f))
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
         setTextColor(colors.text)
@@ -88,6 +97,7 @@ class NoteEditText(context: Context, private val colors: Colors, private val onM
         rendering = true
         engine.load(markdown)
         lastWritten = markdown
+        written.clear()
         rendering = false
         render()
     }

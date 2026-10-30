@@ -108,6 +108,7 @@ import de.letzgo.porridge.ui.components.SkyFab
 import de.letzgo.porridge.ui.components.speakerColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -127,6 +128,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     var local by remember { mutableStateOf(draft) }
     val note = stored ?: local ?: return
     val coroutines = rememberCoroutineScope()
+    val saveLock = remember { kotlinx.coroutines.sync.Mutex() }
     val stages by ProcessingService.stages.collectAsState()
     val stage = stages[note.id]
     val player = remember { AudioPlayback() }
@@ -158,15 +160,23 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     var tab by remember { mutableStateOf(if (opensOnSummary) NoteTab.SUMMARY else NoteTab.NOTE) }
     if (tab !in tabs) tab = tabs.first()
 
-    /** Speichert eine geänderte Notiz; eine neue erst, wenn sie Titel oder Text hat. */
+    /**
+     * Speichert eine geänderte Notiz; eine neue erst, wenn sie Titel oder Text hat. Änderungen laufen der Reihe nach
+     * auf dem frischen Stand der Datenbank (nicht auf dem zuletzt gemeldeten), damit schnell aufeinanderfolgende
+     * Änderungen an Text und Titel sich nicht gegenseitig mit alten Werten überschreiben.
+     */
     fun update(change: (Note) -> Note) {
-        val current = stored ?: local ?: return
-        val updated = change(current).copy(updatedAt = System.currentTimeMillis())
-        if (stored == null) {
-            local = updated
-            if (updated.title.isEmpty() && updated.text.isEmpty()) return
+        coroutines.launch {
+            saveLock.withLock {
+                val current = db.notes().get(noteID) ?: local ?: return@withLock
+                val updated = change(current).copy(updatedAt = System.currentTimeMillis())
+                if (db.notes().get(noteID) == null) {
+                    local = updated
+                    if (updated.title.isEmpty() && updated.text.isEmpty()) return@withLock
+                }
+                db.notes().upsert(updated)
+            }
         }
-        coroutines.launch { db.notes().upsert(updated) }
     }
 
     LaunchedEffect(note.audioFileName) {
@@ -239,7 +249,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                 }
             }
             Column(Modifier.padding(horizontal = 16.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Header(note) { title -> update { it.copy(title = title, titleIsCustom = true) } }
+                Header(note, onNext = { tab = NoteTab.NOTE; editor.focusStart() }) { title -> update { it.copy(title = title, titleIsCustom = true) } }
                 if (note.isDeleted) Text("This note is in Recently Deleted.", color = Brand.danger, style = MaterialTheme.typography.bodySmall)
                 else TagRow(note, onAdd = { addingTag = true }) { tag -> update { n -> n.copy(labels = n.labels.filter { !it.equals(tag, true) }) } }
                 StatusPanel(note, stage)
@@ -379,15 +389,22 @@ private suspend fun finishDictation(dictation: InlineDictation, note: Note, star
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Header(note: Note, onTitle: (String) -> Unit) {
+private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         var title by remember(note.id) { mutableStateOf(note.title) }
-        LaunchedEffect(note.title) { if (note.title != title) title = note.title }
+        // Titel, die dieses Feld selbst gespeichert hat: ihre (oft verspätete) Rückmeldung aus der Datenbank darf
+        // das Feld nicht überschreiben, sonst gehen beim schnellen Tippen Buchstaben verloren.
+        val sent = remember(note.id) { mutableSetOf(note.title) }
+        LaunchedEffect(note.title) { if (note.title !in sent && note.title != title) { title = note.title; sent += title } }
         Box {
             if (title.isEmpty()) Text("Title", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
             BasicTextField(
-                value = title, onValueChange = { title = it; onTitle(it) }, enabled = !note.isDeleted,
+                // Einzeilig wie der iOS-Titel; Return springt in den Text.
+                value = title, onValueChange = { title = it.replace("\n", " "); sent += title; onTitle(title) }, enabled = !note.isDeleted,
+                singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Next, capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onNext = { onNext() }),
                 textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else Brand.navy),
                 cursorBrush = SolidColor(Brand.sky), modifier = Modifier.fillMaxWidth(),
             )
@@ -639,7 +656,7 @@ private fun PlayerBar(player: AudioPlayback, modifier: Modifier) {
             IconButton(onClick = { player.skip(10.0) }) { Icon(Icons.Filled.Forward10, "Forward 10 Seconds", tint = Brand.navy) }
             Slider(
                 value = if (duration > 0) (time / duration).toFloat() else 0f, onValueChange = { player.seek(it * duration) }, modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(thumbColor = Brand.sky, activeTrackColor = Brand.sky),
+                colors = SliderDefaults.colors(thumbColor = Brand.sky, activeTrackColor = Brand.sky, inactiveTrackColor = Brand.sky.copy(alpha = 0.2f), activeTickColor = Brand.sky, inactiveTickColor = Brand.sky),
             )
             Text(" ${time.clockString}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
