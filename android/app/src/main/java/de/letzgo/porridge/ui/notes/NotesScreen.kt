@@ -160,6 +160,8 @@ fun NotesScreen(
     LaunchedEffect(Unit) {
         NoteStore().purgeExpired()
         ActionItemStore().backfill(db.notes().all())
+        // Leer gelassene, von Hand angelegte Aufgaben (Plus getippt, wieder geschlossen) gehen.
+        ActionItemStore().dropEmptyManual()
         ProcessingService.resumePending()
     }
     // Der Index folgt den Notizen: nur Geändertes wird neu geschnitten und eingebettet.
