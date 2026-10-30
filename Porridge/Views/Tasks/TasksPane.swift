@@ -16,15 +16,17 @@ struct TasksPane: View {
         Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
-    /// Tasks of notes that still exist, newest note first, in the order of the summary.
-    private var tasks: [(item: ActionItem, note: Note)] {
+    /// Tasks of notes that still exist and tasks typed by hand, newest first, in the order of the summary.
+    private var tasks: [(item: ActionItem, note: Note?)] {
         let notes = byID
-        return items.compactMap { item -> (ActionItem, Note)? in
-            guard item.kind == .task, let id = item.noteID, let note = notes[id], !note.isDeleted, !note.isLink else { return nil }
-            return (item, note)
+        return items.compactMap { item -> (ActionItem, Note?, Date)? in
+            guard item.kind == .task else { return nil }
+            guard let id = item.noteID else { return (item, nil, item.createdAt) }
+            guard let note = notes[id], !note.isDeleted, !note.isLink else { return nil }
+            return (item, note, note.createdAt)
         }
         .sorted { a, b in
-            if a.1.createdAt != b.1.createdAt { return a.1.createdAt > b.1.createdAt }
+            if a.2 != b.2 { return a.2 > b.2 }
             return a.0.order < b.0.order
         }
         .map { (item: $0.0, note: $0.1) }
@@ -64,7 +66,7 @@ struct TasksPane: View {
             if all.isEmpty {
                 EmptyStateView(
                     title: "No Tasks Yet",
-                    message: "Tasks come from the summaries of your meetings and notes. Summarize a meeting and its action items show up here.",
+                    message: "Tasks come from the summaries of your meetings and notes, or you add one with the plus button.",
                     systemImage: "checklist"
                 )
             }
@@ -85,7 +87,7 @@ struct TasksPane: View {
         .textCase(nil)
     }
 
-    private func row(_ item: ActionItem, note: Note) -> some View {
+    private func row(_ item: ActionItem, note: Note?) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Button {
                 withAnimation(.snappy) { ActionItems.setDone(item, !item.isDone, note: note, in: context) }
@@ -111,10 +113,12 @@ struct TasksPane: View {
                             .padding(.vertical, 2)
                             .chunkyPill(fill: .brandSky)
                     }
-                    Text(note.displayTitle)
-                        .lineLimit(1)
-                    Text("·")
-                    Text(note.createdAt.formatted(.dateTime.day().month(.abbreviated)))
+                    if let note {
+                        Text(note.displayTitle)
+                            .lineLimit(1)
+                        Text("·")
+                    }
+                    Text((note?.createdAt ?? item.createdAt).formatted(.dateTime.day().month(.abbreviated)))
                         .fixedSize()
                 }
                 .font(.caption)
@@ -122,12 +126,23 @@ struct TasksPane: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .onTapGesture { onOpen(note.id) }
+            .onTapGesture { if let note { onOpen(note.id) } }
         }
         .cardListRow()
+        .swipeActions(edge: .trailing) {
+            if note == nil {
+                Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
+            }
+        }
         .contextMenu {
-            Button { onOpen(note.id) } label: { Label("Open Note", systemImage: "note.text") }
+            if let note {
+                Button { onOpen(note.id) } label: { Label("Open Note", systemImage: "note.text") }
+            }
             Button { Clipboard.copy(item.line) } label: { Label("Copy", systemImage: "doc.on.doc") }
+            if note == nil {
+                Divider()
+                Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
+            }
         }
     }
 }

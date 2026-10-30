@@ -37,6 +37,9 @@ struct NotesView: View {
     /// The plus button is unfolded into its options.
     @State private var showCreate = false
     @State private var linkText = ""
+    /// Dialog for a task typed by hand (Tasks tab).
+    @State private var showAddTask = false
+    @State private var taskText = ""
     @State private var importError: String?
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
@@ -74,6 +77,17 @@ struct NotesView: View {
                 .disabled(LinkImport.webAddress(from: linkText) == nil)
         } message: {
             Text("The page is saved as a note and summarized.")
+        }
+        .alert("New Task", isPresented: $showAddTask) {
+            TextField("Task – owner", text: $taskText)
+            Button("Cancel", role: .cancel) { taskText = "" }
+            Button("Add") {
+                ActionItems.addManual(taskText, in: context)
+                taskText = ""
+            }
+            .disabled(taskText.trimmingCharacters(in: .whitespaces).isEmpty)
+        } message: {
+            Text("A name after a dash sets who is responsible.")
         }
         .alert("Import Failed", isPresented: .constant(importError != nil)) {
             Button("OK") { importError = nil }
@@ -343,6 +357,10 @@ struct NotesView: View {
             Button { chat.reset() } label: {
                 Label("New Chat", systemImage: "square.and.pencil")
             }
+        } else if mode == .tasks {
+            Button { showAddTask = true } label: {
+                Label("New Task", systemImage: "plus")
+            }
         }
         Button { showSettings = true } label: {
             Label("Settings", systemImage: "gearshape")
@@ -385,6 +403,13 @@ struct NotesView: View {
                     Label("New Chat", systemImage: "square.and.pencil")
                 }
                 .accessibilityLabel("New Chat")
+            }
+        } else if mode == .tasks {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showAddTask = true } label: {
+                    Label("New Task", systemImage: "plus")
+                }
+                .accessibilityLabel("New Task")
             }
         }
         ToolbarItem(placement: .primaryAction) {

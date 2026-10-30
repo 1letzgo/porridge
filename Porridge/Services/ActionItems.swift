@@ -174,6 +174,25 @@ enum ActionItems {
         }
     }
 
+    /// A task typed by hand: not tied to a note, never touched by `sync`. "Text – Name" sets the owner.
+    @discardableResult
+    static func addManual(_ body: String, in context: ModelContext) -> ActionItem? {
+        let (text, owner) = splitOwner(body.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !text.isEmpty else { return nil }
+        let item = ActionItem()
+        item.text = text
+        item.owner = owner
+        item.source = "manual"
+        context.insert(item)
+        try? context.save()
+        return item
+    }
+
+    static func delete(_ item: ActionItem, in context: ModelContext) {
+        context.delete(item)
+        try? context.save()
+    }
+
     static func remove(of noteID: UUID, in context: ModelContext) {
         for item in items(of: noteID, in: context) { context.delete(item) }
     }
@@ -221,11 +240,15 @@ enum ActionItems {
     static func contextBlock(items: [ActionItem], notes: [Note], limit: Int) -> String {
         let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         func line(_ item: ActionItem) -> String? {
-            guard let id = item.noteID, let note = byID[id], !note.isDeleted else { return nil }
+            guard let id = item.noteID else {
+                return "- \(item.line) (added by hand, \(item.createdAt.formatted(date: .abbreviated, time: .omitted)))"
+            }
+            guard let note = byID[id], !note.isDeleted else { return nil }
             return "- \(item.line) («\(note.displayTitle)», \(note.createdAt.formatted(date: .abbreviated, time: .omitted)))"
         }
         let dated = items.compactMap { item -> (Date, ActionItem)? in
-            guard let id = item.noteID, let note = byID[id], !note.isDeleted, !note.isLink else { return nil }
+            guard let id = item.noteID else { return (item.createdAt, item) }
+            guard let note = byID[id], !note.isDeleted, !note.isLink else { return nil }
             return (note.createdAt, item)
         }.sorted { $0.0 > $1.0 }.map(\.1)
         let open = dated.filter { $0.kind == .task && !$0.isDone }.compactMap(line)
