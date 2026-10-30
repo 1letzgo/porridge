@@ -40,6 +40,21 @@ class WebDAVTest {
         assertEquals("\"abc\"", server.takeRequest().headers["If-Match"])
     }
 
+    /** Hinter Cloudflare kommt das ETag einer GET-Antwort verändert an; das echte liefert PROPFIND. */
+    @Test fun etagComesFromPropfindNotFromTheGetHeader() = runTest {
+        val dav = dav()
+        val xml = """<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/x</d:href><d:propstat><d:prop><d:getetag>&quot;5f2b9c&quot;</d:getetag></d:prop></d:propstat></d:response></d:multistatus>"""
+        server.enqueue(MockResponse.Builder().code(207).body(xml).build())
+        server.enqueue(MockResponse.Builder().code(200).addHeader("ETag", "W/\"5f2b9c-gzip\"").body("{}").build())
+        val remote = dav.get(dav.file(dav.root, "porridge-sync.json"))!!
+        assertEquals("\"5f2b9c\"", remote.etag)
+        assertEquals("{}", remote.data.decodeToString())
+        val propfind = server.takeRequest()
+        assertEquals("PROPFIND", propfind.method)
+        assertEquals("0", propfind.headers["Depth"])
+        assertEquals("GET", server.takeRequest().method)
+    }
+
     @Test fun listsFilesOfAFolder() = runTest {
         val xml = """
             <?xml version="1.0"?>

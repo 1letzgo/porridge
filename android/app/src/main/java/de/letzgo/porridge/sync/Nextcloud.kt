@@ -128,11 +128,30 @@ class WebDAV(private val account: NextcloudAccount, private val client: OkHttpCl
 
     data class Remote(val data: ByteArray, val etag: String?)
 
-    /** Die Datei und ihr ETag; null, wenn es sie noch nicht gibt. */
+    /**
+     * Die Datei und ihr ETag; null, wenn es sie noch nicht gibt.
+     *
+     * Das ETag kommt per PROPFIND, vor dem Herunterladen: Proxys wie Cloudflare ändern das ETag einer komprimierten
+     * GET-Antwort (`W/"…-gzip"`), und dazu passt If-Match nie. Zuerst gelesen, endet eine Änderung dazwischen weiterhin
+     * in einem Konflikt, nie im Überschreiben.
+     */
     suspend fun get(url: HttpUrl): Remote? = withContext(Dispatchers.IO) {
+        val etag = etag(url) ?: return@withContext null
         client.newCall(request(url).get().build()).execute().use { response ->
             when (response.code) {
-                200 -> Remote(response.body.bytes(), response.header("ETag"))
+                200 -> Remote(response.body.bytes(), etag)
+                404 -> null
+                else -> throw httpError(response.code)
+            }
+        }
+    }
+
+    /** Das ETag, wie Nextcloud selbst es meldet; null, wenn es die Datei nicht gibt. */
+    private fun etag(url: HttpUrl): String? {
+        val body = """<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getetag/></d:prop></d:propfind>"""
+        return client.newCall(request(url).header("Depth", "0").method("PROPFIND", body.toRequestBody()).build()).execute().use { response ->
+            when (response.code) {
+                207 -> etag(response.body.string())
                 404 -> null
                 else -> throw httpError(response.code)
             }
@@ -195,5 +214,11 @@ class WebDAV(private val account: NextcloudAccount, private val client: OkHttpCl
         private val HREF = Regex("<(?:[A-Za-z0-9]+:)?href>([^<]*)</(?:[A-Za-z0-9]+:)?href>")
 
         fun hrefs(xml: String): List<String> = HREF.findAll(xml).map { it.groupValues[1].trim() }.toList()
+
+        private val ETAG = Regex("<(?:[A-Za-z0-9]+:)?getetag>([^<]*)</(?:[A-Za-z0-9]+:)?getetag>")
+
+        /** Das `<d:getetag>` einer PROPFIND-Antwort, mit aufgelösten Entities. */
+        fun etag(xml: String): String? = ETAG.find(xml)?.groupValues?.get(1)
+            ?.replace("&quot;", "\"")?.replace("&amp;", "&")?.trim()?.takeIf { it.isNotEmpty() }
     }
 }

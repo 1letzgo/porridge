@@ -134,13 +134,42 @@ struct WebDAV {
     private func status(_ response: URLResponse) -> Int { (response as? HTTPURLResponse)?.statusCode ?? 0 }
 
     /// The file and its ETag; nil when it does not exist yet.
+    ///
+    /// The ETag comes from PROPFIND, before the download: proxies such as Cloudflare change the ETag header of a
+    /// compressed GET (`W/"…-gzip"`), and If-Match never matches that one. Read first, a change in between still
+    /// ends in a conflict, never in overwriting it.
     func get(_ url: URL) async throws -> (data: Data, etag: String?)? {
+        guard let etag = try await etag(url) else { return nil }
         let (data, response) = try await URLSession.shared.data(for: request(url, method: "GET"))
         switch status(response) {
-        case 200: return (data, (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "ETag"))
+        case 200: return (data, etag)
         case 404: return nil
         case let code: throw NextcloudError.http(code)
         }
+    }
+
+    /// The ETag as Nextcloud itself reports it; nil when the file does not exist.
+    private func etag(_ url: URL) async throws -> String? {
+        var request = request(url, method: "PROPFIND")
+        request.setValue("0", forHTTPHeaderField: "Depth")
+        request.setValue("application/xml", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getetag/></d:prop></d:propfind>"#.utf8)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        switch status(response) {
+        case 207: return Self.etag(in: String(decoding: data, as: UTF8.self))
+        case 404: return nil
+        case let code: throw NextcloudError.http(code)
+        }
+    }
+
+    /// The `<d:getetag>` of a PROPFIND answer, entities resolved.
+    static func etag(in xml: String) -> String? {
+        guard let match = xml.firstMatch(of: /<(?:[A-Za-z0-9]+:)?getetag>([^<]*)<\/(?:[A-Za-z0-9]+:)?getetag>/) else { return nil }
+        let value = String(match.1)
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .trimmingCharacters(in: .whitespaces)
+        return value.isEmpty ? nil : value
     }
 
     /// Writes the file only if it is still the one read (`etag`), or does not exist yet (`etag` nil).
