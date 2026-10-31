@@ -37,6 +37,10 @@ extension ChatRetrieval {
     static func chunks(from notes: [Note]) -> [ChatChunk] {
         var result: [ChatChunk] = []
         for note in notes where !note.isDeleted {
+            // A saved link is found by its address and site, even when its page could not be read.
+            if let url = note.url, !url.isEmpty {
+                result.append(chunk(note, text: "Saved link" + (note.domain.map { " (\($0))" } ?? "") + ": " + url))
+            }
             if let summary = note.summary, !summary.isEmpty {
                 for piece in pieces(summary.components(separatedBy: "\n")) {
                     result.append(chunk(note, text: "Summary: " + piece))
@@ -160,7 +164,7 @@ final class ChatStore {
 
     private static func complete(question: String, history: [ChatMessage], context: [ChatChunk], tasks: String, progress: @escaping (String) -> Void) async throws -> String {
         let system = """
-        You are the assistant of a private notes app. Answer the question using only the excerpts from the user's notes and meeting transcripts below\(tasks.isEmpty ? "" : ", and the list of tasks and decisions taken from their summaries").
+        You are the assistant of a private notes app. Answer the question using only the excerpts from the user's notes, meeting transcripts and saved web links (with the text of the page) below\(tasks.isEmpty ? "" : ", and the list of tasks and decisions taken from their summaries").
         Every excerpt starts with a number in brackets. Name the numbers of the excerpts you used, like [2].\(tasks.isEmpty ? "" : " For a task or decision name the note it comes from.")
         If the excerpts do not contain the answer, say so briefly. Answer in the language of the question and be concise.
         """

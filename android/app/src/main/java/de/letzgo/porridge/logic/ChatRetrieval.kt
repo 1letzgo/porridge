@@ -192,6 +192,10 @@ object ChatRetrieval {
         val result = mutableListOf<ChatChunk>()
         for (note in notes) {
             if (note.isDeleted) continue
+            // Ein gespeicherter Link ist über Adresse und Seite zu finden, auch wenn seine Seite nicht lesbar war.
+            note.url?.takeIf { it.isNotEmpty() }?.let { url ->
+                result += chunk(note, "Saved link" + (note.domain?.let { " ($it)" } ?: "") + ": " + url)
+            }
             note.summary?.takeIf { it.isNotEmpty() }?.let { summary ->
                 pieces(summary.split("\n")).forEach { result += chunk(note, "Summary: $it") }
             }

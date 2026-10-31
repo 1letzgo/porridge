@@ -188,6 +188,8 @@ class NoteIndex(
             }
             note.segmentsData?.let { digest.update(it.toByteArray()) }
             note.speakersData?.let { digest.update(it.toByteArray()) }
+            // Links bekamen eine eigene Passage (ihre Adresse): ihre Passagen werden einmal neu geschnitten.
+            if (note.url != null) digest.update("link-passage".toByteArray())
             return digest.digest().joinToString("") { "%02x".format(it) }
         }
     }

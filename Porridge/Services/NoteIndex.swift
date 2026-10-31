@@ -193,6 +193,8 @@ extension Note {
         }
         if let segmentsData { hasher.update(data: segmentsData) }
         if let speakersData { hasher.update(data: speakersData) }
+        // Links got a passage of their own (their address): their passages are cut again once.
+        if url != nil { hasher.update(data: Data("link-passage".utf8)) }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }

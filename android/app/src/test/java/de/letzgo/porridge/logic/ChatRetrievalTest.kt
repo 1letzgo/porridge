@@ -43,6 +43,18 @@ class ChatRetrievalTest {
         assertTrue(ChatRetrieval.search("xyz", chunks).isEmpty())
     }
 
+    @Test fun savedLinksAreFoundEvenWithoutAPage() {
+        val links = listOf(
+            Note(id = "L", title = "Kotlin Coroutines", url = "https://kotlinlang.org/docs/coroutines.html", createdAt = 1000),
+            Note(id = "P", title = "Rezept", url = "https://example.com/risotto", pageText = "Risotto mit Pilzen und Parmesan.", summary = "Ein Pilzrisotto.", createdAt = 2000),
+        )
+        val chunks = ChatRetrieval.chunks(links)
+        assertTrue(chunks.any { it.text == "Saved link (kotlinlang.org): https://kotlinlang.org/docs/coroutines.html" })
+        assertEquals(setOf("L"), ChatRetrieval.search("kotlinlang", chunks).map { it.noteID }.toSet())
+        assertEquals(setOf("P"), ChatRetrieval.search("Parmesan", chunks).map { it.noteID }.toSet())
+        assertEquals(setOf("L", "P"), ChatRetrieval.search("saved links", chunks).map { it.noteID }.toSet())
+    }
+
     @Test fun meaningAloneOnlyWhenItStandsOut() {
         fun chunk(id: String, text: String, v: FloatArray) = ChatChunk(id, id, 0, text, emptyMap(), emptyMap(), 5, v)
         val q = floatArrayOf(1f, 0f)
