@@ -120,10 +120,13 @@ fun AppRoot() {
                     }
                     // Bis das Transkript mit Sprechern fertig ist, steht der Live-Text da.
                     if (liveText.isNotEmpty()) note = note.withSegments(listOf(TranscriptSegment(start = 0.0, end = result.duration, text = liveText)))
+                    // Aus einem offenen Projekt aufgenommen: das Meeting gehört dazu, die Ansicht bleibt.
+                    val inProject = project.takeIf { mode == ListMode.PROJECTS }
+                    if (inProject != null) note = note.copy(projectIDs = listOf(inProject))
                     PorridgeDatabase.shared.notes().upsert(note)
                     ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
                     pop()
-                    open(note.id, ListMode.MEETINGS)
+                    open(note.id, if (inProject != null) null else ListMode.MEETINGS)
                 }
             }, onCancel = { pop() })
         }

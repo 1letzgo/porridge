@@ -29,6 +29,8 @@ struct NotesView: View {
     @State private var mode = ListMode.tasks
     /// The view the search button goes back to.
     @State private var modeBeforeSearch = ListMode.tasks
+    /// The view the chat button goes back to.
+    @State private var modeBeforeChat = ListMode.tasks
     @State private var chat = ChatStore()
     @State private var confirmEmptyTrash = false
     @State private var showRecorder = false
@@ -161,7 +163,7 @@ struct NotesView: View {
         let shown = visibleNotes
         return VStack(spacing: 0) {
             #if os(iOS)
-            ChromeBar(title: listTitle, systemImage: listIcon, tint: listTint, onBack: projectBack) {
+            ChromeBar(title: listTitle, systemImage: listIcon, tint: listTint, onBack: barBack) {
                 listActions(isEmpty: shown.isEmpty)
             }
             #else
@@ -270,9 +272,13 @@ struct NotesView: View {
     }
 
     private func addTask() {
-        // The new task shows where tasks live.
-        if mode != .tasks { mode = .tasks }
         let item = ActionItems.newTask(in: context)
+        // In a project the new task goes into it; elsewhere it shows where tasks live.
+        if let project = projectForNew {
+            item.projectIDs = [project]
+        } else if mode != .tasks {
+            mode = .tasks
+        }
         try? context.save()
         openTask(item)
     }
@@ -348,16 +354,11 @@ struct NotesView: View {
     }
 
     /// The ways to start something: one plus button bottom right, the same in every view, that unfolds into
-    /// task, link, meeting and note.
+    /// task, link, meeting and note (and project in the Projects tab). Bottom left the chat button.
     @ViewBuilder
     private var createMenu: some View {
-        if mode == .projects, openProject == nil {
-            FloatingActionButton(systemImage: "plus", label: "New Project") { showNewProject = true }
-                .padding(.trailing, 22)
-                .padding(.bottom, 16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        } else if mode == .tasks || mode == .links || mode == .projects || (mode.showsScope && scope != .trash) {
-            ZStack(alignment: .bottomTrailing) {
+        if mode != .chat, mode != .search {
+            ZStack(alignment: .bottom) {
                 if showCreate {
                     // Tapping anywhere else folds the menu again.
                     Color.black.opacity(0.08)
@@ -365,26 +366,44 @@ struct NotesView: View {
                         .onTapGesture { withAnimation(.snappy) { showCreate = false } }
                         .transition(.opacity)
                 }
-                VStack(alignment: .trailing, spacing: 14) {
-                    if showCreate, let project = openProject, mode == .projects {
-                        createOption("Task", systemImage: "checklist") { addTask(inProject: project) }
-                        createOption("Note", systemImage: "square.and.pencil") { addNote(inProject: project) }
-                    } else if showCreate {
-                        createOption("Task", systemImage: "checklist") { addTask() }
-                        createOption("Link", systemImage: "link") { showAddLink = true }
-                        createOption("Meeting", systemImage: "mic.fill") { showCalendar = true }
-                        createOption("Note", systemImage: "square.and.pencil") { addNote() }
+                HStack(alignment: .bottom) {
+                    FloatingActionButton(systemImage: "bubble.left.and.bubble.right.fill", label: "Chat", fill: .brandChat) {
+                        withAnimation(.snappy) { showCreate = false }
+                        openChat()
                     }
-                    FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
-                        withAnimation(.snappy) { showCreate.toggle() }
+                    Spacer()
+                    if scope != .trash || !mode.showsScope {
+                        VStack(alignment: .trailing, spacing: 14) {
+                            if showCreate {
+                                if mode == .projects, openProject == nil {
+                                    createOption("Project", systemImage: "folder.badge.plus") { showNewProject = true }
+                                }
+                                createOption("Task", systemImage: "checklist") { addTask() }
+                                createOption("Link", systemImage: "link") { showAddLink = true }
+                                createOption("Meeting", systemImage: "mic.fill") { showCalendar = true }
+                                createOption("Note", systemImage: "square.and.pencil") { addNote() }
+                            }
+                            FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
+                                withAnimation(.snappy) { showCreate.toggle() }
+                            }
+                            .rotationEffect(.degrees(showCreate ? 45 : 0))
+                        }
                     }
-                    .rotationEffect(.degrees(showCreate ? 45 : 0))
                 }
-                .padding(.trailing, 22)
+                .padding(.horizontal, 22)
                 .padding(.bottom, 16)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
+    }
+
+    private func openChat() {
+        modeBeforeChat = mode
+        mode = .chat
+    }
+
+    private func closeChat() {
+        mode = modeBeforeChat == .chat ? .tasks : modeBeforeChat
     }
 
     /// One unfolded option: a single white pill, icon on the left, then the text.
@@ -480,6 +499,13 @@ struct NotesView: View {
         if mode == .projects {
             projectsToolbar
         }
+        // The chat is no tab: a button opens it and, tapped again, goes back.
+        ToolbarItem(placement: .primaryAction) {
+            Button { mode == .chat ? closeChat() : openChat() } label: {
+                Label(mode == .chat ? "Close Chat" : "Chat", systemImage: mode == .chat ? "xmark.bubble" : "bubble.left.and.bubble.right")
+            }
+            .accessibilityLabel(mode == .chat ? "Close Chat" : "Chat")
+        }
         if mode.filtersByTag {
             ToolbarItem(placement: .primaryAction) {
                 tagMenu
@@ -557,7 +583,7 @@ struct NotesView: View {
     /// Projects: back to all of them and new note or task in the open one, or a new project.
     @ToolbarContentBuilder
     private var projectsToolbar: some ToolbarContent {
-        if let project = openProject {
+        if openProject != nil {
             ToolbarItem(placement: .navigation) {
                 Button { openProject = nil } label: {
                     Label("All Projects", systemImage: "chevron.left")
@@ -566,8 +592,10 @@ struct NotesView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button { addNote(inProject: project) } label: { Label("New Note", systemImage: "square.and.pencil") }
-                    Button { addTask(inProject: project) } label: { Label("New Task", systemImage: "checklist") }
+                    Button { addNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
+                    Button { showCalendar = true } label: { Label("Record Meeting", systemImage: "mic.fill") }
+                    Button { showAddLink = true } label: { Label("Add Link", systemImage: "link") }
+                    Button { addTask() } label: { Label("New Task", systemImage: "checklist") }
                 } label: {
                     Label("New", systemImage: "plus")
                 }
@@ -684,9 +712,10 @@ struct NotesView: View {
         }
     }
 
-    /// Back from an open project to the list of all projects (the back pill of the bar).
-    private var projectBack: (() -> Void)? {
-        mode == .projects && openProject != nil ? { openProject = nil } : nil
+    /// The back pill of the bar: out of the chat, or from an open project to the list of all projects.
+    private var barBack: (() -> Void)? {
+        if mode == .chat { return { closeChat() } }
+        return mode == .projects && openProject != nil ? { openProject = nil } : nil
     }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
@@ -809,33 +838,30 @@ struct NotesView: View {
         guard let address = LinkImport.webAddress(from: linkText) else { return }
         linkText = ""
         let note = LinkImport.add(address, context: context, processing: processing)
-        // The new link shows where links live.
-        if mode != .links { mode = .links }
+        // The new link shows where links live, or stays in the project it was added in.
+        if let project = projectForNew {
+            note.projectIDs = [project]
+            try? context.save()
+        } else if mode != .links {
+            mode = .links
+        }
         selection = note.id
         column = .detail
     }
 
-    /// A new note right in the project open in the Projects tab.
-    private func addNote(inProject project: UUID) {
-        let note = Note()
-        note.projectIDs = [project.uuidString]
-        draft = note
-        selection = note.id
-        column = .detail
-    }
-
-    /// A new task right in the project open in the Projects tab.
-    private func addTask(inProject project: UUID) {
-        let item = ActionItems.newTask(in: context)
-        item.projectIDs = [project.uuidString]
-        try? context.save()
-        openTask(item)
+    /// The project new things go into: the one open in the Projects tab.
+    private var projectForNew: String? {
+        mode == .projects ? openProject?.uuidString : nil
     }
 
     private func addNote() {
-        // The new note shows where notes live.
-        if mode != .timeline { mode = .timeline }
         let note = Note()
+        // In a project the new note goes into it and the project stays; elsewhere it shows where notes live.
+        if let project = projectForNew {
+            note.projectIDs = [project]
+        } else if mode != .timeline {
+            mode = .timeline
+        }
         draft = note
         selection = note.id
         column = .detail
@@ -913,7 +939,11 @@ struct NotesView: View {
 
     /// A recorded or imported meeting: stored, opened, transcribed, and shown under Meetings.
     private func insertAndProcess(_ note: Note) {
-        if mode != .meetings { mode = .meetings }
+        if let project = projectForNew {
+            note.projectIDs = [project]
+        } else if mode != .meetings {
+            mode = .meetings
+        }
         context.insert(note)
         try? context.save()
         draft = nil
@@ -1084,7 +1114,6 @@ private struct ListTabs: View {
             (ListMode.timeline, "Notes"),
             (ListMode.links, "Links"),
             (ListMode.projects, "Projects"),
-            (ListMode.chat, "Chat"),
         ], tint: { mode in
             // Each tab in its own color, the same as its title square.
             switch mode {

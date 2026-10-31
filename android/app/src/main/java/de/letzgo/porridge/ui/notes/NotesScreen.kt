@@ -141,6 +141,11 @@ fun NotesScreen(
     var tagTokens by remember { mutableStateOf(listOf<String>()) }
     /** Die Ansicht, zu der der Such-Knopf zurückführt. */
     var modeBeforeSearch by remember { mutableStateOf(ListMode.TASKS) }
+    /** Die Ansicht, zu der der Chat zurückführt. */
+    var modeBeforeChat by remember { mutableStateOf(ListMode.TASKS) }
+    var creatingProject by remember { mutableStateOf(false) }
+    /** Wohin Neues kommt: ins Projekt, das im Tab „Projects“ offen ist. */
+    val projectForNew = openProject?.id
     var showCreate by remember { mutableStateOf(false) }
     var showAddLink by remember { mutableStateOf(false) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
@@ -187,6 +192,7 @@ fun NotesScreen(
 
     // Zurück schließt erst das offene Projekt.
     BackHandler(enabled = openProject != null) { onProject(null) }
+    BackHandler(enabled = mode == ListMode.CHAT) { onMode(modeBeforeChat) }
 
     val shown = remember(notes, scope, mode, search, tagTokens, indexVersion) {
         // Die Suche sieht alles; die Listen zeigen den gewählten Tag (Links haben keinen eigenen Papierkorb).
@@ -253,6 +259,7 @@ fun NotesScreen(
                 } else if (mode == ListMode.CHAT) {
                     val messages by AppGraph.chat.messages.collectAsState()
                     if (messages.isNotEmpty()) IconButton(onClick = { AppGraph.chat.reset() }) { Icon(Icons.Outlined.EditNote, "New Chat", tint = barTint) }
+                    IconButton(onClick = { onMode(modeBeforeChat) }) { Icon(Icons.Filled.Close, "Close Chat", tint = barTint) }
                 }
                 // Die Suche ist kein Tab, sondern ein Knopf; nochmals getippt geht es zurück, woher man kam.
                 IconButton(onClick = {
@@ -270,7 +277,7 @@ fun NotesScreen(
                 ListMode.CHAT -> ChatScreen(notes, items, onOpen, Modifier.weight(1f))
                 ListMode.PROJECTS -> ProjectsScreen(
                     folders, openProject, notes, items, stages, onProject = onProject, onOpen = onOpen,
-                    onEditTask = { onEditTask(it.id) }, onNewNote = { onNewNote(it) }, modifier = Modifier.weight(1f),
+                    onEditTask = { onEditTask(it.id) }, modifier = Modifier.weight(1f),
                 )
                 ListMode.TASKS -> TasksScreen(items, notes, onOpen, { onEditTask(it.id) }, Modifier.weight(1f), tag = (scope as? NoteScope.Tag)?.name)
                 ListMode.SEARCH -> Column(Modifier.weight(1f)) {
@@ -280,25 +287,43 @@ fun NotesScreen(
                 }
             }
         }
-        // Derselbe Plus-Knopf in jeder Ansicht mit Liste (iOS: `createMenu`).
-        if (mode == ListMode.TASKS || mode == ListMode.LINKS || (mode.showsScope && scope != NoteScope.Trash)) {
+        // Derselbe Plus-Knopf in jeder Ansicht, unten links der Chat (iOS: `createMenu`). In einem offenen Projekt
+        // kommt alles Neue ins Projekt und die Ansicht bleibt.
+        if (mode != ListMode.CHAT && mode != ListMode.SEARCH) {
             CreateMenu(
                 showCreate, { showCreate = it },
+                showsPlus = !(mode.showsScope && scope == NoteScope.Trash),
+                onProject = if (mode == ListMode.PROJECTS && openProject == null) ({ creatingProject = true }) else null,
                 onTask = {
                     // Die neue Aufgabe zeigt sich dort, wo Aufgaben wohnen.
-                    if (mode != ListMode.TASKS) onMode(ListMode.TASKS)
-                    coroutines.launch { onEditTask(ActionItemStore().newTask().id) }
+                    if (projectForNew == null && mode != ListMode.TASKS) onMode(ListMode.TASKS)
+                    coroutines.launch {
+                        val item = ActionItemStore().newTask()
+                        projectForNew?.let { Projects.toggle(item, it) }
+                        onEditTask(item.id)
+                    }
                 },
-                onNote = { if (mode != ListMode.TIMELINE) onMode(ListMode.TIMELINE); onNewNote(null) }, onMeeting = onRecord, onLink = { showAddLink = true },
+                onNote = { if (projectForNew == null && mode != ListMode.TIMELINE) onMode(ListMode.TIMELINE); onNewNote(projectForNew) },
+                onMeeting = onRecord, onLink = { showAddLink = true },
+                onChat = { modeBeforeChat = mode; onMode(ListMode.CHAT) },
             )
         }
     }
 
     if (showAddLink) AddLinkDialog(onDismiss = { showAddLink = false }) { address ->
         showAddLink = false
-        // Der neue Link zeigt sich dort, wo Links wohnen.
-        if (mode != ListMode.LINKS) onMode(ListMode.LINKS)
-        coroutines.launch { onOpen(LinkImport.add(address).id) }
+        // Der neue Link zeigt sich dort, wo Links wohnen, oder bleibt im Projekt.
+        val pid = projectForNew
+        if (pid == null && mode != ListMode.LINKS) onMode(ListMode.LINKS)
+        coroutines.launch {
+            val note = LinkImport.add(address)
+            pid?.let { Projects.toggle(note, it) }
+            onOpen(note.id)
+        }
+    }
+    if (creatingProject) TextPrompt("New Project", "", "Create", onDismiss = { creatingProject = false }) { name ->
+        creatingProject = false
+        coroutines.launch { onProject(Projects.create(name).id) }
     }
     if (confirmEmptyTrash) AlertDialog(
         onDismissRequest = { confirmEmptyTrash = false },
@@ -457,12 +482,20 @@ private fun groups(list: List<Note>): List<Pair<String, List<Note>>> {
 
 /** iOS: `createMenu` — ein Plus-Knopf unten rechts, der sich in Notiz, Meeting und Link aufklappt. */
 @Composable
-private fun CreateMenu(open: Boolean, onOpen: (Boolean) -> Unit, onTask: () -> Unit, onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit) {
+private fun CreateMenu(
+    open: Boolean, onOpen: (Boolean) -> Unit, showsPlus: Boolean, onProject: (() -> Unit)?,
+    onTask: () -> Unit, onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit, onChat: () -> Unit,
+) {
     Box(Modifier.fillMaxSize()) {
         if (open) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.08f)).combinedClickableNoRipple { onOpen(false) })
-        Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        SkyFab(
+            Icons.Filled.ChatBubble, "Chat", Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 22.dp, bottom = 16.dp),
+            container = Brand.chat,
+        ) { onOpen(false); onChat() }
+        if (showsPlus) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             AnimatedVisibility(open) {
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    if (onProject != null) CreateOption("Project", Icons.Filled.Folder) { onOpen(false); onProject() }
                     CreateOption("Task", Icons.Filled.Checklist) { onOpen(false); onTask() }
                     CreateOption("Link", Icons.Filled.Link) { onOpen(false); onLink() }
                     CreateOption("Meeting", Icons.Filled.Mic) { onOpen(false); onMeeting() }

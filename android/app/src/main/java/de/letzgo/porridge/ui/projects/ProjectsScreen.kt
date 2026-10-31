@@ -75,23 +75,11 @@ fun ProjectsScreen(
     onProject: (String?) -> Unit,
     onOpen: (String) -> Unit,
     onEditTask: (ActionItem) -> Unit,
-    onNewNote: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var creating by remember { mutableStateOf(false) }
-    val coroutines = rememberCoroutineScope()
     Box(modifier.fillMaxWidth()) {
         if (open == null) ProjectList(projects, notes, items, onProject)
         else ProjectDetail(open, notes, items, stages, onBack = { onProject(null) }, onOpen = onOpen, onEditTask = onEditTask)
-        // Plus: in der Liste ein neues Projekt, im Projekt eine neue Notiz darin.
-        SkyFab(
-            Icons.Filled.Add, if (open == null) "New Project" else "New Note", container = Brand.project,
-            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp),
-        ) { if (open == null) creating = true else onNewNote(open.id) }
-    }
-    if (creating) TextPrompt("New Project", "", "Create", onDismiss = { creating = false }) { name ->
-        creating = false
-        coroutines.launch { Projects.create(name) }
     }
 }
 
