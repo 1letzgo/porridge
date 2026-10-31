@@ -15,8 +15,10 @@ final class Note {
     /// Recording that still has to be transcribed and appended to `text`.
     var pendingAudioFileName: String?
     var audioFileNames: [String] = []
-    /// `NoteFolder.id`; nil = the default "Notes" folder.
+    /// `NoteFolder.id`; nil = the default "Notes" folder. From the folder days: now `projectIDs`.
     var folderID: UUID?
+    /// The projects (`NoteFolder.id` as uppercase strings) the note belongs to.
+    var projectIDs: [String] = []
     var isPinned: Bool = false
     /// Set while the note is in "Recently Deleted".
     var deletedAt: Date?

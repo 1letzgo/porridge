@@ -6,7 +6,10 @@ import kotlinx.serialization.Serializable
 import java.text.Collator
 import java.util.UUID
 
-/** iOS: `NoteFolder` — Ordner; `parentID` verschachtelt sie. Notizen verweisen über `Note.folderID`. */
+/**
+ * iOS: `NoteFolder` — heute ein Projekt (früher Ordner). Notizen und Aufgaben verweisen über `projectIDs`;
+ * `parentID` und `Note.folderID` bleiben nur für alte Daten.
+ */
 @Serializable
 @Entity(tableName = "folders")
 data class NoteFolder(
@@ -14,6 +17,8 @@ data class NoteFolder(
     val name: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val parentID: String? = null,
+    /** Letzte Änderung (Anlegen, Umbenennen); 0 bei alten Ordnern. */
+    val updatedAt: Long = 0,
 )
 
 /** iOS: `NoteScope` — was eine Liste zeigt: alles, einen Tag oder „Recently Deleted“. Ordner werden nicht mehr gezeigt; `NoteFolder` bleibt in der Datenbank. */

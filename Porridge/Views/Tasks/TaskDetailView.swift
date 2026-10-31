@@ -49,6 +49,12 @@ struct TaskDetailView: View {
                     }
                     .font(.subheadline)
 
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        ProjectPills(assigned: item.projectIDs, inherited: note?.projectIDs ?? []) { project in
+                            Projects.toggle(project, on: item, in: context)
+                        }
+                    }
+
                     if let note {
                         Button { onOpenNote(note.id) } label: {
                             HStack(spacing: 8) {

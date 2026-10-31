@@ -14,6 +14,7 @@ struct NotesView: View {
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
     /// The tasks and decisions of all notes, taken from their summaries.
     @Query private var items: [ActionItem]
+    @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
 
     @State private var scope = NoteScope.all
     @State private var selection: UUID?
@@ -45,6 +46,10 @@ struct NotesView: View {
     @State private var importError: String?
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
+    /// The project open in the Projects tab; nil = the list of all projects.
+    @State private var openProject: UUID?
+    @State private var showNewProject = false
+    @State private var projectName = ""
 
     var body: some View {
         NavigationSplitView(preferredCompactColumn: $column) {
@@ -90,6 +95,14 @@ struct NotesView: View {
         } message: {
             Text("The page is saved as a note and summarized.")
         }
+        .alert("New Project", isPresented: $showNewProject) {
+            TextField("Name", text: $projectName)
+            Button("Cancel", role: .cancel) { projectName = "" }
+            Button("Create") {
+                if let project = Projects.create(projectName, in: context) { openProject = project.id }
+                projectName = ""
+            }
+        }
         .alert("Import Failed", isPresented: .constant(importError != nil)) {
             Button("OK") { importError = nil }
         } message: {
@@ -103,6 +116,7 @@ struct NotesView: View {
             LinkImport.importInbox(context: context, processing: processing)
             ActionItems.backfill(notes, in: context)
             ActionItems.dropEmptyManual(in: context)
+            Projects.migrateFolders(in: context)
         }
         // The search index follows the notes: only what changed is cut and embedded again.
         .task(id: indexSignature) {
@@ -147,7 +161,7 @@ struct NotesView: View {
         let shown = visibleNotes
         return VStack(spacing: 0) {
             #if os(iOS)
-            ChromeBar(title: listTitle, systemImage: listIcon, tint: listTint) {
+            ChromeBar(title: listTitle, systemImage: listIcon, tint: listTint, onBack: projectBack) {
                 listActions(isEmpty: shown.isEmpty)
             }
             #else
@@ -168,6 +182,12 @@ struct NotesView: View {
                 ChatView(notes: notes, items: items, store: chat) { openFromChat($0) }
             case .tasks:
                 tasksPane
+            case .projects:
+                ProjectsPane(
+                    projects: projects, notes: notes, items: items,
+                    openProject: $openProject, selection: $selection, selectedTaskID: openTaskItem?.id,
+                    onOpenNote: { openFromChat($0) }, onOpenTask: { openTask($0) }
+                )
             case .search:
                 SearchPane(
                     text: $search, tokens: $tagTokens,
@@ -207,7 +227,8 @@ struct NotesView: View {
             if let old { dropIfEmpty(old) }
         }
         .onChange(of: mode) { _, new in
-            if new != .tasks { openTaskItem = nil }
+            if new != .tasks, new != .projects { openTaskItem = nil }
+            if new != .projects { openProject = nil }
             // Only notes and meetings have a trash; elsewhere the list starts with everything.
             if !new.showsScope, new != .search, scope == .trash { scope = .all }
             if new != .chat { chat.release() }
@@ -330,7 +351,12 @@ struct NotesView: View {
     /// task, link, meeting and note.
     @ViewBuilder
     private var createMenu: some View {
-        if mode == .tasks || mode == .links || (mode.showsScope && scope != .trash) {
+        if mode == .projects, openProject == nil {
+            FloatingActionButton(systemImage: "plus", label: "New Project") { showNewProject = true }
+                .padding(.trailing, 22)
+                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        } else if mode == .tasks || mode == .links || mode == .projects || (mode.showsScope && scope != .trash) {
             ZStack(alignment: .bottomTrailing) {
                 if showCreate {
                     // Tapping anywhere else folds the menu again.
@@ -340,7 +366,10 @@ struct NotesView: View {
                         .transition(.opacity)
                 }
                 VStack(alignment: .trailing, spacing: 14) {
-                    if showCreate {
+                    if showCreate, let project = openProject, mode == .projects {
+                        createOption("Task", systemImage: "checklist") { addTask(inProject: project) }
+                        createOption("Note", systemImage: "square.and.pencil") { addNote(inProject: project) }
+                    } else if showCreate {
                         createOption("Task", systemImage: "checklist") { addTask() }
                         createOption("Link", systemImage: "link") { showAddLink = true }
                         createOption("Meeting", systemImage: "mic.fill") { showCalendar = true }
@@ -448,6 +477,9 @@ struct NotesView: View {
             timelineToolbar(isEmpty: isEmpty)
         }
         modeToolbar
+        if mode == .projects {
+            projectsToolbar
+        }
         if mode.filtersByTag {
             ToolbarItem(placement: .primaryAction) {
                 tagMenu
@@ -520,6 +552,35 @@ struct NotesView: View {
             Label(mode == .search ? "Close Search" : "Search", systemImage: mode == .search ? "xmark" : "magnifyingglass")
         }
         .accessibilityLabel(mode == .search ? "Close Search" : "Search")
+    }
+
+    /// Projects: back to all of them and new note or task in the open one, or a new project.
+    @ToolbarContentBuilder
+    private var projectsToolbar: some ToolbarContent {
+        if let project = openProject {
+            ToolbarItem(placement: .navigation) {
+                Button { openProject = nil } label: {
+                    Label("All Projects", systemImage: "chevron.left")
+                }
+                .accessibilityLabel("All Projects")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button { addNote(inProject: project) } label: { Label("New Note", systemImage: "square.and.pencil") }
+                    Button { addTask(inProject: project) } label: { Label("New Task", systemImage: "checklist") }
+                } label: {
+                    Label("New", systemImage: "plus")
+                }
+                .accessibilityLabel("New")
+            }
+        } else {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showNewProject = true } label: {
+                    Label("New Project", systemImage: "plus")
+                }
+                .accessibilityLabel("New Project")
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -604,6 +665,7 @@ struct NotesView: View {
         case .search: "Search"
         case .tasks: "Tasks"
         case .links: "Links"
+        case .projects: openProject.flatMap { id in projects.first { $0.id == id }?.name } ?? "Projects"
         case .meetings: scope == .all ? "Meetings" : scopeTitle
         case .timeline: scopeTitle
         }
@@ -616,8 +678,14 @@ struct NotesView: View {
         case .links: .brandLink
         case .meetings: .brandNavy
         case .chat: .brandChat
+        case .projects: .brandProject
         default: .brandSky
         }
+    }
+
+    /// Back from an open project to the list of all projects (the back pill of the bar).
+    private var projectBack: (() -> Void)? {
+        mode == .projects && openProject != nil ? { openProject = nil } : nil
     }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
@@ -627,6 +695,7 @@ struct NotesView: View {
         case .search: return "magnifyingglass"
         case .tasks: return "checklist"
         case .links: return "link"
+        case .projects: return "folder.fill"
         case .timeline, .meetings:
             switch scope {
             case .all: return mode == .meetings ? "waveform" : "tray.full.fill"
@@ -743,6 +812,23 @@ struct NotesView: View {
         if mode != .links { mode = .links }
         selection = note.id
         column = .detail
+    }
+
+    /// A new note right in the project open in the Projects tab.
+    private func addNote(inProject project: UUID) {
+        let note = Note()
+        note.projectIDs = [project.uuidString]
+        draft = note
+        selection = note.id
+        column = .detail
+    }
+
+    /// A new task right in the project open in the Projects tab.
+    private func addTask(inProject project: UUID) {
+        let item = ActionItems.newTask(in: context)
+        item.projectIDs = [project.uuidString]
+        try? context.save()
+        openTask(item)
     }
 
     private func addNote() {
@@ -869,7 +955,7 @@ struct NotesView: View {
     }
 }
 
-private struct NoteRow: View {
+struct NoteRow: View {
     let note: Note
     let stage: String?
 
@@ -996,6 +1082,7 @@ private struct ListTabs: View {
             (ListMode.meetings, "Meetings"),
             (ListMode.timeline, "Notes"),
             (ListMode.links, "Links"),
+            (ListMode.projects, "Projects"),
             (ListMode.chat, "Chat"),
         ], tint: { mode in
             // Each tab in its own color, the same as its title square.
@@ -1004,6 +1091,7 @@ private struct ListTabs: View {
             case .links: .brandLink
             case .meetings: .brandNavy
             case .chat: .brandChat
+            case .projects: .brandProject
             default: nil
             }
         })
@@ -1028,6 +1116,8 @@ enum ListMode: Hashable {
     case timeline
     /// The saved links, apart from the notes.
     case links
+    /// The projects, and in one of them everything assigned to it.
+    case projects
     case chat
     /// The search, opened from the button in the bar (no tab of its own).
     case search

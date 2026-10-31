@@ -16,6 +16,7 @@ enum SyncRecords {
             "audioFileNames": note.audioFileNames,
             "isPinned": note.isPinned,
             "labels": note.labels,
+            "projectIDs": note.projectIDs,
             "titleIsCustom": note.titleIsCustom,
             "duration": note.duration,
             "channelCount": note.channelCount,
@@ -52,6 +53,7 @@ enum SyncRecords {
         note.url = r["url"] as? String
         note.pageText = r["pageText"] as? String
         note.labels = r["labels"] as? [String] ?? []
+        note.projectIDs = r["projectIDs"] as? [String] ?? []
         note.summary = r["summary"] as? String
         note.summaryModel = r["summaryModel"] as? String
         note.summarizedAt = date(r["summarizedAt"])
@@ -89,6 +91,7 @@ enum SyncRecords {
             "details": item.details,
             "updatedAt": ms(item.updatedAt),
             "reviewRaw": item.reviewRaw,
+            "projectIDs": item.projectIDs,
         ]
         r["noteID"] = item.noteID?.uuidString
         r["owner"] = item.owner
@@ -111,12 +114,13 @@ enum SyncRecords {
         item.summaryKey = r["summaryKey"] as? String
         item.updatedAt = date(r["updatedAt"]) ?? item.updatedAt
         item.reviewRaw = r["reviewRaw"] as? String ?? ActionItem.Review.accepted.rawValue
+        item.projectIDs = r["projectIDs"] as? [String] ?? []
     }
 
     // MARK: NoteFolder
 
     static func record(_ folder: NoteFolder) -> SyncRecord {
-        var r: SyncRecord = ["id": folder.id.uuidString, "name": folder.name, "createdAt": ms(folder.createdAt)]
+        var r: SyncRecord = ["id": folder.id.uuidString, "name": folder.name, "createdAt": ms(folder.createdAt), "updatedAt": ms(folder.updatedAt)]
         r["parentID"] = folder.parentID?.uuidString
         return r
     }
@@ -124,6 +128,8 @@ enum SyncRecords {
     static func apply(_ r: SyncRecord, to folder: NoteFolder) {
         folder.name = r["name"] as? String ?? ""
         folder.createdAt = date(r["createdAt"]) ?? folder.createdAt
+        // Folders from before projects come with 0 from Android.
+        folder.updatedAt = date(r["updatedAt"]).flatMap { $0.timeIntervalSince1970 > 0 ? $0 : nil } ?? folder.createdAt
         folder.parentID = uuid(r["parentID"])
     }
 

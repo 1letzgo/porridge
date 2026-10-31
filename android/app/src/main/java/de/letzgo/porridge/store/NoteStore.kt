@@ -1,8 +1,8 @@
 package de.letzgo.porridge.store
 
+import de.letzgo.porridge.data.Projects
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
-import de.letzgo.porridge.model.subtreeIDs
 import java.util.concurrent.TimeUnit
 
 /** iOS: `NoteStore` — Papierkorb, Wiederherstellen, endgültiges Löschen und Ordnerpflege. */
@@ -35,14 +35,6 @@ class NoteStore(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
         db.notes().trashed().filter { (it.deletedAt ?: Long.MAX_VALUE) < limit }.forEach { deletePermanently(it) }
     }
 
-    /** Löscht einen Ordner mit Unterordnern; ihre Notizen gehen in „Recently Deleted“. */
-    suspend fun delete(folder: NoteFolder) {
-        val folders = db.folders().all()
-        val ids = folders.subtreeIDs(folder.id)
-        val now = System.currentTimeMillis()
-        val moved = db.notes().all().filter { !it.isDeleted && it.folderID != null && it.folderID in ids }
-            .map { it.copy(deletedAt = now, isPinned = false) }
-        db.notes().upsertAll(moved)
-        db.folders().deleteAll(ids)
-    }
+    /** Löscht ein Projekt (früher Ordner); seine Notizen bleiben (siehe [Projects.delete]). */
+    suspend fun delete(folder: NoteFolder) = Projects.delete(folder)
 }

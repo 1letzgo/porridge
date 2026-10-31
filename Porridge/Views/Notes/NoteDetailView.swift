@@ -305,6 +305,9 @@ struct NoteDetailView: View {
     private var tagRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                ProjectPills(assigned: note.projectIDs) { project in
+                    Projects.toggle(project, on: note, in: context)
+                }
                 ForEach(note.tags, id: \.self) { tag in
                     let removable = note.labels.contains { $0.lowercased() == tag.lowercased() }
                     HStack(spacing: 6) {

@@ -1,13 +1,16 @@
 import Foundation
 import SwiftData
 
-/// Folder for notes; `parentID` makes folders nest. Notes point at it with `Note.folderID`.
+/// A project (stored as the former note folder, so synced data keeps its shape). Notes, meetings, links and
+/// tasks name the projects they belong to in `projectIDs`; one element can be in several. `parentID` and
+/// `Note.folderID` are from the folder days and no longer used.
 /// CloudKit-compatible: every property has a default.
 @Model
 final class NoteFolder {
     var id: UUID = UUID()
     var name: String = ""
     var createdAt: Date = Date()
+    var updatedAt: Date = Date()
     var parentID: UUID?
 
     init(name: String, parentID: UUID? = nil) {

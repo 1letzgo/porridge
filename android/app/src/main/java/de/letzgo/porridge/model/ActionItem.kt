@@ -39,6 +39,8 @@ data class ActionItem(
     val updatedAt: Long = System.currentTimeMillis(),
     /** Ob eine Aufgabe aus der Zusammenfassung angesehen wurde ([Review]). Einträge von vor der Prüfung gelten als übernommen. */
     val reviewRaw: String = Review.ACCEPTED.raw,
+    /** Eigene Projekte (`NoteFolder.id`); die der Notiz, aus der sie stammt, gelten mit. */
+    val projectIDs: List<String> = emptyList(),
 ) {
     enum class Kind(val raw: String) {
         TASK("task"),

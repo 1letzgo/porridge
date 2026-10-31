@@ -24,6 +24,8 @@ object Brand {
     val danger = Color(0xFFD93025)
     /** Chat (iOS: `brandChat`). */
     val chat = Color(0xFFE63F3D)
+    /** Projekte: Violett (iOS: `brandProject`). */
+    val project = Color(0xFF7C5CD6)
 }
 
 private val LightColors = lightColorScheme(

@@ -32,8 +32,10 @@ data class Note(
     /** Aufnahme, die noch transkribiert und an `text` angehängt werden muss. */
     val pendingAudioFileName: String? = null,
     val audioFileNames: List<String> = emptyList(),
-    /** `NoteFolder.id`; null = Standardordner „Notes“. */
+    /** Alter Ordner (`NoteFolder.id`); beim Start in [projectIDs] übernommen und geleert. */
     val folderID: String? = null,
+    /** Projekte (`NoteFolder.id`), zu denen die Notiz gehört. */
+    val projectIDs: List<String> = emptyList(),
     val isPinned: Boolean = false,
     /** Gesetzt, solange die Notiz in „Recently Deleted“ liegt. */
     val deletedAt: Long? = null,

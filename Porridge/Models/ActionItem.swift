@@ -31,6 +31,9 @@ final class ActionItem {
     /// Whether a task the summary brought in was looked at (`Review`). Items from before there was a review
     /// count as accepted.
     var reviewRaw: String = Review.accepted.rawValue
+    /// The projects (`NoteFolder.id` as uppercase strings) the item belongs to itself; it is in the projects
+    /// of its note too (`Projects.contains`).
+    var projectIDs: [String] = []
 
     enum Kind: String {
         case task

@@ -118,6 +118,22 @@ struct TasksPane: View {
     }
 
     private func row(_ item: ActionItem, note: Note?) -> some View {
+        TaskRow(item: item, note: note, selectedID: selectedID, onOpen: onOpen, onEdit: onEdit)
+    }
+}
+
+/// One task: tick box, title, details, owner and note; tapped it opens on its own page. Used by the task list
+/// and the projects.
+struct TaskRow: View {
+    let item: ActionItem
+    let note: Note?
+    var selectedID: UUID?
+    var onOpen: (UUID) -> Void
+    var onEdit: (ActionItem) -> Void
+
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Button {
                 withAnimation(.snappy) { ActionItems.setDone(item, !item.isDone, note: note, in: context) }

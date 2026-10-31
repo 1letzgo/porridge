@@ -58,6 +58,12 @@ import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.ui.Brand
 import de.letzgo.porridge.ui.notes.NoteBodyEditor
 import de.letzgo.porridge.ui.notes.NoteEditorController
+import de.letzgo.porridge.data.Projects
+import de.letzgo.porridge.logic.ProjectsLogic
+import de.letzgo.porridge.ui.projects.ProjectPills
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Folder
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -168,6 +174,16 @@ fun TaskDetailScreen(id: String, onOpenNote: (String) -> Unit, onClose: () -> Un
                         )
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    }
+                }
+                // Projekte: eigene und, blass, die der Notiz.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Folder, "Projects", tint = Brand.project, modifier = Modifier.padding(horizontal = 12.dp).size(22.dp))
+                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ProjectPills(
+                            item.projectIDs, { pid -> coroutines.launch { Projects.toggle(item, pid) } },
+                            inherited = ProjectsLogic.inherited(item, note?.takeIf { !it.isDeleted }),
+                        )
                     }
                 }
                 HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)

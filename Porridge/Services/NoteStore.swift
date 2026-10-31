@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// Moving notes to "Recently Deleted", restoring and deleting them, and folder housekeeping.
+/// Moving notes to "Recently Deleted", restoring and deleting them.
 enum NoteStore {
     /// Days a note stays in "Recently Deleted".
     static let trashDays = 30
@@ -40,16 +40,4 @@ enum NoteStore {
         }
     }
 
-    /// Deletes a folder with its subfolders; their notes go to "Recently Deleted".
-    static func delete(_ folder: NoteFolder, in context: ModelContext) {
-        let folders = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
-        let ids = folders.subtreeIDs(of: folder.id)
-        let notes = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.deletedAt == nil }))) ?? []
-        for note in notes where note.folderID.map(ids.contains) == true {
-            note.deletedAt = Date()
-            note.isPinned = false
-        }
-        for item in folders where ids.contains(item.id) { context.delete(item) }
-        try? context.save()
-    }
 }

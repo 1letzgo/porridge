@@ -1,5 +1,6 @@
 package de.letzgo.porridge.ui.notes
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Close
@@ -76,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.letzgo.porridge.AppGraph
 import de.letzgo.porridge.data.LinkImport
+import de.letzgo.porridge.data.Projects
 import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteScope
@@ -96,6 +99,7 @@ import de.letzgo.porridge.ui.components.ListTabs
 import de.letzgo.porridge.ui.components.RowIcon
 import de.letzgo.porridge.ui.components.SectionHeader
 import de.letzgo.porridge.ui.components.SkyFab
+import de.letzgo.porridge.ui.projects.ProjectsScreen
 import de.letzgo.porridge.ui.tasks.TasksScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -114,7 +118,11 @@ fun NotesScreen(
     mode: ListMode,
     onMode: (ListMode) -> Unit,
     onOpen: (String) -> Unit,
-    onNewNote: () -> Unit,
+    /** Neue Notiz, auf Wunsch gleich in einem Projekt. */
+    onNewNote: (projectID: String?) -> Unit,
+    /** Das offene Projekt im Tab „Projects“ (null = die Liste der Projekte). */
+    project: String?,
+    onProject: (String?) -> Unit,
     onRecord: () -> Unit,
     onSettings: () -> Unit,
     onEditTask: (String) -> Unit,
@@ -122,6 +130,8 @@ fun NotesScreen(
     val db = PorridgeDatabase.shared
     val notes by db.notes().observeAll().collectAsState(initial = emptyList())
     val items by db.actionItems().observeAll().collectAsState(initial = emptyList())
+    val folders by db.folders().observeAll().collectAsState(initial = emptyList())
+    val openProject = folders.firstOrNull { it.id == project }.takeIf { mode == ListMode.PROJECTS }
     val stages by ProcessingService.stages.collectAsState()
     val indexVersion by AppGraph.index.version.collectAsState()
     val coroutines = rememberCoroutineScope()
@@ -161,6 +171,8 @@ fun NotesScreen(
     // Beim Start: Papierkorb leeren, Aufgaben nachtragen, unterbrochene Verarbeitung fortsetzen (iOS: `.task`).
     LaunchedEffect(Unit) {
         NoteStore().purgeExpired()
+        // Ordner werden Projekte (einmalig; danach hat keine Notiz mehr einen Ordner).
+        Projects.migrateFolders()
         ActionItemStore().backfill(db.notes().all())
         // Leer gelassene, von Hand angelegte Aufgaben (Plus getippt, wieder geschlossen) gehen.
         ActionItemStore().dropEmptyManual()
@@ -171,6 +183,9 @@ fun NotesScreen(
         delay(800)
         AppGraph.index.refresh(notes)
     }
+
+    // Zurück schließt erst das offene Projekt.
+    BackHandler(enabled = openProject != null) { onProject(null) }
 
     val shown = remember(notes, scope, mode, search, tagTokens, indexVersion) {
         // Die Suche sieht alles; die Listen zeigen den gewählten Tag (Links haben keinen eigenen Papierkorb).
@@ -196,6 +211,7 @@ fun NotesScreen(
         ListMode.SEARCH -> "Search"
         ListMode.TASKS -> "Tasks"
         ListMode.LINKS -> "Links"
+        ListMode.PROJECTS -> openProject?.name ?: "Projects"
         ListMode.MEETINGS, ListMode.TIMELINE -> when (scope) {
             NoteScope.All -> if (mode == ListMode.MEETINGS) "Meetings" else "Notes"
             is NoteScope.Tag -> "#" + scope.name
@@ -207,6 +223,7 @@ fun NotesScreen(
         ListMode.SEARCH -> Icons.Filled.Search
         ListMode.TASKS -> Icons.Filled.Checklist
         ListMode.LINKS -> Icons.Filled.Link
+        ListMode.PROJECTS -> Icons.Filled.Folder
         ListMode.MEETINGS, ListMode.TIMELINE -> when (scope) {
             NoteScope.All -> if (mode == ListMode.MEETINGS) Icons.Filled.Mic else Icons.Filled.Inbox
             is NoteScope.Tag -> Icons.Filled.Tag
@@ -250,6 +267,10 @@ fun NotesScreen(
                 ListMode.MEETINGS, ListMode.TIMELINE -> NoteList(shown, scope, stages, onOpen, Modifier.weight(1f), tint = mode.color)
                 ListMode.LINKS -> NoteList(shown, NoteScope.All, stages, onOpen, Modifier.weight(1f), tint = LinkOrange)
                 ListMode.CHAT -> ChatScreen(notes, items, onOpen, Modifier.weight(1f))
+                ListMode.PROJECTS -> ProjectsScreen(
+                    folders, openProject, notes, items, stages, onProject = onProject, onOpen = onOpen,
+                    onEditTask = { onEditTask(it.id) }, onNewNote = { onNewNote(it) }, modifier = Modifier.weight(1f),
+                )
                 ListMode.TASKS -> TasksScreen(items, notes, onOpen, { onEditTask(it.id) }, Modifier.weight(1f), tag = (scope as? NoteScope.Tag)?.name)
                 ListMode.SEARCH -> Column(Modifier.weight(1f)) {
                     SearchBar(search, { search = it }, tagTokens, { tagTokens = it }, tagCounts(notes.filter { !it.isDeleted }))
@@ -267,7 +288,7 @@ fun NotesScreen(
                     if (mode != ListMode.TASKS) onMode(ListMode.TASKS)
                     coroutines.launch { onEditTask(ActionItemStore().newTask().id) }
                 },
-                onNote = { if (mode != ListMode.TIMELINE) onMode(ListMode.TIMELINE); onNewNote() }, onMeeting = onRecord, onLink = { showAddLink = true },
+                onNote = { if (mode != ListMode.TIMELINE) onMode(ListMode.TIMELINE); onNewNote(null) }, onMeeting = onRecord, onLink = { showAddLink = true },
             )
         }
     }
@@ -375,7 +396,7 @@ private fun SwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, store
 
 /** iOS: `NoteRow` — Notizen in Sky, Meetings in Navy, Links in Orange. */
 @Composable
-private fun NoteRow(note: Note, stage: String?, modifier: Modifier) {
+internal fun NoteRow(note: Note, stage: String?, modifier: Modifier) {
     val (icon, tint) = when {
         note.isLink -> Icons.Filled.Link to LinkOrange
         note.isRecording -> Icons.Outlined.GraphicEq to Brand.navy

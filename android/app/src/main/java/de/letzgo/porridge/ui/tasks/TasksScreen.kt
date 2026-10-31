@@ -138,7 +138,7 @@ fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> 
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun TaskRow(
+internal fun TaskRow(
     item: ActionItem, note: Note?, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit, onToggle: () -> Unit, onDelete: () -> Unit,
     onAccept: () -> Unit, onDismiss: () -> Unit,
 ) {

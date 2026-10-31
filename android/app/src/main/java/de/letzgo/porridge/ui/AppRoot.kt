@@ -64,6 +64,8 @@ fun AppRoot() {
     var scope by remember { mutableStateOf<NoteScope>(NoteScope.All) }
     // The app opens on the tasks; the notes are where they come from.
     var mode by remember { mutableStateOf(ListMode.TASKS) }
+    /** Das offene Projekt; bleibt, während eine Notiz daraus offen ist. */
+    var project by remember { mutableStateOf<String?>(null) }
     var showCalendar by remember { mutableStateOf(false) }
     val coroutines = rememberCoroutineScope()
     fun push(screen: Screen) = stack.add(screen)
@@ -87,12 +89,14 @@ fun AppRoot() {
         when (top) {
             null -> NotesScreen(
                 scope = scope, onScope = { scope = it }, mode = mode, onMode = {
+                    if (it != mode) project = null
                     mode = it
                     // Nur Notizen und Meetings haben einen Papierkorb; anderswo beginnt die Liste mit allem.
                     if (!it.showsScope && it != ListMode.SEARCH && scope == NoteScope.Trash) scope = NoteScope.All
                 },
                 onOpen = ::open,
-                onNewNote = { val draft = Note(); push(Screen.Detail(draft.id, draft)) },
+                onNewNote = { pid -> val draft = Note(projectIDs = listOfNotNull(pid)); push(Screen.Detail(draft.id, draft)) },
+                project = project, onProject = { project = it },
                 onRecord = { showCalendar = true },
                 onSettings = { push(Screen.Settings) },
                 onEditTask = { push(Screen.Task(it)) },

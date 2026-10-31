@@ -10,6 +10,8 @@ extension Color {
     static let brandNavy = Color("BrandNavy")
     /// Saved links.
     static let brandLink = Color(red: 0.98, green: 0.56, blue: 0.14)
+    /// Projects: violet.
+    static let brandProject = Color(red: 0.49, green: 0.36, blue: 0.84)
     /// Tasks: a fresh green next to the sky blue.
     static let brandTask = Color(red: 0.16, green: 0.74, blue: 0.50)
     /// Chat.

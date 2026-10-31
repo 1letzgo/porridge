@@ -91,7 +91,9 @@ import de.letzgo.porridge.logic.ActionItemsLogic
 import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.Me
 import de.letzgo.porridge.data.Prefs
+import de.letzgo.porridge.logic.ProjectsLogic
 import de.letzgo.porridge.model.Note
+import de.letzgo.porridge.ui.projects.ProjectPills
 import de.letzgo.porridge.model.ProcessingStatus
 import de.letzgo.porridge.model.Speaker
 import de.letzgo.porridge.model.SpeakerMode
@@ -252,7 +254,10 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
             Column(Modifier.padding(horizontal = 16.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Header(note, onNext = { tab = NoteTab.NOTE; editor.focusStart() }) { title -> update { it.copy(title = title, titleIsCustom = true) } }
                 if (note.isDeleted) Text("This note is in Recently Deleted.", color = Brand.danger, style = MaterialTheme.typography.bodySmall)
-                else TagRow(note, onAdd = { addingTag = true }) { tag -> update { n -> n.copy(labels = n.labels.filter { !it.equals(tag, true) }) } }
+                else TagRow(
+                    note, onAdd = { addingTag = true },
+                    onProject = { id -> update { n -> n.copy(projectIDs = ProjectsLogic.toggled(n.projectIDs, id)) } },
+                ) { tag -> update { n -> n.copy(labels = n.labels.filter { !it.equals(tag, true) }) } }
                 StatusPanel(note, stage)
                 if (note.speakers.isNotEmpty()) SpeakerChips(note.speakers) { renaming = it }
                 if (tabs.size > 1) TabSwitcher(tabs, tab) { tab = it }
@@ -427,8 +432,10 @@ private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TagRow(note: Note, onAdd: () -> Unit, onRemove: (String) -> Unit) {
+private fun TagRow(note: Note, onAdd: () -> Unit, onProject: (String) -> Unit, onRemove: (String) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Projekte vor den Tags.
+        ProjectPills(note.projectIDs, onProject)
         for (tag in note.tags) {
             val removable = note.labels.any { it.equals(tag, true) }
             Surface(shape = RoundedCornerShape(50), color = Brand.sky.copy(alpha = 0.18f)) {
