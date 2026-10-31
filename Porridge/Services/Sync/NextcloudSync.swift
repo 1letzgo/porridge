@@ -186,6 +186,10 @@ final class NextcloudSync {
             }
             state.base = newBase
             state.settings = settingsBase
+            let referenced = try referencedRecordings(output["notes"] as? [SyncRecord] ?? [], context: context)
+            let released = Set(state.recordings ?? []).subtracting(referenced)
+            state.orphans = Set(state.orphans ?? []).union(released).subtracting(referenced).sorted()
+            state.recordings = referenced.sorted()
             state.save()
             return
         }
@@ -304,12 +308,34 @@ final class NextcloudSync {
 
     // MARK: Recordings
 
+    /// The recordings of the notes in the file and of the notes here still being processed.
+    private func referencedRecordings(_ notes: [SyncRecord], context: ModelContext) throws -> Set<String> {
+        let frozen = try context.fetch(FetchDescriptor<Note>()).filter(SyncRecords.isFrozen)
+            .flatMap { [$0.audioFileName, $0.pendingAudioFileName].compactMap { $0 } + $0.audioFileNames }
+        return Set(notes.flatMap(SyncRecords.audioFiles) + frozen)
+    }
+
     /// Recordings this device has go up; recordings of synced notes it lacks come down.
     private func syncRecordings(_ dav: WebDAV, context: ModelContext) async throws {
-        let notes = try context.fetch(FetchDescriptor<Note>()).filter { !SyncRecords.isFrozen($0) }
+        let all = try context.fetch(FetchDescriptor<Note>())
+        let notes = all.filter { !SyncRecords.isFrozen($0) }
         let wanted = Set(notes.flatMap { [$0.audioFileName].compactMap { $0 } + $0.audioFileNames })
-        guard !wanted.isEmpty else { return }
+        var state = State.load()
+        let orphans = state.orphans ?? []
+        guard !wanted.isEmpty || !orphans.isEmpty else { return }
         var remote = try await dav.list(dav.recordings)
+        // Recordings deleted somewhere: off the server, and off this device when no note here uses them.
+        if !orphans.isEmpty {
+            let inUse = Set(all.flatMap { [$0.audioFileName, $0.pendingAudioFileName].compactMap { $0 } + $0.audioFileNames })
+            for name in orphans where Self.isPlainName(name) {
+                if remote.contains(name) { try await dav.delete(dav.recordings.appending(path: name)) }
+                remote.remove(name)
+                if !inUse.contains(name) { AudioStore.delete(name) }
+            }
+            state.orphans = []
+            state.save()
+        }
+        guard !wanted.isEmpty else { return }
         if remote.isEmpty { try await dav.makeFolder(dav.recordings) }
         for name in wanted.sorted() where Self.isPlainName(name) {
             let target = dav.recordings.appending(path: name)
@@ -334,6 +360,10 @@ final class NextcloudSync {
         var base: [String: [String: SyncBase]] = [:]
         /// The settings at the last run (key in the file → value); nil in a state from before settings synced.
         var settings: [String: String]?
+        /// The recordings the file pointed to at the last run; nil before the first run that kept them.
+        var recordings: [String]?
+        /// Recordings nothing points to any more: they go from the server and from this device.
+        var orphans: [String]?
 
         private static var url: URL {
             let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

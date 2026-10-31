@@ -186,6 +186,13 @@ class WebDAV(private val account: NextcloudAccount, private val client: OkHttpCl
         }
     }
 
+    /** Löscht die Datei; eine schon fehlende ist auch recht. */
+    suspend fun delete(url: HttpUrl) = withContext(Dispatchers.IO) {
+        client.newCall(request(url).delete().build()).execute().use { response ->
+            if (!response.isSuccessful && response.code != 404) throw httpError(response.code)
+        }
+    }
+
     /** Legt den Ordner an; ein vorhandener ist auch recht. */
     suspend fun makeFolder(url: HttpUrl) = withContext(Dispatchers.IO) {
         client.newCall(request(url).method("MKCOL", null).build()).execute().use { response ->

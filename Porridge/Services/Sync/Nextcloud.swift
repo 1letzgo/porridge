@@ -196,6 +196,12 @@ struct WebDAV {
         try FileManager.default.moveItem(at: temp, to: file)
     }
 
+    /// Deletes the file; one already gone is fine.
+    func delete(_ url: URL) async throws {
+        let (_, response) = try await URLSession.shared.data(for: request(url, method: "DELETE"))
+        guard (200...299).contains(status(response)) || status(response) == 404 else { throw NextcloudError.http(status(response)) }
+    }
+
     /// Creates the folder; an existing one is fine.
     func makeFolder(_ url: URL) async throws {
         let (_, response) = try await URLSession.shared.data(for: request(url, method: "MKCOL"))

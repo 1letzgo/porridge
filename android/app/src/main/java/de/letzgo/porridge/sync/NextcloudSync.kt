@@ -200,6 +200,10 @@ object NextcloudSync {
         val base: Map<String, Map<String, SyncBase>> = emptyMap(),
         /** Die Einstellungen beim letzten Lauf (Schlüssel der Datei → Wert). */
         val settings: Map<String, String> = emptyMap(),
+        /** Aufnahmen, auf die die Datei beim letzten Lauf zeigte; null vor dem ersten Lauf mit dieser Liste. */
+        val recordings: List<String>? = null,
+        /** Aufnahmen, auf die nichts mehr zeigt: gehen auf dem Server und hier weg. */
+        val orphans: List<String> = emptyList(),
     )
 
     // Einstellungen, die dem Nutzer auf alle Geräte folgen: Schlüssel in der Datei → Schlüssel hier. Welche Stimme
@@ -273,7 +277,9 @@ object NextcloudSync {
                     base[id]?.let { base[id] = it.copy(local = SyncMerge.hash(local.record)) }
                 }
             }
-            saveState(State(newBase, settingsBase))
+            val referenced = referencedRecordings(output["notes"] as? JsonArray)
+            val released = state.recordings.orEmpty() - referenced
+            saveState(State(newBase, settingsBase, referenced.sorted(), (state.orphans + released).distinct() - referenced))
             return
         }
         throw SyncConflict()
@@ -306,15 +312,39 @@ object NextcloudSync {
 
     // Aufnahmen
 
+    /** Die Aufnahmen der Notizen in der Datei und der hiesigen, die noch verarbeitet werden. */
+    private suspend fun referencedRecordings(notes: JsonArray?): Set<String> {
+        val inFile = notes.orEmpty().flatMap { element ->
+            val record = element as? JsonObject ?: return@flatMap emptyList()
+            listOfNotNull((record["audioFileName"] as? JsonPrimitive)?.takeIf { it.isString }?.content) +
+                (record["audioFileNames"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+        }
+        val frozen = PorridgeDatabase.shared.notes().all().filter(::isFrozen)
+            .flatMap { listOfNotNull(it.audioFileName, it.pendingAudioFileName) + it.audioFileNames }
+        return (inFile + frozen).toSet()
+    }
+
     /** Aufnahmen, die das Gerät hat, gehen hoch; fehlende Aufnahmen synchronisierter Notizen kommen herunter. */
     private suspend fun syncRecordings(dav: WebDAV) {
-        val notes = PorridgeDatabase.shared.notes().all().filterNot(::isFrozen)
+        val all = PorridgeDatabase.shared.notes().all()
+        val notes = all.filterNot(::isFrozen)
         val wanted = notes.flatMap { listOfNotNull(it.audioFileName) + it.audioFileNames }.toSet()
-        if (wanted.isEmpty()) return
+        val state = loadState()
+        if (wanted.isEmpty() && state.orphans.isEmpty()) return
         val remote = dav.list(dav.recordings).toMutableSet()
+        // Aufnahmen, die irgendwo gelöscht wurden: weg vom Server, und hier, wenn keine Notiz mehr darauf zeigt.
+        if (state.orphans.isNotEmpty()) {
+            val inUse = all.flatMap { listOfNotNull(it.audioFileName, it.pendingAudioFileName) + it.audioFileNames }.toSet()
+            for (name in state.orphans.filter(::isPlainName)) {
+                if (name in remote) dav.delete(dav.file(dav.recordings, name))
+                remote -= name
+                if (name !in inUse) AudioStore.delete(name)
+            }
+            saveState(loadState().copy(orphans = emptyList()))
+        }
+        if (wanted.isEmpty()) return
         if (remote.isEmpty()) dav.makeFolder(dav.recordings)
-        // Nur Dateinamen, nie Pfade, aus der Datei eines anderen Geräts.
-        for (name in wanted.sorted().filter { it.isNotEmpty() && '/' !in it && !it.startsWith(".") }) {
+        for (name in wanted.sorted().filter(::isPlainName)) {
             val target = dav.file(dav.recordings, name)
             if (AudioStore.exists(name) && name !in remote) {
                 dav.upload(AudioStore.file(name), target)
@@ -324,5 +354,7 @@ object NextcloudSync {
             }
         }
     }
-}
 
+    /** Nur Dateinamen, nie Pfade, aus der Datei eines anderen Geräts. */
+    private fun isPlainName(name: String) = name.isNotEmpty() && '/' !in name && !name.startsWith(".")
+}
