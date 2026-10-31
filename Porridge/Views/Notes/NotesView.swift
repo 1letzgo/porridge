@@ -97,15 +97,8 @@ struct NotesView: View {
         } message: {
             Text("The page is saved as a note and summarized.")
         }
-        .sheet(isPresented: $showChat, onDismiss: { chat.release() }) {
-            ChatSheet(notes: notes, items: items, store: chat) { id in
-                // The source opens once the chat has gone down.
-                showChat = false
-                Task {
-                    try? await Task.sleep(for: .milliseconds(350))
-                    openFromChat(id)
-                }
-            }
+        .onChange(of: showChat) { _, open in
+            if !open { chat.release() }
         }
         .alert("New Project", isPresented: $showNewProject) {
             TextField("Name", text: $projectName)
@@ -366,20 +359,37 @@ struct NotesView: View {
     private var createMenu: some View {
         if mode != .search {
             ZStack(alignment: .bottom) {
-                if showCreate {
-                    // Tapping anywhere else folds the menu again.
-                    Color.black.opacity(0.08)
+                if showCreate || showChat {
+                    // Tapping anywhere else folds the menu or the chat again.
+                    Color.black.opacity(showChat ? 0.18 : 0.08)
                         .ignoresSafeArea()
-                        .onTapGesture { withAnimation(.snappy) { showCreate = false } }
+                        .onTapGesture { withAnimation(.snappy) { showCreate = false; showChat = false } }
                         .transition(.opacity)
                 }
+                VStack(spacing: 14) {
+                #if os(iOS)
+                if showChat {
+                    ChatPanel(notes: notes, items: items, store: chat, onOpen: openChatSource) {
+                        withAnimation(.snappy) { showChat = false }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomLeading)))
+                }
+                #endif
                 HStack(alignment: .bottom) {
-                    FloatingActionButton(systemImage: "bubble.left.and.bubble.right.fill", label: "Chat", fill: .brandChat) {
-                        withAnimation(.snappy) { showCreate = false }
-                        showChat = true
+                    FloatingActionButton(
+                        systemImage: showChat ? "xmark" : "bubble.left.and.bubble.right.fill",
+                        label: showChat ? "Close Chat" : "Chat", fill: .brandChat
+                    ) {
+                        withAnimation(.snappy) {
+                            showCreate = false
+                            showChat.toggle()
+                        }
                     }
                     Spacer()
-                    if scope != .trash || !mode.showsScope {
+                    if !showChat, scope != .trash || !mode.showsScope {
                         VStack(alignment: .trailing, spacing: 14) {
                             if showCreate {
                                 if mode == .projects, openProject == nil {
@@ -397,11 +407,18 @@ struct NotesView: View {
                         }
                     }
                 }
+                }
                 .padding(.horizontal, 22)
                 .padding(.bottom, 16)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
+    }
+
+    /// A source of a chat answer: the chat folds away, the note opens.
+    private func openChatSource(_ id: UUID) {
+        withAnimation(.snappy) { showChat = false }
+        openFromChat(id)
     }
 
     /// One unfolded option: a single white pill, icon on the left, then the text.
@@ -495,10 +512,14 @@ struct NotesView: View {
         }
         // The chat is no view of its own: it opens over the list.
         ToolbarItem(placement: .primaryAction) {
-            Button { showChat = true } label: {
+            Button { showChat.toggle() } label: {
                 Label("Chat", systemImage: "bubble.left.and.bubble.right")
             }
             .accessibilityLabel("Chat")
+            .popover(isPresented: $showChat, arrowEdge: .bottom) {
+                ChatPanel(notes: notes, items: items, store: chat, onOpen: openChatSource) { showChat = false }
+                    .frame(width: 480, height: 620)
+            }
         }
         if mode.filtersByTag {
             ToolbarItem(placement: .primaryAction) {

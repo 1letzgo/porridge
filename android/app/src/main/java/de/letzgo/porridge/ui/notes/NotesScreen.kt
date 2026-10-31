@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -91,7 +93,7 @@ import de.letzgo.porridge.store.NoteStore
 import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.ui.Brand
 import de.letzgo.porridge.ui.chat.ChatScreen
-import de.letzgo.porridge.ui.chat.ChatSheet
+import de.letzgo.porridge.ui.chat.ChatPanel
 import de.letzgo.porridge.ui.components.ChromeBar
 import de.letzgo.porridge.ui.components.EmptyState
 import de.letzgo.porridge.ui.components.LinkOrange
@@ -193,6 +195,7 @@ fun NotesScreen(
 
     // Zurück schließt erst das offene Projekt.
     BackHandler(enabled = openProject != null) { onProject(null) }
+    BackHandler(enabled = showChat) { showChat = false }
 
     val shown = remember(notes, scope, mode, search, tagTokens, indexVersion) {
         // Die Suche sieht alles; die Listen zeigen den gewählten Tag (Links haben keinen eigenen Papierkorb).
@@ -298,7 +301,8 @@ fun NotesScreen(
                 },
                 onNote = { if (projectForNew == null && mode != ListMode.TIMELINE) onMode(ListMode.TIMELINE); onNewNote(projectForNew) },
                 onMeeting = onRecord, onLink = { showAddLink = true },
-                onChat = { showChat = true },
+                showChat = showChat, onChat = { showChat = it },
+                chat = { ChatPanel(notes, items, onOpen = { id -> showChat = false; onOpen(id) }, onClose = { showChat = false }) },
             )
         }
     }
@@ -314,7 +318,6 @@ fun NotesScreen(
             onOpen(note.id)
         }
     }
-    if (showChat) ChatSheet(notes, items, onOpen = { id -> showChat = false; onOpen(id) }, onDismiss = { showChat = false })
     if (creatingProject) TextPrompt("New Project", "", "Create", onDismiss = { creatingProject = false }) { name ->
         creatingProject = false
         coroutines.launch { onProject(Projects.create(name).id) }
@@ -478,15 +481,27 @@ private fun groups(list: List<Note>): List<Pair<String, List<Note>>> {
 @Composable
 private fun CreateMenu(
     open: Boolean, onOpen: (Boolean) -> Unit, showsPlus: Boolean, onProject: (() -> Unit)?,
-    onTask: () -> Unit, onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit, onChat: () -> Unit,
+    onTask: () -> Unit, onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit,
+    showChat: Boolean, onChat: (Boolean) -> Unit, chat: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        if (open) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.08f)).combinedClickableNoRipple { onOpen(false) })
-        SkyFab(
-            Icons.Filled.ChatBubble, "Chat", Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 22.dp, bottom = 16.dp),
-            container = Brand.chat,
-        ) { onOpen(false); onChat() }
-        if (showsPlus) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (open || showChat) Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (showChat) 0.18f else 0.08f)).combinedClickableNoRipple { onOpen(false); onChat(false) },
+        )
+        // Der Chat klappt wie das Plus-Menü aus seinem Knopf auf: eine Karte über der Ansicht (iOS: `ChatPanel`).
+        Column(Modifier.align(Alignment.BottomStart).fillMaxSize().imePadding().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)) {
+            AnimatedVisibility(showChat, Modifier.weight(1f)) {
+                Surface(shape = RoundedCornerShape(22.dp), shadowElevation = 10.dp, color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().padding(bottom = 14.dp)) {
+                    chat()
+                }
+            }
+            if (!showChat) Spacer(Modifier.weight(1f))
+            SkyFab(
+                if (showChat) Icons.Filled.Close else Icons.Filled.ChatBubble, if (showChat) "Close Chat" else "Chat",
+                Modifier.padding(start = 6.dp), container = Brand.chat,
+            ) { onOpen(false); onChat(!showChat) }
+        }
+        if (showsPlus && !showChat) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             AnimatedVisibility(open) {
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     if (onProject != null) CreateOption("Project", Icons.Filled.Folder) { onOpen(false); onProject() }

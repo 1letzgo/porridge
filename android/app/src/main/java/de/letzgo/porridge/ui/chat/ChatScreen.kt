@@ -7,7 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -24,14 +25,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,7 +65,8 @@ fun ChatScreen(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> U
     val list = rememberLazyListState()
     LaunchedEffect(messages.size, thinking) { if (messages.isNotEmpty()) list.animateScrollToItem(messages.size) }
 
-    Column(modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
+    // Tastatur und Navigationsleiste hält die Karte frei, in der der Chat liegt (`ChatPanel`).
+    Column(modifier.fillMaxWidth()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (messages.isEmpty() && !thinking) {
                 EmptyState("Ask Your Notes", "Ask about your meetings, notes and saved pages. Answers name the notes they come from.", Icons.Filled.ChatBubble, Modifier.align(Alignment.Center))
@@ -109,19 +109,18 @@ fun ChatScreen(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> U
     }
 }
 
-/** iOS: `ChatSheet` — der Chat als Sheet über der jeweiligen Ansicht: Titel, neuer Chat, Schließen. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** iOS: `ChatPanel` — der Chat als Karte über der Ansicht: kleine Leiste mit neuem Chat und Schließen, darunter der Chat. */
 @Composable
-fun ChatSheet(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> Unit, onDismiss: () -> Unit) {
+fun ChatPanel(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> Unit, onClose: () -> Unit) {
     val messages by AppGraph.chat.messages.collectAsState()
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Chat", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                if (messages.isNotEmpty()) IconButton(onClick = { AppGraph.chat.reset() }) { Icon(Icons.Outlined.EditNote, "New Chat", tint = Brand.chat) }
-                IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close", tint = Brand.chat) }
-            }
-            ChatScreen(notes, items, onOpen, Modifier.weight(1f))
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.ChatBubble, null, tint = Brand.chat, modifier = Modifier.size(18.dp))
+            Text("  Chat", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            if (messages.isNotEmpty()) IconButton(onClick = { AppGraph.chat.reset() }) { Icon(Icons.Outlined.EditNote, "New Chat", tint = Brand.chat) }
+            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Close Chat", tint = Brand.chat) }
         }
+        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+        ChatScreen(notes, items, onOpen, Modifier.weight(1f))
     }
 }

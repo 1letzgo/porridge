@@ -172,44 +172,43 @@ struct ChatView: View {
     }
 }
 
-/// The chat over the current view (a sheet): its own bar with a new chat and close.
-struct ChatSheet: View {
+/// The chat as a card over the current view, unfolded from its button like the plus menu (Mac: a popover):
+/// a small bar with a new chat and close, then the chat.
+struct ChatPanel: View {
     let notes: [Note]
     var items: [ActionItem] = []
     let store: ChatStore
     var onOpen: (UUID) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    #if os(iOS)
-    /// Opens full height; pulled down to half the list shows above it.
-    @State private var detent = PresentationDetent.large
-    #endif
+    var onClose: () -> Void
 
     var body: some View {
-        NavigationStack {
-            ChatView(notes: notes, items: items, store: store, onOpen: onOpen)
-                .navigationTitle("Chat")
-                .inlineNavigationTitle()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button { dismiss() } label: { Label("Close", systemImage: "xmark") }
-                            .accessibilityLabel("Close")
+        VStack(spacing: 0) {
+            HStack(spacing: 4) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .foregroundStyle(Color.brandChat)
+                Text("Chat")
+                    .font(.headline)
+                Spacer()
+                if !store.messages.isEmpty {
+                    Button { store.reset() } label: {
+                        Image(systemName: "square.and.pencil").frame(width: 36, height: 36)
                     }
-                    if !store.messages.isEmpty {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button { store.reset() } label: { Label("New Chat", systemImage: "square.and.pencil") }
-                                .accessibilityLabel("New Chat")
-                        }
-                    }
+                    .accessibilityLabel("New Chat")
                 }
+                Button(action: onClose) {
+                    Image(systemName: "xmark").frame(width: 36, height: 36)
+                }
+                .accessibilityLabel("Close Chat")
+            }
+            .font(.body.weight(.semibold))
+            .foregroundStyle(Color.brandChat)
+            .buttonStyle(.plain)
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .padding(.vertical, 6)
+            Rectangle().fill(Look.hairline).frame(height: 0.5)
+            ChatView(notes: notes, items: items, store: store, onOpen: onOpen)
         }
-        .tint(.brandChat)
-        #if os(iOS)
-        .presentationDetents([.medium, .large], selection: $detent)
-        .presentationDragIndicator(.visible)
-        .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-        #else
-        .frame(minWidth: 520, idealWidth: 600, minHeight: 560, idealHeight: 680)
-        #endif
+        .background(Color.appBackground)
     }
 }
