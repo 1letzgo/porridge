@@ -136,7 +136,7 @@ struct ProjectsPane: View {
     private func detail(_ project: NoteFolder) -> some View {
         let byID = notesByID
         let content = contents(of: project, notes: byID)
-        return VStack(spacing: 0) {
+        return projectPage {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(ProjectFilter.allCases, id: \.self) { kind in
@@ -177,6 +177,21 @@ struct ProjectsPane: View {
         }
     }
 
+    /// The open project, with a swipe from the left edge back to all projects (iOS), as on a pushed page.
+    private func projectPage<Page: View>(@ViewBuilder _ page: () -> Page) -> some View {
+        VStack(spacing: 0) { page() }
+        #if os(iOS)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onEnded { drag in
+                        guard drag.startLocation.x < 40, drag.translation.width > 80,
+                              abs(drag.translation.height) < drag.translation.width else { return }
+                        withAnimation(.snappy) { openProject = nil }
+                    }
+            )
+        #endif
+    }
+
     @ViewBuilder
     private func section(_ title: LocalizedStringKey, _ list: [Note], kind: ProjectFilter, tint: Color) -> some View {
         if filter.shows(kind), !list.isEmpty {
@@ -184,6 +199,9 @@ struct ProjectsPane: View {
                 ForEach(list) { note in
                     ListRowLink(value: note.id) {
                         NoteRow(note: note, stage: processing.stages[note.id])
+                    }
+                    .contextMenu {
+                        ProjectMenu(assigned: note.projectIDs) { Projects.toggle($0, on: note, in: context) }
                     }
                 }
             } header: { header(title, tint: tint) }

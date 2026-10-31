@@ -75,3 +75,34 @@ struct ProjectPills: View {
         }
     }
 }
+
+/// "Projects" in a context menu: every project to tick, so a long press adds an element to one.
+/// Missing when there are no projects yet (they are made in the Projects tab).
+struct ProjectMenu: View {
+    let assigned: [String]
+    var inherited: [String] = []
+    let onToggle: (NoteFolder) -> Void
+
+    @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
+
+    var body: some View {
+        if !projects.isEmpty {
+            Menu {
+                ForEach(projects) { project in
+                    let key = Projects.key(project)
+                    Button { onToggle(project) } label: {
+                        if assigned.contains(key) || inherited.contains(key) {
+                            Label(project.name, systemImage: "checkmark")
+                        } else {
+                            Text(project.name)
+                        }
+                    }
+                    // A project that comes from the task's note is changed on the note.
+                    .disabled(inherited.contains(key) && !assigned.contains(key))
+                }
+            } label: {
+                Label("Projects", systemImage: "folder")
+            }
+        }
+    }
+}

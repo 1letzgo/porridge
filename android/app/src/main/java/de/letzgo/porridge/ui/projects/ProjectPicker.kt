@@ -1,7 +1,10 @@
 package de.letzgo.porridge.ui.projects
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +18,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -22,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -103,4 +110,37 @@ fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit, inherited: 
         creating = false
         coroutines.launch { onToggle(Projects.create(name).id) }
     }
+}
+
+/**
+ * iOS: `ProjectMenu` — „Projects…“ beim langen Drücken: alle Projekte zum Abhaken. [inherited] (die Notiz einer
+ * Aufgabe) erscheinen abgehakt und gesperrt.
+ */
+@Composable
+fun ProjectChooser(assigned: List<String>, onToggle: (String) -> Unit, onDismiss: () -> Unit, inherited: List<String> = emptyList()) {
+    val projects by PorridgeDatabase.shared.folders().observeAll().collectAsState(initial = emptyList())
+    val sorted = remember(projects) { projects.sortedByName() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Projects") },
+        text = {
+            Column {
+                if (sorted.isEmpty()) Text("Create a project in the Projects tab first.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                for (project in sorted) {
+                    val fromNote = project.id in inherited && project.id !in assigned
+                    Row(
+                        Modifier.fillMaxWidth().clickable(enabled = !fromNote) { onToggle(project.id) }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = project.id in assigned || fromNote, onCheckedChange = { onToggle(project.id) }, enabled = !fromNote,
+                            colors = CheckboxDefaults.colors(checkedColor = Brand.project),
+                        )
+                        Text(project.name)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }

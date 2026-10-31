@@ -99,6 +99,7 @@ import de.letzgo.porridge.ui.components.ListTabs
 import de.letzgo.porridge.ui.components.RowIcon
 import de.letzgo.porridge.ui.components.SectionHeader
 import de.letzgo.porridge.ui.components.SkyFab
+import de.letzgo.porridge.ui.projects.ProjectChooser
 import de.letzgo.porridge.ui.projects.ProjectsScreen
 import de.letzgo.porridge.ui.tasks.TasksScreen
 import kotlinx.coroutines.delay
@@ -367,6 +368,8 @@ private fun SwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, store
         }
     })
     var menu by remember { mutableStateOf(false) }
+    var choosing by remember { mutableStateOf(false) }
+    if (choosing) ProjectChooser(note.projectIDs, onToggle = { id -> coroutines.launch { Projects.toggle(note, id) } }, onDismiss = { choosing = false })
     SwipeToDismissBox(
         state = state,
         backgroundContent = {
@@ -387,6 +390,7 @@ private fun SwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, store
                     DropdownMenuItem(text = { Text("Delete Now", color = Brand.danger) }, onClick = { menu = false; coroutines.launch { store.deletePermanently(note) } })
                 } else {
                     DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { PorridgeDatabase.shared.notes().upsert(note.copy(isPinned = !note.isPinned)) } })
+                    DropdownMenuItem(text = { Text("Projects…") }, onClick = { menu = false; choosing = true })
                     DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { menu = false; coroutines.launch { store.trash(note) } })
                 }
             }

@@ -213,6 +213,7 @@ struct TaskRow: View {
             if let note {
                 Button { onOpen(note.id) } label: { Label("Open Note", systemImage: "note.text") }
             }
+            ProjectMenu(assigned: item.projectIDs, inherited: note?.projectIDs ?? []) { Projects.toggle($0, on: item, in: context) }
             Button { Clipboard.copy(item.line) } label: { Label("Copy", systemImage: "doc.on.doc") }
             Divider()
             Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }

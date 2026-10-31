@@ -197,9 +197,15 @@ private fun ProjectDetail(
                 when (element) {
                     is Element.NoteElement -> {
                         var menu by remember { mutableStateOf(false) }
+                        var choosing by remember { mutableStateOf(false) }
+                        if (choosing) ProjectChooser(
+                            element.note.projectIDs, onToggle = { id -> coroutines.launch { Projects.toggle(element.note, id) } },
+                            onDismiss = { choosing = false },
+                        )
                         Box {
                             NoteRow(element.note, stages[element.note.id], Modifier.combinedClickable(onClick = { onOpen(element.note.id) }, onLongClick = { menu = true }))
                             DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(text = { Text("Projects…") }, onClick = { menu = false; choosing = true })
                                 DropdownMenuItem(text = { Text("Remove from Project") }, onClick = { menu = false; coroutines.launch { Projects.toggle(element.note, project.id) } })
                             }
                         }

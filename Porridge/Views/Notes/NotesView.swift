@@ -648,6 +648,7 @@ struct NotesView: View {
                 Button(role: .destructive) { remove(note) } label: { Label("Delete Now", systemImage: "trash") }
             } else {
                 Button { togglePin(note) } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
+                ProjectMenu(assigned: note.projectIDs) { Projects.toggle($0, on: note, in: context) }
                 ShareLink(item: note.title.isEmpty ? note.text : "\(note.title)\n\n\(note.text)") {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }

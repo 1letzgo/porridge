@@ -61,6 +61,8 @@ import de.letzgo.porridge.store.ActionItemStore
 import de.letzgo.porridge.ui.Brand
 import de.letzgo.porridge.ui.components.EmptyState
 import de.letzgo.porridge.ui.components.SectionHeader
+import de.letzgo.porridge.data.Projects
+import de.letzgo.porridge.ui.projects.ProjectChooser
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -143,6 +145,12 @@ internal fun TaskRow(
     onAccept: () -> Unit, onDismiss: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    var choosing by remember { mutableStateOf(false) }
+    val coroutines = rememberCoroutineScope()
+    if (choosing) ProjectChooser(
+        item.projectIDs, onToggle = { id -> coroutines.launch { Projects.toggle(item, id) } }, onDismiss = { choosing = false },
+        inherited = note?.projectIDs.orEmpty(),
+    )
     val context = LocalContext.current
     val review = item.needsReview
     // Eine neue Aufgabe: nach rechts übernehmen, nach links verwerfen. Sonst nach links löschen.
@@ -206,6 +214,7 @@ internal fun TaskRow(
                         }
                         DropdownMenuItem(text = { Text("Open Task") }, onClick = { menu = false; onEdit(item) })
                         note?.let { n -> DropdownMenuItem(text = { Text("Open Note") }, onClick = { menu = false; onOpen(n.id) }) }
+                        DropdownMenuItem(text = { Text("Projects…") }, onClick = { menu = false; choosing = true })
                         DropdownMenuItem(text = { Text("Copy") }, onClick = {
                             menu = false
                             val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
