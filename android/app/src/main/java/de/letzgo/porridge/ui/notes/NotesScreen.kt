@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
@@ -478,6 +481,7 @@ private fun groups(list: List<Note>): List<Pair<String, List<Note>>> {
 }
 
 /** iOS: `createMenu` — ein Plus-Knopf unten rechts, der sich in Notiz, Meeting und Link aufklappt. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CreateMenu(
     open: Boolean, onOpen: (Boolean) -> Unit, showsPlus: Boolean, onProject: (() -> Unit)?,
@@ -496,7 +500,8 @@ private fun CreateMenu(
                 }
             }
             if (!showChat) Spacer(Modifier.weight(1f))
-            SkyFab(
+            // Mit Tastatur reicht die Karte bis an sie heran; der Knopf tritt so lange zur Seite.
+            if (!(showChat && WindowInsets.isImeVisible)) SkyFab(
                 if (showChat) Icons.Filled.Close else Icons.Filled.ChatBubble, if (showChat) "Close Chat" else "Chat",
                 Modifier.padding(start = 6.dp), container = Brand.chat,
             ) { onOpen(false); onChat(!showChat) }

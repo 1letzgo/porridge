@@ -34,10 +34,20 @@ struct ChatView: View {
                     Color.clear.frame(height: 4).id("end")
                 }
                 .padding(.horizontal)
+                .padding(.top, 12)
             }
+            // The newest message stays in view, also while the keyboard comes and goes.
+            .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: store.messages.count) { scrollToEnd(proxy) }
             .onChange(of: store.isThinking) { scrollToEnd(proxy) }
+            .onChange(of: focused) { _, isFocused in
+                guard isFocused else { return }
+                Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    scrollToEnd(proxy)
+                }
+            }
         }
         .background(Color.appBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) { inputBar }

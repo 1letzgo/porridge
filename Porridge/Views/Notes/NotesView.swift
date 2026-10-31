@@ -31,6 +31,8 @@ struct NotesView: View {
     @State private var modeBeforeSearch = ListMode.projects
     /// The chat lies over whatever view is shown, opened from its button.
     @State private var showChat = false
+    /// While the keyboard is up, the chat card reaches down to it (the buttons below step aside).
+    @State private var keyboardShown = false
     @State private var chat = ChatStore()
     @State private var confirmEmptyTrash = false
     @State private var showRecorder = false
@@ -378,6 +380,7 @@ struct NotesView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomLeading)))
                 }
                 #endif
+                if !(showChat && keyboardShown) {
                 HStack(alignment: .bottom) {
                     FloatingActionButton(
                         systemImage: showChat ? "xmark" : "bubble.left.and.bubble.right.fill",
@@ -408,10 +411,19 @@ struct NotesView: View {
                     }
                 }
                 }
+                }
                 .padding(.horizontal, 22)
-                .padding(.bottom, 16)
+                .padding(.bottom, showChat && keyboardShown ? 8 : 16)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            #if os(iOS)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                withAnimation(.snappy) { keyboardShown = true }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(.snappy) { keyboardShown = false }
+            }
+            #endif
         }
     }
 
