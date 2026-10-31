@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -19,13 +20,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -99,6 +105,23 @@ fun ChatScreen(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> U
                 input = ""
                 coroutines.launch { chat.ask(question, notes, items) }
             }) { Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = Brand.sky) }
+        }
+    }
+}
+
+/** iOS: `ChatSheet` — der Chat als Sheet über der jeweiligen Ansicht: Titel, neuer Chat, Schließen. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatSheet(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> Unit, onDismiss: () -> Unit) {
+    val messages by AppGraph.chat.messages.collectAsState()
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Chat", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                if (messages.isNotEmpty()) IconButton(onClick = { AppGraph.chat.reset() }) { Icon(Icons.Outlined.EditNote, "New Chat", tint = Brand.chat) }
+                IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close", tint = Brand.chat) }
+            }
+            ChatScreen(notes, items, onOpen, Modifier.weight(1f))
         }
     }
 }

@@ -58,11 +58,11 @@ fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, action
 }
 
 /** iOS: `ListTabs` — Timeline, Tasks, Chat, Search. */
-/** MEETINGS: die Aufnahmen; TIMELINE: die geschriebenen Notizen. [SEARCH] und [CHAT] haben keinen Tab: die Suche öffnet der Knopf in der Leiste, den Chat der Knopf unten links. */
+/** MEETINGS: die Aufnahmen; TIMELINE: die geschriebenen Notizen. [SEARCH] hat keinen Tab: sie öffnet der Knopf in der Leiste. Der Chat ist keine Ansicht, er liegt als Sheet darüber. */
 enum class ListMode(val title: String, val isTab: Boolean = true) {
-    TASKS("Tasks"), MEETINGS("Meetings"), TIMELINE("Notes"), LINKS("Links"), PROJECTS("Projects"), CHAT("Chat", isTab = false), SEARCH("Search", isTab = false);
+    PROJECTS("Projects"), TASKS("Tasks"), MEETINGS("Meetings"), TIMELINE("Notes"), LINKS("Links"), SEARCH("Search", isTab = false);
 
-    val color: Color get() = when (this) { TASKS -> Brand.task; LINKS -> LinkOrange; MEETINGS -> Brand.navy; CHAT -> Brand.chat; PROJECTS -> Brand.project; else -> Brand.sky }
+    val color: Color get() = when (this) { TASKS -> Brand.task; LINKS -> LinkOrange; MEETINGS -> Brand.navy; PROJECTS -> Brand.project; else -> Brand.sky }
 
     /** Notizen und Meetings folgen dem gewählten Ordner, Tag oder Papierkorb. */
     val showsScope: Boolean get() = this == TIMELINE || this == MEETINGS

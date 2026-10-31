@@ -25,12 +25,12 @@ struct NotesView: View {
     @State private var search = ""
     /// Tags picked in the search field; a note must have all of them.
     @State private var tagTokens: [TagToken] = []
-    /// The tasks come first: the app opens on them; the notes are where they come from.
-    @State private var mode = ListMode.tasks
+    /// The projects come first: the app opens on them.
+    @State private var mode = ListMode.projects
     /// The view the search button goes back to.
-    @State private var modeBeforeSearch = ListMode.tasks
-    /// The view the chat button goes back to.
-    @State private var modeBeforeChat = ListMode.tasks
+    @State private var modeBeforeSearch = ListMode.projects
+    /// The chat lies over whatever view is shown, opened from its button.
+    @State private var showChat = false
     @State private var chat = ChatStore()
     @State private var confirmEmptyTrash = false
     @State private var showRecorder = false
@@ -96,6 +96,16 @@ struct NotesView: View {
                 .disabled(LinkImport.webAddress(from: linkText) == nil)
         } message: {
             Text("The page is saved as a note and summarized.")
+        }
+        .sheet(isPresented: $showChat, onDismiss: { chat.release() }) {
+            ChatSheet(notes: notes, items: items, store: chat) { id in
+                // The source opens once the chat has gone down.
+                showChat = false
+                Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    openFromChat(id)
+                }
+            }
         }
         .alert("New Project", isPresented: $showNewProject) {
             TextField("Name", text: $projectName)
@@ -180,8 +190,6 @@ struct NotesView: View {
                 timeline(shown)
             case .links:
                 linksList(shown)
-            case .chat:
-                ChatView(notes: notes, items: items, store: chat) { openFromChat($0) }
             case .tasks:
                 tasksPane
             case .projects:
@@ -233,7 +241,6 @@ struct NotesView: View {
             if new != .projects { openProject = nil }
             // Only notes and meetings have a trash; elsewhere the list starts with everything.
             if !new.showsScope, new != .search, scope == .trash { scope = .all }
-            if new != .chat { chat.release() }
             if new != .search {
                 search = ""
                 tagTokens = []
@@ -357,7 +364,7 @@ struct NotesView: View {
     /// task, link, meeting and note (and project in the Projects tab). Bottom left the chat button.
     @ViewBuilder
     private var createMenu: some View {
-        if mode != .chat, mode != .search {
+        if mode != .search {
             ZStack(alignment: .bottom) {
                 if showCreate {
                     // Tapping anywhere else folds the menu again.
@@ -369,7 +376,7 @@ struct NotesView: View {
                 HStack(alignment: .bottom) {
                     FloatingActionButton(systemImage: "bubble.left.and.bubble.right.fill", label: "Chat", fill: .brandChat) {
                         withAnimation(.snappy) { showCreate = false }
-                        openChat()
+                        showChat = true
                     }
                     Spacer()
                     if scope != .trash || !mode.showsScope {
@@ -395,15 +402,6 @@ struct NotesView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
-    }
-
-    private func openChat() {
-        modeBeforeChat = mode
-        mode = .chat
-    }
-
-    private func closeChat() {
-        mode = modeBeforeChat == .chat ? .tasks : modeBeforeChat
     }
 
     /// One unfolded option: a single white pill, icon on the left, then the text.
@@ -479,10 +477,6 @@ struct NotesView: View {
                     Label("Delete All", systemImage: "trash")
                 }
             }
-        } else if mode == .chat, !chat.messages.isEmpty {
-            Button { chat.reset() } label: {
-                Label("New Chat", systemImage: "square.and.pencil")
-            }
         }
         searchButton
         Button { showSettings = true } label: {
@@ -499,12 +493,12 @@ struct NotesView: View {
         if mode == .projects {
             projectsToolbar
         }
-        // The chat is no tab: a button opens it and, tapped again, goes back.
+        // The chat is no view of its own: it opens over the list.
         ToolbarItem(placement: .primaryAction) {
-            Button { mode == .chat ? closeChat() : openChat() } label: {
-                Label(mode == .chat ? "Close Chat" : "Chat", systemImage: mode == .chat ? "xmark.bubble" : "bubble.left.and.bubble.right")
+            Button { showChat = true } label: {
+                Label("Chat", systemImage: "bubble.left.and.bubble.right")
             }
-            .accessibilityLabel(mode == .chat ? "Close Chat" : "Chat")
+            .accessibilityLabel("Chat")
         }
         if mode.filtersByTag {
             ToolbarItem(placement: .primaryAction) {
@@ -613,14 +607,7 @@ struct NotesView: View {
 
     @ToolbarContentBuilder
     private var modeToolbar: some ToolbarContent {
-        if mode == .chat, !chat.messages.isEmpty {
-            ToolbarItem(placement: .primaryAction) {
-                Button { chat.reset() } label: {
-                    Label("New Chat", systemImage: "square.and.pencil")
-                }
-                .accessibilityLabel("New Chat")
-            }
-        } else if mode == .links {
+        if mode == .links {
             ToolbarItem(placement: .primaryAction) {
                 Button { showAddLink = true } label: {
                     Label("Add Link", systemImage: "plus")
@@ -690,7 +677,6 @@ struct NotesView: View {
 
     private var listTitle: String {
         switch mode {
-        case .chat: "Chat"
         case .search: "Search"
         case .tasks: "Tasks"
         case .links: "Links"
@@ -706,7 +692,6 @@ struct NotesView: View {
         case .tasks: .brandTask
         case .links: .brandLink
         case .meetings: .brandNavy
-        case .chat: .brandChat
         case .projects: .brandProject
         default: .brandSky
         }
@@ -714,14 +699,12 @@ struct NotesView: View {
 
     /// The back pill of the bar: out of the chat, or from an open project to the list of all projects.
     private var barBack: (() -> Void)? {
-        if mode == .chat { return { closeChat() } }
         return mode == .projects && openProject != nil ? { openProject = nil } : nil
     }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
     private var listIcon: String {
         switch mode {
-        case .chat: return "bubble.left.and.bubble.right.fill"
         case .search: return "magnifyingglass"
         case .tasks: return "checklist"
         case .links: return "link"
@@ -1109,18 +1092,17 @@ private struct ListTabs: View {
 
     var body: some View {
         TabSwitcher(selection: $mode, options: [
+            (ListMode.projects, "Projects"),
             (ListMode.tasks, "Tasks"),
             (ListMode.meetings, "Meetings"),
             (ListMode.timeline, "Notes"),
             (ListMode.links, "Links"),
-            (ListMode.projects, "Projects"),
         ], tint: { mode in
             // Each tab in its own color, the same as its title square.
             switch mode {
             case .tasks: .brandTask
             case .links: .brandLink
             case .meetings: .brandNavy
-            case .chat: .brandChat
             case .projects: .brandProject
             default: nil
             }
@@ -1148,7 +1130,6 @@ enum ListMode: Hashable {
     case links
     /// The projects, and in one of them everything assigned to it.
     case projects
-    case chat
     /// The search, opened from the button in the bar (no tab of its own).
     case search
 

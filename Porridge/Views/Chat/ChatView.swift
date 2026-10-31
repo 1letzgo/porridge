@@ -171,3 +171,45 @@ struct ChatView: View {
         Task { await store.ask(question, notes: notes, items: items) }
     }
 }
+
+/// The chat over the current view (a sheet): its own bar with a new chat and close.
+struct ChatSheet: View {
+    let notes: [Note]
+    var items: [ActionItem] = []
+    let store: ChatStore
+    var onOpen: (UUID) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    #if os(iOS)
+    /// Opens full height; pulled down to half the list shows above it.
+    @State private var detent = PresentationDetent.large
+    #endif
+
+    var body: some View {
+        NavigationStack {
+            ChatView(notes: notes, items: items, store: store, onOpen: onOpen)
+                .navigationTitle("Chat")
+                .inlineNavigationTitle()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { dismiss() } label: { Label("Close", systemImage: "xmark") }
+                            .accessibilityLabel("Close")
+                    }
+                    if !store.messages.isEmpty {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button { store.reset() } label: { Label("New Chat", systemImage: "square.and.pencil") }
+                                .accessibilityLabel("New Chat")
+                        }
+                    }
+                }
+        }
+        .tint(.brandChat)
+        #if os(iOS)
+        .presentationDetents([.medium, .large], selection: $detent)
+        .presentationDragIndicator(.visible)
+        .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+        #else
+        .frame(minWidth: 520, idealWidth: 600, minHeight: 560, idealHeight: 680)
+        #endif
+    }
+}

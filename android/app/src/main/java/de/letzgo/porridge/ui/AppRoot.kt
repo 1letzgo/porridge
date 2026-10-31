@@ -63,7 +63,7 @@ fun AppRoot() {
     val stack = remember { mutableStateListOf<Screen>() }
     var scope by remember { mutableStateOf<NoteScope>(NoteScope.All) }
     // The app opens on the tasks; the notes are where they come from.
-    var mode by remember { mutableStateOf(ListMode.TASKS) }
+    var mode by remember { mutableStateOf(ListMode.PROJECTS) }
     /** Das offene Projekt; bleibt, während eine Notiz daraus offen ist. */
     var project by remember { mutableStateOf<String?>(null) }
     var showCalendar by remember { mutableStateOf(false) }

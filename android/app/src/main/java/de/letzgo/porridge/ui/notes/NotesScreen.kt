@@ -91,6 +91,7 @@ import de.letzgo.porridge.store.NoteStore
 import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.ui.Brand
 import de.letzgo.porridge.ui.chat.ChatScreen
+import de.letzgo.porridge.ui.chat.ChatSheet
 import de.letzgo.porridge.ui.components.ChromeBar
 import de.letzgo.porridge.ui.components.EmptyState
 import de.letzgo.porridge.ui.components.LinkOrange
@@ -140,9 +141,9 @@ fun NotesScreen(
     var search by remember { mutableStateOf("") }
     var tagTokens by remember { mutableStateOf(listOf<String>()) }
     /** Die Ansicht, zu der der Such-Knopf zurückführt. */
-    var modeBeforeSearch by remember { mutableStateOf(ListMode.TASKS) }
-    /** Die Ansicht, zu der der Chat zurückführt. */
-    var modeBeforeChat by remember { mutableStateOf(ListMode.TASKS) }
+    var modeBeforeSearch by remember { mutableStateOf(ListMode.PROJECTS) }
+    /** Der Chat liegt über der jeweiligen Ansicht (iOS: `ChatSheet`). */
+    var showChat by remember { mutableStateOf(false) }
     var creatingProject by remember { mutableStateOf(false) }
     /** Wohin Neues kommt: ins Projekt, das im Tab „Projects“ offen ist. */
     val projectForNew = openProject?.id
@@ -192,7 +193,6 @@ fun NotesScreen(
 
     // Zurück schließt erst das offene Projekt.
     BackHandler(enabled = openProject != null) { onProject(null) }
-    BackHandler(enabled = mode == ListMode.CHAT) { onMode(modeBeforeChat) }
 
     val shown = remember(notes, scope, mode, search, tagTokens, indexVersion) {
         // Die Suche sieht alles; die Listen zeigen den gewählten Tag (Links haben keinen eigenen Papierkorb).
@@ -214,7 +214,6 @@ fun NotesScreen(
     }
 
     val title = when (mode) {
-        ListMode.CHAT -> "Chat"
         ListMode.SEARCH -> "Search"
         ListMode.TASKS -> "Tasks"
         ListMode.LINKS -> "Links"
@@ -226,7 +225,6 @@ fun NotesScreen(
         }
     }
     val icon: ImageVector = when (mode) {
-        ListMode.CHAT -> Icons.Filled.ChatBubble
         ListMode.SEARCH -> Icons.Filled.Search
         ListMode.TASKS -> Icons.Filled.Checklist
         ListMode.LINKS -> Icons.Filled.Link
@@ -256,10 +254,6 @@ fun NotesScreen(
                 if (mode.showsScope) {
                     if (scope != NoteScope.Trash) IconButton(onClick = { importer.launch(arrayOf("audio/*", "video/*")) }) { Icon(Icons.Outlined.Download, "Import Audio", tint = barTint) }
                     if (scope == NoteScope.Trash && shown.isNotEmpty()) IconButton(onClick = { confirmEmptyTrash = true }) { Icon(Icons.Outlined.Delete, "Delete All", tint = Brand.danger) }
-                } else if (mode == ListMode.CHAT) {
-                    val messages by AppGraph.chat.messages.collectAsState()
-                    if (messages.isNotEmpty()) IconButton(onClick = { AppGraph.chat.reset() }) { Icon(Icons.Outlined.EditNote, "New Chat", tint = barTint) }
-                    IconButton(onClick = { onMode(modeBeforeChat) }) { Icon(Icons.Filled.Close, "Close Chat", tint = barTint) }
                 }
                 // Die Suche ist kein Tab, sondern ein Knopf; nochmals getippt geht es zurück, woher man kam.
                 IconButton(onClick = {
@@ -274,7 +268,6 @@ fun NotesScreen(
             when (mode) {
                 ListMode.MEETINGS, ListMode.TIMELINE -> NoteList(shown, scope, stages, onOpen, Modifier.weight(1f), tint = mode.color)
                 ListMode.LINKS -> NoteList(shown, NoteScope.All, stages, onOpen, Modifier.weight(1f), tint = LinkOrange)
-                ListMode.CHAT -> ChatScreen(notes, items, onOpen, Modifier.weight(1f))
                 ListMode.PROJECTS -> ProjectsScreen(
                     folders, openProject, notes, items, stages, onProject = onProject, onOpen = onOpen,
                     onEditTask = { onEditTask(it.id) }, modifier = Modifier.weight(1f),
@@ -289,7 +282,7 @@ fun NotesScreen(
         }
         // Derselbe Plus-Knopf in jeder Ansicht, unten links der Chat (iOS: `createMenu`). In einem offenen Projekt
         // kommt alles Neue ins Projekt und die Ansicht bleibt.
-        if (mode != ListMode.CHAT && mode != ListMode.SEARCH) {
+        if (mode != ListMode.SEARCH) {
             CreateMenu(
                 showCreate, { showCreate = it },
                 showsPlus = !(mode.showsScope && scope == NoteScope.Trash),
@@ -305,7 +298,7 @@ fun NotesScreen(
                 },
                 onNote = { if (projectForNew == null && mode != ListMode.TIMELINE) onMode(ListMode.TIMELINE); onNewNote(projectForNew) },
                 onMeeting = onRecord, onLink = { showAddLink = true },
-                onChat = { modeBeforeChat = mode; onMode(ListMode.CHAT) },
+                onChat = { showChat = true },
             )
         }
     }
@@ -321,6 +314,7 @@ fun NotesScreen(
             onOpen(note.id)
         }
     }
+    if (showChat) ChatSheet(notes, items, onOpen = { id -> showChat = false; onOpen(id) }, onDismiss = { showChat = false })
     if (creatingProject) TextPrompt("New Project", "", "Create", onDismiss = { creatingProject = false }) { name ->
         creatingProject = false
         coroutines.launch { onProject(Projects.create(name).id) }
