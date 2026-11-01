@@ -82,6 +82,10 @@ import de.letzgo.porridge.ml.ModelState
 import de.letzgo.porridge.ml.SpeechModel
 import de.letzgo.porridge.ml.TextEmbedder
 import de.letzgo.porridge.ml.VoiceProfiles
+import de.letzgo.porridge.store.AudioStore
+import de.letzgo.porridge.model.Note
+import de.letzgo.porridge.model.ProcessingStatus
+import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.ui.AppUpdateDialog
 import de.letzgo.porridge.ui.Brand
@@ -93,7 +97,7 @@ import java.util.Locale
 
 /** iOS: `SettingsView` (Views/Settings/SettingsView.swift) — Karten wie auf iOS; statt iCloud eine Sicherung. */
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onPlaud: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onPlaud: () -> Unit, onOpenNote: (String) -> Unit) {
     var showAcknowledgements by remember { mutableStateOf(false) }
     if (showAcknowledgements) return AcknowledgementsScreen { showAcknowledgements = false }
     BackHandler { onBack() }
@@ -108,7 +112,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaud: () -> Unit) {
             VoicesCard()
             ModelsCard()
             SummaryCard()
-            Card("Plaud") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Import Recordings", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", onPlaud) } }
+            ImportCard(onPlaud, onOpenNote)
             SyncCard()
             BackupCard()
             AboutCard()
@@ -379,6 +383,40 @@ private fun SyncCard() {
             }
         }
     }
+}
+
+/** iOS: `importCard` — Aufnahmen von außen: vom Plaud-Recorder oder als Audio- oder Videodatei. */
+@Composable
+private fun ImportCard(onPlaud: () -> Unit, onOpenNote: (String) -> Unit) {
+    val context = LocalContext.current
+    val coroutines = rememberCoroutineScope()
+    var error by remember { mutableStateOf<String?>(null) }
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        coroutines.launch {
+            runCatching {
+                val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                    val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (c.moveToFirst() && i >= 0) c.getString(i) else null
+                } ?: "Import"
+                val ext = name.substringAfterLast('.', "m4a")
+                val fileName = AudioStore.importFile(context, uri, ext)
+                val info = AudioStore.audioInfo(fileName)
+                val note = Note(
+                    title = name.substringBeforeLast('.'), titleIsCustom = true, statusRaw = ProcessingStatus.RECORDED.raw,
+                    audioFileName = fileName, inputName = "Import", duration = info?.first ?: 0.0, channelCount = info?.second ?: 1,
+                )
+                PorridgeDatabase.shared.notes().upsert(note)
+                ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
+                onOpenNote(note.id)
+            }.onFailure { error = it.message }
+        }
+    }
+    Card("Import") {
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("Plaud Recordings", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", onPlaud) }
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("Audio or Video File", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Choose", { importer.launch(arrayOf("audio/*", "video/*")) }) }
+    }
+    error?.let { AlertDialog(onDismissRequest = { error = null }, title = { Text("Import Failed") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } }) }
 }
 
 @Composable

@@ -1,7 +1,6 @@
 package de.letzgo.porridge.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,11 +15,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,11 +37,12 @@ import de.letzgo.porridge.ui.Brand
 
 /** iOS: `ChromeBar` — eigene Leiste wie in Things: farbiges Listen-Icon und Titel links, schlichte Icons rechts, alles in einer Zeile. */
 @Composable
-fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, actions: @Composable RowScope.() -> Unit) {
+fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit) {
     Row(
-        Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().statusBarsPadding().padding(start = if (onBack != null) 4.dp else 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = if (tint == Brand.sky) Brand.navy else tint) }
         if (icon != null) {
             Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(tint), contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
@@ -57,41 +58,12 @@ fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, action
     }
 }
 
-/** iOS: `ListTabs` — Timeline, Tasks, Chat, Search. */
-/** MEETINGS: die Aufnahmen; TIMELINE: die geschriebenen Notizen. [SEARCH] hat keinen Tab: sie öffnet der Knopf in der Leiste. Der Chat ist keine Ansicht, er liegt als Sheet darüber. */
-enum class ListMode(val title: String, val isTab: Boolean = true) {
-    PROJECTS("Projects"), TASKS("Tasks"), MEETINGS("Meetings"), TIMELINE("Notes"), LINKS("Links"), SEARCH("Search", isTab = false);
-
-    val color: Color get() = when (this) { TASKS -> Brand.task; LINKS -> LinkOrange; MEETINGS -> Brand.navy; PROJECTS -> Brand.project; else -> Brand.sky }
-
-    /** Notizen und Meetings folgen dem gewählten Ordner, Tag oder Papierkorb. */
-    val showsScope: Boolean get() = this == TIMELINE || this == MEETINGS
-
-    /** Die Listen mit dem Filter nach Tag in der Leiste. */
-    val filtersByTag: Boolean get() = showsScope || this == TASKS || this == LINKS
-}
-
-@Composable
-fun ListTabs(mode: ListMode, onChange: (ListMode) -> Unit) {
-    // Wie iOS teilen sich die Tabs die volle Breite, damit auch auf schmalen Handys alle (bis Chat) sichtbar sind.
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        for (m in ListMode.entries.filter { it.isTab }) {
-            val selected = m == mode
-            Box(
-                // Breite nach Länge der Beschriftung, damit „Meetings" nicht abgeschnitten wird.
-                Modifier.weight(m.title.length + 3f).height(36.dp).clip(RoundedCornerShape(8.dp))
-                    // Jeder Tab in seiner Farbe, wie sein Titel-Quadrat (iOS: `TabSwitcher.tint`).
-                    .background(if (selected) m.color.copy(alpha = 0.16f) else Color.Transparent)
-                    .clickable { onChange(m) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    m.title, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false,
-                    color = if (selected) Brand.navy else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
+/** iOS: `ListPage` — was die Liste zeigt: die lange Startseite oder eine Unterseite mit Zurück. Chat und Suche liegen als Karten darüber. */
+sealed interface ListPage {
+    data object Home : ListPage
+    data class Project(val id: String) : ListPage
+    data object Archive : ListPage
+    data object Trash : ListPage
 }
 
 /** iOS: Abschnittstitel wie in Things — klein, fett, in der Akzentfarbe, über einer Haarlinie. */

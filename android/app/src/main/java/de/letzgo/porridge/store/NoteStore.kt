@@ -21,6 +21,16 @@ class NoteStore(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
         db.notes().upsert(note.copy(deletedAt = null, folderID = if (folderGone) null else note.folderID))
     }
 
+    /** Archiviert die Notiz; ihre Aufgaben bleiben, wo sie sind. Auf dem frischen Stand der Datenbank. */
+    suspend fun archive(note: Note) = setArchived(note, System.currentTimeMillis())
+
+    suspend fun unarchive(note: Note) = setArchived(note, null)
+
+    private suspend fun setArchived(note: Note, archivedAt: Long?) {
+        val current = db.notes().get(note.id) ?: return
+        db.notes().upsert(current.copy(archivedAt = archivedAt, updatedAt = System.currentTimeMillis()))
+    }
+
     suspend fun deletePermanently(note: Note) {
         note.audioFileNames.forEach(AudioStore::delete)
         AudioStore.delete(note.pendingAudioFileName)

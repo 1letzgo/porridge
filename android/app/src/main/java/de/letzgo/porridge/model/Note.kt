@@ -57,6 +57,8 @@ data class Note(
     val audioFileName: String? = null,
     val speakersData: String? = null,
     val segmentsData: String? = null,
+    /** Gesetzt, solange die Notiz im Archiv liegt; übersteht den Papierkorb. */
+    val archivedAt: Long? = null,
 ) {
     val status: ProcessingStatus get() = ProcessingStatus.of(statusRaw)
     val isDeleted: Boolean get() = deletedAt != null

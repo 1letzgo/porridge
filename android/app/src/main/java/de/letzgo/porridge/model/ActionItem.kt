@@ -41,6 +41,8 @@ data class ActionItem(
     val reviewRaw: String = Review.ACCEPTED.raw,
     /** Eigene Projekte (`NoteFolder.id`); die der Notiz, aus der sie stammt, gelten mit. */
     val projectIDs: List<String> = emptyList(),
+    /** Gesetzt, solange die Aufgabe im Archiv liegt; unabhängig von ihrer Notiz. */
+    val archivedAt: Long? = null,
 ) {
     enum class Kind(val raw: String) {
         TASK("task"),

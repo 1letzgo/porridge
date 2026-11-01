@@ -89,6 +89,8 @@ fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit, inherited: 
         }
         DropdownMenu(menu, onDismissRequest = { menu = false }) {
             for (project in sorted) {
+                // Archivierte Projekte stehen nicht mehr zur Wahl; zugeordnete bleiben abwählbar.
+                if (project.archivedAt != null && project.id !in assigned && project.id !in inherited) continue
                 val fromNote = project.id in inherited && project.id !in assigned
                 DropdownMenuItem(
                     text = { Text(project.name) }, enabled = !fromNote,
@@ -125,8 +127,9 @@ fun ProjectChooser(assigned: List<String>, onToggle: (String) -> Unit, onDismiss
         title = { Text("Projects") },
         text = {
             Column {
-                if (sorted.isEmpty()) Text("Create a project in the Projects tab first.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (sorted.isEmpty()) Text("Create a project with the plus button first.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 for (project in sorted) {
+                    if (project.archivedAt != null && project.id !in assigned && project.id !in inherited) continue
                     val fromNote = project.id in inherited && project.id !in assigned
                     Row(
                         Modifier.fillMaxWidth().clickable(enabled = !fromNote) { onToggle(project.id) }.padding(vertical = 4.dp),

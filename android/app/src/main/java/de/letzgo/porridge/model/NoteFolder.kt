@@ -19,14 +19,9 @@ data class NoteFolder(
     val parentID: String? = null,
     /** Letzte Änderung (Anlegen, Umbenennen); 0 bei alten Ordnern. */
     val updatedAt: Long = 0,
+    /** Gesetzt, solange das Projekt im Archiv liegt; seine Einträge bleiben darin. */
+    val archivedAt: Long? = null,
 )
-
-/** iOS: `NoteScope` — was eine Liste zeigt: alles, einen Tag oder „Recently Deleted“. Ordner werden nicht mehr gezeigt; `NoteFolder` bleibt in der Datenbank. */
-sealed interface NoteScope {
-    data object All : NoteScope
-    data class Tag(val name: String) : NoteScope
-    data object Trash : NoteScope
-}
 
 /** iOS: `Array<NoteFolder>.tree` — Tiefensuche (Geschwister nach Namen) mit Ebene. */
 fun List<NoteFolder>.tree(): List<Pair<NoteFolder, Int>> {

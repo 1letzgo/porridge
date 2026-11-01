@@ -42,14 +42,17 @@ object ProjectsLogic {
     /** Projekte, die eine Aufgabe von ihrer Notiz erbt (dort nicht abwählbar). */
     fun inherited(item: ActionItem, note: Note?): List<String> = note?.projectIDs.orEmpty()
 
-    /** Alles eines Projekts, neueste zuerst; gelöschte Notizen (und ihre Aufgaben) und verworfene Aufgaben fehlen. */
+    /**
+     * Alles eines Projekts, neueste zuerst; gelöschte Notizen (und ihre Aufgaben), verworfene Aufgaben, Aufgaben aus
+     * Links und Archiviertes fehlen. Die Aufgabe einer archivierten Notiz bleibt.
+     */
     fun elements(projectID: String, notes: List<Note>, items: List<ActionItem>): List<Element> {
         val byID = notes.associateBy { it.id }
-        val noteElements = notes.filter { !it.isDeleted && projectID in it.projectIDs }.map { Element.NoteElement(it) }
+        val noteElements = notes.filter { !it.isDeleted && it.archivedAt == null && projectID in it.projectIDs }.map { Element.NoteElement(it) }
         val taskElements = items.mapNotNull { item ->
-            if (item.kind != ActionItem.Kind.TASK || item.review == ActionItem.Review.DISMISSED) return@mapNotNull null
+            if (item.kind != ActionItem.Kind.TASK || item.review == ActionItem.Review.DISMISSED || item.archivedAt != null) return@mapNotNull null
             val note = item.noteID?.let { byID[it] }
-            if (note?.isDeleted == true) return@mapNotNull null
+            if (note?.isDeleted == true || note?.isLink == true) return@mapNotNull null
             if (itemInProject(item, projectID, byID)) Element.TaskElement(item, note) else null
         }
         return (noteElements + taskElements).sortedByDescending { it.date }

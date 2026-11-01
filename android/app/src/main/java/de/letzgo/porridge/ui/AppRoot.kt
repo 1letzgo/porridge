@@ -18,17 +18,17 @@ import de.letzgo.porridge.data.LinkImport
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.logic.SpeakerAssigner
 import de.letzgo.porridge.model.Note
-import de.letzgo.porridge.model.NoteScope
 import de.letzgo.porridge.model.ProcessingStatus
 import de.letzgo.porridge.model.Speaker
 import de.letzgo.porridge.model.SpeakerMode
 import de.letzgo.porridge.model.TranscriptSegment
 import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.store.PorridgeDatabase
-import de.letzgo.porridge.ui.components.ListMode
+import de.letzgo.porridge.ui.components.ListPage
 import de.letzgo.porridge.ui.tasks.TaskDetailScreen
 import de.letzgo.porridge.ui.notes.NoteDetailScreen
 import de.letzgo.porridge.ui.tasks.TaskDetailScreen
+import de.letzgo.porridge.ui.notes.ListState
 import de.letzgo.porridge.ui.notes.NotesScreen
 import de.letzgo.porridge.ui.onboarding.OnboardingScreen
 import de.letzgo.porridge.ui.plaud.PlaudImportScreen
@@ -61,18 +61,14 @@ fun AppRoot() {
         return
     }
     val stack = remember { mutableStateListOf<Screen>() }
-    var scope by remember { mutableStateOf<NoteScope>(NoteScope.All) }
-    // The app opens on the tasks; the notes are where they come from.
-    var mode by remember { mutableStateOf(ListMode.PROJECTS) }
-    /** Das offene Projekt; bleibt, während eine Notiz daraus offen ist. */
-    var project by remember { mutableStateOf<String?>(null) }
+    /** Seite, Suche und Scroll-Position; bleiben, während eine Notiz daraus offen ist. */
+    val list = remember { ListState() }
     var showCalendar by remember { mutableStateOf(false) }
     val coroutines = rememberCoroutineScope()
     fun push(screen: Screen) = stack.add(screen)
     fun pop() { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
-    /** Öffnet eine Notiz; [into]: die Liste, in der sie danach steht (ein neues Meeting unter Meetings). */
-    fun open(id: String, into: ListMode? = null) {
-        if (into != null) mode = into
+    /** Öffnet eine Notiz; die Liste dahinter bleibt, wo sie ist. */
+    fun open(id: String) {
         stack.removeAll { it is Screen.Detail }
         push(Screen.Detail(id, null))
     }
@@ -82,29 +78,23 @@ fun AppRoot() {
     LaunchedEffect(pending) {
         val address = pending ?: return@LaunchedEffect
         SharedLinks.pending.value = null
-        open(LinkImport.add(address).id, ListMode.LINKS)
+        open(LinkImport.add(address).id)
     }
 
     AnimatedContent(stack.lastOrNull(), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "screen") { top ->
         when (top) {
             null -> NotesScreen(
-                scope = scope, onScope = { scope = it }, mode = mode, onMode = {
-                    if (it != mode) project = null
-                    mode = it
-                    // Nur Notizen und Meetings haben einen Papierkorb; anderswo beginnt die Liste mit allem.
-                    if (!it.showsScope && it != ListMode.SEARCH && scope == NoteScope.Trash) scope = NoteScope.All
-                },
+                list = list,
                 onOpen = ::open,
                 onNewNote = { pid -> val draft = Note(projectIDs = listOfNotNull(pid)); push(Screen.Detail(draft.id, draft)) },
-                project = project, onProject = { project = it },
                 onRecord = { showCalendar = true },
                 onSettings = { push(Screen.Settings) },
                 onEditTask = { push(Screen.Task(it)) },
             )
             is Screen.Task -> TaskDetailScreen(top.id, onOpenNote = { id -> pop(); open(id) }) { pop() }
             is Screen.Detail -> NoteDetailScreen(top.id, top.draft) { pop() }
-            is Screen.Settings -> SettingsScreen(onBack = { pop() }, onPlaud = { push(Screen.Plaud) })
-            is Screen.Plaud -> PlaudImportScreen(onBack = { pop() }) { id -> stack.clear(); open(id, ListMode.MEETINGS) }
+            is Screen.Settings -> SettingsScreen(onBack = { pop() }, onPlaud = { push(Screen.Plaud) }, onOpenNote = { id -> stack.clear(); open(id) })
+            is Screen.Plaud -> PlaudImportScreen(onBack = { pop() }) { id -> stack.clear(); open(id) }
             is Screen.Recording -> RecordingScreen(top.title, onFinish = { result, names, liveText ->
                 coroutines.launch {
                     // Ein aufgenommenes Meeting wird eine Notiz, die mit Sprechern transkribiert wird.
@@ -121,12 +111,12 @@ fun AppRoot() {
                     // Bis das Transkript mit Sprechern fertig ist, steht der Live-Text da.
                     if (liveText.isNotEmpty()) note = note.withSegments(listOf(TranscriptSegment(start = 0.0, end = result.duration, text = liveText)))
                     // Aus einem offenen Projekt aufgenommen: das Meeting gehört dazu, die Ansicht bleibt.
-                    val inProject = project.takeIf { mode == ListMode.PROJECTS }
+                    val inProject = (list.page as? ListPage.Project)?.id
                     if (inProject != null) note = note.copy(projectIDs = listOf(inProject))
                     PorridgeDatabase.shared.notes().upsert(note)
                     ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
                     pop()
-                    open(note.id, if (inProject != null) null else ListMode.MEETINGS)
+                    open(note.id)
                 }
             }, onCancel = { pop() })
         }

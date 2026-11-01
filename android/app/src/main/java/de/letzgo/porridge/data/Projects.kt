@@ -18,6 +18,15 @@ object Projects {
     suspend fun rename(project: NoteFolder, name: String) =
         db.folders().upsert(project.copy(name = name.trim(), updatedAt = System.currentTimeMillis()))
 
+    /** Archiviert nur das Projekt; seine Notizen und Aufgaben bleiben unverändert darin. */
+    suspend fun archive(project: NoteFolder) {
+        val now = System.currentTimeMillis()
+        db.folders().upsert(project.copy(archivedAt = now, updatedAt = now))
+    }
+
+    suspend fun unarchive(project: NoteFolder) =
+        db.folders().upsert(project.copy(archivedAt = null, updatedAt = System.currentTimeMillis()))
+
     /** Löscht nur das Projekt; seine Notizen und Aufgaben bleiben und verlieren die Zuordnung. */
     suspend fun delete(project: NoteFolder) {
         val (notes, items) = ProjectsLogic.removing(project.id, db.notes().all(), db.actionItems().all(), System.currentTimeMillis())

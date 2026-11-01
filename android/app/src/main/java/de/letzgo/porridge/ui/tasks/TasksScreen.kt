@@ -7,12 +7,11 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,9 +19,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
 import de.letzgo.porridge.model.NoteText
@@ -43,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,14 +53,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import de.letzgo.porridge.data.Keys
-import de.letzgo.porridge.data.Prefs
-import de.letzgo.porridge.logic.ActionItemsLogic
+import de.letzgo.porridge.data.Me
+import de.letzgo.porridge.logic.HomeListLogic
 import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.store.ActionItemStore
 import de.letzgo.porridge.ui.Brand
-import de.letzgo.porridge.ui.components.EmptyState
 import de.letzgo.porridge.ui.components.SectionHeader
 import de.letzgo.porridge.data.Projects
 import de.letzgo.porridge.ui.projects.ProjectChooser
@@ -69,80 +68,66 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * iOS: `TasksPane` (Views/Tasks/TasksPane.swift) — alle Aufgaben: aus den Zusammenfassungen und von Hand
- * angelegte, offen zuerst, dann erledigt. Abhaken hier hakt auch die Zeile in der Zusammenfassung ab; ein Tipp
- * öffnet die Aufgabe als eigene Seite.
+ * iOS: `TaskSections` (Views/Tasks/TasksPane.swift) — die Aufgaben als Abschnitte einer Liste: New, Mine, General,
+ * dann Done eingeklappt. Abhaken hier hakt auch die Zeile in der Zusammenfassung ab; ein Tipp öffnet die Aufgabe als
+ * eigene Seite.
  */
+fun LazyListScope.taskSections(
+    tasks: List<Pair<ActionItem, Note?>>, showDone: Boolean, onShowDone: (Boolean) -> Unit,
+    onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit,
+) {
+    val (new, mine, general, done) = HomeListLogic.sections(tasks, Me.names)
+    fun rows(list: List<Pair<ActionItem, Note?>>) = items(list, key = { "t-" + it.first.id }) { (item, note) -> TaskListRow(item, note, onOpen, onEdit) }
+    if (new.isNotEmpty()) {
+        item(key = "h-tasks-new") {
+            val coroutines = rememberCoroutineScope()
+            SectionHeader("New", new.size, color = Brand.task) {
+                TextButton(onClick = { coroutines.launch { ActionItemStore().accept(new.map { it.first }) } }) {
+                    Text("Accept All", color = Brand.task, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+        rows(new)
+    }
+    if (mine.isNotEmpty()) {
+        item(key = "h-tasks-mine") { SectionHeader("Mine", mine.size, color = Brand.task) }
+        rows(mine)
+    }
+    if (general.isNotEmpty()) {
+        item(key = "h-tasks-general") { SectionHeader("General", general.size, color = Brand.task) }
+        rows(general)
+    }
+    if (done.isNotEmpty()) {
+        item(key = "h-tasks-done") {
+            val rotation by animateFloatAsState(if (showDone) 90f else 0f, label = "chevron")
+            SectionHeader("Done", done.size, Modifier.clickable { onShowDone(!showDone) }, color = Brand.task) {
+                Icon(Icons.Filled.ChevronRight, if (showDone) "Hide" else "Show", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.rotate(rotation))
+            }
+        }
+        if (showDone) rows(done)
+    }
+}
+
+/** Eine Aufgabe mit allem, was sich in ihrer Zeile tun lässt. */
 @Composable
-fun TasksScreen(items: List<ActionItem>, notes: List<Note>, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit, modifier: Modifier = Modifier, tag: String? = null) {
-    val byID = notes.associateBy { it.id }
-    // Eine Aufgabe, deren Notiz weg ist, bleibt eigenständig; Seiten geben keine Aufgaben.
-    val tasks = items.mapNotNull { item ->
-        if (item.kind != ActionItem.Kind.TASK || item.review == ActionItem.Review.DISMISSED) return@mapNotNull null
-        // [tag]: nur Aufgaben aus Notizen mit diesem Tag; eigene ohne Notiz fallen dann weg.
-        val note = item.noteID?.let { byID[it] } ?: return@mapNotNull if (tag == null) Triple(item, null, item.createdAt) else null
-        if (tag != null && note.tags.none { it.lowercase() == tag }) return@mapNotNull null
-        if (note.isDeleted || note.isLink) null else Triple(item, note, note.createdAt)
-    }.sortedWith(compareByDescending<Triple<ActionItem, Note?, Long>> { it.third }.thenBy { it.first.order }).map { it.first to it.second }
-    val new = tasks.filter { it.first.needsReview }
-    val open = tasks.filter { !it.first.isDone && !it.first.needsReview }
-    val names = de.letzgo.porridge.data.Me.names
-    val (mine, general) = open.partition { ActionItemsLogic.isMine(it.first, it.second, names) }
-    val done = tasks.filter { it.first.isDone }
-    var showDone by remember { mutableStateOf(false) }
+internal fun TaskListRow(item: ActionItem, note: Note?, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit) {
     val coroutines = rememberCoroutineScope()
     val store = remember { ActionItemStore() }
-    val rotation by animateFloatAsState(if (showDone) 90f else 0f, label = "chevron")
-
-    if (tasks.isEmpty()) {
-        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            EmptyState("No Tasks Yet", "Tasks come from the summaries of your meetings and notes, or you add one with the plus button.", Icons.Filled.Checklist)
-        }
-        return
-    }
-    @Composable
-    fun row(item: ActionItem, note: Note?) = TaskRow(
+    TaskRow(
         item, note, onOpen = onOpen, onEdit = onEdit,
         onToggle = { coroutines.launch { store.setDone(item, !item.isDone) } },
         onDelete = { coroutines.launch { store.delete(item) } },
         onAccept = { coroutines.launch { store.accept(listOf(item)) } },
         onDismiss = { coroutines.launch { store.dismiss(item) } },
+        onArchive = { coroutines.launch { if (item.archivedAt != null) store.unarchive(item) else store.archive(item) } },
     )
-    LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 96.dp)) {
-        if (new.isNotEmpty()) {
-            item {
-                SectionHeader("New", new.size, color = Brand.task) {
-                    TextButton(onClick = { coroutines.launch { store.accept(new.map { it.first }) } }) {
-                        Text("Accept All", color = Brand.task, style = MaterialTheme.typography.labelLarge)
-                    }
-                }
-            }
-            items(new, key = { it.first.id }) { (item, note) -> row(item, note) }
-        }
-        if (mine.isNotEmpty()) {
-            item { SectionHeader("Mine", mine.size, color = Brand.task) }
-            items(mine, key = { it.first.id }) { (item, note) -> row(item, note) }
-        }
-        if (general.isNotEmpty()) {
-            item { SectionHeader("General", general.size, color = Brand.task) }
-            items(general, key = { it.first.id }) { (item, note) -> row(item, note) }
-        }
-        if (done.isNotEmpty()) {
-            item {
-                SectionHeader("Done", done.size, Modifier.clickable { showDone = !showDone }, color = Brand.task) {
-                    Icon(Icons.Filled.ChevronRight, if (showDone) "Hide" else "Show", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.rotate(rotation))
-                }
-            }
-            if (showDone) items(done, key = { it.first.id }) { (item, note) -> row(item, note) }
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun TaskRow(
     item: ActionItem, note: Note?, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit, onToggle: () -> Unit, onDelete: () -> Unit,
-    onAccept: () -> Unit, onDismiss: () -> Unit,
+    onAccept: () -> Unit, onDismiss: () -> Unit, onArchive: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     var choosing by remember { mutableStateOf(false) }
@@ -153,20 +138,31 @@ internal fun TaskRow(
     )
     val context = LocalContext.current
     val review = item.needsReview
-    // Eine neue Aufgabe: nach rechts übernehmen, nach links verwerfen. Sonst nach links löschen.
+    // Der Zustand des Wischens behält seinen ersten Callback; so sieht er immer den aktuellen Stand.
+    val isReview by rememberUpdatedState(review)
+    val delete by rememberUpdatedState(onDelete)
+    val accept by rememberUpdatedState(onAccept)
+    val dismiss by rememberUpdatedState(onDismiss)
+    val archive by rememberUpdatedState(onArchive)
+    // Eine neue Aufgabe: nach rechts übernehmen, nach links verwerfen. Sonst nach rechts archivieren, nach links löschen.
     val swipe = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
         when (value) {
-            SwipeToDismissBoxValue.EndToStart -> { if (review) onDismiss() else onDelete(); true }
-            SwipeToDismissBoxValue.StartToEnd -> { if (review) onAccept(); review }
+            SwipeToDismissBoxValue.EndToStart -> { if (isReview) dismiss() else delete(); true }
+            // Die Zeile federt zurück: sie zieht um oder bleibt (in der Suche), statt leer stehen zu bleiben.
+            SwipeToDismissBoxValue.StartToEnd -> { if (isReview) accept() else archive(); false }
             else -> false
         }
     })
     SwipeToDismissBox(
-        swipe, enableDismissFromStartToEnd = review,
+        swipe,
         backgroundContent = {
             if (swipe.dismissDirection == SwipeToDismissBoxValue.StartToEnd) {
-                Box(Modifier.fillMaxSize().background(Brand.task).padding(start = 24.dp), contentAlignment = Alignment.CenterStart) {
-                    Icon(Icons.Filled.Check, "Accept", tint = androidx.compose.ui.graphics.Color.White)
+                Box(Modifier.fillMaxSize().background(if (review) Brand.task else if (item.archivedAt != null) Brand.sky else Brand.navy).padding(start = 24.dp), contentAlignment = Alignment.CenterStart) {
+                    when {
+                        review -> Icon(Icons.Filled.Check, "Accept", tint = androidx.compose.ui.graphics.Color.White)
+                        item.archivedAt != null -> Icon(Icons.Outlined.Unarchive, "Unarchive", tint = androidx.compose.ui.graphics.Color.White)
+                        else -> Icon(Icons.Outlined.Archive, "Archive", tint = androidx.compose.ui.graphics.Color.White)
+                    }
                 }
             } else {
                 Box(Modifier.fillMaxSize().background(Brand.danger).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
@@ -220,6 +216,7 @@ internal fun TaskRow(
                             val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
                             clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Task", item.line))
                         })
+                        DropdownMenuItem(text = { Text(if (item.archivedAt != null) "Unarchive" else "Archive") }, onClick = { menu = false; onArchive() })
                         HorizontalDivider()
                         DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { menu = false; onDelete() })
                     }

@@ -38,6 +38,16 @@ class ActionItemStore(private val db: PorridgeDatabase = PorridgeDatabase.shared
 
     suspend fun save(item: ActionItem) = db.actionItems().upsert(item.copy(updatedAt = System.currentTimeMillis()))
 
+    /** Archiviert die Aufgabe, auf dem frischen Stand der Datenbank. */
+    suspend fun archive(item: ActionItem) = setArchived(item, System.currentTimeMillis())
+
+    suspend fun unarchive(item: ActionItem) = setArchived(item, null)
+
+    private suspend fun setArchived(item: ActionItem, archivedAt: Long?) {
+        val current = db.actionItems().get(item.id) ?: return
+        db.actionItems().upsert(current.copy(archivedAt = archivedAt, updatedAt = System.currentTimeMillis()))
+    }
+
     /** Eine von Hand angelegte Aufgabe ohne Titel und Text wird nicht behalten. */
     suspend fun dropEmptyManual() {
         db.actionItems().all().filter { it.source == "manual" && it.text.isBlank() && it.details.isBlank() }.forEach { db.actionItems().delete(it) }
