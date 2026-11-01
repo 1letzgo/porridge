@@ -64,8 +64,9 @@ struct ProjectsPane: View {
 
     private var overview: some View {
         let byID = notesByID
+        let sorted = projects.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         return List {
-            ForEach(projects.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { project in
+            ForEach(sorted) { project in
                 let content = contents(of: project, notes: byID)
                 Button { openProject = project.id } label: {
                     HStack(alignment: .top, spacing: 12) {
@@ -91,7 +92,7 @@ struct ProjectsPane: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .cardListRow()
+                .cardListRow(top: project.id == sorted.first?.id ? 0 : 10)
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) { deleting = project } label: { Label("Delete", systemImage: "trash") }
                     Button { rename(project) } label: { Label("Rename", systemImage: "pencil") }

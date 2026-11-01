@@ -52,7 +52,7 @@ enum Look {
     static let thinOutline: CGFloat = 1
     static let hairline = Color.primary.opacity(0.1)
     /// Space above and below the tabs of the list header; the content below starts without its own top padding.
-    static let headerGap: CGFloat = 12
+    static let headerGap: CGFloat = 16
 }
 
 extension View {
@@ -122,10 +122,11 @@ extension View {
             .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
     }
 
-    /// Row of a plain list: hairline separator from the text on, no row background.
-    func cardListRow() -> some View {
+    /// Row of a plain list: hairline separator from the text on, no row background. A first row without a
+    /// section header passes `top: 0`, so the gap below the tabs stays `Look.headerGap`.
+    func cardListRow(top: CGFloat = 10) -> some View {
         self
-            .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
+            .listRowInsets(EdgeInsets(top: top, leading: 20, bottom: 10, trailing: 20))
             .listRowBackground(Color.clear)
             .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + ThingsRowIcon.inset }
     }
