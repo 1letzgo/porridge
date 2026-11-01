@@ -51,7 +51,7 @@ enum Look {
     static let outline: CGFloat = 1
     static let thinOutline: CGFloat = 1
     static let hairline = Color.primary.opacity(0.1)
-    /// Space above and below the tabs of the list header; the content below starts without its own top padding.
+    /// Space below the bar of a list; the content below starts without its own top padding.
     static let headerGap: CGFloat = 16
 }
 
@@ -122,11 +122,10 @@ extension View {
             .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
     }
 
-    /// Row of a plain list: hairline separator from the text on, no row background. A first row without a
-    /// section header passes `top: 0`, so the gap below the tabs stays `Look.headerGap`.
-    func cardListRow(top: CGFloat = 10) -> some View {
+    /// Row of a plain list: hairline separator from the text on, no row background.
+    func cardListRow() -> some View {
         self
-            .listRowInsets(EdgeInsets(top: top, leading: 20, bottom: 10, trailing: 20))
+            .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
             .listRowBackground(Color.clear)
             .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + ThingsRowIcon.inset }
     }
@@ -139,6 +138,31 @@ extension View {
             .background(Color.appBackground)
             .contentMargins(.top, 0, for: .scrollContent)
             .environment(\.defaultMinListHeaderHeight, 0)
+    }
+
+    /// Room below the last row of a list, so it can scroll out from under the floating buttons (iOS).
+    func roomForFloatingButtons() -> some View {
+        #if os(iOS)
+        contentMargins(.bottom, 96, for: .scrollContent)
+        #else
+        self
+        #endif
+    }
+
+    /// A swipe from the left edge goes back, as on a pushed page (iOS). Nil: nowhere to go back to.
+    func swipeBack(_ action: (() -> Void)?) -> some View {
+        #if os(iOS)
+        simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { drag in
+                    guard let action, drag.startLocation.x < 40, drag.translation.width > 80,
+                          abs(drag.translation.height) < drag.translation.width else { return }
+                    withAnimation(.snappy) { action() }
+                }
+        )
+        #else
+        self
+        #endif
     }
 
     /// Small capsule label (speaker chips): a wash of the color.
@@ -171,6 +195,32 @@ struct ThingsRowIcon: View {
             .frame(width: 22, height: 22)
             .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(tint.opacity(0.55), lineWidth: 1.5))
+    }
+}
+
+/// Things: bold title over a hairline, no symbol. The first one sits right under the bar (the gap comes from
+/// there, `Look.headerGap`); later ones keep a little more air than the list gives between sections.
+struct ListHeader: View {
+    let title: String
+    var count: Int?
+    var tint: Color = .brandSky
+    var isFirst = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(title)
+                if let count {
+                    Text("\(count)").foregroundStyle(.secondary)
+                }
+            }
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(tint)
+            Rectangle().fill(Look.hairline).frame(height: 0.5)
+        }
+        .padding(.top, isFirst ? 0 : 4)
+        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
+        .textCase(nil)
     }
 }
 

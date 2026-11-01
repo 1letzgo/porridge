@@ -192,33 +192,57 @@ struct ChatPanel: View {
     var onClose: () -> Void
 
     var body: some View {
+        OverlayPanel(title: "Chat", systemImage: "bubble.left.and.bubble.right.fill", tint: .brandChat, onClose: onClose) {
+            ChatView(notes: notes, items: items, store: store, onOpen: onOpen)
+        } actions: {
+            if !store.messages.isEmpty {
+                Button { store.reset() } label: {
+                    Image(systemName: "square.and.pencil").frame(width: 36, height: 36)
+                }
+                .accessibilityLabel("New Chat")
+            }
+        }
+    }
+}
+
+/// A card over the current view (chat, search): a small bar with symbol, title and close, then the content.
+struct OverlayPanel<Content: View, Actions: View>: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    let tint: Color
+    var onClose: () -> Void
+    @ViewBuilder var content: Content
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .foregroundStyle(Color.brandChat)
-                Text("Chat")
+                Image(systemName: systemImage)
+                    .foregroundStyle(tint)
+                Text(title)
                     .font(.headline)
                 Spacer()
-                if !store.messages.isEmpty {
-                    Button { store.reset() } label: {
-                        Image(systemName: "square.and.pencil").frame(width: 36, height: 36)
-                    }
-                    .accessibilityLabel("New Chat")
-                }
+                actions
                 Button(action: onClose) {
                     Image(systemName: "xmark").frame(width: 36, height: 36)
                 }
-                .accessibilityLabel("Close Chat")
+                .accessibilityLabel("Close")
             }
             .font(.body.weight(.semibold))
-            .foregroundStyle(Color.brandChat)
+            .foregroundStyle(tint)
             .buttonStyle(.plain)
             .padding(.leading, 16)
             .padding(.trailing, 8)
             .padding(.vertical, 6)
             Rectangle().fill(Look.hairline).frame(height: 0.5)
-            ChatView(notes: notes, items: items, store: store, onOpen: onOpen)
+            content
         }
         .background(Color.appBackground)
+    }
+}
+
+extension OverlayPanel where Actions == EmptyView {
+    init(title: LocalizedStringKey, systemImage: String, tint: Color, onClose: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.init(title: title, systemImage: systemImage, tint: tint, onClose: onClose, content: content, actions: { EmptyView() })
     }
 }

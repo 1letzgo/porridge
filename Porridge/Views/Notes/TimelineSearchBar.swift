@@ -4,12 +4,51 @@ import SwiftUI
 struct TagToken: Identifiable, Hashable {
     let name: String
     var id: String { name.lowercased() }
+
+    /// The tags of the notes with how many notes have them, by name.
+    static func counts(_ notes: [Note]) -> [(key: String, name: String, count: Int)] {
+        var order: [String] = []
+        var names: [String: String] = [:]
+        var counts: [String: Int] = [:]
+        for note in notes {
+            for tag in note.tags {
+                let key = tag.lowercased()
+                if names[key] == nil { names[key] = tag; order.append(key) }
+                counts[key, default: 0] += 1
+            }
+        }
+        return order.sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { (key: $0, name: names[$0]!, count: counts[$0]!) }
+    }
 }
 
-/// The search view: a field, the tags as chips for quick filtering, and the matching notes below.
+/// The kinds of elements the search can be narrowed to.
+enum SearchKind: CaseIterable {
+    case tasks, meetings, notes, links
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .tasks: "Tasks"
+        case .meetings: "Meetings"
+        case .notes: "Notes"
+        case .links: "Links"
+        }
+    }
+
+    func matches(_ note: Note) -> Bool {
+        switch self {
+        case .tasks: false
+        case .meetings: note.isRecording && !note.isLink
+        case .notes: !note.isRecording && !note.isLink
+        case .links: note.isLink
+        }
+    }
+}
+
+/// The search view: a field, the kinds and tags as chips for quick filtering, and what matches below.
 struct SearchPane<Results: View>: View {
     @Binding var text: String
     @Binding var tokens: [TagToken]
+    @Binding var kind: SearchKind?
     let tags: [(key: String, name: String, count: Int)]
     let hasQuery: Bool
     @ViewBuilder var results: Results
@@ -32,6 +71,13 @@ struct SearchPane<Results: View>: View {
         VStack(spacing: 10) {
             field
                 .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(SearchKind.allCases, id: \.self) { option in kindChip(option) }
+                }
+                .padding(.horizontal)
+            }
 
             if !matchingTags.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -69,6 +115,21 @@ struct SearchPane<Results: View>: View {
             }
         }
         .onAppear { focused = true }
+    }
+
+    private func kindChip(_ option: SearchKind) -> some View {
+        let isOn = kind == option
+        return Button {
+            withAnimation(.snappy) { kind = isOn ? nil : option }
+        } label: {
+            Text(option.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isOn ? .white : Color.brandNavy)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(isOn ? Color.brandNavy : Color.brandSky.opacity(0.18), in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private func chip(_ tag: (key: String, name: String, count: Int)) -> some View {

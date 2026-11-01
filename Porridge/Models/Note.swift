@@ -22,6 +22,8 @@ final class Note {
     var isPinned: Bool = false
     /// Set while the note is in "Recently Deleted".
     var deletedAt: Date?
+    /// Set while the note is in the archive: out of the lists, still in the search and the chat.
+    var archivedAt: Date?
     /// A saved web link: the address, and the text of the page once it was fetched ("" = nothing to read).
     var url: String?
     var pageText: String?
@@ -52,6 +54,8 @@ final class Note {
     }
 
     var isDeleted: Bool { deletedAt != nil }
+
+    var isArchived: Bool { archivedAt != nil }
 
     var speakerMode: SpeakerMode {
         get { SpeakerMode(rawValue: speakerModeRaw) ?? .none }

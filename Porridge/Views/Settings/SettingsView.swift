@@ -1,6 +1,7 @@
 import AVFoundation
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 import Carbon.HIToolbox
@@ -46,6 +47,9 @@ struct SettingsView: View {
     #endif
     @State private var modelError: String?
     @State private var showPlaud = false
+    @State private var showAudioImporter = false
+    @State private var importedAudio: String?
+    @State private var audioImportError: String?
 
     /// A downloaded model that can be deleted.
     private enum ModelKind: Identifiable {
@@ -72,6 +76,8 @@ struct SettingsView: View {
 
     /// Pushed onto the list's navigation stack (iOS): the system back button closes it, no own stack or Done button.
     var isPushed = false
+    /// Opens a note that was imported here; without it (Mac: a window of its own) the card says it is done.
+    var onOpenNote: ((UUID) -> Void)?
 
     /// The Settings window of the Mac has no bar of its own above the content: give the first section air.
     private var settingsTopPadding: CGFloat {
@@ -183,6 +189,14 @@ struct SettingsView: View {
             PlaudImportSheet { audio in
                 PlaudImporter.addNote(audio, context: context, processing: processing)
             }
+        }
+        .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio, .movie]) { result in
+            importAudio(result)
+        }
+        .alert("Import Failed", isPresented: Binding(get: { audioImportError != nil }, set: { if !$0 { audioImportError = nil } })) {
+            Button("OK") { audioImportError = nil }
+        } message: {
+            Text(audioImportError ?? "")
         }
         .alert("Download Failed", isPresented: Binding(get: { modelError != nil }, set: { if !$0 { modelError = nil } })) {
             Button("OK") { modelError = nil }
@@ -335,6 +349,29 @@ struct SettingsView: View {
                 Button("Open") { showPlaud = true }
                     .buttonStyle(PillButtonStyle())
             }
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Audio or Video File").font(.body)
+                    if let importedAudio {
+                        Text("Imported “\(importedAudio)”")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 12)
+                Button("Choose") { showAudioImporter = true }
+                    .buttonStyle(PillButtonStyle())
+            }
+        }
+    }
+
+    private func importAudio(_ result: Result<URL, Error>) {
+        do {
+            let note = try NoteStore.importAudio(from: result.get(), context: context, processing: processing)
+            importedAudio = note.title
+            onOpenNote?(note.id)
+        } catch {
+            audioImportError = error.localizedDescription
         }
     }
 

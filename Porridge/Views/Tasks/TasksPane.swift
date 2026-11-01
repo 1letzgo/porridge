@@ -1,13 +1,13 @@
 import SwiftData
 import SwiftUI
 
-/// All tasks from the summaries in one list: new ones to look at first, then open, then the ones done, each
-/// with the note it comes from. Ticking here ticks the line in the summary too.
-struct TasksPane: View {
+/// The tasks as sections of a longer list: new ones to look at first, then open, then the ones done (folded),
+/// each with the note it comes from. Ticking here ticks the line in the summary too.
+struct TaskSections: View {
     let items: [ActionItem]
-    let notes: [Note]
-    /// Only the tasks out of notes with this tag (lowercased), when set.
-    var tag: String?
+    let notes: [UUID: Note]
+    /// Nothing above: the first section sits right under the bar.
+    var isFirst = false
     /// Opens the note of a task.
     var onOpen: (UUID) -> Void
     /// The task open in the detail column, marked in the list.
@@ -20,26 +20,16 @@ struct TasksPane: View {
     @AppStorage(AppSettings.myVoiceNameKey) private var myVoiceName = ""
     @State private var showDone = false
 
-    private var byID: [UUID: Note] {
-        Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-    }
-
-    /// Tasks of notes that still exist and tasks typed by hand, newest first, in the order of the summary.
+    /// Newest note first, in the order of the summary.
     private var tasks: [(item: ActionItem, note: Note?)] {
-        let notes = byID
-        return items.compactMap { item -> (ActionItem, Note?, Date)? in
-            guard item.kind == .task, item.review != .dismissed else { return nil }
-            // A task whose note is gone stays as a task of its own.
-            guard let id = item.noteID, let note = notes[id] else { return tag == nil ? (item, nil, item.createdAt) : nil }
-            guard !note.isDeleted, !note.isLink else { return nil }
-            if let tag, !note.tags.contains(where: { $0.lowercased() == tag }) { return nil }
-            return (item, note, note.createdAt)
-        }
-        .sorted { a, b in
-            if a.2 != b.2 { return a.2 > b.2 }
-            return a.0.order < b.0.order
-        }
-        .map { (item: $0.0, note: $0.1) }
+        items
+            .map { item -> (item: ActionItem, note: Note?) in (item, item.noteID.flatMap { notes[$0] }) }
+            .sorted { a, b in
+                let dateA = a.note?.createdAt ?? a.item.createdAt
+                let dateB = b.note?.createdAt ?? b.item.createdAt
+                if dateA != dateB { return dateA > dateB }
+                return a.item.order < b.item.order
+            }
     }
 
     var body: some View {
@@ -50,71 +40,54 @@ struct TasksPane: View {
         let mine = open.filter { ActionItems.isMine($0.item, note: $0.note, names: names) }
         let general = open.filter { !ActionItems.isMine($0.item, note: $0.note, names: names) }
         let done = all.filter { $0.item.isDone }
-        List {
-            if !new.isEmpty {
-                Section { ForEach(new, id: \.item.id) { row($0.item, note: $0.note) } } header: {
-                    HStack(alignment: .firstTextBaseline) {
-                        header("New", count: new.count)
+        if !new.isEmpty {
+            Section { ForEach(new, id: \.item.id) { row($0.item, note: $0.note) } } header: {
+                header("New", count: new.count, isFirst: isFirst)
+                    .overlay(alignment: .bottomTrailing) {
                         Button("Accept All") {
                             withAnimation(.snappy) { ActionItems.accept(new.map(\.item), in: context) }
                         }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.brandTask)
                         .buttonStyle(.plain)
+                        .padding(.bottom, 7)
                     }
+            }
+        }
+        if !mine.isEmpty {
+            Section { ForEach(mine, id: \.item.id) { row($0.item, note: $0.note) } } header: {
+                header("Mine", count: mine.count, isFirst: isFirst && new.isEmpty)
+            }
+        }
+        if !general.isEmpty {
+            Section { ForEach(general, id: \.item.id) { row($0.item, note: $0.note) } } header: {
+                header("General", count: general.count, isFirst: isFirst && new.isEmpty && mine.isEmpty)
+            }
+        }
+        if !done.isEmpty {
+            Section {
+                if showDone {
+                    ForEach(done, id: \.item.id) { row($0.item, note: $0.note) }
                 }
-            }
-            if !mine.isEmpty {
-                Section { ForEach(mine, id: \.item.id) { row($0.item, note: $0.note) } } header: { header("Mine", count: mine.count) }
-            }
-            if !general.isEmpty {
-                Section { ForEach(general, id: \.item.id) { row($0.item, note: $0.note) } } header: { header("General", count: general.count) }
-            }
-            if !done.isEmpty {
-                Section {
-                    if showDone {
-                        ForEach(done, id: \.item.id) { row($0.item, note: $0.note) }
-                    }
-                } header: {
-                    Button { withAnimation(.snappy) { showDone.toggle() } } label: {
-                        HStack {
-                            header("Done", count: done.count)
-                            Spacer()
+            } header: {
+                Button { withAnimation(.snappy) { showDone.toggle() } } label: {
+                    header("Done", count: done.count, isFirst: isFirst && open.isEmpty && new.isEmpty)
+                        .overlay(alignment: .bottomTrailing) {
                             Image(systemName: "chevron.right")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(.secondary)
                                 .rotationEffect(.degrees(showDone ? 90 : 0))
+                                .padding(.bottom, 9)
                         }
                         .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
                 }
-            }
-        }
-        .cardList()
-        .overlay {
-            if all.isEmpty {
-                EmptyStateView(
-                    title: "No Tasks Yet",
-                    message: "Tasks come from the summaries of your meetings and notes, or you add one with the plus button.",
-                    systemImage: "checklist"
-                )
+                .buttonStyle(.plain)
             }
         }
     }
 
-    private func header(_ title: String, count: Int) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(title)
-                Text("\(count)").foregroundStyle(.secondary)
-            }
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(Color.brandTask)
-            Rectangle().fill(Look.hairline).frame(height: 0.5)
-        }
-        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
-        .textCase(nil)
+    private func header(_ title: String, count: Int, isFirst: Bool) -> some View {
+        ListHeader(title: title, count: count, tint: .brandTask, isFirst: isFirst)
     }
 
     private func row(_ item: ActionItem, note: Note?) -> some View {
@@ -158,6 +131,10 @@ struct TaskRow: View {
                         .lineLimit(2)
                 }
                 HStack(spacing: 6) {
+                    if item.isArchived {
+                        Image(systemName: "archivebox")
+                            .accessibilityLabel("Archived")
+                    }
                     if let owner = item.owner {
                         Text(owner)
                             .font(.caption.weight(.semibold))
@@ -201,6 +178,7 @@ struct TaskRow: View {
                 Button(role: .destructive) { withAnimation(.snappy) { ActionItems.dismiss(item, in: context) } } label: { Label("Dismiss", systemImage: "xmark") }
             } else {
                 Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
+                archiveButton.tint(.brandNavy)
             }
         }
         .contextMenu {
@@ -214,9 +192,18 @@ struct TaskRow: View {
                 Button { onOpen(note.id) } label: { Label("Open Note", systemImage: "note.text") }
             }
             ProjectMenu(assigned: item.projectIDs, inherited: note?.projectIDs ?? []) { Projects.toggle($0, on: item, in: context) }
+            if !item.needsReview { archiveButton }
             Button { Clipboard.copy(item.line) } label: { Label("Copy", systemImage: "doc.on.doc") }
             Divider()
             Button(role: .destructive) { ActionItems.delete(item, in: context) } label: { Label("Delete", systemImage: "trash") }
+        }
+    }
+
+    private var archiveButton: some View {
+        Button {
+            withAnimation(.snappy) { Archive.set(!item.isArchived, item, in: context) }
+        } label: {
+            Label(item.isArchived ? "Unarchive" : "Archive", systemImage: item.isArchived ? "tray.and.arrow.up" : "archivebox")
         }
     }
 

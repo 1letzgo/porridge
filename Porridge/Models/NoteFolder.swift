@@ -12,20 +12,16 @@ final class NoteFolder {
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
     var parentID: UUID?
+    /// Set while the project is in the archive; its elements stay in it.
+    var archivedAt: Date?
+
+    var isArchived: Bool { archivedAt != nil }
 
     init(name: String, parentID: UUID? = nil) {
         self.id = UUID()
         self.name = name
         self.parentID = parentID
     }
-}
-
-/// What a list shows: everything, one tag, or "Recently Deleted". (Folders are no longer shown; `NoteFolder`
-/// stays in the store so synced data keeps its shape.)
-enum NoteScope: Hashable {
-    case all
-    case tag(String)
-    case trash
 }
 
 extension Array where Element == NoteFolder {

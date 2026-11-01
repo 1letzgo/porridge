@@ -26,6 +26,7 @@ enum SyncRecords {
         r["pendingAudioFileName"] = note.pendingAudioFileName
         r["folderID"] = note.folderID?.uuidString
         r["deletedAt"] = note.deletedAt.map { ms($0) }
+        r["archivedAt"] = note.archivedAt.map { ms($0) }
         r["url"] = note.url
         r["pageText"] = note.pageText
         r["summary"] = note.summary
@@ -50,6 +51,7 @@ enum SyncRecords {
         note.folderID = uuid(r["folderID"])
         note.isPinned = r["isPinned"] as? Bool ?? false
         note.deletedAt = date(r["deletedAt"])
+        note.archivedAt = date(r["archivedAt"])
         note.url = r["url"] as? String
         note.pageText = r["pageText"] as? String
         note.labels = r["labels"] as? [String] ?? []
@@ -97,6 +99,7 @@ enum SyncRecords {
         r["owner"] = item.owner
         r["doneAt"] = item.doneAt.map { ms($0) }
         r["summaryKey"] = item.summaryKey
+        r["archivedAt"] = item.archivedAt.map { ms($0) }
         return r
     }
 
@@ -115,6 +118,7 @@ enum SyncRecords {
         item.updatedAt = date(r["updatedAt"]) ?? item.updatedAt
         item.reviewRaw = r["reviewRaw"] as? String ?? ActionItem.Review.accepted.rawValue
         item.projectIDs = r["projectIDs"] as? [String] ?? []
+        item.archivedAt = date(r["archivedAt"])
     }
 
     // MARK: NoteFolder
@@ -122,6 +126,7 @@ enum SyncRecords {
     static func record(_ folder: NoteFolder) -> SyncRecord {
         var r: SyncRecord = ["id": folder.id.uuidString, "name": folder.name, "createdAt": ms(folder.createdAt), "updatedAt": ms(folder.updatedAt)]
         r["parentID"] = folder.parentID?.uuidString
+        r["archivedAt"] = folder.archivedAt.map { ms($0) }
         return r
     }
 
@@ -131,6 +136,7 @@ enum SyncRecords {
         // Folders from before projects come with 0 from Android.
         folder.updatedAt = date(r["updatedAt"]).flatMap { $0.timeIntervalSince1970 > 0 ? $0 : nil } ?? folder.createdAt
         folder.parentID = uuid(r["parentID"])
+        folder.archivedAt = date(r["archivedAt"])
     }
 
     // MARK: VoiceProfile

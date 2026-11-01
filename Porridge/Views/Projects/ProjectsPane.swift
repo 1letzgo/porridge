@@ -1,143 +1,85 @@
 import SwiftData
 import SwiftUI
 
-/// The projects: all of them in a list, and one opened with everything in it (meetings, notes, links, tasks),
-/// filtered by kind.
-struct ProjectsPane: View {
-    let projects: [NoteFolder]
+/// A project as a folder in a list: name, what is in it, when it last changed.
+struct ProjectRow: View {
+    let project: NoteFolder
+    let content: ProjectContent
+    var onOpen: () -> Void
+    var onRename: () -> Void
+    var onDelete: () -> Void
+
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(alignment: .top, spacing: 12) {
+                ThingsRowIcon(systemImage: "folder.fill", tint: .brandProject)
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(project.name)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(content.summary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if let last = content.lastChange {
+                    Text(last.formatted(.dateTime.day().month(.abbreviated)))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .cardListRow()
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+            archiveButton.tint(.brandNavy)
+            Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+                .tint(.brandProject)
+        }
+        .contextMenu {
+            Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+            archiveButton
+            Divider()
+            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+        }
+    }
+
+    private var archiveButton: some View {
+        Button {
+            withAnimation(.snappy) { Archive.set(!project.isArchived, project, in: context) }
+        } label: {
+            Label(project.isArchived ? "Unarchive" : "Archive", systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox")
+        }
+    }
+}
+
+/// One project opened: everything in it that is not archived (meetings, notes, links, tasks), filtered by kind.
+struct ProjectPage: View {
+    let project: NoteFolder
     let notes: [Note]
     let items: [ActionItem]
-    /// The project shown; nil = the list of all projects.
-    @Binding var openProject: UUID?
     /// The note open in the detail column.
     @Binding var selection: UUID?
     /// The task open in the detail column, marked in the list.
     var selectedTaskID: UUID?
     var onOpenNote: (UUID) -> Void
     var onOpenTask: (ActionItem) -> Void
+    /// Moves a note to the trash.
+    var onRemove: (Note) -> Void
 
-    @Environment(\.modelContext) private var context
-    @Environment(ProcessingService.self) private var processing
     @State private var filter = ProjectFilter.all
-    @State private var renaming: NoteFolder?
-    @State private var deleting: NoteFolder?
-    @State private var name = ""
 
     var body: some View {
-        Group {
-            if let id = openProject, let project = projects.first(where: { $0.id == id }) {
-                detail(project)
-            } else {
-                overview
-            }
-        }
-        .alert("Rename Project", isPresented: .constant(renaming != nil)) {
-            TextField("Name", text: $name)
-            Button("Cancel", role: .cancel) { renaming = nil }
-            Button("Rename") {
-                if let renaming { Projects.rename(renaming, to: name, in: context) }
-                renaming = nil
-            }
-        }
-        .confirmationDialog(
-            "Delete “\(deleting?.name ?? "")”?", isPresented: .constant(deleting != nil), titleVisibility: .visible
-        ) {
-            Button("Delete Project", role: .destructive) {
-                if let deleting {
-                    if openProject == deleting.id { openProject = nil }
-                    Projects.delete(deleting, in: context)
-                }
-                deleting = nil
-            }
-            Button("Cancel", role: .cancel) { deleting = nil }
-        } message: {
-            Text("Its meetings, notes, links and tasks stay.")
-        }
-        .onChange(of: openProject) { filter = .all }
-    }
-
-    private var notesByID: [UUID: Note] {
-        Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-    }
-
-    // MARK: All projects
-
-    private var overview: some View {
-        let byID = notesByID
-        let sorted = projects.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        return List {
-            ForEach(sorted) { project in
-                let content = contents(of: project, notes: byID)
-                Button { openProject = project.id } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        ThingsRowIcon(systemImage: "folder.fill", tint: .brandProject)
-                            .padding(.top, 1)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(project.name)
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Text(summary(content))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 0)
-                        if let last = content.lastChange {
-                            Text(last.formatted(.dateTime.day().month(.abbreviated)))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize()
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .cardListRow(top: project.id == sorted.first?.id ? 0 : 10)
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) { deleting = project } label: { Label("Delete", systemImage: "trash") }
-                    Button { rename(project) } label: { Label("Rename", systemImage: "pencil") }
-                        .tint(.brandProject)
-                }
-                .contextMenu {
-                    Button { rename(project) } label: { Label("Rename", systemImage: "pencil") }
-                    Divider()
-                    Button(role: .destructive) { deleting = project } label: { Label("Delete", systemImage: "trash") }
-                }
-            }
-        }
-        .cardList()
-        .overlay {
-            if projects.isEmpty {
-                EmptyStateView(
-                    title: "No Projects Yet",
-                    message: "Create a project with the plus button, then add meetings, notes, links and tasks to it.",
-                    systemImage: "folder"
-                )
-            }
-        }
-    }
-
-    private func rename(_ project: NoteFolder) {
-        name = project.name
-        renaming = project
-    }
-
-    private func summary(_ content: Content) -> String {
-        let parts = [
-            (content.meetings.count, String(localized: "Meetings")),
-            (content.notes.count, String(localized: "Notes")),
-            (content.links.count, String(localized: "Links")),
-            (content.tasks.count, String(localized: "Tasks")),
-        ].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
-        return parts.isEmpty ? String(localized: "Empty") : parts.joined(separator: " · ")
-    }
-
-    // MARK: One project
-
-    private func detail(_ project: NoteFolder) -> some View {
-        let byID = notesByID
-        let content = contents(of: project, notes: byID)
-        return projectPage {
+        let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let content = ProjectContent(of: project, notes: notes, items: items, byID: byID)
+        VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(ProjectFilter.allCases, id: \.self) { kind in
@@ -146,7 +88,7 @@ struct ProjectsPane: View {
                 }
                 .padding(.horizontal, 20)
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, Look.headerGap)
             List(selection: $selection) {
                 if filter.shows(.tasks), !content.tasks.isEmpty {
                     Section {
@@ -156,16 +98,17 @@ struct ProjectsPane: View {
                                 onOpen: onOpenNote, onEdit: onOpenTask
                             )
                         }
-                    } header: { header("Tasks", tint: .brandTask) }
+                    } header: { ListHeader(title: "Tasks", tint: .brandTask, isFirst: true) }
                 }
-                section("Meetings", content.meetings, kind: .meetings, tint: .brandNavy)
-                section("Notes", content.notes, kind: .notes, tint: .brandSky)
-                section("Links", content.links, kind: .links, tint: .brandLink)
+                let noTasks = !filter.shows(.tasks) || content.tasks.isEmpty
+                let noMeetings = !filter.shows(.meetings) || content.meetings.isEmpty
+                let noNotes = !filter.shows(.notes) || content.notes.isEmpty
+                section("Meetings", content.meetings, kind: .meetings, tint: .brandNavy, isFirst: noTasks)
+                section("Notes", content.notes, kind: .notes, tint: .brandSky, isFirst: noTasks && noMeetings)
+                section("Links", content.links, kind: .links, tint: .brandLink, isFirst: noTasks && noMeetings && noNotes)
             }
             .cardList()
-            #if os(iOS)
-            .contentMargins(.bottom, 96, for: .scrollContent)
-            #endif
+            .roomForFloatingButtons()
             .overlay {
                 if content.count(filter) == 0 {
                     EmptyStateView(
@@ -178,47 +121,15 @@ struct ProjectsPane: View {
         }
     }
 
-    /// The open project, with a swipe from the left edge back to all projects (iOS), as on a pushed page.
-    private func projectPage<Page: View>(@ViewBuilder _ page: () -> Page) -> some View {
-        VStack(spacing: 0) { page() }
-        #if os(iOS)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 20)
-                    .onEnded { drag in
-                        guard drag.startLocation.x < 40, drag.translation.width > 80,
-                              abs(drag.translation.height) < drag.translation.width else { return }
-                        withAnimation(.snappy) { openProject = nil }
-                    }
-            )
-        #endif
-    }
-
     @ViewBuilder
-    private func section(_ title: LocalizedStringKey, _ list: [Note], kind: ProjectFilter, tint: Color) -> some View {
+    private func section(_ title: String, _ list: [Note], kind: ProjectFilter, tint: Color, isFirst: Bool) -> some View {
         if filter.shows(kind), !list.isEmpty {
             Section {
                 ForEach(list) { note in
-                    ListRowLink(value: note.id) {
-                        NoteRow(note: note, stage: processing.stages[note.id])
-                    }
-                    .contextMenu {
-                        ProjectMenu(assigned: note.projectIDs) { Projects.toggle($0, on: note, in: context) }
-                    }
+                    NoteListRow(note: note) { onRemove(note) }
                 }
-            } header: { header(title, tint: tint) }
+            } header: { ListHeader(title: title, tint: tint, isFirst: isFirst) }
         }
-    }
-
-    private func header(_ title: LocalizedStringKey, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(tint)
-            Rectangle().fill(Look.hairline).frame(height: 0.5)
-        }
-        .padding(.top, 8)
-        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
-        .textCase(nil)
     }
 
     private func chip(_ kind: ProjectFilter, count: Int) -> some View {
@@ -236,51 +147,54 @@ struct ProjectsPane: View {
         }
         .buttonStyle(.plain)
     }
+}
 
-    // MARK: Contents
+/// What is in a project, newest first; tasks open before done, as in the task list. Archived elements are not
+/// in it: they are in the archive.
+struct ProjectContent {
+    var meetings: [Note] = []
+    var notes: [Note] = []
+    var links: [Note] = []
+    var tasks: [ActionItem] = []
 
-    struct Content {
-        var meetings: [Note] = []
-        var notes: [Note] = []
-        var links: [Note] = []
-        var tasks: [ActionItem] = []
-
-        func count(_ kind: ProjectFilter) -> Int {
-            switch kind {
-            case .all: meetings.count + notes.count + links.count + tasks.count
-            case .meetings: meetings.count
-            case .notes: notes.count
-            case .links: links.count
-            case .tasks: tasks.count
+    init(of project: NoteFolder, notes all: [Note], items: [ActionItem], byID: [UUID: Note]) {
+        let id = Projects.key(project)
+        for note in all where !note.isDeleted && !note.isArchived && note.projectIDs.contains(id) {
+            if note.isLink {
+                links.append(note)
+            } else if note.isRecording {
+                meetings.append(note)
+            } else {
+                notes.append(note)
             }
         }
+        tasks = items
+            .filter { HomeList.isShownTask($0, notes: byID) && !$0.isArchived && Projects.contains($0, project: id, notes: byID) }
+            .sorted { a, b in a.isDone != b.isDone ? !a.isDone : a.updatedAt > b.updatedAt }
+    }
 
-        var lastChange: Date? {
-            ((meetings + notes + links).map(\.updatedAt) + tasks.map(\.updatedAt)).max()
+    func count(_ kind: ProjectFilter) -> Int {
+        switch kind {
+        case .all: meetings.count + notes.count + links.count + tasks.count
+        case .meetings: meetings.count
+        case .notes: notes.count
+        case .links: links.count
+        case .tasks: tasks.count
         }
     }
 
-    /// What is in a project, newest first; tasks open before done, as in the task list.
-    private func contents(of project: NoteFolder, notes byID: [UUID: Note]) -> Content {
-        let id = Projects.key(project)
-        var content = Content()
-        for note in notes where !note.isDeleted && note.projectIDs.contains(id) {
-            if note.isLink {
-                content.links.append(note)
-            } else if note.isRecording {
-                content.meetings.append(note)
-            } else {
-                content.notes.append(note)
-            }
-        }
-        content.tasks = items
-            .filter { item in
-                guard item.kind == .task, item.review != .dismissed else { return false }
-                if let noteID = item.noteID, let note = byID[noteID], note.isDeleted { return false }
-                return Projects.contains(item, project: id, notes: byID)
-            }
-            .sorted { a, b in a.isDone != b.isDone ? !a.isDone : a.updatedAt > b.updatedAt }
-        return content
+    var lastChange: Date? {
+        ((meetings + notes + links).map(\.updatedAt) + tasks.map(\.updatedAt)).max()
+    }
+
+    var summary: String {
+        let parts = [
+            (meetings.count, String(localized: "Meetings")),
+            (notes.count, String(localized: "Notes")),
+            (links.count, String(localized: "Links")),
+            (tasks.count, String(localized: "Tasks")),
+        ].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
+        return parts.isEmpty ? String(localized: "Empty") : parts.joined(separator: " · ")
     }
 }
 

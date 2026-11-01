@@ -34,6 +34,8 @@ final class ActionItem {
     /// The projects (`NoteFolder.id` as uppercase strings) the item belongs to itself; it is in the projects
     /// of its note too (`Projects.contains`).
     var projectIDs: [String] = []
+    /// Set while the task is in the archive.
+    var archivedAt: Date?
 
     enum Kind: String {
         case task
@@ -51,6 +53,8 @@ final class ActionItem {
     init() {
         self.id = UUID()
     }
+
+    var isArchived: Bool { archivedAt != nil }
 
     var kind: Kind {
         get { Kind(rawValue: kindRaw) ?? .task }

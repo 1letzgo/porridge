@@ -14,6 +14,27 @@ enum NoteStore {
         try? context.save()
     }
 
+    /// An audio or video file from outside becomes a meeting that is transcribed.
+    @discardableResult
+    @MainActor
+    static func importAudio(from url: URL, context: ModelContext, processing: ProcessingService) throws -> Note {
+        let fileName = try AudioStore.importFile(from: url)
+        let note = Note()
+        note.title = url.deletingPathExtension().lastPathComponent
+        note.titleIsCustom = true
+        note.statusRaw = ProcessingStatus.recorded.rawValue
+        note.audioFileName = fileName
+        note.inputName = "Import"
+        if let info = AudioStore.audioInfo(for: fileName) {
+            note.duration = info.duration
+            note.channelCount = info.channels
+        }
+        context.insert(note)
+        try? context.save()
+        processing.enqueue(.transcript(note.id))
+        return note
+    }
+
     static func restore(_ note: Note, in context: ModelContext) {
         note.deletedAt = nil
         if let folderID = note.folderID {

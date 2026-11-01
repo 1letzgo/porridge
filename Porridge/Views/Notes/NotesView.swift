@@ -1,6 +1,5 @@
 import SwiftData
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct NotesView: View {
     var openSettings: () -> Void = {}
@@ -16,7 +15,6 @@ struct NotesView: View {
     @Query private var items: [ActionItem]
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
 
-    @State private var scope = NoteScope.all
     @State private var selection: UUID?
     /// A new note that is not saved yet; it is stored when it gets its first content.
     @State private var draft: Note?
@@ -25,19 +23,20 @@ struct NotesView: View {
     @State private var search = ""
     /// Tags picked in the search field; a note must have all of them.
     @State private var tagTokens: [TagToken] = []
-    /// The projects come first: the app opens on them.
-    @State private var mode = ListMode.projects
-    /// The view the search button goes back to.
-    @State private var modeBeforeSearch = ListMode.projects
+    /// Kind of element the search is narrowed to.
+    @State private var searchKind: SearchKind?
+    /// What the list column shows: the one long list, or a page reached from it.
+    @State private var page = ListPage.home
+    /// The search lies over whatever is shown, opened from its button like the chat.
+    @State private var showSearch = false
     /// The chat lies over whatever view is shown, opened from its button.
     @State private var showChat = false
-    /// While the keyboard is up, the chat card reaches down to it (the buttons below step aside).
+    /// While the keyboard is up, the chat or search card reaches down to it (the buttons below step aside).
     @State private var keyboardShown = false
     @State private var chat = ChatStore()
     @State private var confirmEmptyTrash = false
     @State private var showRecorder = false
     @State private var showCalendar = false
-    @State private var showImporter = false
     /// Settings pushed as a full page with a back button (iOS); the Mac uses `openSettings` (a sheet).
     @State private var showSettings = false
     /// Dialog for a link typed or pasted by hand.
@@ -45,15 +44,14 @@ struct NotesView: View {
     /// The plus button is unfolded into its options.
     @State private var showCreate = false
     @State private var linkText = ""
-    /// The task open in the detail column (Tasks tab), like a note; a new one is made empty and opened right away.
+    /// The task open in the detail column, like a note; a new one is made empty and opened right away.
     @State private var openTaskItem: ActionItem?
-    @State private var importError: String?
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
-    /// The project open in the Projects tab; nil = the list of all projects.
-    @State private var openProject: UUID?
     @State private var showNewProject = false
     @State private var projectName = ""
+    @State private var renamingProject: NoteFolder?
+    @State private var deletingProject: NoteFolder?
 
     var body: some View {
         NavigationSplitView(preferredCompactColumn: $column) {
@@ -70,8 +68,6 @@ struct NotesView: View {
             } else if let selection, let note = notes.first(where: { $0.id == selection }) ?? (draft?.id == selection ? draft : nil) {
                 NoteDetailView(note: note) { close(note) }
                     .id(note.id)
-            } else if mode == .tasks {
-                EmptyStateView(title: "No Task Selected", message: "Pick a task from the list.", systemImage: "checklist")
             } else {
                 EmptyStateView(title: "No Note Selected", message: "Pick a note from the list.", systemImage: "note.text")
             }
@@ -86,9 +82,6 @@ struct NotesView: View {
                 onPick: { appointment in startRecording(titled: appointment.title) },
                 onNew: { startRecording(titled: nil) }
             )
-        }
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.audio, .movie]) { result in
-            importAudio(result)
         }
         .alert("Add Link", isPresented: $showAddLink) {
             TextField("https://", text: $linkText)
@@ -106,14 +99,32 @@ struct NotesView: View {
             TextField("Name", text: $projectName)
             Button("Cancel", role: .cancel) { projectName = "" }
             Button("Create") {
-                if let project = Projects.create(projectName, in: context) { openProject = project.id }
+                if let project = Projects.create(projectName, in: context) { page = .project(project.id) }
                 projectName = ""
             }
         }
-        .alert("Import Failed", isPresented: .constant(importError != nil)) {
-            Button("OK") { importError = nil }
+        .alert("Rename Project", isPresented: .constant(renamingProject != nil)) {
+            TextField("Name", text: $projectName)
+            Button("Cancel", role: .cancel) { renamingProject = nil }
+            Button("Rename") {
+                if let renamingProject { Projects.rename(renamingProject, to: projectName, in: context) }
+                renamingProject = nil
+                projectName = ""
+            }
+        }
+        .confirmationDialog(
+            "Delete “\(deletingProject?.name ?? "")”?", isPresented: .constant(deletingProject != nil), titleVisibility: .visible
+        ) {
+            Button("Delete Project", role: .destructive) {
+                if let deletingProject {
+                    if page == .project(deletingProject.id) { page = .home }
+                    Projects.delete(deletingProject, in: context)
+                }
+                deletingProject = nil
+            }
+            Button("Cancel", role: .cancel) { deletingProject = nil }
         } message: {
-            Text(importError ?? "")
+            Text("Its meetings, notes, links and tasks stay.")
         }
         .task {
             LegacyMigration.run(in: context)
@@ -137,11 +148,6 @@ struct NotesView: View {
         .onChange(of: selection) { _, new in
             if new != nil { openTaskItem = nil }
         }
-        .onChange(of: scope) {
-            selection = nil
-            search = ""
-            tagTokens = []
-        }
         #if os(iOS)
         // From a widget, a control or a shortcut; on a cold launch the action waits until the list appears.
         .onReceive(NotificationCenter.default.publisher(for: .porridgeQuickAction)) { _ in runQuickAction() }
@@ -149,7 +155,6 @@ struct NotesView: View {
         #endif
         #if os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: .newNote)) { _ in
-            if mode != .timeline { mode = .timeline }
             addNote()
         }
         #endif
@@ -165,47 +170,27 @@ struct NotesView: View {
     // MARK: - List
 
     private var list: some View {
-        let shown = visibleNotes
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             #if os(iOS)
             ChromeBar(title: listTitle, systemImage: listIcon, tint: listTint, onBack: barBack) {
-                listActions(isEmpty: shown.isEmpty)
+                listActions
             }
+            .padding(.bottom, Look.headerGap)
             #else
             // The list's name at the top of the sidebar, as in Things; the actions sit in the window's toolbar.
             ListTitle(title: listTitle, systemImage: listIcon, tint: listTint)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
+                .padding(.bottom, Look.headerGap)
             #endif
-            ListTabs(mode: $mode)
 
-            switch mode {
-            case .timeline, .meetings:
-                timeline(shown)
-            case .links:
-                linksList(shown)
-            case .tasks:
-                tasksPane
-            case .projects:
-                ProjectsPane(
-                    projects: projects, notes: notes, items: items,
-                    openProject: $openProject, selection: $selection, selectedTaskID: openTaskItem?.id,
-                    onOpenNote: { openFromChat($0) }, onOpenTask: { openTask($0) }
-                )
-            case .search:
-                SearchPane(
-                    text: $search, tokens: $tagTokens,
-                    tags: TagMenu.tagCounts(notes.filter { !$0.isDeleted }),
-                    hasQuery: hasQuery
-                ) {
-                    listBase(shown)
-                }
-            }
+            pageContent
+                .swipeBack(barBack)
         }
         .background(Color.appBackground)
         #if os(iOS)
-        // Over the whole list column, bar and tabs included, so the dimming while it is open covers all of it.
+        // Over the whole list column, bar included, so the dimming while it is open covers all of it.
         .overlay { createMenu }
         #endif
         .navigationTitle(listTitle)
@@ -213,12 +198,16 @@ struct NotesView: View {
         // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showSettings) {
-            SettingsView(isPushed: true)
+            SettingsView(isPushed: true) { id in
+                // An imported recording opens, as a new one does.
+                showSettings = false
+                openFromChat(id)
+            }
         }
         #else
         .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 480)
         .toolbar {
-            listToolbar(isEmpty: shown.isEmpty)
+            listToolbar
         }
         #endif
         #if os(iOS)
@@ -231,55 +220,291 @@ struct NotesView: View {
             // Leaving a new task without title or text leaves nothing behind.
             if let old { dropIfEmpty(old) }
         }
-        .onChange(of: mode) { _, new in
-            if new != .tasks, new != .projects { openTaskItem = nil }
-            if new != .projects { openProject = nil }
-            // Only notes and meetings have a trash; elsewhere the list starts with everything.
-            if !new.showsScope, new != .search, scope == .trash { scope = .all }
-            if new != .search {
+        .onChange(of: showSearch) { _, open in
+            if !open {
                 search = ""
                 tagTokens = []
+                searchKind = nil
+            }
+        }
+        .onChange(of: selection) {
+            // Leaving an empty new note leaves nothing behind.
+            if let draft, draft.id != selection, draft.modelContext == nil { self.draft = nil }
+        }
+        .onChange(of: notes.map(\.id)) {
+            if let draft, draft.modelContext != nil { self.draft = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var pageContent: some View {
+        switch page {
+        case .home:
+            home
+        case .project:
+            if let project = openProject {
+                ProjectPage(
+                    project: project, notes: notes, items: items, selection: $selection, selectedTaskID: openTaskItem?.id,
+                    onOpenNote: { openFromChat($0) }, onOpenTask: { openTask($0) }, onRemove: { remove($0) }
+                )
+                .id(project.id)
+            } else {
+                // Deleted on another device.
+                home
+            }
+        case .archive:
+            archive
+        case .trash:
+            trash
+        }
+    }
+
+    /// The search as a card, like the chat: what is found opens, and the card folds away.
+    private var searchPanel: some View {
+        OverlayPanel(title: "Search", systemImage: "magnifyingglass", tint: .brandNavy, onClose: closeSearch) {
+            SearchPane(
+                text: $search, tokens: $tagTokens, kind: $searchKind,
+                tags: TagToken.counts(notes.filter { !$0.isDeleted }),
+                hasQuery: hasQuery
+            ) {
+                searchResults
+            }
+            .padding(.top, 12)
+        }
+    }
+
+    private func closeSearch() {
+        withAnimation(.snappy) { showSearch = false }
+    }
+
+    private var notesByID: [UUID: Note] {
+        Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The one long list: the projects as folders on top, then what is in no project, open tasks first; at the
+    /// end the way to the archive and the trash.
+    private var home: some View {
+        let byID = notesByID
+        let keys = Set(projects.map(Projects.key))
+        let folders = HomeList.activeProjects(projects)
+        let loose = HomeList.notes(notes, projects: keys)
+        let pinned = loose.filter(\.isPinned)
+        let tasks = HomeList.tasks(items, notes: byID, projects: keys)
+        let grouped = groups(loose.filter { !$0.isPinned })
+        let archived = HomeList.archivedProjects(projects).count + HomeList.archivedNotes(notes).count + HomeList.archivedTasks(items, notes: byID).count
+        let deleted = notes.filter(\.isDeleted).count
+        let isEmpty = folders.isEmpty && loose.isEmpty && tasks.isEmpty
+        return List(selection: $selection) {
+            if !folders.isEmpty {
+                projectsSection(folders, isFirst: true, byID: byID)
+            }
+            if !pinned.isEmpty {
+                Section {
+                    ForEach(pinned) { note in row(note) }
+                } header: {
+                    ListHeader(title: "Pinned", tint: .brandSky, isFirst: folders.isEmpty)
+                }
+            }
+            TaskSections(
+                items: tasks, notes: byID, isFirst: folders.isEmpty && pinned.isEmpty,
+                onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) }
+            )
+            dateSections(grouped, isFirst: folders.isEmpty && pinned.isEmpty && tasks.isEmpty)
+            if archived > 0 || deleted > 0 {
+                Section {
+                    if archived > 0 {
+                        pageRow("Archive", systemImage: "archivebox", count: archived, tint: .brandNavy) { page = .archive }
+                    }
+                    if deleted > 0 {
+                        pageRow("Recently Deleted", systemImage: "trash", count: deleted, tint: .red) { page = .trash }
+                    }
+                } header: {
+                    ListHeader(title: "More", tint: .secondary, isFirst: isEmpty)
+                }
+            }
+        }
+        .cardList()
+        .roomForFloatingButtons()
+        .overlay {
+            if isEmpty, archived == 0, deleted == 0 {
+                EmptyStateView(
+                    title: "Nothing Here Yet",
+                    message: "Add notes, meetings, links, tasks and projects with the plus button.",
+                    systemImage: "note.text"
+                )
             }
         }
     }
 
-    private func timeline(_ shown: [Note]) -> some View {
-        #if os(iOS)
-        listBase(shown)
-            // Room below the last row, so it can scroll out from under the plus button.
-            .contentMargins(.bottom, 96, for: .scrollContent)
-        #else
-        listBase(shown)
-        #endif
+    private var archive: some View {
+        let byID = notesByID
+        let folders = HomeList.archivedProjects(projects)
+        let tasks = HomeList.archivedTasks(items, notes: byID)
+        let archivedNotes = HomeList.archivedNotes(notes)
+        return List(selection: $selection) {
+            if !folders.isEmpty {
+                projectsSection(folders, isFirst: true, byID: byID)
+            }
+            if !tasks.isEmpty {
+                taskResults(tasks, isFirst: folders.isEmpty, byID: byID)
+            }
+            dateSections(groups(archivedNotes), isFirst: folders.isEmpty && tasks.isEmpty)
+        }
+        .cardList()
+        .overlay {
+            if folders.isEmpty, tasks.isEmpty, archivedNotes.isEmpty {
+                EmptyStateView(
+                    title: "Nothing Archived",
+                    message: "Archive a project, note or task with a swipe or a long press.",
+                    systemImage: "archivebox"
+                )
+            }
+        }
     }
 
-    /// The saved links on their own, away from the notes; the plus adds a link right away.
-    private func linksList(_ shown: [Note]) -> some View {
-        #if os(iOS)
-        listBase(shown)
-            .contentMargins(.bottom, 96, for: .scrollContent)
-        #else
-        listBase(shown)
-        #endif
+    private var trash: some View {
+        let deleted = notes.filter(\.isDeleted).sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
+        return List(selection: $selection) {
+            Section {
+                ForEach(deleted) { note in row(note) }
+            } header: {
+                Text("Notes are deleted after \(NoteStore.trashDays) days.")
+                    .font(.footnote)
+                    .textCase(nil)
+            }
+        }
+        .cardList()
+        .overlay {
+            if deleted.isEmpty {
+                EmptyStateView(title: "Nothing Deleted", message: "Deleted notes stay here for \(NoteStore.trashDays) days.", systemImage: "trash")
+            }
+        }
     }
 
-    /// The tasks list; on iOS with the same floating plus button as the timeline, the Mac has it in the toolbar.
-    private var tasksPane: some View {
-        #if os(iOS)
-        TasksPane(items: items, notes: notes, tag: tagFilter, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
-            .contentMargins(.bottom, 96, for: .scrollContent)
-        #else
-        TasksPane(items: items, notes: notes, tag: tagFilter, onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) })
-        #endif
+    private var searchResults: some View {
+        let byID = notesByID
+        let found = foundNotes
+        let tasks = foundTasks(byID).sorted { a, b in a.isDone != b.isDone ? !a.isDone : a.updatedAt > b.updatedAt }
+        let grouped = groups(found)
+        return List {
+            if !tasks.isEmpty {
+                Section {
+                    ForEach(tasks) { item in
+                        TaskRow(
+                            item: item, note: item.noteID.flatMap { byID[$0] }, selectedID: nil,
+                            onOpen: { id in
+                                closeSearch()
+                                openFromChat(id)
+                            },
+                            onEdit: { item in
+                                closeSearch()
+                                openTask(item)
+                            }
+                        )
+                    }
+                } header: {
+                    ListHeader(title: "Tasks", tint: .brandTask, isFirst: true)
+                }
+            }
+            ForEach(grouped, id: \.title) { group in
+                Section {
+                    ForEach(group.notes) { note in
+                        Button {
+                            closeSearch()
+                            openFromChat(note.id)
+                        } label: {
+                            NoteRow(note: note, stage: processing.stages[note.id])
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .cardListRow()
+                    }
+                } header: {
+                    ListHeader(title: group.title, tint: .brandSky, isFirst: tasks.isEmpty && group.title == grouped.first?.title)
+                }
+            }
+        }
+        .cardList()
+        .scrollDismissesKeyboard(.interactively)
+        .overlay {
+            if found.isEmpty, tasks.isEmpty {
+                ContentUnavailableView.search(text: search.isEmpty ? tagTokens.map { "#" + $0.name }.joined(separator: " ") : search)
+            }
+        }
+    }
+
+    private func projectsSection(_ folders: [NoteFolder], isFirst: Bool, byID: [UUID: Note]) -> some View {
+        Section {
+            ForEach(folders) { project in
+                ProjectRow(
+                    project: project,
+                    content: ProjectContent(of: project, notes: notes, items: items, byID: byID),
+                    onOpen: { page = .project(project.id) },
+                    onRename: {
+                        projectName = project.name
+                        renamingProject = project
+                    },
+                    onDelete: { deletingProject = project }
+                )
+            }
+        } header: {
+            ListHeader(title: "Projects", tint: .brandProject, isFirst: isFirst)
+        }
+    }
+
+    /// Tasks in one flat section (archive and search), open before done.
+    private func taskResults(_ tasks: [ActionItem], isFirst: Bool, byID: [UUID: Note]) -> some View {
+        Section {
+            ForEach(tasks.sorted { a, b in a.isDone != b.isDone ? !a.isDone : a.updatedAt > b.updatedAt }) { item in
+                TaskRow(
+                    item: item, note: item.noteID.flatMap { byID[$0] }, selectedID: openTaskItem?.id,
+                    onOpen: { openFromChat($0) }, onEdit: { openTask($0) }
+                )
+            }
+        } header: {
+            ListHeader(title: "Tasks", tint: .brandTask, isFirst: isFirst)
+        }
+    }
+
+    private func dateSections(_ grouped: [(title: String, label: String, notes: [Note])], isFirst: Bool) -> some View {
+        ForEach(grouped, id: \.title) { group in
+            Section {
+                ForEach(group.notes) { note in row(note) }
+            } header: {
+                ListHeader(title: group.title, tint: .brandSky, isFirst: isFirst && group.title == grouped.first?.title)
+            }
+        }
+    }
+
+    private func row(_ note: Note) -> some View {
+        NoteListRow(note: note) { remove(note) }
+    }
+
+    /// A row leading to a page of its own.
+    private func pageRow(_ title: String, systemImage: String, count: Int, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ThingsRowIcon(systemImage: systemImage, tint: tint)
+                Text(title)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+                Text("\(count)")
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .cardListRow()
     }
 
     private func addTask() {
         let item = ActionItems.newTask(in: context)
-        // In a project the new task goes into it; elsewhere it shows where tasks live.
+        // In a project the new task goes into it.
         if let project = projectForNew {
             item.projectIDs = [project]
-        } else if mode != .tasks {
-            mode = .tasks
         }
         try? context.save()
         openTask(item)
@@ -313,118 +538,107 @@ struct NotesView: View {
     }
 
     private var hasQuery: Bool {
-        !search.trimmingCharacters(in: .whitespaces).isEmpty || !tagTokens.isEmpty
+        !search.trimmingCharacters(in: .whitespaces).isEmpty || !tagTokens.isEmpty || searchKind != nil
     }
 
-    /// Opens a source of a chat answer in its list (notes, meetings or links); from a task the list stays on the tasks.
+    /// Opens a note, a source of a chat answer for example; the list stays where it is.
     private func openFromChat(_ id: UUID) {
-        if mode != .tasks, let note = notes.first(where: { $0.id == id }) {
-            mode = note.isLink ? .links : note.isRecording ? .meetings : .timeline
-        }
-        if scope != .all { scope = .all }
         Task {
             selection = id
             column = .detail
         }
     }
 
-    private func listBase(_ shown: [Note]) -> some View {
-        List(selection: $selection) {
-            listContent(shown)
-        }
-        .cardList()
-        .overlay { emptyOverlay(isEmpty: shown.isEmpty) }
-        .onChange(of: selection) {
-            // Leaving an empty new note leaves nothing behind.
-            if let draft, draft.id != selection, draft.modelContext == nil { self.draft = nil }
-        }
-        .onChange(of: notes.map(\.id)) {
-            if let draft, draft.modelContext != nil { self.draft = nil }
-        }
-    }
-
-    private func emptyOverlay(isEmpty: Bool) -> some View {
-        Group {
-            if isEmpty {
-                if mode == .search {
-                    ContentUnavailableView.search(text: search.isEmpty ? tagTokens.map { "#" + $0.name }.joined(separator: " ") : search)
-                } else {
-                    EmptyStateView(title: emptyTitle, message: emptyMessage, systemImage: "note.text")
-                }
-            }
-        }
-    }
-
     /// The ways to start something: one plus button bottom right, the same in every view, that unfolds into
-    /// task, link, meeting and note (and project in the Projects tab). Bottom left the chat button.
-    @ViewBuilder
+    /// task, link, meeting and note (and project on the long list). Bottom left the chat button.
     private var createMenu: some View {
-        if mode != .search {
-            ZStack(alignment: .bottom) {
-                if showCreate || showChat {
-                    // Tapping anywhere else folds the menu or the chat again.
-                    Color.black.opacity(showChat ? 0.18 : 0.08)
-                        .ignoresSafeArea()
-                        .onTapGesture { withAnimation(.snappy) { showCreate = false; showChat = false } }
-                        .transition(.opacity)
-                }
-                VStack(spacing: 14) {
+        ZStack(alignment: .bottom) {
+            if showCreate || showChat || showSearch {
+                // Tapping anywhere else folds the menu or the card again.
+                Color.black.opacity(showChat || showSearch ? 0.18 : 0.08)
+                    .ignoresSafeArea()
+                    .onTapGesture { withAnimation(.snappy) { showCreate = false; showChat = false; showSearch = false } }
+                    .transition(.opacity)
+            }
+            VStack(spacing: 14) {
                 #if os(iOS)
                 if showChat {
-                    ChatPanel(notes: notes, items: items, store: chat, onOpen: openChatSource) {
-                        withAnimation(.snappy) { showChat = false }
+                    overlayCard {
+                        ChatPanel(notes: notes, items: items, store: chat, onOpen: openChatSource) {
+                            withAnimation(.snappy) { showChat = false }
+                        }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
-                    .padding(.top, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomLeading)))
+                }
+                if showSearch {
+                    overlayCard { searchPanel }
                 }
                 #endif
-                if !(showChat && keyboardShown) {
-                HStack(alignment: .bottom) {
-                    FloatingActionButton(
-                        systemImage: showChat ? "xmark" : "bubble.left.and.bubble.right.fill",
-                        label: showChat ? "Close Chat" : "Chat", fill: .brandChat
-                    ) {
-                        withAnimation(.snappy) {
-                            showCreate = false
-                            showChat.toggle()
-                        }
-                    }
-                    Spacer()
-                    if !showChat, scope != .trash || !mode.showsScope {
-                        VStack(alignment: .trailing, spacing: 14) {
-                            if showCreate {
-                                if mode == .projects, openProject == nil {
-                                    createOption("Project", systemImage: "folder.badge.plus") { showNewProject = true }
+                if !((showChat || showSearch) && keyboardShown) {
+                    HStack(alignment: .bottom, spacing: 12) {
+                        if !showSearch {
+                            FloatingActionButton(
+                                systemImage: showChat ? "xmark" : "bubble.left.and.bubble.right.fill",
+                                label: showChat ? "Close Chat" : "Chat", fill: .brandChat
+                            ) {
+                                withAnimation(.snappy) {
+                                    showCreate = false
+                                    showChat.toggle()
                                 }
-                                createOption("Task", systemImage: "checklist") { addTask() }
-                                createOption("Link", systemImage: "link") { showAddLink = true }
-                                createOption("Meeting", systemImage: "mic.fill") { showCalendar = true }
-                                createOption("Note", systemImage: "square.and.pencil") { addNote() }
                             }
-                            FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
-                                withAnimation(.snappy) { showCreate.toggle() }
+                        }
+                        if !showChat {
+                            FloatingActionButton(
+                                systemImage: showSearch ? "xmark" : "magnifyingglass",
+                                label: showSearch ? "Close Search" : "Search", fill: .brandNavy
+                            ) {
+                                withAnimation(.snappy) {
+                                    showCreate = false
+                                    showSearch.toggle()
+                                }
                             }
-                            .rotationEffect(.degrees(showCreate ? 45 : 0))
+                        }
+                        Spacer()
+                        if !showChat, !showSearch, page != .archive, page != .trash {
+                            VStack(alignment: .trailing, spacing: 14) {
+                                if showCreate {
+                                    if page == .home {
+                                        createOption("Project", systemImage: "folder.badge.plus", tint: .brandProject) { showNewProject = true }
+                                    }
+                                    createOption("Task", systemImage: "checklist", tint: .brandTask) { addTask() }
+                                    createOption("Link", systemImage: "link", tint: .brandLink) { showAddLink = true }
+                                    createOption("Meeting", systemImage: "mic.fill", tint: .accentColor) { showCalendar = true }
+                                    createOption("Note", systemImage: "square.and.pencil", tint: .brandSky) { addNote() }
+                                }
+                                FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
+                                    withAnimation(.snappy) { showCreate.toggle() }
+                                }
+                                .rotationEffect(.degrees(showCreate ? 45 : 0))
+                            }
                         }
                     }
                 }
-                }
-                }
-                .padding(.horizontal, 22)
-                .padding(.bottom, showChat && keyboardShown ? 8 : 16)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            #if os(iOS)
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                withAnimation(.snappy) { keyboardShown = true }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                withAnimation(.snappy) { keyboardShown = false }
-            }
-            #endif
+            .padding(.horizontal, 22)
+            .padding(.bottom, (showChat || showSearch) && keyboardShown ? 8 : 16)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        #if os(iOS)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.snappy) { keyboardShown = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.snappy) { keyboardShown = false }
+        }
+        #endif
+    }
+
+    /// A card unfolding from the buttons at the bottom left.
+    private func overlayCard<Card: View>(@ViewBuilder _ card: () -> Card) -> some View {
+        card()
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
+            .padding(.top, 8)
+            .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomLeading)))
     }
 
     /// A source of a chat answer: the chat folds away, the note opens.
@@ -433,8 +647,8 @@ struct NotesView: View {
         openFromChat(id)
     }
 
-    /// One unfolded option: a single white pill, icon on the left, then the text.
-    private func createOption(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+    /// One unfolded option: a single white pill, icon on the left in the color of its kind, then the text.
+    private func createOption(_ title: String, systemImage: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button {
             withAnimation(.snappy) { showCreate = false }
             action()
@@ -442,7 +656,7 @@ struct NotesView: View {
             HStack(spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(tint)
                     .frame(width: 22)
                 Text(title)
                     .font(.body.weight(.semibold))
@@ -459,69 +673,30 @@ struct NotesView: View {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
-    @ViewBuilder
-    private func listContent(_ shown: [Note]) -> some View {
-        if scope == .trash {
-            Section {
-                ForEach(shown) { note in row(note) }
-            } header: {
-                Text("Notes are deleted after \(NoteStore.trashDays) days.")
-                    .font(.footnote)
-                    .textCase(nil)
-            }
-        } else {
-            let pinned = shown.filter(\.isPinned)
-            if !pinned.isEmpty {
-                Section {
-                    ForEach(pinned) { note in row(note) }
-                } header: {
-                    header("Pinned", isFirst: true)
-                }
-            }
-            let grouped = groups(shown.filter { !$0.isPinned })
-            ForEach(grouped, id: \.title) { group in
-                Section {
-                    ForEach(group.notes) { note in row(note) }
-                } header: {
-                    header(group.title, isFirst: pinned.isEmpty && group.title == grouped.first?.title)
-                }
-            }
-        }
-    }
-
     /// The actions of the list, shown as plain icons at the right of the custom bar (iOS).
     @ViewBuilder
-    private func listActions(isEmpty: Bool) -> some View {
-        if mode.filtersByTag {
-            tagMenu
-        }
-        if mode.showsScope {
-            if scope != .trash {
-                Button { showImporter = true } label: {
-                    Label("Import Audio", systemImage: "square.and.arrow.down")
-                }
-            }
-            if scope == .trash, !isEmpty {
-                Button(role: .destructive) { confirmEmptyTrash = true } label: {
-                    Label("Delete All", systemImage: "trash")
-                }
+    private var listActions: some View {
+        if page == .trash, notes.contains(where: \.isDeleted) {
+            Button(role: .destructive) { confirmEmptyTrash = true } label: {
+                Label("Delete All", systemImage: "trash")
             }
         }
-        searchButton
         Button { showSettings = true } label: {
             Label("Settings", systemImage: "gearshape")
         }
     }
 
     @ToolbarContentBuilder
-    private func listToolbar(isEmpty: Bool) -> some ToolbarContent {
-        if mode.showsScope {
-            timelineToolbar(isEmpty: isEmpty)
+    private var listToolbar: some ToolbarContent {
+        if let barBack {
+            ToolbarItem(placement: .navigation) {
+                Button(action: barBack) {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .accessibilityLabel("Back")
+            }
         }
-        modeToolbar
-        if mode == .projects {
-            projectsToolbar
-        }
+        createToolbar
         // The chat is no view of its own: it opens over the list.
         ToolbarItem(placement: .primaryAction) {
             Button { showChat.toggle() } label: {
@@ -533,13 +708,15 @@ struct NotesView: View {
                     .frame(width: 480, height: 620)
             }
         }
-        if mode.filtersByTag {
-            ToolbarItem(placement: .primaryAction) {
-                tagMenu
-            }
-        }
         ToolbarItem(placement: .primaryAction) {
-            searchButton
+            Button { showSearch.toggle() } label: {
+                Label("Search", systemImage: "magnifyingglass")
+            }
+            .accessibilityLabel("Search")
+            .popover(isPresented: $showSearch, arrowEdge: .bottom) {
+                searchPanel
+                    .frame(width: 480, height: 620)
+            }
         }
         ToolbarItem(placement: .primaryAction) {
             Button { openSettings() } label: {
@@ -549,10 +726,18 @@ struct NotesView: View {
         }
     }
 
-
+    /// The Mac's plus: the same options as the button on iOS, or emptying the trash.
     @ToolbarContentBuilder
-    private func timelineToolbar(isEmpty: Bool) -> some ToolbarContent {
-        if scope != .trash {
+    private var createToolbar: some ToolbarContent {
+        if page == .trash {
+            if notes.contains(where: \.isDeleted) {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(role: .destructive) { confirmEmptyTrash = true } label: {
+                        Label("Delete All", systemImage: "trash")
+                    }
+                }
+            }
+        } else if page != .archive {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button { addNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
@@ -561,242 +746,74 @@ struct NotesView: View {
                         .keyboardShortcut("r")
                     Button { showAddLink = true } label: { Label("Add Link", systemImage: "link") }
                         .keyboardShortcut("l")
-                    Divider()
-                    Button { showImporter = true } label: { Label("Import Audio…", systemImage: "square.and.arrow.down") }
-                } label: {
-                    Label("New", systemImage: "plus")
-                }
-                .accessibilityLabel("New")
-            }
-        }
-        if scope == .trash, !isEmpty {
-            ToolbarItem(placement: .primaryAction) {
-                Button(role: .destructive) { confirmEmptyTrash = true } label: {
-                    Label("Delete All", systemImage: "trash")
-                }
-            }
-        }
-    }
-
-    /// The filter by tag, counting the tags of what the view lists (for tasks: the notes they come from).
-    private var tagMenu: some View {
-        let listed: [Note]
-        switch mode {
-        case .tasks:
-            let ids = Set(items.compactMap { $0.kind == .task ? $0.noteID : nil })
-            listed = notes.filter { ids.contains($0.id) }
-        case .links: listed = notes.filter(\.isLink)
-        case .meetings: listed = notes.filter { $0.isRecording && !$0.isLink }
-        default: listed = notes.filter { !$0.isRecording && !$0.isLink }
-        }
-        return TagMenu(notes: listed, scope: $scope, showsTrash: mode.showsScope, deletedCount: notes.filter(\.isDeleted).count, tint: listTint)
-    }
-
-    /// The search is no tab but a button in the bar; tapped again it goes back to where it came from.
-    private var searchButton: some View {
-        Button {
-            if mode == .search {
-                mode = modeBeforeSearch
-            } else {
-                modeBeforeSearch = mode
-                mode = .search
-            }
-        } label: {
-            Label(mode == .search ? "Close Search" : "Search", systemImage: mode == .search ? "xmark" : "magnifyingglass")
-        }
-        .accessibilityLabel(mode == .search ? "Close Search" : "Search")
-    }
-
-    /// Projects: back to all of them and new note or task in the open one, or a new project.
-    @ToolbarContentBuilder
-    private var projectsToolbar: some ToolbarContent {
-        if openProject != nil {
-            ToolbarItem(placement: .navigation) {
-                Button { openProject = nil } label: {
-                    Label("All Projects", systemImage: "chevron.left")
-                }
-                .accessibilityLabel("All Projects")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { addNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
-                    Button { showCalendar = true } label: { Label("Record Meeting", systemImage: "mic.fill") }
-                    Button { showAddLink = true } label: { Label("Add Link", systemImage: "link") }
                     Button { addTask() } label: { Label("New Task", systemImage: "checklist") }
+                    if page == .home {
+                        Button { showNewProject = true } label: { Label("New Project", systemImage: "folder.badge.plus") }
+                    }
                 } label: {
                     Label("New", systemImage: "plus")
                 }
                 .accessibilityLabel("New")
-            }
-        } else {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showNewProject = true } label: {
-                    Label("New Project", systemImage: "plus")
-                }
-                .accessibilityLabel("New Project")
-            }
-        }
-    }
-
-    @ToolbarContentBuilder
-    private var modeToolbar: some ToolbarContent {
-        if mode == .links {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showAddLink = true } label: {
-                    Label("Add Link", systemImage: "plus")
-                }
-                .accessibilityLabel("Add Link")
-            }
-        } else if mode == .tasks {
-            ToolbarItem(placement: .primaryAction) {
-                Button { addTask() } label: {
-                    Label("New Task", systemImage: "plus")
-                }
-                .accessibilityLabel("New Task")
-            }
-        }
-    }
-
-    /// Things: bold title over a hairline, no symbol. The first one sits right under the tabs
-    /// (the gap comes from the header, `Look.headerGap`); later ones keep air from the section above.
-    private func header(_ title: String, isFirst: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.bold))
-                // In the color of the view, like its title square (links orange).
-                .foregroundStyle(listTint)
-            Rectangle().fill(Look.hairline).frame(height: 0.5)
-        }
-        .padding(.top, isFirst ? 0 : 16)
-        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
-        .textCase(nil)
-    }
-
-    private func row(_ note: Note) -> some View {
-        ListRowLink(value: note.id) {
-            NoteRow(note: note, stage: processing.stages[note.id])
-        }
-        .swipeActions(edge: .leading) {
-            if note.isDeleted {
-                Button { NoteStore.restore(note, in: context) } label: { Label("Recover", systemImage: "arrow.uturn.backward") }
-                    .tint(.brandSky)
-            } else {
-                Button { togglePin(note) } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
-                    .tint(.orange)
-            }
-        }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) { remove(note) } label: {
-                Label(note.isDeleted ? "Delete Now" : "Delete", systemImage: "trash")
-            }
-        }
-        .contextMenu {
-            if note.isDeleted {
-                Button { NoteStore.restore(note, in: context) } label: { Label("Recover", systemImage: "arrow.uturn.backward") }
-                Button(role: .destructive) { remove(note) } label: { Label("Delete Now", systemImage: "trash") }
-            } else {
-                Button { togglePin(note) } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
-                ProjectMenu(assigned: note.projectIDs) { Projects.toggle($0, on: note, in: context) }
-                ShareLink(item: note.title.isEmpty ? note.text : "\(note.title)\n\n\(note.text)") {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                Divider()
-                Button(role: .destructive) { remove(note) } label: { Label("Delete", systemImage: "trash") }
             }
         }
     }
 
     // MARK: - Content of the list
 
+    /// The project shown, if any (it may have been deleted on another device).
+    private var openProject: NoteFolder? {
+        guard case .project(let id) = page else { return nil }
+        return projects.first { $0.id == id }
+    }
+
     private var listTitle: String {
-        switch mode {
-        case .search: "Search"
-        case .tasks: "Tasks"
-        case .links: "Links"
-        case .projects: openProject.flatMap { id in projects.first { $0.id == id }?.name } ?? "Projects"
-        case .meetings: scope == .all ? "Meetings" : scopeTitle
-        case .timeline: scopeTitle
-        }
-    }
-
-    /// Color of the square in front of the title: tasks are green, everything else sky blue.
-    private var listTint: Color {
-        switch mode {
-        case .tasks: .brandTask
-        case .links: .brandLink
-        case .meetings: .brandNavy
-        case .projects: .brandProject
-        default: .brandSky
-        }
-    }
-
-    /// The back pill of the bar: out of the chat, or from an open project to the list of all projects.
-    private var barBack: (() -> Void)? {
-        return mode == .projects && openProject != nil ? { openProject = nil } : nil
-    }
-
-    /// Symbol in the colored square in front of the title (the list icon of Things).
-    private var listIcon: String {
-        switch mode {
-        case .search: return "magnifyingglass"
-        case .tasks: return "checklist"
-        case .links: return "link"
-        case .projects: return "folder.fill"
-        case .timeline, .meetings:
-            switch scope {
-            case .all: return mode == .meetings ? "waveform" : "tray.full.fill"
-            case .tag: return "number"
-            case .trash: return "trash.fill"
-            }
-        }
-    }
-
-    /// The tag the lists are filtered by, if any.
-    private var tagFilter: String? {
-        if case .tag(let tag) = scope { return tag }
-        return nil
-    }
-
-    private var scopeTitle: String {
-        switch scope {
-        case .all: "Notes"
-        case .tag(let tag): "#" + tag
+        switch page {
+        case .home: "Porridge"
+        case .project: openProject?.name ?? "Porridge"
+        case .archive: "Archive"
         case .trash: "Recently Deleted"
         }
     }
 
-    private var emptyTitle: String {
-        mode == .links ? "No Links Yet" : scope == .trash ? "Nothing Deleted" : mode == .meetings ? "No Meetings Yet" : "No Notes Yet"
+    /// Color of the square in front of the title.
+    private var listTint: Color {
+        switch page {
+        case .project: openProject == nil ? .brandSky : .brandProject
+        case .archive: .brandNavy
+        default: .brandSky
+        }
     }
 
-    private var emptyMessage: String {
-        mode == .links ? "Share a page to Porridge or add one with the plus button – it is saved and summarized."
-            : mode == .meetings && scope != .trash ? "Record a meeting with the plus button – Porridge transcribes and summarizes it."
-            : scope == .trash ? "Deleted notes stay here for \(NoteStore.trashDays) days." : "Speak a thought – Porridge writes it down for you."
+    /// The back pill of the bar: from a page to the long list, from an archived project to the archive.
+    private var barBack: (() -> Void)? {
+        switch page {
+        case .home: nil
+        case .project: { page = openProject?.isArchived == true ? .archive : .home }
+        case .archive, .trash: { page = .home }
+        }
     }
 
-    private var visibleNotes: [Note] {
-        var result: [Note]
-        // The search looks through everything; the lists show the chosen tag (links have no trash of their own).
-        switch mode == .search || (mode == .links && scope == .trash) ? .all : scope {
-        case .all: result = notes.filter { !$0.isDeleted }
-        case .tag(let tag): result = notes.filter { !$0.isDeleted && $0.tags.contains { $0.lowercased() == tag } }
-        case .trash: result = notes.filter(\.isDeleted)
+    /// Symbol in the colored square in front of the title (the list icon of Things).
+    private var listIcon: String {
+        switch page {
+        case .home: "tray.full.fill"
+        case .project: openProject == nil ? "tray.full.fill" : "folder.fill"
+        case .archive: "archivebox.fill"
+        case .trash: "trash.fill"
         }
-        // Links and meetings have lists of their own; the notes are what is written. The trash and the search
-        // hold everything.
-        if mode == .links {
-            result = result.filter(\.isLink)
-        } else if mode.showsScope, scope != .trash {
-            result = result.filter { !$0.isLink && $0.isRecording == (mode == .meetings) }
-        }
-        if mode == .search, !tagTokens.isEmpty {
+    }
+
+    /// What the search finds among the notes, archived ones included.
+    private var foundNotes: [Note] {
+        var result = notes.filter { !$0.isDeleted }
+        if let searchKind { result = result.filter(searchKind.matches) }
+        if !tagTokens.isEmpty {
             result = result.filter { note in
                 let tags = Set(note.tags.map { $0.lowercased() })
                 return tagTokens.allSatisfy { tags.contains($0.id) }
             }
         }
-        if mode == .search, !search.isEmpty {
+        if !search.isEmpty {
             // The index knows the words of every passage (transcripts included) without decoding anything.
             if let ids = NoteIndex.shared.noteIDs(matching: search) {
                 _ = NoteIndex.shared.version
@@ -806,12 +823,22 @@ struct NotesView: View {
             }
         }
         // Strictly a timeline: the newest on top.
-        if scope == .trash {
-            result.sort { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
-        } else {
-            result.sort { $0.updatedAt > $1.updatedAt }
+        return result.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// What the search finds among the tasks; with tags, those of the notes they come from.
+    private func foundTasks(_ byID: [UUID: Note]) -> [ActionItem] {
+        guard searchKind == nil || searchKind == .tasks else { return [] }
+        return items.filter { item in
+            guard HomeList.isShownTask(item, notes: byID) else { return false }
+            if !tagTokens.isEmpty {
+                let tags = Set((item.noteID.flatMap { byID[$0] }?.tags ?? []).map { $0.lowercased() })
+                guard tagTokens.allSatisfy({ tags.contains($0.id) }) else { return false }
+            }
+            guard !search.isEmpty else { return true }
+            return item.text.localizedCaseInsensitiveContains(search) || item.details.localizedCaseInsensitiveContains(search)
+                || (item.owner?.localizedCaseInsensitiveContains(search) ?? false)
         }
-        return result
     }
 
     /// Notes under headings like Today, Yesterday, Previous 7 Days, months and years. `label` is the short form
@@ -854,29 +881,25 @@ struct NotesView: View {
         guard let address = LinkImport.webAddress(from: linkText) else { return }
         linkText = ""
         let note = LinkImport.add(address, context: context, processing: processing)
-        // The new link shows where links live, or stays in the project it was added in.
+        // In a project the new link goes into it.
         if let project = projectForNew {
             note.projectIDs = [project]
             try? context.save()
-        } else if mode != .links {
-            mode = .links
         }
         selection = note.id
         column = .detail
     }
 
-    /// The project new things go into: the one open in the Projects tab.
+    /// The project new things go into: the one that is open.
     private var projectForNew: String? {
-        mode == .projects ? openProject?.uuidString : nil
+        openProject.map(Projects.key)
     }
 
     private func addNote() {
         let note = Note()
-        // In a project the new note goes into it and the project stays; elsewhere it shows where notes live.
+        // In a project the new note goes into it.
         if let project = projectForNew {
             note.projectIDs = [project]
-        } else if mode != .timeline {
-            mode = .timeline
         }
         draft = note
         selection = note.id
@@ -890,7 +913,6 @@ struct NotesView: View {
             addNote()
         case .startMeeting:
             guard !showRecorder else { return }
-            mode = .meetings
             showCalendar = false
             startRecording(titled: nil)
         case nil:
@@ -933,32 +955,10 @@ struct NotesView: View {
         insertAndProcess(note)
     }
 
-    private func importAudio(_ result: Result<URL, Error>) {
-        do {
-            let url = try result.get()
-            let fileName = try AudioStore.importFile(from: url)
-            let note = Note()
-            note.title = url.deletingPathExtension().lastPathComponent
-            note.titleIsCustom = true
-            note.statusRaw = ProcessingStatus.recorded.rawValue
-            note.audioFileName = fileName
-            note.inputName = "Import"
-            if let info = AudioStore.audioInfo(for: fileName) {
-                note.duration = info.duration
-                note.channelCount = info.channels
-            }
-            insertAndProcess(note)
-        } catch {
-            importError = error.localizedDescription
-        }
-    }
-
-    /// A recorded or imported meeting: stored, opened, transcribed, and shown under Meetings.
+    /// A recorded meeting: stored, opened and transcribed.
     private func insertAndProcess(_ note: Note) {
         if let project = projectForNew {
             note.projectIDs = [project]
-        } else if mode != .meetings {
-            mode = .meetings
         }
         context.insert(note)
         try? context.save()
@@ -966,11 +966,6 @@ struct NotesView: View {
         selection = note.id
         column = .detail
         processing.enqueue(.transcript(note.id))
-    }
-
-    private func togglePin(_ note: Note) {
-        note.isPinned.toggle()
-        try? context.save()
     }
 
     /// Moves a note to the trash, or deletes it for good when it already is there.
@@ -1057,6 +1052,10 @@ struct NoteRow: View {
             Text(daysLeft(deletedAt))
                 .foregroundStyle(.red.opacity(0.8))
         } else {
+            if note.isArchived {
+                Image(systemName: "archivebox")
+                    .accessibilityLabel("Archived")
+            }
             // "30. Oct 10:52": day and time without the "at" in between, to fit a narrow sidebar.
             Text(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
                 .fixedSize()
@@ -1119,33 +1118,6 @@ private struct ListTitle: View {
     }
 }
 
-/// The views of the list as quiet text tabs below the bar, sharing the full width.
-private struct ListTabs: View {
-    @Binding var mode: ListMode
-
-    var body: some View {
-        TabSwitcher(selection: $mode, options: [
-            (ListMode.projects, "Projects"),
-            (ListMode.tasks, "Tasks"),
-            (ListMode.meetings, "Meetings"),
-            (ListMode.timeline, "Notes"),
-            (ListMode.links, "Links"),
-        ], tint: { mode in
-            // Each tab in its own color, the same as its title square.
-            switch mode {
-            case .tasks: .brandTask
-            case .links: .brandLink
-            case .meetings: .brandNavy
-            case .projects: .brandProject
-            default: nil
-            }
-        })
-        .padding(.horizontal, 20)
-        // The same gap above and below the tabs, whatever comes next (timeline, chat or search).
-        .padding(.vertical, Look.headerGap)
-    }
-}
-
 #if os(macOS)
 extension Notification.Name {
     /// File → New Note (⌘N) in the menu bar.
@@ -1153,22 +1125,12 @@ extension Notification.Name {
 }
 #endif
 
-enum ListMode: Hashable {
-    case tasks
-    /// The recordings (and imported audio).
-    case meetings
-    /// The notes that are written.
-    case timeline
-    /// The saved links, apart from the notes.
-    case links
-    /// The projects, and in one of them everything assigned to it.
-    case projects
-    /// The search, opened from the button in the bar (no tab of its own).
-    case search
-
-    /// Notes and meetings follow the chosen tag or show the trash.
-    var showsScope: Bool { self == .timeline || self == .meetings }
-
-    /// The lists with the filter by tag in the bar.
-    var filtersByTag: Bool { showsScope || self == .tasks || self == .links }
+/// What the list column shows.
+enum ListPage: Hashable {
+    /// The one long list.
+    case home
+    /// One project with everything in it.
+    case project(UUID)
+    case archive
+    case trash
 }
