@@ -149,10 +149,11 @@ enum SummaryService {
 
     private static let maxArticleLength = 24_000
 
-    /// A transcript up to this many characters is summarized in one go (roughly 5,000 tokens).
-    private static let singlePassLimit = 14_000
+    /// A transcript up to this many characters is summarized in one go (roughly 5,000 tokens; the Apple model has
+    /// room for about 4,000 in all, its instructions and answer included).
+    private static var singlePassLimit: Int { LocalModel.selected == .apple ? 5_000 : 14_000 }
     /// Longer transcripts are cut into parts of about this size; each part is condensed into notes first.
-    private static let partSize = 11_000
+    private static var partSize: Int { LocalModel.selected == .apple ? 4_000 : 11_000 }
 
     private static func summarizeLocally(header: String, material: String, language: SummaryLanguage, system: String, noun: String, progress: @escaping (String) -> Void) async throws -> String {
         let models = ModelManager.shared
@@ -242,8 +243,8 @@ enum SummaryService {
         let tasks = isLink ? "" : """
 
         ## \(language.headings.actionItems)
-        - [ ] Task
-        (omit if there are none)
+        - [ ] <a concrete task from the note>
+        (omit this heading if there are none)
 
         """
         return """
@@ -279,8 +280,8 @@ enum SummaryService {
         - … (omit if there are none)
 
         ## \(language.headings.actionItems)
-        - [ ] Task – owner (if known)
-        (omit if there are none; a task for the person who recorded, see "Recorded by", gets that name as owner)
+        - [ ] <a concrete task from the transcript> – <owner, if known>
+        (omit this heading if there are none; a task for the person who recorded, see "Recorded by", gets that name as owner)
 
         TAGS: <3 to 5 short keywords in \(language.name), separated by commas, without # signs>
         """

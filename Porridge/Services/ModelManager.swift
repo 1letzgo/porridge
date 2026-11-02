@@ -116,6 +116,11 @@ final class ModelManager {
     /// Downloads (if needed) and loads a summary model. Call `releaseLLM()` when done to free memory.
     func ensureLLM(_ model: LocalModel, onProgress: (@MainActor (Double) -> Void)? = nil) async throws {
         if llmState(model) == .ready { return }
+        if model == .apple {
+            // Nothing to fetch or load: the system holds this model.
+            guard model.isInstalled else { throw AppleLLMError.unavailable }
+            return
+        }
         llm[model] = model.isInstalled ? .loading : .downloading(0)
         do {
             #if os(iOS)

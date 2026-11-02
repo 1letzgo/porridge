@@ -21,11 +21,17 @@ enum LocalLLMError: LocalizedError {
 enum LocalModel: String, CaseIterable, Identifiable {
     case qwen3
     case qwen35
+    /// Built into the system: not downloaded, see `AppleLLM`.
+    case apple
 
     var id: String { rawValue }
 
+    /// The models with files of their own.
+    static var downloadable: [LocalModel] { allCases.filter { $0 != .apple } }
+
     var displayName: String {
         switch self {
+        case .apple: "Apple Intelligence"
         case .qwen3: "Qwen3 4B"
         case .qwen35: "Qwen3.5 4B"
         }
@@ -33,6 +39,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
 
     var repoID: String {
         switch self {
+        case .apple: ""
         case .qwen3: "mlx-community/Qwen3-4B-Instruct-2507-4bit"
         case .qwen35: "mlx-community/Qwen3.5-4B-MLX-4bit"
         }
@@ -40,6 +47,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
 
     var sizeText: String {
         switch self {
+        case .apple: "built into the system"
         case .qwen3: "approx. 2.3 GB"
         case .qwen35: "approx. 3.1 GB"
         }
@@ -53,6 +61,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
     /// Size of the finished download; a smaller folder means the download was interrupted.
     var expectedBytes: Int64 {
         switch self {
+        case .apple: 0
         case .qwen3: 2_280_000_000
         case .qwen35: 3_060_000_000
         }
@@ -60,7 +69,8 @@ enum LocalModel: String, CaseIterable, Identifiable {
 
     /// Whether the model's files are completely on the device (checked on disk, not remembered).
     var isInstalled: Bool {
-        LocalLLM.downloadedBytes(self) >= expectedBytes * 95 / 100
+        if self == .apple { return AppleLLM.availability == .available }
+        return LocalLLM.downloadedBytes(self) >= expectedBytes * 95 / 100
     }
 }
 
@@ -159,6 +169,7 @@ actor LocalLLM {
 
     /// One answer to a system + user message pair, without any history.
     func generate(model: LocalModel, system: String, user: String, maxTokens: Int) async throws -> String {
+        if model == .apple { return try await AppleLLM.generate(system: system, user: user, maxTokens: maxTokens) }
         let container = try await load(model, progress: nil)
         let session = ChatSession(
             container,

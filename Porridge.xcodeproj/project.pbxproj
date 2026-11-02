@@ -94,11 +94,13 @@
 		6095E937F8EA4C5E145018F6 /* LinkInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */; };
 		60A353545E64B9FFCCCD7F5D /* LinkInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */; };
 		6383679114584EAB9E25C603 /* AppleSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 987A111F4ACA578E340E5A7E /* AppleSpeech.swift */; };
+		A1C4E7709B3D42F1A6D05E11 /* AppleLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3E6A9921D5F64B3C8F27A33 /* AppleLLM.swift */; };
 		6569AA53BCC35A58EF9AB20E /* TestStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD474FF11205A6CC122FBC7E /* TestStore.swift */; };
 		659062EE02C2D6EEBA34514E /* PlaudImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605D164877965A4BA545584B /* PlaudImportSheet.swift */; };
 		65BC30F146AE3C1342E00BB0 /* NoteBodyEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8931C85DA151D7EA0E959CA /* NoteBodyEditor.swift */; };
 		6638D4B51218783D09421D1D /* SyncMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DD49ACAF4DCB2430B617758 /* SyncMergeTests.swift */; };
 		69E9D4C789E4953C569CB68F /* AppleSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 987A111F4ACA578E340E5A7E /* AppleSpeech.swift */; };
+		B2D5F8810C4E53A2B7E16F22 /* AppleLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3E6A9921D5F64B3C8F27A33 /* AppleLLM.swift */; };
 		6ED468D7245A8A498DD8BFCC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5F0BC0DBAFDF678CBDCAC098 /* Assets.xcassets */; };
 		702C359F31F72816F9A66A99 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF941D555D2BB61CC2812CAA /* AudioRecorder.swift */; };
 		743DE8E7456D7253247C4652 /* NoteMediaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E643FF5DE4F5592C95134CAE /* NoteMediaViews.swift */; };
@@ -336,6 +338,7 @@
 		97476C5D0384FCC292170B1A /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
 		97FAB0F466A89E3E6D592CAA /* LinkFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkFetcher.swift; sourceTree = "<group>"; };
 		987A111F4ACA578E340E5A7E /* AppleSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeech.swift; sourceTree = "<group>"; };
+		C3E6A9921D5F64B3C8F27A33 /* AppleLLM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleLLM.swift; sourceTree = "<group>"; };
 		990B254429F49AE3C45A70F4 /* NextcloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextcloudSync.swift; sourceTree = "<group>"; };
 		99A027F964ABF9D4B96589D2 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A2EF8775CF439144C3EC58B2 /* NoteStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteStoreTests.swift; sourceTree = "<group>"; };
@@ -607,6 +610,7 @@
 				2B632800BF1D456A9C1DB81F /* ActionItems.swift */,
 				61C83E04FA0DB9A9049AD28D /* AIProvider.swift */,
 				987A111F4ACA578E340E5A7E /* AppleSpeech.swift */,
+				C3E6A9921D5F64B3C8F27A33 /* AppleLLM.swift */,
 				4E56BE573144212F81BA70AC /* AppSettings.swift */,
 				C8EFBAAD626DEE8326A57573 /* AudioPlayback.swift */,
 				879AEC0D2821AB51F69F4E74 /* AudioPreprocessor.swift */,
@@ -958,6 +962,7 @@
 				7A2E95FF9288D62B7706CAD9 /* AppContainer.swift in Sources */,
 				DE3F69E86587FE94B028F914 /* AppSettings.swift in Sources */,
 				69E9D4C789E4953C569CB68F /* AppleSpeech.swift in Sources */,
+				B2D5F8810C4E53A2B7E16F22 /* AppleLLM.swift in Sources */,
 				23E846926253A0D2990F9CD8 /* AudioPlayback.swift in Sources */,
 				00C8119892B272DD8F4C7BD8 /* AudioPreprocessor.swift in Sources */,
 				702C359F31F72816F9A66A99 /* AudioRecorder.swift in Sources */,
@@ -1062,6 +1067,7 @@
 				D9049BB1247F9D188B44D1A2 /* AppSettings.swift in Sources */,
 				5A26E5D30FCA741EF5401FF1 /* AppUpdate.swift in Sources */,
 				6383679114584EAB9E25C603 /* AppleSpeech.swift in Sources */,
+				A1C4E7709B3D42F1A6D05E11 /* AppleLLM.swift in Sources */,
 				E20F1184CF70593779A6BB58 /* AudioPlayback.swift in Sources */,
 				2F4B7E50219173F2A005EE6B /* AudioPreprocessor.swift in Sources */,
 				E084B7EC49D9B594EF056D8C /* AudioRecorder.swift in Sources */,

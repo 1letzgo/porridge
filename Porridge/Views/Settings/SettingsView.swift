@@ -393,7 +393,20 @@ struct SettingsView: View {
                         options: downloadedModels.map { (value: $0, title: $0.displayName) }
                     )
                 }
-                ForEach(LocalModel.allCases) { model in
+                switch AppleLLM.availability {
+                case .available:
+                    ModelRow(
+                        title: LocalModel.apple.displayName, subtitle: "Built into the system · nothing to download",
+                        state: .installed
+                    ) {}
+                case .notEnabled:
+                    ValueRow(title: LocalModel.apple.displayName, value: "Turned off in system settings")
+                case .notReady:
+                    ValueRow(title: LocalModel.apple.displayName, value: "System is preparing it")
+                case .unsupported:
+                    EmptyView()
+                }
+                ForEach(LocalModel.downloadable) { model in
                     ModelRow(
                         title: model.displayName, subtitle: "Summaries on your device · \(model.sizeText)",
                         state: models.llmState(model),

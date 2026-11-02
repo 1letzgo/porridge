@@ -177,7 +177,10 @@ final class ChatStore {
             user += "\n"
         }
         user += "Excerpts:\n"
+        // The Apple model has room for far fewer excerpts; the best ones come first.
+        let limit = AppSettings.billing == .local && LocalModel.selected == .apple ? 7_000 : Int.max
         for (index, chunk) in context.enumerated() {
+            if user.count + chunk.text.count > limit { break }
             user += "[\(index + 1)] «\(chunk.title)» (\(chunk.date.formatted(date: .abbreviated, time: .omitted)))\n\(chunk.text)\n\n"
         }
         user += "Question: \(question)"
