@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -14,6 +15,22 @@ class SyncMergeTest {
     private fun local(r: JsonObject) = SyncMerge.Local(r, SyncMerge.updatedAt(r))
 
     private fun base(r: JsonObject) = SyncBase(SyncMerge.hash(r), SyncMerge.hash(r))
+
+    @Test fun damagedFileIsRefusedInsteadOfReadAsEmpty() {
+        for (text in listOf("", "<html>Bad Gateway</html>", "{\"notes\": [{\"id\"", "[]", "{\"deleted\": []}", "{\"notes\": {}}")) {
+            assertThrows(text, SyncFileDamaged::class.java) { SyncMerge.parseFile(text) }
+        }
+        assertEquals(setOf("version", "notes", "deleted"), SyncMerge.parseFile("{\"version\": 1, \"notes\": [], \"deleted\": {}}").keys)
+    }
+
+    @Test fun aRecordWithoutBaseIsNotReadAsDeleted() {
+        // So bleibt ein Eintrag, den dieses Gerät nicht lesen konnte: ohne Grundlage kommt er wieder, ohne Tombstone.
+        val r = rec("A", "unreadable", 1)
+        val result = SyncMerge.merge(emptyMap(), mapOf("A" to r), emptyMap(), emptyMap(), now = 10)
+        assertEquals(setOf("A"), result.toApply.keys)
+        assertEquals(setOf("A"), result.merged.keys)
+        assertTrue(result.tombstones.isEmpty())
+    }
 
     @Test fun newOnEitherSideIsKept() {
         val a = rec("A", "here", 1)

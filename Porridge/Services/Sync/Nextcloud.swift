@@ -40,6 +40,8 @@ enum NextcloudError: LocalizedError {
     case loginTimedOut
     /// The file changed on the server since it was read (another device synced in between).
     case conflict
+    /// The sync file on the server can't be read; it stays as it is.
+    case damagedFile
 
     var errorDescription: String? {
         switch self {
@@ -48,6 +50,7 @@ enum NextcloudError: LocalizedError {
         case let .http(code): "Nextcloud answered with error \(code)."
         case .loginTimedOut: "The login in the browser was not finished in time."
         case .conflict: "The sync file changed in the meantime."
+        case .damagedFile: "The sync file on Nextcloud is damaged. It was left as it is and nothing was synced."
         }
     }
 }

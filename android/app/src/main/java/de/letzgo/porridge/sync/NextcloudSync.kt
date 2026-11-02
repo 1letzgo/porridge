@@ -12,9 +12,11 @@ import de.letzgo.porridge.model.ProcessingStatus
 import de.letzgo.porridge.model.VoiceProfile
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.PorridgeDatabase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -67,6 +70,8 @@ object NextcloudSync {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
     private var pending: Job? = null
+    /** Jemand wollte einen Sync, während einer lief: Es folgt ein weiterer. */
+    @Volatile private var syncAgain = false
     private lateinit var stateFile: File
     @Volatile private var ownWriteAt = 0L
 
@@ -83,7 +88,7 @@ object NextcloudSync {
         PorridgeDatabase.shared.invalidationTracker.addObserver(object : InvalidationTracker.Observer(TABLES) {
             override fun onInvalidated(tables: Set<String>) {
                 // Nicht für das Schreiben eines Laufs selbst.
-                if (!mutex.isLocked && System.currentTimeMillis() - ownWriteAt > 3000) syncSoon()
+                if (System.currentTimeMillis() - ownWriteAt > 3000) syncSoon()
             }
         })
         scope.launch {
@@ -116,25 +121,38 @@ object NextcloudSync {
         pending?.cancel()
         pending = scope.launch {
             delay(delayMillis)
-            sync()
+            // Ein neuer Anlass ersetzt nur das Warten, nie einen laufenden Sync.
+            withContext(NonCancellable) { sync() }
         }
     }
 
     suspend fun sync() {
         val account = _status.value.account ?: return
-        if (!isActive || mutex.isLocked) return
+        if (!isActive) return
+        if (mutex.isLocked) {
+            syncAgain = true
+            return
+        }
         mutex.withLock {
             _status.update { it.copy(syncing = true) }
             try {
                 val dav = WebDAV(account)
-                syncFile(dav)
+                val unreadable = syncFile(dav)
                 syncRecordings(dav)
                 val now = System.currentTimeMillis()
                 Prefs.set(LAST_SYNC_KEY, now)
-                _status.update { it.copy(syncing = false, lastSync = now, error = null) }
+                val error = if (unreadable > 0) "$unreadable synced entries could not be read. Update the app on this device." else null
+                _status.update { it.copy(syncing = false, lastSync = now, error = error) }
+            } catch (e: CancellationException) {
+                _status.update { it.copy(syncing = false) }
+                throw e
             } catch (e: Exception) {
                 _status.update { it.copy(syncing = false, error = e.message ?: e.toString()) }
             }
+        }
+        if (syncAgain) {
+            syncAgain = false
+            syncSoon()
         }
     }
 
@@ -153,10 +171,12 @@ object NextcloudSync {
         suspend fun locals(): Pair<List<T>, Map<String, SyncMerge.Local>> {
             val all = load()
             return all to all.associate { model ->
-                val record = PorridgeJson.encodeToJsonElement(serializer, model).jsonObject
+                val record = record(model)
                 id(model) to SyncMerge.Local(record, SyncMerge.updatedAt(record))
             }
         }
+
+        fun record(model: T): JsonObject = PorridgeJson.encodeToJsonElement(serializer, model).jsonObject
 
         fun decode(record: JsonObject): T = PorridgeJson.decodeFromJsonElement(serializer, record)
     }
@@ -240,24 +260,32 @@ object NextcloudSync {
         stateFile.writeText(PorridgeJson.encodeToString(State.serializer(), state))
     }
 
-    private suspend fun syncFile(dav: WebDAV) {
+    /** Gibt zurück, wie viele Einträge der Datei dieses Gerät nicht lesen konnte. */
+    private suspend fun syncFile(dav: WebDAV): Int {
         val url = dav.file(dav.root, FILE_NAME)
         val state = loadState()
         repeat(4) { attempt ->
             val remote = dav.get(url)
             if (remote == null && attempt == 0) dav.makeFolder(dav.root)
-            val file = remote?.let { runCatching { PorridgeJson.parseToJsonElement(it.data.decodeToString()).jsonObject }.getOrNull() } ?: JsonObject(emptyMap())
+            val file = remote?.let { SyncMerge.parseFile(it.data.decodeToString()) } ?: JsonObject(emptyMap())
             val tombstones = file["deleted"] as? JsonObject
             val output = file.toMutableMap()
             output["version"] = JsonPrimitive(1)
-            val deleted = mutableMapOf<String, JsonElement>()
+            // Beginnt mit der Datei: Die Stimmen der anderen Plattform haben eigene Tombstones.
+            val deleted = tombstones.orEmpty().toMutableMap()
+            var unreadable = 0
             val newBase = mutableMapOf<String, MutableMap<String, SyncBase>>()
             ownWriteAt = System.currentTimeMillis()
             for (collection in collections) {
-                val result = mergeCollection(collection, file, tombstones, state)
+                val merge = mergeCollection(collection, file, tombstones, state)
+                val result = merge.result
+                unreadable += merge.unreadable.size
                 output[collection.key] = JsonArray(result.merged.keys.sorted().map { result.merged.getValue(it) })
                 deleted[collection.key] = JsonObject(result.tombstones.mapValues { JsonPrimitive(it.value) })
-                newBase[collection.key] = result.merged.mapValues { SyncBase("", SyncMerge.hash(it.value)) }.toMutableMap()
+                // Ein nicht lesbarer Eintrag bleibt in der Datei, aber ohne Grundlage: Sonst läse ihn der nächste
+                // Lauf als „hier gelöscht“, und er verschwände auf allen Geräten.
+                newBase[collection.key] = result.merged.filterKeys { it !in merge.unreadable }
+                    .mapValues { (id, record) -> SyncBase(merge.localHashes[id].orEmpty(), SyncMerge.hash(record)) }.toMutableMap()
             }
             ownWriteAt = System.currentTimeMillis()
             output["deleted"] = JsonObject(deleted)
@@ -271,21 +299,21 @@ object NextcloudSync {
                 return@repeat
             }
             // Erst jetzt, mit geschriebener Datei, wird der Stand zur Grundlage des nächsten Laufs.
-            for (collection in collections) {
-                val base = newBase.getValue(collection.key)
-                for ((id, local) in collection.locals().second) {
-                    base[id]?.let { base[id] = it.copy(local = SyncMerge.hash(local.record)) }
-                }
-            }
             val referenced = referencedRecordings(output["notes"] as? JsonArray)
             val released = state.recordings.orEmpty() - referenced
             saveState(State(newBase, settingsBase, referenced.sorted(), (state.orphans + released).distinct() - referenced))
-            return
+            return unreadable
         }
         throw SyncConflict()
     }
 
-    private suspend fun <T> mergeCollection(collection: Collection<T>, file: JsonObject, tombstones: JsonObject?, state: State): SyncMerge.Result {
+    /**
+     * [localHashes]: der Stand, den dieser Lauf gesehen oder selbst geschrieben hat, nicht ein späteres Nachlesen.
+     * Was der Nutzer danach ändert, gilt so im nächsten Lauf als geändert und geht hoch.
+     */
+    private class CollectionMerge(val result: SyncMerge.Result, val localHashes: Map<String, String>, val unreadable: Set<String>)
+
+    private suspend fun <T> mergeCollection(collection: Collection<T>, file: JsonObject, tombstones: JsonObject?, state: State): CollectionMerge {
         val (models, locals) = collection.locals()
         val remote = (file[collection.key] as? JsonArray).orEmpty().mapNotNull { element ->
             val record = element as? JsonObject ?: return@mapNotNull null
@@ -303,11 +331,18 @@ object NextcloudSync {
             frozen = models.filter(collection.frozen).map(collection.id).toSet(),
             now = System.currentTimeMillis(),
         )
-        val applied = result.toApply.values.mapNotNull { runCatching { collection.decode(it) }.getOrNull() }
+        val localHashes = locals.mapValues { SyncMerge.hash(it.value.record) }.toMutableMap()
+        val unreadable = mutableSetOf<String>()
+        val applied = result.toApply.mapNotNull { (id, record) ->
+            runCatching { collection.decode(record) }
+                .onSuccess { localHashes[id] = SyncMerge.hash(collection.record(it)) }
+                .onFailure { unreadable += id }
+                .getOrNull()
+        }
         if (applied.isNotEmpty()) collection.save(applied)
         val gone = models.filter { collection.id(it) in result.toDelete }
         if (gone.isNotEmpty()) collection.delete(gone)
-        return result
+        return CollectionMerge(result, localHashes, unreadable)
     }
 
     // Aufnahmen
@@ -335,7 +370,7 @@ object NextcloudSync {
         // Aufnahmen, die irgendwo gelöscht wurden: weg vom Server, und hier, wenn keine Notiz mehr darauf zeigt.
         if (state.orphans.isNotEmpty()) {
             val inUse = all.flatMap { listOfNotNull(it.audioFileName, it.pendingAudioFileName) + it.audioFileNames }.toSet()
-            for (name in state.orphans.filter(::isPlainName)) {
+            for (name in state.orphans.filter(AudioStore::isPlainName)) {
                 if (name in remote) dav.delete(dav.file(dav.recordings, name))
                 remote -= name
                 if (name !in inUse) AudioStore.delete(name)
@@ -344,7 +379,7 @@ object NextcloudSync {
         }
         if (wanted.isEmpty()) return
         if (remote.isEmpty()) dav.makeFolder(dav.recordings)
-        for (name in wanted.sorted().filter(::isPlainName)) {
+        for (name in wanted.sorted().filter(AudioStore::isPlainName)) {
             val target = dav.file(dav.recordings, name)
             if (AudioStore.exists(name) && name !in remote) {
                 dav.upload(AudioStore.file(name), target)
@@ -354,7 +389,4 @@ object NextcloudSync {
             }
         }
     }
-
-    /** Nur Dateinamen, nie Pfade, aus der Datei eines anderen Geräts. */
-    private fun isPlainName(name: String) = name.isNotEmpty() && '/' !in name && !name.startsWith(".")
 }

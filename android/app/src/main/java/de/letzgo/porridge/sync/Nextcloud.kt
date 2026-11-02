@@ -58,6 +58,9 @@ class NextcloudException(message: String, val code: Int = 0) : Exception(message
 /** Die Datei hat sich auf dem Server geändert, seit sie gelesen wurde (ein anderes Gerät war schneller). */
 class SyncConflict : Exception("The sync file changed in the meantime.")
 
+/** Die Sync-Datei auf dem Server ist nicht lesbar; sie bleibt, wie sie ist. */
+class SyncFileDamaged : Exception("The sync file on Nextcloud is damaged. It was left as it is and nothing was synced.")
+
 private fun httpError(code: Int) = NextcloudException(
     if (code == 401) "Nextcloud refused the login. Connect again." else "Nextcloud answered with error $code.", code,
 )

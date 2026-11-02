@@ -1,5 +1,6 @@
 package de.letzgo.porridge.sync
 
+import de.letzgo.porridge.data.PorridgeJson
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -135,6 +136,19 @@ object SyncMerge {
             newBase[key] = value
         }
         return SettingsResult(toApply, file, newBase)
+    }
+
+    /**
+     * Die gelesene Datei. Eine beschädigte hält den Lauf an: Als leer abgeglichen würde sie nur mit den Einträgen dieses
+     * Geräts überschrieben, und alle Tombstones wären weg.
+     */
+    fun parseFile(text: String): JsonObject {
+        val file = runCatching { PorridgeJson.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: throw SyncFileDamaged()
+        if (file["deleted"].let { it != null && it !is JsonObject }) throw SyncFileDamaged()
+        for (key in listOf("notes", "actionItems", "folders", "voiceProfilesApple", "voiceProfilesAndroid")) {
+            if (file[key].let { it != null && it !is JsonArray }) throw SyncFileDamaged()
+        }
+        return file
     }
 
     fun updatedAt(record: JsonObject): Long =

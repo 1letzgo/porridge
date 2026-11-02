@@ -10,8 +10,14 @@ enum AudioStore {
         return dir
     }()
 
+    /// Names also come from the sync file of other devices: only file names, never paths.
+    static func isPlainName(_ name: String) -> Bool {
+        !name.isEmpty && !name.contains("/") && !name.hasPrefix(".")
+    }
+
+    /// Anything but a plain name points at a file that doesn't exist, never outside the store.
     static func url(for fileName: String) -> URL {
-        directory.appendingPathComponent(fileName)
+        directory.appendingPathComponent(isPlainName(fileName) ? fileName : ".invalid-name")
     }
 
     static func newFileName(extension ext: String = "m4a") -> String {

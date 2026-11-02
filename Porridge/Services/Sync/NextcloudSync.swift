@@ -49,6 +49,8 @@ final class NextcloudSync {
 
     private var container: ModelContainer?
     private var pending: Task<Void, Never>?
+    /// Something asked for a sync while one was running: another one follows it.
+    private var syncAgain = false
     private var applying = false
     private var ownSaveAt = Date.distantPast
     private var observer: NSObjectProtocol?
@@ -98,6 +100,11 @@ final class NextcloudSync {
     /// A sync a moment from now; changes in quick succession end up in one run.
     func syncSoon(after delay: Duration = .seconds(4)) {
         guard isActive else { return }
+        // A run in progress stays untouched (it may be halfway through a long upload).
+        if isSyncing {
+            syncAgain = true
+            return
+        }
         pending?.cancel()
         pending = Task { [weak self] in
             try? await Task.sleep(for: delay)
@@ -109,7 +116,13 @@ final class NextcloudSync {
     func sync() async {
         guard isActive, !isSyncing, let account, let container else { return }
         isSyncing = true
-        defer { isSyncing = false }
+        defer {
+            isSyncing = false
+            if syncAgain {
+                syncAgain = false
+                syncSoon()
+            }
+        }
         do {
             let dav = WebDAV(account: account)
             try await syncFile(dav, context: container.mainContext)
@@ -136,12 +149,13 @@ final class NextcloudSync {
         for attempt in 0..<4 {
             let remote = try await dav.get(url)
             if remote == nil && attempt == 0 { try await dav.makeFolder(dav.root) }
-            let file = remote.flatMap { try? JSONSerialization.jsonObject(with: $0.data) as? [String: Any] } ?? [:]
+            let file = try remote.map { try Self.parseFile($0.data) } ?? [:]
             let tombstones = file["deleted"] as? [String: [String: NSNumber]] ?? [:]
 
             var output = file
             output["version"] = 1
-            var deleted: [String: [String: Int64]] = [:]
+            // Starts from the file: the other platform's voices have tombstones of their own.
+            var deleted = tombstones.mapValues { $0.mapValues(\.int64Value) }
             var newBase: [String: [String: SyncBase]] = [:]
             applying = true
             defer { applying = false }
@@ -170,6 +184,14 @@ final class NextcloudSync {
                 try context.save()
                 ownSaveAt = Date()
             }
+            // Taken before the upload: an edit made during it counts as a change in the next run. Saves from
+            // here on are the user's and ask for that run.
+            applying = false
+            for collection in try collections(context) {
+                for (id, local) in collection.local where newBase[collection.key]?[id] != nil {
+                    newBase[collection.key]?[id]?.local = SyncMerge.hash(local.record)
+                }
+            }
 
             let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
             let before = remote == nil ? nil : try? JSONSerialization.data(withJSONObject: file, options: [.sortedKeys])
@@ -179,11 +201,6 @@ final class NextcloudSync {
                 continue
             }
             // Only now, with the file written, does the merged state become the base of the next run.
-            for collection in try collections(context) {
-                for (id, local) in collection.local where newBase[collection.key]?[id] != nil {
-                    newBase[collection.key]?[id]?.local = SyncMerge.hash(local.record)
-                }
-            }
             state.base = newBase
             state.settings = settingsBase
             let referenced = try referencedRecordings(output["notes"] as? [SyncRecord] ?? [], context: context)
@@ -194,6 +211,17 @@ final class NextcloudSync {
             return
         }
         throw NextcloudError.conflict
+    }
+
+    /// The file as read. A damaged one stops the run: merged as if empty it would be overwritten with this
+    /// device's records alone, and every tombstone in it would be gone.
+    private static func parseFile(_ data: Data) throws -> [String: Any] {
+        guard let file = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { throw NextcloudError.damagedFile }
+        if let deleted = file["deleted"], !(deleted is [String: [String: NSNumber]]) { throw NextcloudError.damagedFile }
+        for key in ["notes", "actionItems", "folders", "voiceProfilesApple", "voiceProfilesAndroid"] {
+            if let records = file[key], !(records is [SyncRecord]) { throw NextcloudError.damagedFile }
+        }
+        return file
     }
 
     /// This device's records of every collection in the file.
@@ -327,7 +355,7 @@ final class NextcloudSync {
         // Recordings deleted somewhere: off the server, and off this device when no note here uses them.
         if !orphans.isEmpty {
             let inUse = Set(all.flatMap { [$0.audioFileName, $0.pendingAudioFileName].compactMap { $0 } + $0.audioFileNames })
-            for name in orphans where Self.isPlainName(name) {
+            for name in orphans where AudioStore.isPlainName(name) {
                 if remote.contains(name) { try await dav.delete(dav.recordings.appending(path: name)) }
                 remote.remove(name)
                 if !inUse.contains(name) { AudioStore.delete(name) }
@@ -337,7 +365,7 @@ final class NextcloudSync {
         }
         guard !wanted.isEmpty else { return }
         if remote.isEmpty { try await dav.makeFolder(dav.recordings) }
-        for name in wanted.sorted() where Self.isPlainName(name) {
+        for name in wanted.sorted() where AudioStore.isPlainName(name) {
             let target = dav.recordings.appending(path: name)
             if AudioStore.exists(name), !remote.contains(name) {
                 try await dav.upload(file: AudioStore.url(for: name), to: target)
@@ -346,11 +374,6 @@ final class NextcloudSync {
                 try await dav.download(target, to: AudioStore.url(for: name))
             }
         }
-    }
-
-    /// Only file names, never paths, from the file of another device.
-    private static func isPlainName(_ name: String) -> Bool {
-        !name.isEmpty && !name.contains("/") && !name.hasPrefix(".")
     }
 
     // MARK: State

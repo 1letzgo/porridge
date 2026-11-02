@@ -21,7 +21,11 @@ object AudioStore {
         directory = dir.apply { mkdirs() }
     }
 
-    fun file(fileName: String) = File(directory, fileName)
+    /** Namen kommen auch aus der Sync-Datei anderer Geräte: nur Dateinamen, nie Pfade. */
+    fun isPlainName(name: String) = name.isNotEmpty() && '/' !in name && !name.startsWith(".")
+
+    /** Alles andere als ein reiner Name zeigt auf eine Datei, die es nicht gibt, nie aus dem Speicher hinaus. */
+    fun file(fileName: String) = File(directory, if (isPlainName(fileName)) fileName else ".invalid-name")
 
     fun newFileName(extension: String = "m4a") = "${UUID.randomUUID().toString().uppercase()}.$extension"
 
