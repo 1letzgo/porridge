@@ -642,7 +642,7 @@ struct NotesView: View {
                         if !showChat {
                             FloatingActionButton(
                                 systemImage: showSearch ? "xmark" : "magnifyingglass",
-                                label: showSearch ? "Close Search" : "Search", fill: .brandNavy
+                                label: showSearch ? "Close Search" : "Search", fill: .appBackground, foreground: .brandNavy
                             ) {
                                 withAnimation(.snappy) {
                                     showCreate = false
@@ -654,7 +654,7 @@ struct NotesView: View {
                         if !showSearch {
                             FloatingActionButton(
                                 systemImage: showChat ? "xmark" : "bubble.left.and.bubble.right.fill",
-                                label: showChat ? "Close Chat" : "Chat", fill: .brandChat
+                                label: showChat ? "Close Chat" : "Chat", fill: .appBackground, foreground: .brandNavy
                             ) {
                                 withAnimation(.snappy) {
                                     showCreate = false

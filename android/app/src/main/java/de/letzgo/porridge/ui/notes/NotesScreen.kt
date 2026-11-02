@@ -659,8 +659,8 @@ private fun CreateMenu(
                         content = if (isAll) Brand.navy else Color.White,
                     ) { onOpen(false); filterOpen = !filterOpen }
                 }
-                if (!showChat) SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
-                if (!showSearch) SkyFab(if (showChat) Icons.Filled.Close else Icons.Filled.ChatBubble, if (showChat) "Close Chat" else "Chat", container = Brand.chat) { onOpen(false); filterOpen = false; onChat(!showChat) }
+                if (!showChat) SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = MaterialTheme.colorScheme.background, content = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
+                if (!showSearch) SkyFab(if (showChat) Icons.Filled.Close else Icons.Filled.ChatBubble, if (showChat) "Close Chat" else "Chat", container = MaterialTheme.colorScheme.background, content = Brand.navy) { onOpen(false); filterOpen = false; onChat(!showChat) }
             }
         }
         if (showsPlus && !cardOpen) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
