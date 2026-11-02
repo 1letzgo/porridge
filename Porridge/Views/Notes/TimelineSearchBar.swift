@@ -44,6 +44,59 @@ enum SearchKind: CaseIterable {
     }
 }
 
+/// What the one long list can be narrowed to with its filter button. It only narrows what the list shows: an
+/// element in a project stays in its project.
+enum HomeFilter: CaseIterable {
+    case all, projects, tasks, meetings, notes, links
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .all: "All"
+        case .projects: "Projects"
+        case .tasks: SearchKind.tasks.title
+        case .meetings: SearchKind.meetings.title
+        case .notes: SearchKind.notes.title
+        case .links: SearchKind.links.title
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: "line.3.horizontal.decrease"
+        case .projects: "folder.fill"
+        case .tasks: "checklist"
+        case .meetings: "mic.fill"
+        case .notes: "square.and.pencil"
+        case .links: "link"
+        }
+    }
+
+    /// The colors of the plus button's options.
+    var tint: Color {
+        switch self {
+        case .all: .brandNavy
+        case .projects: .brandProject
+        case .tasks: .brandTask
+        case .meetings: .accentColor
+        case .notes: .brandSky
+        case .links: .brandLink
+        }
+    }
+
+    var showsProjects: Bool { self == .all || self == .projects }
+    var showsTasks: Bool { self == .all || self == .tasks }
+
+    func matches(_ note: Note) -> Bool {
+        switch self {
+        case .all: true
+        case .projects, .tasks: false
+        case .meetings: SearchKind.meetings.matches(note)
+        case .notes: SearchKind.notes.matches(note)
+        case .links: SearchKind.links.matches(note)
+        }
+    }
+}
+
 /// The search view: a field, the kinds and tags as chips for quick filtering, and what matches below.
 struct SearchPane<Results: View>: View {
     @Binding var text: String

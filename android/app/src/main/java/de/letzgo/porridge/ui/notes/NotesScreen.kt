@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
@@ -134,6 +136,8 @@ class ListState {
     var tagTokens by mutableStateOf(listOf<String>())
     /** Die in der Suche gewählte Art (null = alle). */
     var searchKind by mutableStateOf<ProjectsLogic.Kind?>(null)
+    /** Worauf die lange Liste eingeengt ist, gewählt mit dem Knopf neben der Suche. */
+    var homeFilter by mutableStateOf(HomeListLogic.HomeFilter.ALL)
     var showDone by mutableStateOf(false)
     /** „More“ wurde getippt: die Liste zeigt alle Projekte, nicht nur die letzten. */
     var showAllProjects by mutableStateOf(false)
@@ -265,6 +269,8 @@ fun NotesScreen(
             onMeeting = onRecord, onLink = { showAddLink = true },
             showChat = showChat, onChat = { showChat = it },
             chat = { ChatPanel(notes, items, onOpen = { id -> showChat = false; onOpen(id) }, onClose = { showChat = false }) },
+            filter = if (page == ListPage.Home) list.homeFilter else null,
+            onFilter = { list.homeFilter = it; coroutines.launch { list.scroll(ListPage.Home).scrollToItem(0) } },
             showSearch = showSearch, onSearch = { if (it) showSearch = true else closeSearch() },
             // Ein Treffer schließt die Karte; die Anfrage bleibt für den Weg zurück zu den Treffern.
             search = {
@@ -299,24 +305,46 @@ fun NotesScreen(
     )
 }
 
+/** Symbole wie im Plus-Menü (iOS: `HomeFilter.systemImage`). */
+private fun filterIcon(filter: HomeListLogic.HomeFilter): ImageVector = when (filter) {
+    HomeListLogic.HomeFilter.ALL -> Icons.Filled.FilterList
+    HomeListLogic.HomeFilter.PROJECTS -> Icons.Filled.Folder
+    HomeListLogic.HomeFilter.TASKS -> Icons.Filled.Checklist
+    HomeListLogic.HomeFilter.MEETINGS -> Icons.Filled.Mic
+    HomeListLogic.HomeFilter.NOTES -> Icons.Outlined.EditNote
+    HomeListLogic.HomeFilter.LINKS -> Icons.Filled.Link
+}
+
+/** Farben wie im Plus-Menü (iOS: `HomeFilter.tint`). */
+private fun filterTint(filter: HomeListLogic.HomeFilter): Color = when (filter) {
+    HomeListLogic.HomeFilter.ALL, HomeListLogic.HomeFilter.MEETINGS -> Brand.navy
+    HomeListLogic.HomeFilter.PROJECTS -> Brand.project
+    HomeListLogic.HomeFilter.TASKS -> Brand.task
+    HomeListLogic.HomeFilter.NOTES -> Brand.sky
+    HomeListLogic.HomeFilter.LINKS -> LinkOrange
+}
+
 /** iOS: Startseite von `NotesView` — Projekte, Angeheftetes, Aufgaben, dann Meetings, Notizen und Links nach Datum; am Ende Archiv und Papierkorb. */
 @Composable
 private fun HomeList(
     list: ListState, notes: List<Note>, items: List<ActionItem>, folders: List<NoteFolder>, stages: Map<String, String>,
     onOpen: (String) -> Unit, onEditTask: (ActionItem) -> Unit, state: LazyListState, modifier: Modifier,
 ) {
-    val projects = remember(folders, notes, items, list.showAllProjects) {
-        HomeListLogic.shownProjects(HomeListLogic.activeProjects(folders), list.showAllProjects) { ProjectsLogic.lastChange(it, notes, items) }
+    val filter = list.homeFilter
+    val projects = remember(folders, notes, items, list.showAllProjects, filter) {
+        val active = if (filter.showsProjects) HomeListLogic.activeProjects(folders) else emptyList()
+        val showAll = list.showAllProjects || filter == HomeListLogic.HomeFilter.PROJECTS
+        HomeListLogic.shownProjects(active, showAll) { ProjectsLogic.lastChange(it, notes, items) }
     }
-    val tasks = remember(items, notes, folders) { HomeListLogic.homeTasks(items, notes, folders) }
-    val home = remember(notes, folders) { HomeListLogic.homeNotes(notes, folders) }
+    val tasks = remember(items, notes, folders, filter) { if (filter.showsTasks) HomeListLogic.homeTasks(items, notes, folders) else emptyList() }
+    val home = remember(notes, folders, filter) { HomeListLogic.homeNotes(notes, folders).filter(filter::matches) }
     val (pinned, rest) = remember(home) { home.partition { it.isPinned } }
     val archiveCount = remember(folders, notes, items) { HomeListLogic.archiveCount(folders, notes, items) }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
         if (projects.shown.isNotEmpty()) {
             item(key = "h-projects") { SectionHeader("Projects", color = Brand.project) }
             projectRows(projects.shown, notes, items) { list.page = ListPage.Project(it) }
-            if (projects.hidden > 0) item(key = "more-projects") {
+            if (projects.hidden > 0 && filter != HomeListLogic.HomeFilter.PROJECTS) item(key = "more-projects") {
                 Text(
                     if (list.showAllProjects) "Less" else "More (${projects.hidden})",
                     style = MaterialTheme.typography.labelLarge, color = Brand.project,
@@ -331,10 +359,15 @@ private fun HomeList(
         taskSections(tasks, list.showDone, { list.showDone = it }, onOpen, onEditTask)
         dateGroups(rest, stages, onOpen)
         if (projects.shown.isEmpty() && tasks.isEmpty() && home.isEmpty()) {
-            item(key = "empty") { EmptyState("No Notes Yet", "Speak a thought – Porridge writes it down for you.", Icons.AutoMirrored.Filled.Notes) }
+            item(key = "empty") {
+                if (filter == HomeListLogic.HomeFilter.ALL) EmptyState("No Notes Yet", "Speak a thought – Porridge writes it down for you.", Icons.AutoMirrored.Filled.Notes)
+                else EmptyState("Nothing to Show", "The list has nothing of this kind.", filterIcon(filter))
+            }
         }
-        item(key = "row-archive") { Column(Modifier.padding(top = 16.dp)) { PageRow("Archive", Icons.Filled.Archive, archiveCount) { list.page = ListPage.Archive } } }
-        item(key = "row-trash") { PageRow("Recently Deleted", Icons.Filled.Delete, notes.count { it.isDeleted }) { list.page = ListPage.Trash } }
+        if (filter == HomeListLogic.HomeFilter.ALL) {
+            item(key = "row-archive") { Column(Modifier.padding(top = 16.dp)) { PageRow("Archive", Icons.Filled.Archive, archiveCount) { list.page = ListPage.Archive } } }
+            item(key = "row-trash") { PageRow("Recently Deleted", Icons.Filled.Delete, notes.count { it.isDeleted }) { list.page = ListPage.Trash } }
+        }
     }
 }
 
@@ -581,16 +614,22 @@ private fun CreateMenu(
     open: Boolean, onOpen: (Boolean) -> Unit, showsPlus: Boolean, onProject: (() -> Unit)?,
     onTask: () -> Unit, onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit,
     showChat: Boolean, onChat: (Boolean) -> Unit, chat: @Composable () -> Unit,
+    /** Die Wahl für die lange Liste; null, wo es den Knopf nicht gibt. */
+    filter: HomeListLogic.HomeFilter?, onFilter: (HomeListLogic.HomeFilter) -> Unit,
     showSearch: Boolean, onSearch: (Boolean) -> Unit, search: @Composable () -> Unit,
 ) {
     val cardOpen = showChat || showSearch
+    var filterOpen by remember { mutableStateOf(false) }
+    // Andere Seite oder offene Karte: die Arten klappen wieder ein.
+    if (filter == null || cardOpen) filterOpen = false
     // Beim Zuklappen bleibt die Karte stehen, die zuletzt offen war.
     var searchLast by remember { mutableStateOf(false) }
     if (cardOpen) searchLast = showSearch
     Box(Modifier.fillMaxSize()) {
-        if (open || cardOpen) Box(
+        if (open || filterOpen || cardOpen) Box(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (cardOpen) 0.18f else 0.08f)).combinedClickableNoRipple {
                 onOpen(false)
+                filterOpen = false
                 if (showChat) onChat(false)
                 if (showSearch) onSearch(false)
             },
@@ -603,10 +642,25 @@ private fun CreateMenu(
                 }
             }
             if (!cardOpen) Spacer(Modifier.weight(1f))
+            if (filter != null) AnimatedVisibility(filterOpen) {
+                Column(Modifier.padding(start = 6.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    for (option in HomeListLogic.HomeFilter.entries) {
+                        CreateOption(option.title, filterIcon(option), filterTint(option), chosen = option == filter) { filterOpen = false; onFilter(option) }
+                    }
+                }
+            }
             // Mit Tastatur reicht die Karte bis an sie heran; der Knopf tritt so lange zur Seite. Bei offener Karte bleibt nur ihr Knopf.
             if (!(cardOpen && WindowInsets.isImeVisible)) Row(Modifier.padding(start = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (!showSearch) SkyFab(if (showChat) Icons.Filled.Close else Icons.Filled.ChatBubble, if (showChat) "Close Chat" else "Chat", container = Brand.chat) { onOpen(false); onChat(!showChat) }
-                if (!showChat) SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = Brand.navy) { onOpen(false); onSearch(!showSearch) }
+                if (filter != null && !cardOpen) {
+                    val isAll = filter == HomeListLogic.HomeFilter.ALL
+                    SkyFab(
+                        if (filterOpen) Icons.Filled.Close else filterIcon(filter), if (isAll) "Filter" else "Filter: ${filter.title}",
+                        container = if (isAll) MaterialTheme.colorScheme.background else filterTint(filter),
+                        content = if (isAll) Brand.navy else Color.White,
+                    ) { onOpen(false); filterOpen = !filterOpen }
+                }
+                if (!showChat) SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
+                if (!showSearch) SkyFab(if (showChat) Icons.Filled.Close else Icons.Filled.ChatBubble, if (showChat) "Close Chat" else "Chat", container = Brand.chat) { onOpen(false); filterOpen = false; onChat(!showChat) }
             }
         }
         if (showsPlus && !cardOpen) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -619,18 +673,22 @@ private fun CreateMenu(
                     CreateOption("Note", Icons.Outlined.EditNote, Brand.sky) { onOpen(false); onNote() }
                 }
             }
-            SkyFab(Icons.Filled.Add, if (open) "Close" else "Create", Modifier.rotate(if (open) 45f else 0f)) { onOpen(!open) }
+            SkyFab(Icons.Filled.Add, if (open) "Close" else "Create", Modifier.rotate(if (open) 45f else 0f)) { filterOpen = false; onOpen(!open) }
         }
     }
 }
 
 @Composable
-private fun CreateOption(title: String, icon: ImageVector, tint: Color, onClick: () -> Unit) {
+private fun CreateOption(title: String, icon: ImageVector, tint: Color, chosen: Boolean = false, onClick: () -> Unit) {
     Surface(onClick = onClick, shape = CircleShape, shadowElevation = 6.dp, color = MaterialTheme.colorScheme.surface) {
         Row(Modifier.height(48.dp).padding(start = 16.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(10.dp))
             Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
+            if (chosen) {
+                Spacer(Modifier.width(10.dp))
+                Icon(Icons.Filled.Check, "Selected", tint = tint, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }

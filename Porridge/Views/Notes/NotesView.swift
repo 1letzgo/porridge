@@ -29,6 +29,10 @@ struct NotesView: View {
     @State private var page = ListPage.home
     /// "More" was tapped: the list shows all projects, not only the latest.
     @State private var showAllProjects = false
+    /// What the long list is narrowed to, chosen with the button beside the search.
+    @State private var homeFilter = HomeFilter.all
+    /// The filter button is unfolded into its options.
+    @State private var showFilter = false
     /// The search lies over whatever is shown, opened from its button like the chat.
     @State private var showSearch = false
     /// The chat lies over whatever view is shown, opened from its button.
@@ -288,20 +292,21 @@ struct NotesView: View {
     private var home: some View {
         let byID = notesByID
         let keys = Set(projects.map(Projects.key))
-        let folders = HomeList.activeProjects(projects)
-        let recent = HomeList.shownProjects(folders, showAll: showAllProjects) { project in
+        let filter = homeFilter
+        let folders = filter.showsProjects ? HomeList.activeProjects(projects) : []
+        let recent = HomeList.shownProjects(folders, showAll: showAllProjects || filter == .projects) { project in
             max(project.updatedAt, ProjectContent(of: project, notes: notes, items: items, byID: byID).lastChange ?? .distantPast)
         }
-        let loose = HomeList.notes(notes, projects: keys)
+        let loose = HomeList.notes(notes, projects: keys).filter(filter.matches)
         let pinned = loose.filter(\.isPinned)
-        let tasks = HomeList.tasks(items, notes: byID, projects: keys)
+        let tasks = filter.showsTasks ? HomeList.tasks(items, notes: byID, projects: keys) : []
         let grouped = groups(loose.filter { !$0.isPinned })
         let archived = HomeList.archivedProjects(projects).count + HomeList.archivedNotes(notes).count + HomeList.archivedTasks(items, notes: byID).count
         let deleted = notes.filter(\.isDeleted).count
         let isEmpty = folders.isEmpty && loose.isEmpty && tasks.isEmpty
         return List(selection: $selection) {
             if !folders.isEmpty {
-                projectsSection(recent.shown, isFirst: true, byID: byID, hidden: recent.hidden)
+                projectsSection(recent.shown, isFirst: true, byID: byID, hidden: filter == .projects ? 0 : recent.hidden)
             }
             if !pinned.isEmpty {
                 Section {
@@ -315,7 +320,7 @@ struct NotesView: View {
                 onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) }
             )
             dateSections(grouped, isFirst: folders.isEmpty && pinned.isEmpty && tasks.isEmpty)
-            if archived > 0 || deleted > 0 {
+            if filter == .all, archived > 0 || deleted > 0 {
                 Section {
                     if archived > 0 {
                         pageRow("Archive", systemImage: "archivebox", count: archived, tint: .brandNavy) { page = .archive }
@@ -331,7 +336,13 @@ struct NotesView: View {
         .cardList()
         .roomForFloatingButtons()
         .overlay {
-            if isEmpty, archived == 0, deleted == 0 {
+            if isEmpty, filter != .all {
+                EmptyStateView(
+                    title: "Nothing to Show",
+                    message: "The list has nothing of this kind.",
+                    systemImage: filter.systemImage
+                )
+            } else if isEmpty, archived == 0, deleted == 0 {
                 EmptyStateView(
                     title: "Nothing Here Yet",
                     message: "Add notes, meetings, links, tasks and projects with the plus button.",
@@ -583,11 +594,11 @@ struct NotesView: View {
     /// task, link, meeting and note (and project on the long list). Bottom left the chat button.
     private var createMenu: some View {
         ZStack(alignment: .bottom) {
-            if showCreate || showChat || showSearch {
+            if showCreate || showFilter || showChat || showSearch {
                 // Tapping anywhere else folds the menu or the card again.
                 Color.black.opacity(showChat || showSearch ? 0.18 : 0.08)
                     .ignoresSafeArea()
-                    .onTapGesture { withAnimation(.snappy) { showCreate = false; showChat = false; showSearch = false } }
+                    .onTapGesture { withAnimation(.snappy) { showCreate = false; showFilter = false; showChat = false; showSearch = false } }
                     .transition(.opacity)
             }
             VStack(spacing: 14) {
@@ -603,18 +614,30 @@ struct NotesView: View {
                     overlayCard { searchPanel }
                 }
                 #endif
+                if showFilter {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(HomeFilter.allCases, id: \.self) { option in
+                            createOption(option.title, systemImage: option.systemImage, tint: option.tint, isChosen: homeFilter == option) {
+                                withAnimation(.snappy) { homeFilter = option }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 if !((showChat || showSearch) && keyboardShown) {
                     HStack(alignment: .bottom, spacing: 12) {
-                        if !showSearch {
+                        if !showChat, !showSearch, page == .home {
                             FloatingActionButton(
-                                systemImage: showChat ? "xmark" : "bubble.left.and.bubble.right.fill",
-                                label: showChat ? "Close Chat" : "Chat", fill: .brandChat
+                                systemImage: showFilter ? "xmark" : homeFilter.systemImage, label: filterLabel,
+                                fill: homeFilter == .all ? .appBackground : homeFilter.tint,
+                                foreground: homeFilter == .all ? .brandNavy : .white
                             ) {
                                 withAnimation(.snappy) {
                                     showCreate = false
-                                    showChat.toggle()
+                                    showFilter.toggle()
                                 }
                             }
+                            .accessibilityIdentifier("HomeFilterButton")
                         }
                         if !showChat {
                             FloatingActionButton(
@@ -623,7 +646,20 @@ struct NotesView: View {
                             ) {
                                 withAnimation(.snappy) {
                                     showCreate = false
+                                    showFilter = false
                                     showSearch.toggle()
+                                }
+                            }
+                        }
+                        if !showSearch {
+                            FloatingActionButton(
+                                systemImage: showChat ? "xmark" : "bubble.left.and.bubble.right.fill",
+                                label: showChat ? "Close Chat" : "Chat", fill: .brandChat
+                            ) {
+                                withAnimation(.snappy) {
+                                    showCreate = false
+                                    showFilter = false
+                                    showChat.toggle()
                                 }
                             }
                         }
@@ -640,7 +676,10 @@ struct NotesView: View {
                                     createOption("Note", systemImage: "square.and.pencil", tint: .brandSky) { addNote() }
                                 }
                                 FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
-                                    withAnimation(.snappy) { showCreate.toggle() }
+                                    withAnimation(.snappy) {
+                                        showFilter = false
+                                        showCreate.toggle()
+                                    }
                                 }
                                 .rotationEffect(.degrees(showCreate ? 45 : 0))
                             }
@@ -662,6 +701,28 @@ struct NotesView: View {
         #endif
     }
 
+    /// The kinds the long list can be narrowed to, the chosen one checked.
+    private var homeFilterPicker: some View {
+        Picker("Filter", selection: $homeFilter.animation(.snappy)) {
+            ForEach(HomeFilter.allCases, id: \.self) { option in
+                Label(option.title, systemImage: option.systemImage).tag(option)
+            }
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
+    }
+
+    private var filterLabel: String {
+        switch homeFilter {
+        case .all: "Filter"
+        case .projects: "Filter: Projects"
+        case .tasks: "Filter: Tasks"
+        case .meetings: "Filter: Meetings"
+        case .notes: "Filter: Notes"
+        case .links: "Filter: Links"
+        }
+    }
+
     /// A card unfolding from the buttons at the bottom left.
     private func overlayCard<Card: View>(@ViewBuilder _ card: () -> Card) -> some View {
         card()
@@ -678,9 +739,9 @@ struct NotesView: View {
     }
 
     /// One unfolded option: a single white pill, icon on the left in the color of its kind, then the text.
-    private func createOption(_ title: String, systemImage: String, tint: Color, action: @escaping () -> Void) -> some View {
+    private func createOption(_ title: LocalizedStringKey, systemImage: String, tint: Color, isChosen: Bool = false, action: @escaping () -> Void) -> some View {
         Button {
-            withAnimation(.snappy) { showCreate = false }
+            withAnimation(.snappy) { showCreate = false; showFilter = false }
             action()
         } label: {
             HStack(spacing: 10) {
@@ -691,6 +752,12 @@ struct NotesView: View {
                 Text(title)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
+                if isChosen {
+                    Image(systemName: "checkmark")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(tint)
+                        .accessibilityLabel("Selected")
+                }
             }
             .padding(.leading, 16)
             .padding(.trailing, 20)
@@ -746,6 +813,17 @@ struct NotesView: View {
             .popover(isPresented: $showSearch, arrowEdge: .bottom) {
                 searchPanel
                     .frame(width: 480, height: 620)
+            }
+        }
+        if page == .home {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    homeFilterPicker
+                } label: {
+                    Label("Filter", systemImage: homeFilter.systemImage)
+                }
+                .foregroundStyle(homeFilter == .all ? Color.primary : homeFilter.tint)
+                .accessibilityLabel(filterLabel)
             }
         }
         ToolbarItem(placement: .primaryAction) {

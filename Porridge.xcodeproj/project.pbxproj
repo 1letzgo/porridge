@@ -125,6 +125,7 @@
 		83F0571CA39F7435A5074397 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 7EA54B61F54496C3702CB4ED /* HuggingFace */; };
 		8595D00FE8DD1E7469896BD2 /* PlaudAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6596637851981CC10AC1038D /* PlaudAPI.swift */; };
 		861B45A7070D11F6513926F4 /* Projects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E639258A983029655F3B803 /* Projects.swift */; };
+		86C2842E103B9BFCA4D8CFE3 /* HomeFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBFEA88590BF7A95A16C45E /* HomeFilterTests.swift */; };
 		8AA27980DB9CB7C62EAFC09C /* TextEmbedder.swift in Sources */ = {isa = PBXBuildFile; fileRef = F348E2B8078890EB52DF60B6 /* TextEmbedder.swift */; };
 		8B2A6EB4962B9468AA35CD81 /* CalendarAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2291E7D9FBD16F3E4B079817 /* CalendarAccess.swift */; };
 		8D3086BAD19B572EB7675FBB /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 1367D89BB806BE6B6ADEE7D7 /* MLXLMCommon */; };
@@ -366,6 +367,7 @@
 		CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		D2A5616AFD8592E91EE7A9D4 /* SummaryEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryEditorSheet.swift; sourceTree = "<group>"; };
 		DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingActivity.swift; sourceTree = "<group>"; };
+		DDBFEA88590BF7A95A16C45E /* HomeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFilterTests.swift; sourceTree = "<group>"; };
 		DE1353083C7CC5218CFF6FB9 /* DictationSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSettings.swift; sourceTree = "<group>"; };
 		E0C900D2E54C5D9AD70BAB41 /* PlaudBLE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudBLE.swift; sourceTree = "<group>"; };
 		E144B5C4A5FF19E6E4CAB606 /* PlaudCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudCrypto.swift; sourceTree = "<group>"; };
@@ -533,6 +535,7 @@
 			isa = PBXGroup;
 			children = (
 				0362FC919DA6C783CAE655DD /* ActionItemsTests.swift */,
+				DDBFEA88590BF7A95A16C45E /* HomeFilterTests.swift */,
 				A2EF8775CF439144C3EC58B2 /* NoteStoreTests.swift */,
 				8DD49ACAF4DCB2430B617758 /* SyncMergeTests.swift */,
 				CD474FF11205A6CC122FBC7E /* TestStore.swift */,
@@ -1182,6 +1185,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A5B5A7FFCA342960FB06C80A /* ActionItemsTests.swift in Sources */,
+				86C2842E103B9BFCA4D8CFE3 /* HomeFilterTests.swift in Sources */,
 				ED8E0E578CE44BBB0A5D99C5 /* NoteStoreTests.swift in Sources */,
 				6638D4B51218783D09421D1D /* SyncMergeTests.swift in Sources */,
 				6569AA53BCC35A58EF9AB20E /* TestStore.swift in Sources */,

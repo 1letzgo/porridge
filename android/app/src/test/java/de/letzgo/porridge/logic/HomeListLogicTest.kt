@@ -19,6 +19,24 @@ class HomeListLogicTest {
     private fun homeTaskIDs(items: List<ActionItem>, notes: List<Note> = emptyList()) =
         HomeListLogic.homeTasks(items, notes, folders).map { it.first.id }
 
+    @Test fun homeFilterKeepsOnlyItsKind() {
+        val notes = listOf(Note(id = "plain"), Note(id = "meeting", audioFileName = "a.m4a"), Note(id = "link", url = "https://example.com"))
+        fun shown(filter: HomeListLogic.HomeFilter) = notes.filter(filter::matches).map { it.id }
+        assertEquals(listOf("plain", "meeting", "link"), shown(HomeListLogic.HomeFilter.ALL))
+        assertEquals(listOf("meeting"), shown(HomeListLogic.HomeFilter.MEETINGS))
+        assertEquals(listOf("plain"), shown(HomeListLogic.HomeFilter.NOTES))
+        assertEquals(listOf("link"), shown(HomeListLogic.HomeFilter.LINKS))
+        assertEquals(emptyList<String>(), shown(HomeListLogic.HomeFilter.TASKS))
+        assertEquals(emptyList<String>(), shown(HomeListLogic.HomeFilter.PROJECTS))
+    }
+
+    @Test fun homeFilterShowsProjectsAndTasksOnlyWhereItSays() {
+        val shown = HomeListLogic.HomeFilter.entries.filter { it.showsProjects }
+        assertEquals(listOf(HomeListLogic.HomeFilter.ALL, HomeListLogic.HomeFilter.PROJECTS), shown)
+        val tasks = HomeListLogic.HomeFilter.entries.filter { it.showsTasks }
+        assertEquals(listOf(HomeListLogic.HomeFilter.ALL, HomeListLogic.HomeFilter.TASKS), tasks)
+    }
+
     @Test fun homeNotesHideDeletedArchivedAndThoseInProjects() {
         val notes = listOf(
             Note(id = "plain", updatedAt = 1),

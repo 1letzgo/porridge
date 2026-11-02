@@ -9,6 +9,20 @@ import de.letzgo.porridge.model.NoteFolder
  * gelöscht noch archiviert ist und in keinem Projekt liegt; eine Aufgabe liegt auch über ihre Notiz in einem Projekt.
  */
 object HomeListLogic {
+    /**
+     * iOS: `HomeFilter` — worauf der Knopf neben der Suche die lange Liste einengt. Er engt nur ein, was die Liste zeigt:
+     * was in einem Projekt liegt, bleibt dort.
+     */
+    enum class HomeFilter(val title: String, private val kind: ProjectsLogic.Kind? = null) {
+        ALL("All"), PROJECTS("Projects"), TASKS("Tasks"),
+        MEETINGS("Meetings", ProjectsLogic.Kind.MEETING), NOTES("Notes", ProjectsLogic.Kind.NOTE), LINKS("Links", ProjectsLogic.Kind.LINK);
+
+        val showsProjects get() = this == ALL || this == PROJECTS
+        val showsTasks get() = this == ALL || this == TASKS
+
+        fun matches(note: Note) = this == ALL || (kind != null && ProjectsLogic.kind(note) == kind)
+    }
+
     /** Die Abschnitte der Aufgaben, jeweils mit ihrer Notiz. */
     data class TaskSections(
         val new: List<Pair<ActionItem, Note?>>,

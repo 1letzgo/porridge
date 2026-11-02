@@ -102,8 +102,8 @@ fun RowIcon(icon: ImageVector, tint: Color) {
 
 /** iOS: `FloatingActionButton` — runder Sky-Knopf mit weichem Schatten. */
 @Composable
-fun SkyFab(icon: ImageVector, label: String, modifier: Modifier = Modifier, container: Color = Brand.sky, onClick: () -> Unit) {
-    FloatingActionButton(onClick = onClick, shape = CircleShape, containerColor = container, contentColor = Color.White, modifier = modifier.size(60.dp)) {
+fun SkyFab(icon: ImageVector, label: String, modifier: Modifier = Modifier, container: Color = Brand.sky, content: Color = Color.White, onClick: () -> Unit) {
+    FloatingActionButton(onClick = onClick, shape = CircleShape, containerColor = container, contentColor = content, modifier = modifier.size(60.dp)) {
         Icon(icon, contentDescription = label, modifier = Modifier.size(28.dp))
     }
 }
