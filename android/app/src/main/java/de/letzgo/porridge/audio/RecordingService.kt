@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import android.util.Log
 import androidx.core.content.ContextCompat
 import de.letzgo.porridge.MainActivity
 import de.letzgo.porridge.R
@@ -33,7 +34,8 @@ class RecordingService : Service() {
             ACTION_UPDATE, null -> Unit
         }
         val recording = RecordingSession.isRecording
-        if (!recording && !busy && downloads.isEmpty()) {
+        val idle = !recording && !busy && downloads.isEmpty()
+        if (idle && intent?.getBooleanExtra(EXTRA_FOREGROUND, false) != true) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -42,6 +44,12 @@ class RecordingService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(recording), type)
+        // Eine kurze Aufgabe kann schon vorbei sein. Der Aufruf oben muss trotzdem sein: Ein mit startForegroundService
+        // gestarteter Dienst, der ohne ihn endet, beendet die ganze App.
+        if (idle) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
         return START_NOT_STICKY
     }
 
@@ -84,6 +92,7 @@ class RecordingService : Service() {
         private const val NOTIFICATION_ID = 7
         const val ACTION_STOP = "de.letzgo.porridge.STOP_RECORDING"
         private const val ACTION_UPDATE = "de.letzgo.porridge.UPDATE"
+        private const val EXTRA_FOREGROUND = "foreground"
 
         /** Transkription: der Dienst hält die App am Leben. */
         @Volatile var busy = false
@@ -93,7 +102,14 @@ class RecordingService : Service() {
 
         fun update(context: Context) {
             val intent = Intent(context, RecordingService::class.java).setAction(ACTION_UPDATE)
-            if (RecordingSession.isRecording || busy || downloads.isNotEmpty()) ContextCompat.startForegroundService(context, intent) else context.startService(intent)
+            // Aus dem Hintergrund verweigert Android den Start; die Arbeit läuft dann ohne den Dienst weiter.
+            runCatching {
+                if (RecordingSession.isRecording || busy || downloads.isNotEmpty()) {
+                    ContextCompat.startForegroundService(context, intent.putExtra(EXTRA_FOREGROUND, true))
+                } else {
+                    context.startService(intent)
+                }
+            }.onFailure { Log.w("RecordingService", "not started: $it") }
         }
     }
 }

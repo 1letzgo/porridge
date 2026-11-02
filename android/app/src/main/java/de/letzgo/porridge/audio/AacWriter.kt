@@ -43,11 +43,11 @@ class AacWriter(file: File, private val sampleRate: Int, private val channels: I
         }
     }
 
-    private fun drain(endOfStream: Boolean) {
+    private fun drain(endOfStream: Boolean, deadline: Long = Long.MAX_VALUE) {
         while (true) {
             val index = codec.dequeueOutputBuffer(info, if (endOfStream) 10_000 else 0)
             when {
-                index == MediaCodec.INFO_TRY_AGAIN_LATER -> if (!endOfStream) return
+                index == MediaCodec.INFO_TRY_AGAIN_LATER -> if (!endOfStream || System.nanoTime() > deadline) return
                 index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                     track = muxer.addTrack(codec.outputFormat)
                     muxer.start()
@@ -73,13 +73,28 @@ class AacWriter(file: File, private val sampleRate: Int, private val channels: I
 
     fun close() {
         runCatching {
-            val index = codec.dequeueInputBuffer(10_000)
-            if (index >= 0) codec.queueInputBuffer(index, 0, 0, framesWritten * 1_000_000L / sampleRate, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-            drain(true)
+            // Der Encoder kann kurz keinen Puffer frei haben; ohne Ende-Markierung käme drain nie zurück. Bleibt sie aus,
+            // endet die Datei eben mit dem, was schon kodiert ist.
+            val deadline = System.nanoTime() + CLOSE_TIMEOUT_NANOS
+            var ended = false
+            while (!ended && System.nanoTime() < deadline) {
+                val index = codec.dequeueInputBuffer(10_000)
+                if (index >= 0) {
+                    codec.queueInputBuffer(index, 0, 0, framesWritten * 1_000_000L / sampleRate, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    ended = true
+                } else {
+                    drain(false)
+                }
+            }
+            if (ended) drain(true, deadline)
         }
         runCatching { codec.stop() }
         codec.release()
         runCatching { if (muxing) muxer.stop() }
         muxer.release()
+    }
+
+    private companion object {
+        const val CLOSE_TIMEOUT_NANOS = 5_000_000_000L
     }
 }

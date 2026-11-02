@@ -254,11 +254,28 @@ final class ProcessingService {
         try? context.save()
     }
 
+    #if canImport(UIKit)
+    @MainActor
+    private final class BackgroundTime {
+        var id = UIBackgroundTaskIdentifier.invalid
+
+        func end() {
+            guard id != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(id)
+            id = .invalid
+        }
+    }
+    #endif
+
     private func withBackgroundTime(_ work: () async -> Void) async {
         #if canImport(UIKit)
-        let task = UIApplication.shared.beginBackgroundTask(withName: "transcription")
+        let time = BackgroundTime()
+        // Out of time: the task has to end or iOS kills the app. A job cut off this way resumes at the next launch.
+        time.id = UIApplication.shared.beginBackgroundTask(withName: "transcription") {
+            MainActor.assumeIsolated { time.end() }
+        }
         await work()
-        if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
+        time.end()
         #else
         await work()
         #endif

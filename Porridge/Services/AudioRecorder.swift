@@ -97,7 +97,9 @@ final class AudioRecorder {
             commonFormat: .pcmFormatFloat32,
             interleaved: false
         )
-        let writer = TapWriter(file: file, channels: channels)
+        let writer = TapWriter(file: file, channels: channels) { [weak self] in
+            Task { @MainActor in if self?.isRecording == true { self?.onInterrupted?() } }
+        }
         self.writer = writer
         self.fileName = name
 
@@ -249,18 +251,21 @@ private final class TapWriter: @unchecked Sendable {
     let channels: Int
     private var file: AVAudioFile?
     private let lock = NSLock()
+    private let onFailure: @Sendable () -> Void
+    private var failed = false
 
-    init(file: AVAudioFile, channels: Int) {
+    init(file: AVAudioFile, channels: Int, onFailure: @escaping @Sendable () -> Void) {
         self.file = file
         self.channels = channels
+        self.onFailure = onFailure
     }
 
     func write(_ buffer: AVAudioPCMBuffer) {
         lock.lock()
         defer { lock.unlock() }
-        guard let file else { return }
+        guard let file, !failed else { return }
         if Int(buffer.format.channelCount) == channels {
-            try? file.write(from: buffer)
+            append(buffer, to: file)
             return
         }
         // Interfaces with more than two inputs: keep the first two channels.
@@ -270,7 +275,17 @@ private final class TapWriter: @unchecked Sendable {
         for channel in 0..<channels {
             dst[channel].update(from: src[channel], count: Int(buffer.frameLength))
         }
-        try? file.write(from: out)
+        append(out, to: file)
+    }
+
+    /// A full disk, for one: the recording ends with what was written instead of running on without sound.
+    private func append(_ buffer: AVAudioPCMBuffer, to file: AVAudioFile) {
+        do {
+            try file.write(from: buffer)
+        } catch {
+            failed = true
+            onFailure()
+        }
     }
 
     func close() {

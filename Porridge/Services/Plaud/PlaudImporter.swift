@@ -15,6 +15,7 @@ struct PlaudRecording: Identifiable, Hashable {
 
 /// What an import produced: an audio file in the recordings store.
 struct PlaudImportedAudio {
+    let sessionId: UInt32
     let fileName: String
     let duration: Double
     let date: Date
@@ -164,12 +165,11 @@ final class PlaudImporter {
             let duration = try await Task.detached(priority: .userInitiated) {
                 try OpusOggDecoder.decode(ogg: ogg, to: AudioStore.url(for: fileName))
             }.value
-            Self.markImported(recording.sessionId)
             if let index = recordings.firstIndex(where: { $0.sessionId == recording.sessionId }) {
                 recordings[index].imported = true
             }
             status = ""
-            return PlaudImportedAudio(fileName: fileName, duration: duration, date: recording.date)
+            return PlaudImportedAudio(sessionId: recording.sessionId, fileName: fileName, duration: duration, date: recording.date)
         } catch PlaudBLEError.cancelled {
             status = ""
             return nil
@@ -303,6 +303,8 @@ final class PlaudImporter {
         if let info = AudioStore.audioInfo(for: audio.fileName) { note.channelCount = info.channels }
         context.insert(note)
         try? context.save()
+        // Only now: a recording marked before its note exists would never be offered again.
+        markImported(audio.sessionId)
         processing.enqueue(.transcript(note.id))
     }
 

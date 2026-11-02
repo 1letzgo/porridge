@@ -188,9 +188,10 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     }
     DisposableEffect(Unit) { onDispose { player.stop(); if (dictationPhase == InlineDictation.Phase.RECORDING) dictation.cancel() } }
     // Der Stopp-Knopf in der Benachrichtigung beendet das Diktat.
-    val stopRequests by RecordingSession.stopRequests.collectAsState()
-    LaunchedEffect(stopRequests) {
-        if (stopRequests > 0 && dictation.phase.value == InlineDictation.Phase.RECORDING) finishDictation(dictation, note, dictationStart, ::update) { liveText = "" }
+    DisposableEffect(dictationPhase) {
+        val handler: () -> Unit = { coroutines.launch { finishDictation(dictation, note, dictationStart, ::update) { liveText = "" } } }
+        if (dictationPhase == InlineDictation.Phase.RECORDING) RecordingSession.stopHandler = handler
+        onDispose { if (RecordingSession.stopHandler === handler) RecordingSession.stopHandler = null }
     }
     val liveFlow = RecordingSession.live
     if (liveFlow != null && dictationPhase == InlineDictation.Phase.RECORDING) {

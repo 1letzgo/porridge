@@ -23,7 +23,8 @@ final class InlineDictation {
     private(set) var phase: Phase = .idle
     private(set) var errorMessage: String?
     let recorder = AudioRecorder()
-    let live = LiveTranscriber()
+    /// One per dictation: a finished one keeps its text and does not start again.
+    private(set) var live = LiveTranscriber()
 
     /// Called with the complete live text so far, every time it changes.
     @ObservationIgnored var onLiveText: ((String) -> Void)?
@@ -39,7 +40,10 @@ final class InlineDictation {
             errorMessage = "Please allow microphone access in Settings."
             return
         }
+        live = LiveTranscriber()
         recorder.onBuffer = live.feed
+        // A call or an unplugged microphone ends the dictation with what was said so far.
+        recorder.onInterrupted = { [weak self] in self?.onStopRequested?() }
         do {
             try recorder.start()
         } catch {

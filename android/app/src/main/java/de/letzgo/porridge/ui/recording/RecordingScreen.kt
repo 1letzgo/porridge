@@ -41,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -67,7 +68,9 @@ import de.letzgo.porridge.model.clockString
 import de.letzgo.porridge.ui.Brand
 import de.letzgo.porridge.ui.components.SkyFab
 import de.letzgo.porridge.ui.components.speakerColor
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -124,7 +127,8 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
         if (finished) return
         finished = true
         coroutines.launch {
-            val (result, text) = RecordingSession.stop()
+            // Auch wenn der Bildschirm dabei verschwindet: Die Aufnahme darf nicht halb geschlossen liegen bleiben.
+            val (result, text) = withContext(NonCancellable) { RecordingSession.stop() }
             if (result != null) onFinish(result, names.toList(), text) else onCancel()
         }
     }
@@ -143,8 +147,11 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
             permission.launch(perms.toTypedArray())
         }
     }
-    val stopRequests by RecordingSession.stopRequests.collectAsState()
-    LaunchedEffect(stopRequests) { if (stopRequests > 0 && started) finish() }
+    DisposableEffect(started) {
+        val handler: () -> Unit = { finish() }
+        if (started) RecordingSession.stopHandler = handler
+        onDispose { if (RecordingSession.stopHandler === handler) RecordingSession.stopHandler = null }
+    }
     BackHandler { confirmDiscard = true }
 
     val recorder = RecordingSession.recorder

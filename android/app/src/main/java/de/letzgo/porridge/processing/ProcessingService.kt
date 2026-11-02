@@ -18,6 +18,7 @@ import de.letzgo.porridge.model.TranscriptSegment
 import de.letzgo.porridge.store.ActionItemStore
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.PorridgeDatabase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -173,7 +174,14 @@ object ProcessingService {
             }
             if (Prefs.voiceRecognitionEnabled && speakers.isNotEmpty()) {
                 stage(id, "Recognizing voices …")
-                speakers = VoiceProfiles().identify(speakers, segments, samples ?: prepared.floats())
+                try {
+                    speakers = VoiceProfiles().identify(speakers, segments, samples ?: prepared.floats())
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // Stimmen sind freiwillig; das fertige Transkript bleibt.
+                    diagnostics = "Voice recognition failed: ${e.message}"
+                }
             }
             val current = db.notes().get(id) ?: return
             save(

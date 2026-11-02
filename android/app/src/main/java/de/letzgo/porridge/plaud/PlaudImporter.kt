@@ -10,6 +10,7 @@ import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.PorridgeDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +27,7 @@ data class PlaudRecording(val sessionId: Long, val size: Long, val imported: Boo
 }
 
 /** Was ein Import ergab: eine Audiodatei im Aufnahmespeicher. */
-data class PlaudImportedAudio(val fileName: String, val duration: Double, val date: Long)
+data class PlaudImportedAudio(val sessionId: Long, val fileName: String, val duration: Double, val date: Long)
 
 /** iOS: `PlaudImporter` — verbindet sich mit dem Recorder, listet seine Aufnahmen und übernimmt sie in Porridge. */
 class PlaudImporter(context: Context) {
@@ -134,10 +135,9 @@ class PlaudImporter(context: Context) {
             if (!PlaudCrypto.isCompleteOgg(ogg)) throw PlaudBLEException.Message("The copy of this recording is damaged. Please try again.")
             val fileName = AudioStore.newFileName("m4a")
             val duration = withContext(Dispatchers.Default) { OpusOggDecoder.decode(ogg, AudioStore.file(fileName)) }
-            markImported(recording.sessionId)
             _recordings.value = _recordings.value.map { if (it.sessionId == recording.sessionId) it.copy(imported = true) else it }
             _status.value = ""
-            return PlaudImportedAudio(fileName, duration, recording.date)
+            return PlaudImportedAudio(recording.sessionId, fileName, duration, recording.date)
         } catch (e: PlaudBLEException.Cancelled) {
             _status.value = ""
             return null
@@ -250,15 +250,17 @@ class PlaudImporter(context: Context) {
         private fun markImported(id: Long) = Prefs.set(Keys.PLAUD_IMPORTED, Prefs.stringSet(Keys.PLAUD_IMPORTED) + id.toString())
 
         /** Legt eine übernommene Aufnahme als neue Notiz an und startet die Transkription. */
-        suspend fun addNote(audio: PlaudImportedAudio): Note {
+        suspend fun addNote(audio: PlaudImportedAudio): Note = withContext(NonCancellable) {
             val info = AudioStore.audioInfo(audio.fileName)
             val note = Note(
                 createdAt = audio.date, updatedAt = audio.date, title = Note.defaultMeetingTitle(audio.date), statusRaw = ProcessingStatus.RECORDED.raw,
                 audioFileName = audio.fileName, duration = audio.duration, inputName = "Plaud", channelCount = info?.second ?: 1,
             )
             PorridgeDatabase.shared.notes().upsert(note)
+            // Erst jetzt: Eine Aufnahme, die vor ihrer Notiz als erledigt gilt, würde nie wieder angeboten.
+            markImported(audio.sessionId)
             ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
-            return note
+            note
         }
     }
 }

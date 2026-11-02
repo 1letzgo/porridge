@@ -111,26 +111,44 @@ class AudioRecorder(private val context: Context) {
         val channels = recorder.channelCount
         val buffer = ShortArray(sampleRate / 10 * channels)
         val resampler = Resampler(sampleRate, 16_000)
-        while (running) {
-            val n = recorder.read(buffer, 0, buffer.size)
-            if (n <= 0) continue
-            aac.write(buffer, n)
-            _elapsed.value = aac.duration
-            val frames = n / channels
-            _levels.value = (0 until channels).map { c ->
-                var sum = 0.0
-                for (f in 0 until frames) { val s = buffer[f * channels + c] / 32768.0; sum += s * s }
-                val db = 20 * log10(maxOf(sqrt(sum / maxOf(frames, 1)), 1e-6))
-                ((db + 55) / 50).toFloat().coerceIn(0f, 1f)
-            }
-            onMono16k?.let { feed ->
-                val mono = FloatArray(frames) { f ->
-                    var sum = 0f
-                    for (c in 0 until channels) sum += buffer[f * channels + c] / 32768f
-                    sum / channels
+        try {
+            while (running) {
+                val n = recorder.read(buffer, 0, buffer.size)
+                if (n == 0) continue
+                if (n < 0) {
+                    // Fehlercode: Das Mikrofon liefert nichts mehr. Die Aufnahme endet mit dem, was da ist.
+                    interrupted()
+                    return
                 }
-                feed(resampler.process(mono))
+                aac.write(buffer, n)
+                report(buffer, n, channels, aac, resampler)
             }
+        } catch (e: Exception) {
+            // Platte voll, Encoder am Ende: ohne das risse der Fehler die ganze App und die Aufnahme mit.
+            interrupted()
+        }
+    }
+
+    private fun interrupted() {
+        if (running) Handler(Looper.getMainLooper()).post { onInterrupted?.invoke() }
+    }
+
+    private fun report(buffer: ShortArray, n: Int, channels: Int, aac: AacWriter, resampler: Resampler) {
+        _elapsed.value = aac.duration
+        val frames = n / channels
+        _levels.value = (0 until channels).map { c ->
+            var sum = 0.0
+            for (f in 0 until frames) { val s = buffer[f * channels + c] / 32768.0; sum += s * s }
+            val db = 20 * log10(maxOf(sqrt(sum / maxOf(frames, 1)), 1e-6))
+            ((db + 55) / 50).toFloat().coerceIn(0f, 1f)
+        }
+        onMono16k?.let { feed ->
+            val mono = FloatArray(frames) { f ->
+                var sum = 0f
+                for (c in 0 until channels) sum += buffer[f * channels + c] / 32768f
+                sum / channels
+            }
+            feed(resampler.process(mono))
         }
     }
 

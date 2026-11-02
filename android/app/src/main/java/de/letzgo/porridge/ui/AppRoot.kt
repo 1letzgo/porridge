@@ -16,14 +16,8 @@ import androidx.compose.runtime.setValue
 import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.LinkImport
 import de.letzgo.porridge.data.Prefs
-import de.letzgo.porridge.logic.SpeakerAssigner
+import de.letzgo.porridge.audio.RecordingSession
 import de.letzgo.porridge.model.Note
-import de.letzgo.porridge.model.ProcessingStatus
-import de.letzgo.porridge.model.Speaker
-import de.letzgo.porridge.model.SpeakerMode
-import de.letzgo.porridge.model.TranscriptSegment
-import de.letzgo.porridge.processing.ProcessingService
-import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.ui.components.ListPage
 import de.letzgo.porridge.ui.tasks.TaskDetailScreen
 import de.letzgo.porridge.ui.notes.NoteDetailScreen
@@ -36,7 +30,9 @@ import de.letzgo.porridge.ui.recording.RecordMeetingSheet
 import de.letzgo.porridge.ui.recording.RecordingScreen
 import de.letzgo.porridge.ui.settings.SettingsScreen
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Bildschirme über der Liste (iOS: `NavigationSplitView` + Sheets). */
 sealed interface Screen {
@@ -73,6 +69,9 @@ fun AppRoot() {
         push(Screen.Detail(id, null))
     }
 
+    // Das System hat die Activity neu aufgebaut, das Mikrofon läuft im Dienst weiter: die Aufnahme wieder zeigen.
+    LaunchedEffect(Unit) { if (RecordingSession.isRecording && stack.isEmpty()) push(Screen.Recording(null)) }
+
     AppUpdateCheck()
     val pending by SharedLinks.pending.collectAsState()
     LaunchedEffect(pending) {
@@ -97,24 +96,9 @@ fun AppRoot() {
             is Screen.Plaud -> PlaudImportScreen(onBack = { pop() }) { id -> stack.clear(); open(id) }
             is Screen.Recording -> RecordingScreen(top.title, onFinish = { result, names, liveText ->
                 coroutines.launch {
-                    // Ein aufgenommenes Meeting wird eine Notiz, die mit Sprechern transkribiert wird.
-                    var note = Note(
-                        title = top.title ?: Note.defaultMeetingTitle(System.currentTimeMillis()), titleIsCustom = top.title != null,
-                        statusRaw = ProcessingStatus.RECORDED.raw, audioFileName = result.fileName, duration = result.duration,
-                        channelCount = result.channelCount, inputName = result.inputName,
-                    )
-                    if (result.isSplitStereo) {
-                        note = note.copy(speakerModeRaw = SpeakerMode.CHANNELS.raw).withSpeakers(
-                            listOf(Speaker(SpeakerAssigner.LEFT_CHANNEL_ID, names[0], 0), Speaker(SpeakerAssigner.RIGHT_CHANNEL_ID, names[1], 1)),
-                        )
-                    }
-                    // Bis das Transkript mit Sprechern fertig ist, steht der Live-Text da.
-                    if (liveText.isNotEmpty()) note = note.withSegments(listOf(TranscriptSegment(start = 0.0, end = result.duration, text = liveText)))
                     // Aus einem offenen Projekt aufgenommen: das Meeting gehört dazu, die Ansicht bleibt.
                     val inProject = (list.page as? ListPage.Project)?.id
-                    if (inProject != null) note = note.copy(projectIDs = listOf(inProject))
-                    PorridgeDatabase.shared.notes().upsert(note)
-                    ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
+                    val note = withContext(NonCancellable) { RecordingSession.saveMeeting(result, names, liveText, top.title, inProject) }
                     pop()
                     open(note.id)
                 }
