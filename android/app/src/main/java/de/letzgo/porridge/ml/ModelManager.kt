@@ -3,18 +3,24 @@ package de.letzgo.porridge.ml
 import android.content.Context
 import android.os.PowerManager
 import de.letzgo.porridge.audio.RecordingService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 /** iOS: `ModelManager.State`. */
 sealed interface ModelState {
@@ -37,6 +43,10 @@ object ModelManager {
 
     private val states = HashMap<String, MutableStateFlow<ModelState>>()
     private val locks = HashMap<String, Mutex>()
+    private val fetches = ConcurrentHashMap<String, Job>()
+
+    /** Der Nutzer hat den Download abgebrochen: kein Fehler, die Zeile bietet wieder den Download an. */
+    private class DownloadCancelled : IOException("The download was cancelled.")
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -67,6 +77,9 @@ object ModelManager {
                 progress(1f)
                 load()
                 state.value = ModelState.Ready
+            } catch (e: DownloadCancelled) {
+                state.value = ModelState.NotInstalled
+                throw e
             } catch (e: Throwable) {
                 state.value = ModelState.Failed(e.message ?: "The model could not be loaded.")
                 throw e
@@ -83,6 +96,8 @@ object ModelManager {
                 state.value = ModelState.Downloading(0f)
                 fetch(pack) { state.value = ModelState.Downloading(it) }
                 state.value = ModelState.Installed
+            } catch (e: DownloadCancelled) {
+                state.value = ModelState.NotInstalled
             } catch (e: Throwable) {
                 state.value = ModelState.Failed(e.message ?: "The download failed.")
             }
@@ -92,6 +107,11 @@ object ModelManager {
     /** Startet [download] unabhängig vom Bildschirm, der den Knopf zeigt: er läuft weiter, wenn man ihn verlässt. */
     fun startDownload(pack: ModelPack) {
         scope.launch { download(pack) }
+    }
+
+    /** Bricht einen laufenden Download ab; das bisher Geladene wird gelöscht. Ist er schon fertig, bleibt das Modell. */
+    fun cancelDownload(pack: ModelPack) {
+        fetches[pack.id]?.cancel()
     }
 
     /**
@@ -104,7 +124,8 @@ object ModelManager {
         RecordingService.downloads[pack.displayName] = 0f
         RecordingService.update(appContext)
         var percent = 0
-        try {
+        // Ein eigener Job: Abbrechen trifft nur den Download, nicht die Aufgabe, die auf ihn wartet.
+        val job = scope.async {
             ModelDownloader.download(pack, root) { fraction ->
                 onProgress(fraction)
                 RecordingService.downloads[pack.displayName] = fraction
@@ -115,7 +136,19 @@ object ModelManager {
                     RecordingService.update(appContext)
                 }
             }
+        }
+        fetches[pack.id] = job
+        try {
+            job.await()
+        } catch (e: CancellationException) {
+            job.cancel()
+            if (!currentCoroutineContext().isActive) throw e
+            // Erst wenn der Download wirklich steht, schreibt niemand mehr in den Ordner.
+            job.join()
+            pack.directory(root).deleteRecursively()
+            throw DownloadCancelled()
         } finally {
+            fetches.remove(pack.id)
             RecordingService.downloads.remove(pack.displayName)
             RecordingService.update(appContext)
             if (wake.isHeld) wake.release()

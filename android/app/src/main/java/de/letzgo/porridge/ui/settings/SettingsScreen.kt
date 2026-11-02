@@ -3,7 +3,9 @@ package de.letzgo.porridge.ui.settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -207,14 +209,27 @@ private fun VoicesCard() {
 }
 
 /** Eine Zeile je Modell: herunterladen, Fortschritt, löschen. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ModelRow(pack: ModelPack, subtitle: String, unload: () -> Unit) {
     val state by ModelManager.state(pack).collectAsState()
     var confirmDelete by remember { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    var confirmCancel by remember { mutableStateOf(false) }
+    val downloading = state is ModelState.Downloading
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = if (downloading) {
+            Modifier.combinedClickable(onLongClickLabel = "Cancel Download", onLongClick = { confirmCancel = true }, onClick = {})
+        } else {
+            Modifier
+        },
+    ) {
         Column(Modifier.weight(1f)) {
             Text(pack.displayName, fontWeight = FontWeight.SemiBold)
-            Text("$subtitle · ${pack.sizeText}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if (downloading) "Press and hold to cancel" else "$subtitle · ${pack.sizeText}",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             when (val s = state) {
                 is ModelState.Downloading -> LinearProgressIndicator(progress = { s.fraction }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = Brand.sky)
                 is ModelState.Failed -> Text(s.message, style = MaterialTheme.typography.labelSmall, color = Brand.danger)
@@ -230,6 +245,12 @@ private fun ModelRow(pack: ModelPack, subtitle: String, unload: () -> Unit) {
             }
         }
     }
+    if (confirmCancel && downloading) AlertDialog(
+        onDismissRequest = { confirmCancel = false }, title = { Text("Cancel download of ${pack.displayName}?") },
+        text = { Text("What has been downloaded so far will be deleted.") },
+        confirmButton = { TextButton(onClick = { confirmCancel = false; ModelManager.cancelDownload(pack) }) { Text("Cancel Download", color = Brand.danger) } },
+        dismissButton = { TextButton(onClick = { confirmCancel = false }) { Text("Keep Downloading") } },
+    )
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false }, title = { Text("Delete ${pack.displayName}?") }, text = { Text("You can download it again at any time.") },
         confirmButton = { TextButton(onClick = { confirmDelete = false; ModelManager.delete(pack, unload) }) { Text("Delete", color = Brand.danger) } },
