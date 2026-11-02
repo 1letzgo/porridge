@@ -117,6 +117,7 @@ enum SummaryService {
         if note.labels.isEmpty { note.labels = tags }
         note.summaryModel = model
         note.summarizedAt = Date()
+        note.updatedAt = Date()
         // The tasks and decisions of the summary become items of their own (ticked off across all notes).
         if let context = note.modelContext { ActionItems.sync(note, in: context) }
     }

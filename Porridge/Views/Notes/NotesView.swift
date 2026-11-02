@@ -1019,6 +1019,7 @@ struct NotesView: View {
         let empty = notes.filter {
             $0.title.isEmpty && $0.text.isEmpty && $0.audioFileNames.isEmpty && $0.pendingAudioFileName == nil
                 && $0.audioFileName == nil && $0.segmentsData == nil
+                && $0.url == nil && $0.summary == nil
                 && processing.stages[$0.id] == nil
         }
         guard !empty.isEmpty else { return }

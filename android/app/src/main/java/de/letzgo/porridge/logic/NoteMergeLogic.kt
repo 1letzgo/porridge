@@ -92,7 +92,10 @@ object NoteMergeLogic {
             summarizedAt = null,
             errorMessage = null,
             statusRaw = ProcessingStatus.READY.raw,
-        ).withSegments(segments).withSpeakers(speakers)
+        ).withSegments(segments).withSpeakers(speakers).let { merged ->
+            // Ohne gemeinsame Datei bleiben die Aufnahmen bei der Notiz: Ohne Verweis gingen sie hier und auf dem Server verloren.
+            if (mergedAudio != null) merged else merged.copy(audioFileNames = merged.audioFileNames + ordered.mapNotNull { it.audioFileName })
+        }
     }
 
     private fun isSamePerson(a: Speaker, b: Speaker): Boolean {

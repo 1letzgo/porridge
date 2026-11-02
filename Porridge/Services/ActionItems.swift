@@ -264,7 +264,10 @@ enum ActionItems {
                 let line = matches[position]
                 lines[line.line] = ticked(lines[line.line], done: done, isCheckbox: line.isCheckbox)
                 summary = lines.joined(separator: "\n")
-                if summary != note.summary { note.summary = summary }
+                if summary != note.summary {
+                    note.summary = summary
+                    note.updatedAt = Date()
+                }
             }
         }
         try? context.save()

@@ -26,4 +26,16 @@ class NoteMergeLogicTest {
         assertEquals(null, merged.summary)
         assertEquals("diarized", merged.speakerModeRaw)
     }
+
+    @Test fun recordingsStayWithTheNoteWithoutAJoinedFile() {
+        val a = Note(id = "A", createdAt = 1, audioFileName = "a.m4a", audioFileNames = listOf("d.m4a"))
+        val b = Note(id = "B", createdAt = 2, audioFileName = "b.m4a")
+        val (offsets, total) = NoteMergeLogic.offsetsWithoutAudio(listOf(a, b))
+        val kept = NoteMergeLogic.merge(a, listOf(a, b), offsets, total, null, null, now = 9)
+        assertEquals(null, kept.audioFileName)
+        assertEquals(listOf("d.m4a", "a.m4a", "b.m4a"), kept.audioFileNames)
+        val joined = NoteMergeLogic.merge(a, listOf(a, b), offsets, total, "j.m4a", 1, now = 9)
+        assertEquals("j.m4a", joined.audioFileName)
+        assertEquals(listOf("d.m4a"), joined.audioFileNames)
+    }
 }

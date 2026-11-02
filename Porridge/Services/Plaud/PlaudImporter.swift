@@ -89,6 +89,9 @@ final class PlaudImporter {
             return renewed.userToken
         } catch {
             PlaudLog.log("token renewal failed: \(error)")
+            status = ""
+            // No connection says nothing about the sign-in: the next try renews it.
+            if error is URLError || error is CancellationError { throw error }
             expireSignIn()
             throw PlaudAPIError.unauthorized
         }

@@ -6,6 +6,7 @@ import de.letzgo.porridge.data.LinkFetcher
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.logic.Paragraphs
 import de.letzgo.porridge.logic.SpeakerAssigner
+import de.letzgo.porridge.logic.SummaryLogic
 import de.letzgo.porridge.ml.Diarizer
 import de.letzgo.porridge.ml.SpeechModel
 import de.letzgo.porridge.ml.VoiceProfiles
@@ -95,6 +96,14 @@ object ProcessingService {
     }
 
     private suspend fun save(note: Note) = db.notes().upsert(note)
+
+    /** Eine inzwischen gelöschte Notiz bleibt gelöscht. */
+    private suspend fun saveSummary(before: Note, summarized: Note) {
+        val current = db.notes().get(before.id) ?: return
+        val updated = SummaryLogic.carryOver(summarized, before, current)
+        save(updated)
+        ActionItemStore().sync(updated)
+    }
 
     // Aufnahmen mit Transkript
 
@@ -234,10 +243,7 @@ object ProcessingService {
         }
         if (summarize && note.summary == null && !note.isDeleted && !note.pageText.isNullOrEmpty() && SummaryService.canRunWithoutAsking) {
             stage(id, "Summarizing …")
-            runCatching { SummaryService.summarize(note) { stage(id, it) } }.onSuccess { summarized ->
-                save(summarized)
-                ActionItemStore().sync(summarized)
-            }
+            runCatching { SummaryService.summarize(note) { stage(id, it) } }.onSuccess { saveSummary(note, it) }
         }
     }
 
@@ -246,9 +252,7 @@ object ProcessingService {
         val note = db.notes().get(id) ?: return
         stage(id, "Summarizing …")
         try {
-            val summarized = SummaryService.summarize(note) { stage(id, it) }
-            save(summarized)
-            ActionItemStore().sync(summarized)
+            saveSummary(note, SummaryService.summarize(note) { stage(id, it) })
         } finally {
             stage(id, null)
         }

@@ -71,6 +71,7 @@ struct ProjectRow: View {
         Button {
             withAnimation(.snappy) {
                 project.isPinned.toggle()
+                project.updatedAt = Date()
                 try? context.save()
             }
         } label: {

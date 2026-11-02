@@ -73,8 +73,13 @@ enum NoteMerger {
             number += 1
         }
 
-        // Old recordings are only deleted after everything above worked.
-        oldAudio.forEach(AudioStore.delete)
+        // Old recordings are only deleted after everything above worked. Without a joined file they stay with
+        // the note: nothing pointing at them would take them off this device and the server for good.
+        if mergedAudio != nil {
+            oldAudio.forEach(AudioStore.delete)
+        } else {
+            base.audioFileNames += oldAudio
+        }
         base.audioFileName = mergedAudio
         if let mergedAudio, let info = AudioStore.audioInfo(for: mergedAudio) {
             base.channelCount = info.channels
@@ -94,7 +99,10 @@ enum NoteMerger {
         base.errorMessage = nil
         base.status = .ready
 
-        for meeting in others { NoteStore.deletePermanently(meeting, in: context) }
+        for meeting in others {
+            meeting.audioFileName = nil
+            NoteStore.deletePermanently(meeting, in: context)
+        }
         try? context.save()
     }
 

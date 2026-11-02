@@ -70,6 +70,6 @@ class ActionItemStore(private val db: PorridgeDatabase = PorridgeDatabase.shared
         val note = item.noteID?.let { db.notes().get(it) } ?: return
         val summary = note.summary ?: return
         val updated = ActionItemsLogic.summaryAfterSetDone(summary, item, done, db.actionItems().forNote(note.id))
-        if (updated != summary) db.notes().upsert(note.copy(summary = updated))
+        if (updated != summary) db.notes().upsert(note.copy(summary = updated, updatedAt = now))
     }
 }

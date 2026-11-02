@@ -26,9 +26,9 @@ class NoteMerger(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
             joined.offsets to joined.duration
         } else NoteMergeLogic.offsetsWithoutAudio(ordered)
         val result = NoteMergeLogic.merge(base, ordered, offsets, total, merged, channels)
-        // Alte Aufnahmen erst löschen, wenn alles oben geklappt hat.
-        oldAudio.forEach(AudioStore::delete)
         db.notes().upsert(result)
+        // Alte Aufnahmen erst löschen, wenn alles oben geklappt hat; ohne gemeinsame Datei bleiben sie bei der Notiz.
+        if (merged != null) oldAudio.forEach(AudioStore::delete)
         val store = NoteStore(db)
         others.forEach { store.deletePermanently(it.copy(audioFileName = null)) }
     }

@@ -541,7 +541,7 @@ struct NoteDetailView: View {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
-                            MarkdownText(markdown: summary, onToggleTask: note.isDeleted ? nil : { toggleSummaryTask(line: $0) })
+                            MarkdownText(markdown: summary, onToggleTask: note.isDeleted || note.isLink ? nil : { toggleSummaryTask(line: $0) })
                             Menu {
                                 Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
                                 Button { insertSummary() } label: { Label("Insert into Note", systemImage: "text.insert") }
@@ -671,15 +671,17 @@ struct NoteDetailView: View {
         let parsed = ActionItems.parse(note.summary ?? "")
         guard let task = parsed.first(where: { $0.line == line }) else { return }
         let before = parsed.prefix { $0.line < line }.filter { $0.key == task.key }.count
-        let siblings = ActionItems.items(of: note.id, in: context).filter {
-            $0.isFromSummary && ActionItems.matchKey($0) == task.key
+        func siblings() -> [ActionItem] {
+            ActionItems.items(of: note.id, in: context).filter { $0.isFromSummary && ActionItems.matchKey($0) == task.key }
         }
-        if before < siblings.count {
-            ActionItems.setDone(siblings[before], !task.done, note: note, in: context)
-        } else {
+        var items = siblings()
+        if before >= items.count {
             // No item yet (an old summary): make them first, then tick.
             ActionItems.sync(note, in: context)
-            toggleSummaryTask(line: line)
+            items = siblings()
+        }
+        if before < items.count {
+            ActionItems.setDone(items[before], !task.done, note: note, in: context)
         }
     }
 

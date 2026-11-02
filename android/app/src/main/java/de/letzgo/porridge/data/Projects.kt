@@ -27,7 +27,8 @@ object Projects {
     suspend fun unarchive(project: NoteFolder) =
         db.folders().upsert(project.copy(archivedAt = null, updatedAt = System.currentTimeMillis()))
 
-    suspend fun togglePin(project: NoteFolder) = db.folders().upsert(project.copy(isPinned = !project.isPinned))
+    suspend fun togglePin(project: NoteFolder) =
+        db.folders().upsert(project.copy(isPinned = !project.isPinned, updatedAt = System.currentTimeMillis()))
 
     /** Löscht nur das Projekt; seine Notizen und Aufgaben bleiben und verlieren die Zuordnung. */
     suspend fun delete(project: NoteFolder) {

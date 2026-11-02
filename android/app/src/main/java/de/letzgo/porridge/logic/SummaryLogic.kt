@@ -201,6 +201,19 @@ object SummaryLogic {
     }
 
     /** Was aus der Antwort in die Notiz geht: neuer Titel (nur bei Meetings, nicht bei eigenem Titel), Text und Tags. */
+    /**
+     * Das Ergebnis einer Zusammenfassung auf dem frischen Stand [current] der Notiz: Sie läuft lange, und was in der
+     * Zeit an der Notiz geschah, bleibt. [before] ist der Stand, aus dem [summarized] entstand.
+     */
+    fun carryOver(summarized: Note, before: Note, current: Note, now: Long = System.currentTimeMillis()): Note = current.copy(
+        title = if (summarized.title != before.title && !current.titleIsCustom) summarized.title else current.title,
+        summary = summarized.summary,
+        labels = if (current.labels.isEmpty()) summarized.labels else current.labels,
+        summaryModel = summarized.summaryModel,
+        summarizedAt = summarized.summarizedAt,
+        updatedAt = now,
+    )
+
     fun apply(note: Note, raw: String, model: String, hasTranscript: Boolean, now: Long = System.currentTimeMillis()): Note {
         var updated = note
         val body = if (hasTranscript) {

@@ -8,6 +8,7 @@ import de.letzgo.porridge.model.ProcessingStatus
 import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.PorridgeDatabase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.io.RandomAccessFile
 import java.security.PrivateKey
 
@@ -87,6 +89,9 @@ class PlaudImporter(context: Context) {
             renewed.userToken
         } catch (e: Throwable) {
             PlaudLog.log("token renewal failed: $e")
+            _status.value = ""
+            // Keine Verbindung sagt nichts über die Anmeldung: Der nächste Versuch erneuert sie.
+            if (e is IOException || e is CancellationException) throw e
             expireSignIn()
             throw PlaudAPIException.Unauthorized()
         }

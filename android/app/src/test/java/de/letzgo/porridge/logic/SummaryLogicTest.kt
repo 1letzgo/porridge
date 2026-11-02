@@ -35,6 +35,23 @@ class SummaryLogicTest {
         assertEquals(listOf("x"), custom.labels)
     }
 
+    @Test fun summaryKeepsWhatHappenedToTheNoteMeanwhile() {
+        val before = Note(id = "A", title = "Alt", text = "alt", updatedAt = 1)
+        val summarized = before.copy(title = "Neu", summary = "S", labels = listOf("t"), summaryModel = "m", summarizedAt = 5)
+        val current = before.copy(text = "bearbeitet", deletedAt = 3)
+        val merged = SummaryLogic.carryOver(summarized, before, current, now = 9)
+        assertEquals("bearbeitet", merged.text)
+        assertEquals(3L, merged.deletedAt)
+        assertEquals("Neu", merged.title)
+        assertEquals("S", merged.summary)
+        assertEquals(listOf("t"), merged.labels)
+        assertEquals(9L, merged.updatedAt)
+        // Ein in der Zwischenzeit selbst gesetzter Titel und eigene Tags bleiben.
+        val own = before.copy(title = "Meiner", titleIsCustom = true, labels = listOf("x"))
+        assertEquals("Meiner", SummaryLogic.carryOver(summarized, before, own).title)
+        assertEquals(listOf("x"), SummaryLogic.carryOver(summarized, before, own).labels)
+    }
+
     @Test fun requestPicksMaterial() {
         val meeting = Note(text = "Eigene Notiz").withSegments(listOf(TranscriptSegment(start = 0.0, end = 1.0, text = "Hallo zusammen, wir sind heute hier und das ist gut.")))
         val r = SummaryLogic.request(meeting, "auto")

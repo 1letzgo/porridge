@@ -14,11 +14,14 @@ class NoteStore(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
 
     suspend fun save(note: Note) = db.notes().upsert(note.copy(updatedAt = System.currentTimeMillis()))
 
-    suspend fun trash(note: Note) = db.notes().upsert(note.copy(deletedAt = System.currentTimeMillis(), isPinned = false))
+    suspend fun trash(note: Note) {
+        val now = System.currentTimeMillis()
+        db.notes().upsert(note.copy(deletedAt = now, isPinned = false, updatedAt = now))
+    }
 
     suspend fun restore(note: Note) {
         val folderGone = note.folderID != null && db.folders().count(note.folderID) == 0
-        db.notes().upsert(note.copy(deletedAt = null, folderID = if (folderGone) null else note.folderID))
+        db.notes().upsert(note.copy(deletedAt = null, folderID = if (folderGone) null else note.folderID, updatedAt = System.currentTimeMillis()))
     }
 
     /** Archiviert die Notiz; ihre Aufgaben bleiben, wo sie sind. Auf dem frischen Stand der Datenbank. */

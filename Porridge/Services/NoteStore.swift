@@ -11,6 +11,7 @@ enum NoteStore {
         guard note.modelContext != nil else { return }
         note.deletedAt = Date()
         note.isPinned = false
+        note.updatedAt = Date()
         try? context.save()
     }
 
@@ -37,6 +38,7 @@ enum NoteStore {
 
     static func restore(_ note: Note, in context: ModelContext) {
         note.deletedAt = nil
+        note.updatedAt = Date()
         if let folderID = note.folderID {
             let exists = ((try? context.fetchCount(FetchDescriptor<NoteFolder>(predicate: #Predicate { $0.id == folderID }))) ?? 0) > 0
             if !exists { note.folderID = nil }
@@ -47,6 +49,7 @@ enum NoteStore {
     static func deletePermanently(_ note: Note, in context: ModelContext) {
         note.audioFileNames.forEach(AudioStore.delete)
         AudioStore.delete(note.pendingAudioFileName)
+        AudioStore.delete(note.audioFileName)
         ActionItems.remove(of: note.id, in: context)
         context.delete(note)
         try? context.save()
