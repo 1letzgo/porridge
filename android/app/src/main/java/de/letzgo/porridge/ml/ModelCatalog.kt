@@ -57,7 +57,7 @@ object ModelCatalog {
 }
 
 /** iOS: `LocalModel` — die Zusammenfassungsmodelle auf dem Gerät. */
-enum class LocalModel(val raw: String, val displayName: String, val pack: ModelPack, val thinks: Boolean) {
+enum class LocalModel(val raw: String, val displayName: String, val pack: ModelPack, val thinks: Boolean, val gemmaTurns: Boolean = false) {
     /** Dasselbe Modell wie iOS (Qwen3-4B-Instruct-2507), als GGUF. */
     QWEN3(
         "qwen3", "Qwen3 4B",
@@ -75,6 +75,12 @@ enum class LocalModel(val raw: String, val displayName: String, val pack: ModelP
         "qwen3small", "Qwen3 1.7B",
         ModelPack("qwen3-1.7b", "Qwen3 1.7B", listOf(ModelFile(hf("Qwen/Qwen3-1.7B-GGUF", "Qwen3-1.7B-Q8_0.gguf"), "model.gguf", "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a", 1_834_426_016))),
         thinks = true,
+    ),
+    /** iOS: `nemotronBolt` (auf Gemma 4 aufgebaut), als GGUF. */
+    NEMOTRON_BOLT(
+        "nemotronBolt", "Nemotron 3.5 Bolt-E4B",
+        ModelPack("nemotron-3.5-bolt-e4b", "Nemotron 3.5 Bolt-E4B", listOf(ModelFile(hf("unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF", "NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q4_K_XL.gguf"), "model.gguf", "84ff34f5834b929043f5ae74799e8d562d4056998f6a5923ceb44831e8ad84d6", 5_060_482_240))),
+        thinks = false, gemmaTurns = true,
     );
 
     companion object {

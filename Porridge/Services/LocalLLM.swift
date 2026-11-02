@@ -21,6 +21,7 @@ enum LocalLLMError: LocalizedError {
 enum LocalModel: String, CaseIterable, Identifiable {
     case qwen3
     case qwen35
+    case nemotronBolt
     /// Built into the system: not downloaded, see `AppleLLM`.
     case apple
 
@@ -34,6 +35,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
         case .apple: "Apple Intelligence"
         case .qwen3: "Qwen3 4B"
         case .qwen35: "Qwen3.5 4B"
+        case .nemotronBolt: "Nemotron 3.5 Bolt-E4B"
         }
     }
 
@@ -42,6 +44,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
         case .apple: ""
         case .qwen3: "mlx-community/Qwen3-4B-Instruct-2507-4bit"
         case .qwen35: "mlx-community/Qwen3.5-4B-MLX-4bit"
+        case .nemotronBolt: "lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit"
         }
     }
 
@@ -50,6 +53,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
         case .apple: "built into the system"
         case .qwen3: "approx. 2.3 GB"
         case .qwen35: "approx. 3.1 GB"
+        case .nemotronBolt: "approx. 4.2 GB"
         }
     }
 
@@ -64,6 +68,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
         case .apple: 0
         case .qwen3: 2_280_000_000
         case .qwen35: 3_060_000_000
+        case .nemotronBolt: 4_231_000_000
         }
     }
 
@@ -175,7 +180,7 @@ actor LocalLLM {
             container,
             instructions: system,
             generateParameters: GenerateParameters(maxTokens: maxTokens, temperature: 0.3, topP: 0.9),
-            // Qwen3.5 thinks out loud by default; a summary needs only the answer.
+            // Qwen3.5 thinks out loud by default; a summary needs only the answer. Nemotron reads the same switch.
             additionalContext: ["enable_thinking": false]
         )
         // A failing GPU (memory, app in the background) is reported as an error instead of ending the app.
@@ -205,17 +210,20 @@ actor LocalLLM {
         }
     }
 
-    /// Removes a `<think>…</think>` block in case a model writes one anyway.
-    private static func withoutThinking(_ text: String) -> String {
+    /// Removes a `<think>…</think>` block (Gemma's kind: `<|channel>…<channel|>`) in case a model writes one anyway.
+    static func withoutThinking(_ text: String) -> String {
         var result = text
-        while let start = result.range(of: "<think>") {
-            if let end = result.range(of: "</think>", range: start.upperBound..<result.endIndex) {
-                result.removeSubrange(start.lowerBound..<end.upperBound)
-            } else {
-                result.removeSubrange(start.lowerBound..<result.endIndex)
+        for (open, close) in [("<think>", "</think>"), ("<|channel>", "<channel|>")] {
+            while let start = result.range(of: open) {
+                if let end = result.range(of: close, range: start.upperBound..<result.endIndex) {
+                    result.removeSubrange(start.lowerBound..<end.upperBound)
+                } else {
+                    result.removeSubrange(start.lowerBound..<result.endIndex)
+                }
             }
+            result = result.replacingOccurrences(of: close, with: "")
         }
-        return result.replacingOccurrences(of: "</think>", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Frees the memory the model uses.

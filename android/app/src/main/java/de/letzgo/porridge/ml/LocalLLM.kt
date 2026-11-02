@@ -36,7 +36,7 @@ class LocalLLM(val model: LocalModel) : TextModel {
         val llama = loaded ?: error("The on-device model is not loaded.")
         // Das kleine Qwen3 denkt sonst laut nach; eine Zusammenfassung braucht nur die Antwort.
         val prompt = if (model.thinks) "$user /no_think" else user
-        val result = Llama.complete(llama, system, prompt, maxTokens)
+        val result = if (model.gemmaTurns) Llama.complete(llama, "", gemmaPrompt(system, prompt), maxTokens) else Llama.complete(llama, system, prompt, maxTokens)
         Log.i("Porridge", "llm ${result.tokensGenerated} tokens, ${"%.1f".format(result.tokensPerSecond)} tok/s")
         val text = withoutThinking(result.text)
         if (text.isEmpty()) error("The on-device model returned no text.")
@@ -57,16 +57,26 @@ class LocalLLM(val model: LocalModel) : TextModel {
 
         @Synchronized fun of(model: LocalModel) = instances.getOrPut(model) { LocalLLM(model) }
 
-        /** iOS: entfernt einen `<think>…</think>`-Block, falls ein Modell doch einen schreibt. */
+        /**
+         * llama-android 0.1.1 kennt Gemma 4 nicht (kein `<|turn>` in `llama_chat_apply_template`): ohne Systemtext nimmt
+         * es den Text so, wie er ist, und liest die Spezial-Tokens darin. So steht hier, was die Vorlage des Modells baut.
+         */
+        fun gemmaPrompt(system: String, user: String) =
+            "<|turn>system\n${system.trim()}<turn|>\n<|turn>user\n${user.trim()}<turn|>\n<|turn>model\n"
+
+        /** iOS: entfernt einen `<think>…</think>`-Block (bei Gemma `<|channel>…<channel|>`), falls ein Modell doch einen schreibt. */
         fun withoutThinking(text: String): String {
             var result = text
-            while (true) {
-                val start = result.indexOf("<think>")
-                if (start < 0) break
-                val end = result.indexOf("</think>", start)
-                result = if (end >= 0) result.removeRange(start, end + "</think>".length) else result.substring(0, start)
+            for ((open, close) in listOf("<think>" to "</think>", "<|channel>" to "<channel|>")) {
+                while (true) {
+                    val start = result.indexOf(open)
+                    if (start < 0) break
+                    val end = result.indexOf(close, start)
+                    result = if (end >= 0) result.removeRange(start, end + close.length) else result.substring(0, start)
+                }
+                result = result.replace(close, "")
             }
-            return result.replace("</think>", "").trim()
+            return result.trim()
         }
     }
 }
