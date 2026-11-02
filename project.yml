@@ -148,6 +148,18 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_APP_SANDBOX: NO
         COMBINE_HIDPI_IMAGES: YES
+  PorridgeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: PorridgeTests
+    dependencies:
+      - target: Porridge
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.letzgo.porridge.tests
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
   PorridgeUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -212,6 +224,7 @@ schemes:
         Porridge: all
     test:
       targets:
+        - PorridgeTests
         - PorridgeUITests
     run:
       config: Debug

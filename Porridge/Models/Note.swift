@@ -74,6 +74,12 @@ final class Note {
 
     var isLink: Bool { url != nil }
 
+    /// Nothing in it at all: no title, text, recording, link or summary.
+    var isEmptyLeftover: Bool {
+        title.isEmpty && text.isEmpty && audioFileNames.isEmpty && pendingAudioFileName == nil
+            && audioFileName == nil && segmentsData == nil && url == nil && summary == nil
+    }
+
     var linkURL: URL? { url.flatMap { URL(string: $0) } }
 
     /// The site of a link without "www.", e.g. "github.com".

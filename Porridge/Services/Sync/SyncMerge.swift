@@ -140,6 +140,17 @@ enum SyncMerge {
         return result
     }
 
+    /// The file as read. A damaged one stops the run: merged as if empty it would be overwritten with this
+    /// device's records alone, and every tombstone in it would be gone.
+    static func parseFile(_ data: Data) throws -> [String: Any] {
+        guard let file = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { throw NextcloudError.damagedFile }
+        if let deleted = file["deleted"], !(deleted is [String: [String: NSNumber]]) { throw NextcloudError.damagedFile }
+        for key in ["notes", "actionItems", "folders", "voiceProfilesApple", "voiceProfilesAndroid"] {
+            if let records = file[key], !(records is [SyncRecord]) { throw NextcloudError.damagedFile }
+        }
+        return file
+    }
+
     /// Hash of a record's canonical JSON (keys sorted).
     static func hash(_ record: SyncRecord) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])) ?? Data()

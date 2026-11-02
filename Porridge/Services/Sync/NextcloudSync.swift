@@ -149,7 +149,7 @@ final class NextcloudSync {
         for attempt in 0..<4 {
             let remote = try await dav.get(url)
             if remote == nil && attempt == 0 { try await dav.makeFolder(dav.root) }
-            let file = try remote.map { try Self.parseFile($0.data) } ?? [:]
+            let file = try remote.map { try SyncMerge.parseFile($0.data) } ?? [:]
             let tombstones = file["deleted"] as? [String: [String: NSNumber]] ?? [:]
 
             var output = file
@@ -211,17 +211,6 @@ final class NextcloudSync {
             return
         }
         throw NextcloudError.conflict
-    }
-
-    /// The file as read. A damaged one stops the run: merged as if empty it would be overwritten with this
-    /// device's records alone, and every tombstone in it would be gone.
-    private static func parseFile(_ data: Data) throws -> [String: Any] {
-        guard let file = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { throw NextcloudError.damagedFile }
-        if let deleted = file["deleted"], !(deleted is [String: [String: NSNumber]]) { throw NextcloudError.damagedFile }
-        for key in ["notes", "actionItems", "folders", "voiceProfilesApple", "voiceProfilesAndroid"] {
-            if let records = file[key], !(records is [SyncRecord]) { throw NextcloudError.damagedFile }
-        }
-        return file
     }
 
     /// This device's records of every collection in the file.

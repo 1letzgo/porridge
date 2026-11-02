@@ -668,21 +668,7 @@ struct NoteDetailView: View {
 
     /// A checkbox in the summary was tapped: the n-th task line ticks the n-th item with the same wording.
     private func toggleSummaryTask(line: Int) {
-        let parsed = ActionItems.parse(note.summary ?? "")
-        guard let task = parsed.first(where: { $0.line == line }) else { return }
-        let before = parsed.prefix { $0.line < line }.filter { $0.key == task.key }.count
-        func siblings() -> [ActionItem] {
-            ActionItems.items(of: note.id, in: context).filter { $0.isFromSummary && ActionItems.matchKey($0) == task.key }
-        }
-        var items = siblings()
-        if before >= items.count {
-            // No item yet (an old summary): make them first, then tick.
-            ActionItems.sync(note, in: context)
-            items = siblings()
-        }
-        if before < items.count {
-            ActionItems.setDone(items[before], !task.done, note: note, in: context)
-        }
+        ActionItems.toggleSummaryLine(line, of: note, in: context)
     }
 
     /// The note while dictating: live text in the accent color and a blinking cursor where it appears.

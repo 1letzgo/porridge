@@ -246,6 +246,25 @@ enum ActionItems {
         }
     }
 
+    /// A checkbox in the summary was tapped: the n-th task line ticks the n-th item with the same wording.
+    static func toggleSummaryLine(_ line: Int, of note: Note, in context: ModelContext) {
+        let parsed = parse(note.summary ?? "")
+        guard let task = parsed.first(where: { $0.line == line }) else { return }
+        let before = parsed.prefix { $0.line < line }.filter { $0.key == task.key }.count
+        func siblings() -> [ActionItem] {
+            items(of: note.id, in: context).filter { $0.isFromSummary && matchKey($0) == task.key }
+        }
+        var found = siblings()
+        if before >= found.count {
+            // No item yet (an old summary): make them first, then tick. A saved page never gets any.
+            sync(note, in: context)
+            found = siblings()
+        }
+        if before < found.count {
+            setDone(found[before], !task.done, note: note, in: context)
+        }
+    }
+
     /// Ticks or unticks an item and its line in the summary.
     static func setDone(_ item: ActionItem, _ done: Bool, note: Note?, in context: ModelContext) {
         item.isDone = done
