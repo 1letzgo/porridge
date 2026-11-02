@@ -36,8 +36,7 @@ final class NotesFlowTests: XCTestCase {
         sleep(2)
 
         app.search(for: name)
-        let row = app.staticTexts[name]
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "note with a title was not kept")
+        let row = try XCTUnwrap(app.searchResult(name), "note with a title was not kept")
         row.tap()
         // A filled title field is known by its value: the placeholder "Title" is gone.
         let reopened = app.textFields.matching(NSPredicate(format: "value == %@", name)).firstMatch

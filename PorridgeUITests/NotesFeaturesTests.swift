@@ -92,8 +92,13 @@ final class NotesFeaturesTests: XCTestCase {
             app.goBack()
         }
         app.search(for: alpha)
-        XCTAssertTrue(app.staticTexts[alpha].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts[beta].exists, "search did not filter")
+        XCTAssertNotNil(app.searchResult(alpha), "search did not find the note")
+        XCTAssertNil(app.searchResult(beta, timeout: 2), "search did not filter")
+
+        // The other way round: the card would show the other note if it matched.
+        app.searchAgain(for: beta)
+        XCTAssertNotNil(app.searchResult(beta), "search did not find the other note")
+        XCTAssertNil(app.searchResult(alpha, timeout: 2), "search did not filter")
     }
 
     func testProjectIsCreatedAndPinned() throws {

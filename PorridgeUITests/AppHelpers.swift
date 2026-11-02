@@ -75,4 +75,25 @@ extension XCUIApplication {
         field.tap()
         field.typeText(text)
     }
+
+    /// Replaces the text in the open search.
+    func searchAgain(for text: String) {
+        let field = textFields["SearchField"]
+        let old = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
+    }
+
+    /// A row of the search card. The full-width list stays in the hierarchy behind the card and even counts as
+    /// hittable there, so the card's list is told apart by its inset.
+    func searchResult(_ title: String, timeout: TimeInterval = 10) -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            for list in collectionViews.allElementsBoundByIndex where list.frame.minX > 0 {
+                let row = list.staticTexts[title]
+                if row.exists { return row }
+            }
+            usleep(200_000)
+        } while Date() < deadline
+        return nil
+    }
 }
