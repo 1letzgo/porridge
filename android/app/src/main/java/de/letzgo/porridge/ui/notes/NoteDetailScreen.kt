@@ -343,7 +343,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = { askTemplate = false }) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = { askTemplate = false }) { Text("Cancel", color = Brand.danger) } },
     )
     if (confirmResummarize) AlertDialog(
         onDismissRequest = { confirmResummarize = false },

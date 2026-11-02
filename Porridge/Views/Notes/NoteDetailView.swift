@@ -147,14 +147,16 @@ struct NoteDetailView: View {
                 tab = .transcript
             }
         }
-        .confirmationDialog("Which template?", isPresented: $askTemplate, titleVisibility: .visible) {
+        #if os(macOS)
+        .alert("Which template?", isPresented: $askTemplate) {
             ForEach(SummaryTemplate.all) { option in
                 Button(option.name) { Task { await summarize(template: option) } }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            if note.summary != nil { Text("This replaces the current summary; your edits to it are lost.") }
+            if note.summary != nil { Text(replaceWarning) }
         }
+        #endif
         .alert("Replace the current summary?", isPresented: $confirmResummarize) {
             Button("Cancel", role: .cancel) {}
             Button("Summarize Again", role: .destructive) { Task { await summarize() } }
@@ -607,13 +609,39 @@ struct NoteDetailView: View {
     /// a note or a link has nothing to choose.
     private func requestSummary() {
         if !note.segments.isEmpty {
+            #if os(iOS)
+            presentTemplateAlert()
+            #else
             askTemplate = true
+            #endif
         } else if note.summary == nil {
             Task { await summarize() }
         } else {
             confirmResummarize = true
         }
     }
+
+    private let replaceWarning = "This replaces the current summary; your edits to it are lost."
+
+    #if os(iOS)
+    /// UIKit, because the cancel button is red: SwiftUI colors no cancel button, and adds a second one to a red button
+    /// without that role.
+    private func presentTemplateAlert() {
+        let alert = UIAlertController(
+            title: "Which template?", message: note.summary == nil ? nil : replaceWarning, preferredStyle: .alert
+        )
+        for option in SummaryTemplate.all {
+            alert.addAction(UIAlertAction(title: option.name, style: .default) { _ in
+                Task { await summarize(template: option) }
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .destructive))
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive }
+        var top = scene?.windows.first { $0.isKeyWindow }?.rootViewController
+        while let presented = top?.presentedViewController { top = presented }
+        top?.present(alert, animated: true)
+    }
+    #endif
 
     private var summarizeMessage: String {
         note.isRecording
