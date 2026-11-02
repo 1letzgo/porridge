@@ -135,6 +135,8 @@ class ListState {
     /** Die in der Suche gewählte Art (null = alle). */
     var searchKind by mutableStateOf<ProjectsLogic.Kind?>(null)
     var showDone by mutableStateOf(false)
+    /** „More“ wurde getippt: die Liste zeigt alle Projekte, nicht nur die letzten. */
+    var showAllProjects by mutableStateOf(false)
     private val scrollStates = HashMap<ListPage, LazyListState>()
 
     fun scroll(page: ListPage): LazyListState = scrollStates.getOrPut(page) { LazyListState() }
@@ -303,15 +305,24 @@ private fun HomeList(
     list: ListState, notes: List<Note>, items: List<ActionItem>, folders: List<NoteFolder>, stages: Map<String, String>,
     onOpen: (String) -> Unit, onEditTask: (ActionItem) -> Unit, state: LazyListState, modifier: Modifier,
 ) {
-    val projects = remember(folders) { HomeListLogic.activeProjects(folders).sortedByName() }
+    val projects = remember(folders, notes, items, list.showAllProjects) {
+        HomeListLogic.shownProjects(HomeListLogic.activeProjects(folders), list.showAllProjects) { ProjectsLogic.lastChange(it, notes, items) }
+    }
     val tasks = remember(items, notes, folders) { HomeListLogic.homeTasks(items, notes, folders) }
     val home = remember(notes, folders) { HomeListLogic.homeNotes(notes, folders) }
     val (pinned, rest) = remember(home) { home.partition { it.isPinned } }
     val archiveCount = remember(folders, notes, items) { HomeListLogic.archiveCount(folders, notes, items) }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
-        if (projects.isNotEmpty()) {
+        if (projects.shown.isNotEmpty()) {
             item(key = "h-projects") { SectionHeader("Projects", color = Brand.project) }
-            projectRows(projects, notes, items) { list.page = ListPage.Project(it) }
+            projectRows(projects.shown, notes, items) { list.page = ListPage.Project(it) }
+            if (projects.hidden > 0) item(key = "more-projects") {
+                Text(
+                    if (list.showAllProjects) "Less" else "More (${projects.hidden})",
+                    style = MaterialTheme.typography.labelLarge, color = Brand.project,
+                    modifier = Modifier.fillMaxWidth().clickable { list.showAllProjects = !list.showAllProjects }.padding(horizontal = 20.dp, vertical = 12.dp),
+                )
+            }
         }
         if (pinned.isNotEmpty()) {
             item(key = "h-pinned") { SectionHeader("Pinned") }
@@ -319,7 +330,7 @@ private fun HomeList(
         }
         taskSections(tasks, list.showDone, { list.showDone = it }, onOpen, onEditTask)
         dateGroups(rest, stages, onOpen)
-        if (projects.isEmpty() && tasks.isEmpty() && home.isEmpty()) {
+        if (projects.shown.isEmpty() && tasks.isEmpty() && home.isEmpty()) {
             item(key = "empty") { EmptyState("No Notes Yet", "Speak a thought – Porridge writes it down for you.", Icons.AutoMirrored.Filled.Notes) }
         }
         item(key = "row-archive") { Column(Modifier.padding(top = 16.dp)) { PageRow("Archive", Icons.Filled.Archive, archiveCount) { list.page = ListPage.Archive } } }

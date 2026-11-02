@@ -16,7 +16,7 @@ import de.letzgo.porridge.model.VoiceProfile
  * iOS: `AppContainer` (SwiftData + CloudKit). Auf Android eine lokale Room-Datenbank ohne Sync;
  * Sicherung über `data/Backup.kt`. Schema in `app/schemas/` (Migrationen ab Version 2 dort prüfen).
  */
-@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class, ActionItem::class], version = 5, exportSchema = true)
+@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class, ActionItem::class], version = 6, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class PorridgeDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
@@ -32,7 +32,7 @@ abstract class PorridgeDatabase : RoomDatabase() {
         fun init(context: Context) {
             if (instance != null) return
             instance = Room.databaseBuilder(context.applicationContext, PorridgeDatabase::class.java, "porridge.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
         }
 
@@ -68,6 +68,13 @@ abstract class PorridgeDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE notes ADD COLUMN archivedAt INTEGER")
                 db.execSQL("ALTER TABLE action_items ADD COLUMN archivedAt INTEGER")
                 db.execSQL("ALTER TABLE folders ADD COLUMN archivedAt INTEGER")
+            }
+        }
+
+        /** Projekte lassen sich anheften. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE folders ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0")
             }
         }
 

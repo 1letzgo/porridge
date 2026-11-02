@@ -14,6 +14,8 @@ final class NoteFolder {
     var parentID: UUID?
     /// Set while the project is in the archive; its elements stay in it.
     var archivedAt: Date?
+    /// Pinned projects always show in the list, whatever else changed since.
+    var isPinned: Bool = false
 
     var isArchived: Bool { archivedAt != nil }
 

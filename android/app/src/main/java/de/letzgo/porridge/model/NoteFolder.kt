@@ -2,6 +2,8 @@ package de.letzgo.porridge.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import java.text.Collator
 import java.util.UUID
@@ -10,6 +12,7 @@ import java.util.UUID
  * iOS: `NoteFolder` — heute ein Projekt (früher Ordner). Notizen und Aufgaben verweisen über `projectIDs`;
  * `parentID` und `Note.folderID` bleiben nur für alte Daten.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @Entity(tableName = "folders")
 data class NoteFolder(
@@ -21,6 +24,8 @@ data class NoteFolder(
     val updatedAt: Long = 0,
     /** Gesetzt, solange das Projekt im Archiv liegt; seine Einträge bleiben darin. */
     val archivedAt: Long? = null,
+    /** Angeheftete Projekte stehen immer in der Liste. Nicht angeheftet fehlt das Feld im Sync: der Hash alter Einträge bleibt. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val isPinned: Boolean = false,
 )
 
 /** iOS: `Array<NoteFolder>.tree` — Tiefensuche (Geschwister nach Namen) mit Ebene. */

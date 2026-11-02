@@ -2,6 +2,7 @@ package de.letzgo.porridge.logic
 
 import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
+import de.letzgo.porridge.model.NoteFolder
 
 /**
  * iOS: `ProjectsLogic` — wer zu einem Projekt gehört. Notizen, Meetings und Links über ihre `projectIDs`,
@@ -57,6 +58,10 @@ object ProjectsLogic {
         }
         return (noteElements + taskElements).sortedByDescending { it.date }
     }
+
+    /** Letzte Änderung: die des Projekts selbst oder die des neuesten Eintrags. */
+    fun lastChange(project: NoteFolder, notes: List<Note>, items: List<ActionItem>): Long =
+        maxOf(project.updatedAt, project.createdAt, elements(project.id, notes, items).maxOfOrNull { it.date } ?: 0)
 
     /** Anzahl der Einträge je Projekt. */
     fun counts(projectIDs: Collection<String>, notes: List<Note>, items: List<ActionItem>): Map<String, Int> =

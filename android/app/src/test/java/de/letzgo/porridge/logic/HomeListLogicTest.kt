@@ -107,6 +107,28 @@ class HomeListLogicTest {
         assertEquals(listOf("ARCHIVED"), HomeListLogic.archivedProjects(folders).map { it.id })
     }
 
+    @Test fun listShowsAllPinnedAndTheLatestFiveOthers() {
+        val others = (1..7).map { NoteFolder(id = "P$it", name = "P$it", updatedAt = it.toLong()) }
+        val pinned = (1..6).map { NoteFolder(id = "PIN$it", name = "Pin$it", updatedAt = 0, isPinned = true) }
+        val few = HomeListLogic.shownProjects(others + pinned, showAll = false) { it.updatedAt }
+        assertEquals(pinned.map { it.id } + listOf("P7", "P6", "P5", "P4", "P3"), few.shown.map { it.id })
+        assertEquals(2, few.hidden)
+        val all = HomeListLogic.shownProjects(others + pinned, showAll = true) { it.updatedAt }
+        assertEquals(13, all.shown.size)
+        assertEquals(2, all.hidden)
+    }
+
+    @Test fun moreIsNotNeededForFiveProjects() {
+        val five = (1..5).map { NoteFolder(id = "P$it", name = "P$it") }
+        assertEquals(0, HomeListLogic.shownProjects(five, showAll = false) { 0 }.hidden)
+    }
+
+    @Test fun projectPinSurvivesTheJson() {
+        val folder = NoteFolder(id = "P", isPinned = true)
+        val text = PorridgeJson.encodeToString(NoteFolder.serializer(), folder)
+        assertTrue(PorridgeJson.decodeFromString(NoteFolder.serializer(), text).isPinned)
+    }
+
     @Test fun projectPagesHideArchivedContents() {
         val notes = listOf(Note(id = "N", projectIDs = listOf("P")), Note(id = "A", projectIDs = listOf("P"), archivedAt = 1))
         val items = listOf(ActionItem(id = "T", projectIDs = listOf("P")), ActionItem(id = "U", projectIDs = listOf("P"), archivedAt = 1))
@@ -216,6 +238,7 @@ class HomeListLogicTest {
         val folder = NoteFolder(id = "F", name = "A", createdAt = 1, updatedAt = 2)
         val record = PorridgeJson.encodeToJsonElement(NoteFolder.serializer(), folder).jsonObject
         assertFalse("archivedAt" in record)
+        assertFalse("isPinned" in record)
         val older = PorridgeJson.parseToJsonElement("""{"id":"F","name":"A","createdAt":1,"updatedAt":2}""").jsonObject
         assertEquals(SyncMerge.hash(older), SyncMerge.hash(record))
         assertEquals(null, PorridgeJson.decodeFromJsonElement(NoteFolder.serializer(), older).archivedAt)

@@ -21,11 +21,13 @@ object Projects {
     /** Archiviert nur das Projekt; seine Notizen und Aufgaben bleiben unverändert darin. */
     suspend fun archive(project: NoteFolder) {
         val now = System.currentTimeMillis()
-        db.folders().upsert(project.copy(archivedAt = now, updatedAt = now))
+        db.folders().upsert(project.copy(archivedAt = now, isPinned = false, updatedAt = now))
     }
 
     suspend fun unarchive(project: NoteFolder) =
         db.folders().upsert(project.copy(archivedAt = null, updatedAt = System.currentTimeMillis()))
+
+    suspend fun togglePin(project: NoteFolder) = db.folders().upsert(project.copy(isPinned = !project.isPinned))
 
     /** Löscht nur das Projekt; seine Notizen und Aufgaben bleiben und verlieren die Zuordnung. */
     suspend fun delete(project: NoteFolder) {

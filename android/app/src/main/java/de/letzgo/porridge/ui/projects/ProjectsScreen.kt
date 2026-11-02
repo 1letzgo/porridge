@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -19,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material3.AlertDialog
@@ -79,8 +81,7 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, items: List<Acti
     var deleting by remember { mutableStateOf(false) }
     // Anzahl und letzte Änderung (eigene oder die des neuesten Eintrags).
     val (count, changed) = remember(project, notes, items) {
-        val elements = ProjectsLogic.elements(project.id, notes, items)
-        elements.size to maxOf(project.updatedAt, project.createdAt, elements.maxOfOrNull { it.date } ?: 0)
+        ProjectsLogic.elements(project.id, notes, items).size to ProjectsLogic.lastChange(project, notes, items)
     }
     val archived = project.archivedAt != null
     fun toggleArchive() { coroutines.launch { if (project.archivedAt != null) Projects.unarchive(project) else Projects.archive(project) } }
@@ -104,7 +105,10 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, items: List<Acti
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         RowIcon(Icons.Filled.Folder, Brand.project)
                         Column(Modifier.weight(1f)) {
-                            Text(project.name.ifEmpty { "Untitled Project" }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (project.isPinned) Icon(Icons.Filled.PushPin, "Pinned", tint = Color(0xFFF2994A), modifier = Modifier.size(12.dp))
+                                Text(project.name.ifEmpty { "Untitled Project" }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                             Text(
                                 listOf(if (count == 1) "1 item" else "$count items", SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(changed))).joinToString("  ·  "),
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
@@ -115,6 +119,7 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, items: List<Acti
                 }
             }
             DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                if (!archived) DropdownMenuItem(text = { Text(if (project.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { Projects.togglePin(project) } })
                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renaming = true })
                 DropdownMenuItem(text = { Text(if (archived) "Unarchive" else "Archive") }, onClick = { menu = false; toggleArchive() })
                 DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { menu = false; deleting = true })

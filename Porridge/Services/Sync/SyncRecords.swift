@@ -127,6 +127,8 @@ enum SyncRecords {
         var r: SyncRecord = ["id": folder.id.uuidString, "name": folder.name, "createdAt": ms(folder.createdAt), "updatedAt": ms(folder.updatedAt)]
         r["parentID"] = folder.parentID?.uuidString
         r["archivedAt"] = folder.archivedAt.map { ms($0) }
+        // Missing when not pinned, so the hash of older records stays and the file is not rewritten.
+        if folder.isPinned { r["isPinned"] = true }
         return r
     }
 
@@ -137,6 +139,7 @@ enum SyncRecords {
         folder.updatedAt = date(r["updatedAt"]).flatMap { $0.timeIntervalSince1970 > 0 ? $0 : nil } ?? folder.createdAt
         folder.parentID = uuid(r["parentID"])
         folder.archivedAt = date(r["archivedAt"])
+        folder.isPinned = r["isPinned"] as? Bool ?? false
     }
 
     // MARK: VoiceProfile

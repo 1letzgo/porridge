@@ -27,6 +27,8 @@ struct NotesView: View {
     @State private var searchKind: SearchKind?
     /// What the list column shows: the one long list, or a page reached from it.
     @State private var page = ListPage.home
+    /// "More" was tapped: the list shows all projects, not only the latest.
+    @State private var showAllProjects = false
     /// The search lies over whatever is shown, opened from its button like the chat.
     @State private var showSearch = false
     /// The chat lies over whatever view is shown, opened from its button.
@@ -287,6 +289,9 @@ struct NotesView: View {
         let byID = notesByID
         let keys = Set(projects.map(Projects.key))
         let folders = HomeList.activeProjects(projects)
+        let recent = HomeList.shownProjects(folders, showAll: showAllProjects) { project in
+            max(project.updatedAt, ProjectContent(of: project, notes: notes, items: items, byID: byID).lastChange ?? .distantPast)
+        }
         let loose = HomeList.notes(notes, projects: keys)
         let pinned = loose.filter(\.isPinned)
         let tasks = HomeList.tasks(items, notes: byID, projects: keys)
@@ -296,7 +301,7 @@ struct NotesView: View {
         let isEmpty = folders.isEmpty && loose.isEmpty && tasks.isEmpty
         return List(selection: $selection) {
             if !folders.isEmpty {
-                projectsSection(folders, isFirst: true, byID: byID)
+                projectsSection(recent.shown, isFirst: true, byID: byID, hidden: recent.hidden)
             }
             if !pinned.isEmpty {
                 Section {
@@ -433,7 +438,7 @@ struct NotesView: View {
         }
     }
 
-    private func projectsSection(_ folders: [NoteFolder], isFirst: Bool, byID: [UUID: Note]) -> some View {
+    private func projectsSection(_ folders: [NoteFolder], isFirst: Bool, byID: [UUID: Note], hidden: Int = 0) -> some View {
         Section {
             ForEach(folders) { project in
                 ProjectRow(
@@ -446,6 +451,9 @@ struct NotesView: View {
                     },
                     onDelete: { deletingProject = project }
                 )
+            }
+            if hidden > 0 {
+                moreProjectsRow(hidden: hidden)
             }
         } header: {
             ListHeader(title: "Projects", tint: .brandProject, isFirst: isFirst)
@@ -481,6 +489,28 @@ struct NotesView: View {
     }
 
     /// A row leading to a page of its own.
+    private func moreProjectsRow(hidden: Int) -> some View {
+        Button {
+            withAnimation(.snappy) { showAllProjects.toggle() }
+        } label: {
+            HStack(spacing: 4) {
+                Text(showAllProjects ? "Less" : "More")
+                if !showAllProjects {
+                    Text("\(hidden)").foregroundStyle(.secondary)
+                }
+                Image(systemName: showAllProjects ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.bold))
+                Spacer(minLength: 0)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.brandProject)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .cardListRow()
+        .listRowSeparator(.hidden, edges: .bottom)
+    }
+
     private func pageRow(_ title: String, systemImage: String, count: Int, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {

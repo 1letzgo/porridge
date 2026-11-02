@@ -29,6 +29,21 @@ object HomeListLogic {
 
     fun archivedProjects(folders: List<NoteFolder>): List<NoteFolder> = folders.filter { it.archivedAt != null }
 
+    /** So viele nicht angeheftete Projekte zeigt die Liste vor „More“. */
+    const val RECENT_PROJECTS = 5
+
+    /** [hidden]: so viele nicht angeheftete Projekte lässt die Liste weg, solange nicht alle gezeigt werden. */
+    data class ShownProjects(val shown: List<NoteFolder>, val hidden: Int)
+
+    /** iOS: `shownProjects` — alle angehefteten, dann die zuletzt geänderten übrigen, bis [RECENT_PROJECTS] oder alle. */
+    fun shownProjects(projects: List<NoteFolder>, showAll: Boolean, lastChange: (NoteFolder) -> Long): ShownProjects {
+        val latest = projects.map { it to lastChange(it) }
+            .sortedWith(compareByDescending<Pair<NoteFolder, Long>> { it.second }.thenBy { it.first.name.lowercase() })
+            .map { it.first }
+        val (pinned, others) = latest.partition { it.isPinned }
+        return ShownProjects(pinned + (if (showAll) others else others.take(RECENT_PROJECTS)), maxOf(0, others.size - RECENT_PROJECTS))
+    }
+
     /** Meetings, Notizen und Links der Startseite, neueste zuerst. */
     fun homeNotes(notes: List<Note>, folders: List<NoteFolder>): List<Note> {
         val projects = existing(folders)

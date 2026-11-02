@@ -14,8 +14,16 @@ struct ProjectRow: View {
     var body: some View {
         Button(action: onOpen) {
             HStack(alignment: .top, spacing: 12) {
-                ThingsRowIcon(systemImage: "folder.fill", tint: .brandProject)
-                    .padding(.top, 1)
+                VStack(spacing: 12) {
+                    ThingsRowIcon(systemImage: "folder.fill", tint: .brandProject)
+                    if project.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .accessibilityLabel("Pinned")
+                    }
+                }
+                .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(project.name)
                         .foregroundStyle(.primary)
@@ -37,6 +45,11 @@ struct ProjectRow: View {
         }
         .buttonStyle(.plain)
         .cardListRow()
+        .swipeActions(edge: .leading) {
+            if !project.isArchived {
+                pinButton.tint(.orange)
+            }
+        }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
             archiveButton.tint(.brandNavy)
@@ -44,10 +57,24 @@ struct ProjectRow: View {
                 .tint(.brandProject)
         }
         .contextMenu {
+            if !project.isArchived {
+                pinButton
+            }
             Button(action: onRename) { Label("Rename", systemImage: "pencil") }
             archiveButton
             Divider()
             Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+        }
+    }
+
+    private var pinButton: some View {
+        Button {
+            withAnimation(.snappy) {
+                project.isPinned.toggle()
+                try? context.save()
+            }
+        } label: {
+            Label(project.isPinned ? "Unpin" : "Pin", systemImage: project.isPinned ? "pin.slash" : "pin")
         }
     }
 
