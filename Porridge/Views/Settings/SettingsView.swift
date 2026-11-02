@@ -267,7 +267,8 @@ struct SettingsView: View {
             case .parakeet:
                 ModelRow(
                     title: "Parakeet TDT v3", subtitle: "Most accurate · 25 languages · approx. 480 MB",
-                    state: models.asr, onDelete: { pendingDeletion = .speech }
+                    state: models.asr, onDelete: { pendingDeletion = .speech },
+                    onCancel: { Task { await models.deleteASR() } }
                 ) {
                     Task { try? await models.ensureLocalASR() }
                 }
@@ -396,7 +397,8 @@ struct SettingsView: View {
                     ModelRow(
                         title: model.displayName, subtitle: "Summaries on your device · \(model.sizeText)",
                         state: models.llmState(model),
-                        onDelete: { pendingDeletion = .summary(model) }
+                        onDelete: { pendingDeletion = .summary(model) },
+                        onCancel: { Task { await models.deleteLLM(model) } }
                     ) {
                         Task { await models.downloadLLM(model) }
                     }
@@ -548,21 +550,18 @@ struct SettingsView: View {
         let session = AVAudioSession.sharedInstance()
         let isRecording = RecordingCenter.stop != nil
         if !isRecording {
-            // The system only lists external inputs once the session is set up for recording.
+            // The system only lists external inputs once the session is set up for recording. Only set up, not
+            // activated: activating would stop the music or podcast of other apps just for showing this row.
             try? session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothHFP])
-            try? session.setActive(true)
         }
         let inputs = session.availableInputs ?? []
         let current = session.currentRoute.inputs.first
         let input = inputs.first { $0.portType != .builtInMic } ?? current ?? inputs.first
         if let input {
-            let channels = input.uid == current?.uid ? session.inputNumberOfChannels : (input.channels?.count ?? 1)
+            let channels = isRecording && input.uid == current?.uid ? session.inputNumberOfChannels : (input.channels?.count ?? 1)
             inputDescription = channels > 1 ? "\(input.portName) · \(channels) channels" : input.portName
         } else {
             inputDescription = "Built-in Microphone"
-        }
-        if !isRecording {
-            try? session.setActive(false, options: .notifyOthersOnDeactivation)
         }
         #else
         inputDescription = AVCaptureDevice.default(for: .audio)?.localizedName ?? "Default Microphone"
@@ -767,13 +766,21 @@ private struct ModelRow: View {
     let state: ModelManager.State
     /// Shown as a trash button once the model is on the device.
     var onDelete: (() -> Void)?
+    /// A long press on the row stops the download while it runs, after asking.
+    var onCancel: (() -> Void)?
     let action: () -> Void
+
+    @State private var confirmCancel = false
+
+    private var canCancel: Bool {
+        if case .downloading = state { onCancel != nil } else { false }
+    }
 
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.body)
-                Text(subtitle)
+                Text(canCancel ? "Press and hold to cancel" : subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if case .failed(let message) = state {
@@ -808,6 +815,21 @@ private struct ModelRow: View {
             case .failed:
                 Button("Retry", action: action).buttonStyle(PillButtonStyle(fill: Color(red: 1, green: 0.42, blue: 0.42)))
             }
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            LongPressGesture(minimumDuration: 0.6).onEnded { _ in confirmCancel = true },
+            including: canCancel ? .all : .subviews
+        )
+        .accessibilityAction(named: "Cancel Download") { if canCancel { confirmCancel = true } }
+        .alert("Cancel download of \(title)?", isPresented: $confirmCancel) {
+            Button("Keep Downloading", role: .cancel) {}
+            Button("Cancel Download", role: .destructive) {
+                // It may have finished while the question was open: then there is nothing to stop, and the model stays.
+                if canCancel { onCancel?() }
+            }
+        } message: {
+            Text("What has been downloaded so far will be deleted.")
         }
     }
 }

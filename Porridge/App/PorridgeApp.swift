@@ -1,8 +1,19 @@
 import SwiftData
 import SwiftUI
 
+/// iOS wakes the app here when model downloads ended while it was not running.
+final class PorridgeAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        ModelBackgroundDownloads.shared.backgroundCompletion = completionHandler
+    }
+}
+
 @main
 struct PorridgeApp: App {
+    @UIApplicationDelegateAdaptor(PorridgeAppDelegate.self) private var appDelegate
     private let container: ModelContainer
     @State private var processing: ProcessingService
     @Environment(\.scenePhase) private var scenePhase
@@ -22,8 +33,10 @@ struct PorridgeApp: App {
                 .environment(processing)
                 .environment(ModelManager.shared)
                 .task {
+                    await ModelManager.clearCompiledModelsAfterUpdate()
                     LiveRecording.endStale()
                     processing.resumePending()
+                    await ModelManager.shared.resumeBackgroundDownloads()
                     // Loading the model takes a while (Neural Engine compile): do it before the first dictation.
                     if TranscriptionEngine.asrInstalled || AppSettings.speechEngine == .apple {
                         try? await ModelManager.shared.ensureASR()
