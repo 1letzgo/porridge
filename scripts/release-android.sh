@@ -48,12 +48,16 @@ if [[ -n $(git status --porcelain) ]]; then
   exit 1
 fi
 
-echo "Building Porridge Android $VERSION ($CODE) …"
-(cd android && ./gradlew --quiet testSideloadDebugUnitTest assembleSideloadRelease) 2>&1 \
-  | grep -vE '^w: |^warning:' || true
-
 BUILD_DIR=$(cd android && ./gradlew -q :app:properties 2>/dev/null | sed -n 's/^buildDir: //p')
 APK_DIR="$BUILD_DIR/outputs/apk/sideload/release"
+# An APK of an earlier build must never go out under this version.
+rm -f "$APK_DIR"/*.apk(N)
+
+echo "Building Porridge Android $VERSION ($CODE) …"
+# sed and not grep: grep fails when gradle is quiet, and a failed build or test has to stop the script (pipefail).
+(cd android && ./gradlew --quiet testSideloadDebugUnitTest assembleSideloadRelease) 2>&1 \
+  | sed -E '/^w: |^warning:/d'
+
 APK=$(ls -t "$APK_DIR"/*.apk 2>/dev/null | head -1 || true)
 [[ -n $APK ]] || { echo "Build failed: no APK in $APK_DIR" >&2; exit 1; }
 [[ $APK != *-unsigned.apk ]] || { echo "APK is unsigned: $APK" >&2; exit 1; }
