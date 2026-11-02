@@ -1,6 +1,9 @@
 package de.letzgo.porridge.audio
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.logic.SpeakerAssigner
 import de.letzgo.porridge.model.Note
@@ -24,9 +27,10 @@ object RecordingSession {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private lateinit var appContext: Context
 
-    var recorder: AudioRecorder? = null
+    // Zustand für Compose: Der Bildschirm wird gezeichnet, bevor die Aufnahme läuft, und muss das danach mitbekommen.
+    var recorder: AudioRecorder? by mutableStateOf(null)
         private set
-    var live: LiveTranscriber? = null
+    var live: LiveTranscriber? by mutableStateOf(null)
         private set
     var title = ""
         private set

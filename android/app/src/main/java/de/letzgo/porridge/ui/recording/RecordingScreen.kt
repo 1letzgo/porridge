@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -183,7 +184,14 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
                 } else LevelBar(levels.maxOrNull() ?: 0f, Modifier.fillMaxWidth())
             }
             if (live != null) LiveCard(live, Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
-            SkyFab(Icons.Filled.Stop, "Stop", Modifier.size(76.dp), container = Brand.danger) { finish() }
+            // Der Stopp-Knopf nur, solange es etwas zu stoppen gibt: nicht vor dem Start und nicht beim Speichern.
+            if (finished) {
+                CircularProgressIndicator(Modifier.size(76.dp).padding(16.dp), color = Brand.danger)
+            } else if (recorder != null) {
+                SkyFab(Icons.Filled.Stop, "Stop", Modifier.size(76.dp), container = Brand.danger) { finish() }
+            } else {
+                Spacer(Modifier.size(76.dp))
+            }
         }
     }
     if (confirmDiscard) AlertDialog(
