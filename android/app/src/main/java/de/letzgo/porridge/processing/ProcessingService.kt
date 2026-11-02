@@ -4,6 +4,7 @@ import de.letzgo.porridge.audio.AudioPreprocessor
 import de.letzgo.porridge.cloud.SummaryService
 import de.letzgo.porridge.data.LinkFetcher
 import de.letzgo.porridge.data.Prefs
+import de.letzgo.porridge.logic.SummaryTemplate
 import de.letzgo.porridge.logic.Paragraphs
 import de.letzgo.porridge.logic.SpeakerAssigner
 import de.letzgo.porridge.logic.SummaryLogic
@@ -256,11 +257,11 @@ object ProcessingService {
     }
 
     /** Fasst eine Notiz auf Wunsch zusammen (Knopf in der Notiz). */
-    suspend fun summarize(id: String) {
+    suspend fun summarize(id: String, template: SummaryTemplate = SummaryTemplate.GENERAL) {
         val note = db.notes().get(id) ?: return
         stage(id, "Summarizing …")
         try {
-            saveSummary(note, SummaryService.summarize(note) { stage(id, it) })
+            saveSummary(note, SummaryService.summarize(note, template) { stage(id, it) })
         } finally {
             stage(id, null)
         }

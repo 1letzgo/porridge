@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import de.letzgo.porridge.logic.SummaryTemplate
 import de.letzgo.porridge.BuildConfig
 import de.letzgo.porridge.PorridgeApplication
 import de.letzgo.porridge.cloud.AIProvider
@@ -96,6 +97,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 /** iOS: `SettingsView` (Views/Settings/SettingsView.swift) — Karten wie auf iOS; statt iCloud eine Sicherung. */
 @Composable
@@ -288,6 +290,7 @@ private fun SummaryCard() {
     var model by remember(provider) { mutableStateOf(provider.model) }
     var models by remember(provider) { mutableStateOf(provider.suggestedModels) }
     var loadError by remember { mutableStateOf<String?>(null) }
+    var editTemplates by remember { mutableStateOf(false) }
     Card("AI Summary", footer = if (billing == SummaryBilling.BYOK) "Your key is stored on this phone, encrypted. One key per service." else "${LocalModel.totalMemoryGB(context).let { "%.0f".format(it) }} GB memory: ${LocalModel.recommended(context).displayName} recommended.") {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             SummaryBilling.entries.forEachIndexed { i, b ->
@@ -297,6 +300,11 @@ private fun SummaryCard() {
                 ) { Text(b.label) }
             }
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Custom Templates", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+            Pill("Edit", { editTemplates = true })
+        }
+        HorizontalDivider()
         if (billing == SummaryBilling.LOCAL) {
             Picker("Summary Model", LocalModel.entries.map { it to it.displayName }, local) {
                 local = it
@@ -323,6 +331,50 @@ private fun SummaryCard() {
             }) { Text("Load Models") }
             loadError?.let { Text(it, color = Brand.danger, style = MaterialTheme.typography.bodySmall) }
         }
+    }
+    if (editTemplates) CustomTemplatesDialog { editTemplates = false }
+}
+
+/** iOS: `SummaryTemplatesView` — die eigenen Vorlagen: ein Name und worauf die Zusammenfassung achten soll. */
+@Composable
+private fun CustomTemplatesDialog(onDismiss: () -> Unit) {
+    var templates by remember { mutableStateOf(SummaryTemplate.custom) }
+    var editing by remember { mutableStateOf<SummaryTemplate?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss, title = { Text("Custom Templates") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (templates.isEmpty()) Text("Your own templates tell the summary what to look at, for example \u201cNote every price that is mentioned\u201d.")
+                for (template in templates) Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { editing = template }, Modifier.weight(1f)) { Text(template.name) }
+                    IconButton(onClick = { templates = templates - template; SummaryTemplate.custom = templates }) { Icon(Icons.Outlined.Delete, "Delete", tint = Brand.danger) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        dismissButton = { TextButton(onClick = { editing = SummaryTemplate(UUID.randomUUID().toString(), "", "") }) { Text("Add Template") } },
+    )
+    editing?.let { template ->
+        var name by remember(template) { mutableStateOf(template.name) }
+        var focus by remember(template) { mutableStateOf(template.focus) }
+        AlertDialog(
+            onDismissRequest = { editing = null }, title = { Text("Template") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(focus, { focus = it }, label = { Text("What should the summary look at?") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = name.isNotBlank() && focus.isNotBlank(), onClick = {
+                    val saved = template.copy(name = name.trim(), focus = focus.trim())
+                    templates = if (templates.any { it.id == saved.id }) templates.map { if (it.id == saved.id) saved else it } else templates + saved
+                    SummaryTemplate.custom = templates
+                    editing = null
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } },
+        )
     }
 }
 

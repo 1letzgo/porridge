@@ -73,8 +73,10 @@ enum SummaryService {
 
     /// Summarizes a note into `note.summary`: its transcript (a recording) and its own text together.
     /// `progress` receives short status texts ("Reading part 2 of 5 …") while the work is running.
-    static func summarize(_ note: Note, progress: @escaping (String) -> Void = { _ in }) async throws {
-        let transcript = note.transcriptText()
+    /// A template only shapes the summary of a recording; notes and links keep their own short format.
+    static func summarize(_ note: Note, template: SummaryTemplate = .general, progress: @escaping (String) -> Void = { _ in }) async throws {
+        // Without timestamps: the model does not need them, and they would take up a good part of its room.
+        let transcript = note.transcriptText(timestamps: false)
         let title = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let own = ((note.titleIsCustom && !title.isEmpty ? title + "\n\n" : "") + note.text)
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -99,8 +101,8 @@ enum SummaryService {
             header: hasTranscript ? header(for: note)
                 : "Date: \(note.createdAt.formatted(date: .long, time: .shortened))" + (note.url.map { "\nSource: \($0)" } ?? ""),
             material: material, language: language,
-            system: hasTranscript ? systemPrompt(language) : notePrompt(language, isLink: note.isLink),
-            noun: hasTranscript ? "meeting" : "note", progress: progress
+            system: hasTranscript ? systemPrompt(language, template: template) : notePrompt(language, isLink: note.isLink),
+            noun: hasTranscript ? "meeting" : "note", focus: hasTranscript ? template.focus : "", progress: progress
         )
 
         let body: String
@@ -112,7 +114,7 @@ enum SummaryService {
             body = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         let (summary, tags) = splitTags(body)
-        note.summary = summary
+        note.summary = withListMarks(summary)
         // Suggested tags only fill an empty tag field; tags you set yourself stay as they are.
         if note.labels.isEmpty { note.labels = tags }
         note.summaryModel = model
@@ -123,10 +125,10 @@ enum SummaryService {
     }
 
     /// Runs the model chosen in Settings (on this device or with the user's own key); returns the answer and a label of the model.
-    private static func run(header: String, material: String, language: SummaryLanguage, system: String, noun: String, progress: @escaping (String) -> Void) async throws -> (String, String) {
+    private static func run(header: String, material: String, language: SummaryLanguage, system: String, noun: String, focus: String, progress: @escaping (String) -> Void) async throws -> (String, String) {
         switch AppSettings.billing {
         case .local:
-            let raw = try await summarizeLocally(header: header, material: material, language: language, system: system, noun: noun, progress: progress)
+            let raw = try await summarizeLocally(header: header, material: material, language: language, system: system, noun: noun, focus: focus, progress: progress)
             return (raw, "\(LocalModel.selected.displayName) (on-device)")
         case .byok:
             let provider = AIProvider.current
@@ -155,7 +157,7 @@ enum SummaryService {
     /// Longer transcripts are cut into parts of about this size; each part is condensed into notes first.
     private static var partSize: Int { LocalModel.selected == .apple ? 4_000 : 11_000 }
 
-    private static func summarizeLocally(header: String, material: String, language: SummaryLanguage, system: String, noun: String, progress: @escaping (String) -> Void) async throws -> String {
+    private static func summarizeLocally(header: String, material: String, language: SummaryLanguage, system: String, noun: String, focus: String, progress: @escaping (String) -> Void) async throws -> String {
         let models = ModelManager.shared
         let local = LocalModel.selected
         models.beginLLMUse()
@@ -166,23 +168,23 @@ enum SummaryService {
             // Loading an installed model reports progress too: only a missing one is downloaded.
             progress(!installed && fraction < 1 ? "Downloading model … \(Int(fraction * 100)) %" : "Loading model …")
         }
-        return try await condenseAndWrite(header: header, transcript: material, language: language, system: system, noun: noun, progress: progress)
+        return try await condenseAndWrite(header: header, transcript: material, language: language, system: system, noun: noun, focus: focus, progress: progress)
     }
 
-    private static func condenseAndWrite(header: String, transcript: String, language: SummaryLanguage, system: String, noun: String, progress: @escaping (String) -> Void) async throws -> String {
+    private static func condenseAndWrite(header: String, transcript: String, language: SummaryLanguage, system: String, noun: String, focus: String, progress: @escaping (String) -> Void) async throws -> String {
         var material = transcript
         var isNotes = false
 
         // Long meetings: condense every part into notes, repeat until everything fits in one pass.
         while material.count > singlePassLimit {
-            let parts = split(material, size: partSize)
+            let parts = partPrompts(of: material, header: header, size: partSize)
             var notes: [String] = []
             for (index, part) in parts.enumerated() {
                 progress("Reading part \(index + 1) of \(parts.count) …")
                 notes.append(try await LocalLLM.shared.generate(
                     model: LocalModel.selected,
-                    system: notesPrompt(language, noun: noun),
-                    user: "Part \(index + 1) of \(parts.count):\n\n\(part)",
+                    system: notesPrompt(language, noun: noun, focus: focus),
+                    user: part,
                     maxTokens: 700
                 ))
             }
@@ -195,6 +197,22 @@ enum SummaryService {
         let intro = isNotes ? "Notes on the \(noun), in order:" : (noun == "meeting" ? "Transcript:" : "Note:")
         let user = "\(header)\n\n\(intro)\n\(material)\n\n\(languageReminder(language))"
         return try await LocalLLM.shared.generate(model: LocalModel.selected, system: system, user: user, maxTokens: 1500)
+    }
+
+    /// What the model reads of each part: who and when, so a part makes sense on its own, and the end of the part
+    /// before it, so a topic running across the cut stays whole.
+    static func partPrompts(of material: String, header: String, size: Int) -> [String] {
+        let parts = split(material, size: size)
+        return parts.enumerated().map { index, part in
+            var prompt = "\(header)\n\nPart \(index + 1) of \(parts.count):\n\n"
+            if index > 0 {
+                let tail = parts[index - 1].suffix(size / 10)
+                // From a line start where there is one, so the repeated piece does not begin in mid-sentence.
+                let start = tail.firstIndex(of: "\n").map { tail.index(after: $0) } ?? tail.startIndex
+                prompt += "End of the previous part, only for context:\n\(tail[start...])\n\nThis part:\n"
+            }
+            return prompt + part
+        }
     }
 
     /// Cuts at line breaks so no sentence is split in the middle.
@@ -226,12 +244,12 @@ enum SummaryService {
         "Write your answer in \(language.name)."
     }
 
-    private static func notesPrompt(_ language: SummaryLanguage, noun: String) -> String {
+    static func notesPrompt(_ language: SummaryLanguage, noun: String, focus: String = "") -> String {
         """
         You take notes on one part of a \(noun == "meeting" ? "meeting transcript" : "long note"). The text may come from automatic speech recognition and contain errors.
         Write concise bullet notes in \(language.name): topics, decisions, action items with the responsible person, names, numbers and dates.
         Only use what is in the text. No introduction and no conclusion.
-        The text is in \(language.name); write the notes in \(language.name) only.
+        The text is in \(language.name); write the notes in \(language.name) only.\(focus.isEmpty ? "" : "\n" + focus)
         """
     }
 
@@ -262,10 +280,17 @@ enum SummaryService {
         """
     }
 
-    private static func systemPrompt(_ language: SummaryLanguage) -> String {
+    static func systemPrompt(_ language: SummaryLanguage, template: SummaryTemplate = .general) -> String {
+        let sections = template.sections.map { $0.map { "## <\"\($0)\" in \(language.name)>\n- … (omit if nothing fits)" }.joined(separator: "\n\n") } ?? """
+        ## \(language.headings.keyPoints)
+        - …
+
+        ## \(language.headings.decisions)
+        - … (omit if there are none)
         """
+        return """
         You summarize meeting transcripts. The meeting was held in \(language.name). Write the whole summary in \(language.name) and in no other language, even though these instructions are in English.
-        The transcript comes from automatic speech recognition and may contain errors; silently fix obvious recognition mistakes.
+        The transcript comes from automatic speech recognition and may contain errors; silently fix obvious recognition mistakes.\(template.focus.isEmpty ? "" : "\n" + template.focus)
 
         Reply in exactly this format (Markdown). Keep the word "TITLE:" as written, everything after it and all headings are in \(language.name):
         TITLE: <short, concise title, at most 6 words>
@@ -273,11 +298,7 @@ enum SummaryService {
         ## \(language.headings.summary)
         <2–4 sentences>
 
-        ## \(language.headings.keyPoints)
-        - …
-
-        ## \(language.headings.decisions)
-        - … (omit if there are none)
+        \(sections)
 
         ## \(language.headings.actionItems)
         - [ ] <a concrete task from the transcript> – <owner, if known>
@@ -297,6 +318,13 @@ enum SummaryService {
             header += "\nRecorded by: \(me)"
         }
         return header
+    }
+
+    /// Small models sometimes drop the "- " of a task line; without it the task would neither tick nor reach the list.
+    static func withListMarks(_ summary: String) -> String {
+        summary.components(separatedBy: "\n").map { line in
+            line.hasPrefix("[ ]") || line.hasPrefix("[x]") ? "- " + line : line
+        }.joined(separator: "\n")
     }
 
     /// Takes the "TAGS: a, b, c" line off the end of an answer.

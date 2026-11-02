@@ -92,6 +92,7 @@ import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.Me
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.logic.ProjectsLogic
+import de.letzgo.porridge.logic.SummaryTemplate
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.ui.projects.ProjectPills
 import de.letzgo.porridge.model.ProcessingStatus
@@ -201,7 +202,9 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     }
     BackHandler { onClose() }
 
-    suspend fun summarize() {
+    var askTemplate by remember { mutableStateOf(false) }
+
+    suspend fun summarize(template: SummaryTemplate = SummaryTemplate.GENERAL) {
         if (isSummarizing) return
         tab = NoteTab.SUMMARY
         isSummarizing = true
@@ -209,12 +212,21 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
         editor.blur()
         delay(150)
         try {
-            ProcessingService.summarize(note.id)
+            ProcessingService.summarize(note.id, template)
         } catch (e: Throwable) {
             summaryError = e.message
         } finally {
             isSummarizing = false
             summaryStatus = null
+        }
+    }
+
+    // Eine Aufnahme fragt nach der Vorlage, in derselben Frage, die vor dem Ersetzen warnt; Notiz und Link haben nichts zu wählen.
+    fun requestSummary() {
+        when {
+            note.segments.isNotEmpty() -> askTemplate = true
+            note.summary == null -> coroutines.launch { summarize() }
+            else -> confirmResummarize = true
         }
     }
 
@@ -234,7 +246,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                         } else {
                             DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { act { update { it.copy(isPinned = !it.isPinned) } } })
                             DropdownMenuItem(text = { Text(if (note.summary == null) "Summarize" else "Summarize Again") }, enabled = !isSummarizing && canSummarize(note), onClick = {
-                                act { if (note.summary == null) coroutines.launch { summarize() } else confirmResummarize = true }
+                                act { requestSummary() }
                             })
                             DropdownMenuItem(text = { Text(if (note.summary == null) "Write Summary" else "Edit Summary") }, enabled = !isSummarizing, onClick = { act { tab = NoteTab.SUMMARY; editingSummary = true } })
                             if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Transcribe Again") }, enabled = stage == null, onClick = { act { ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id)) } })
@@ -264,7 +276,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                 if (tabs.size > 1) TabSwitcher(tabs, tab) { tab = it }
                 Box(Modifier.weight(1f)) {
                     when (tab) {
-                        NoteTab.SUMMARY -> SummaryTab(note, isSummarizing, summaryStatus ?: stage, onSummarize = { coroutines.launch { if (note.summary == null) summarize() else confirmResummarize = true } },
+                        NoteTab.SUMMARY -> SummaryTab(note, isSummarizing, summaryStatus ?: stage, onSummarize = { requestSummary() },
                             onEdit = { editingSummary = true }, onInsert = { update { n -> n.copy(text = if (n.text.isEmpty()) n.summary.orEmpty() else n.text + "\n\n" + n.summary) } },
                             onCopy = { copy(context, note.summary.orEmpty()) },
                             onDelete = { coroutines.launch { db.notes().upsert(note.copy(summary = null, summaryModel = null, summarizedAt = null)); ActionItemStore().remove(note.id) } },
@@ -322,6 +334,17 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
         val tag = Note.cleanTag(raw)
         if (tag.isNotEmpty() && note.tags.none { it.equals(tag, true) }) update { it.copy(labels = it.labels + tag) }
     }
+    if (askTemplate) AlertDialog(
+        onDismissRequest = { askTemplate = false }, title = { Text("Which template?") },
+        text = {
+            Column {
+                if (note.summary != null) Text("This replaces the current summary; your edits to it are lost.")
+                for (option in SummaryTemplate.all) TextButton(onClick = { askTemplate = false; coroutines.launch { summarize(option) } }) { Text(option.name, color = Brand.navy) }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = { askTemplate = false }) { Text("Cancel") } },
+    )
     if (confirmResummarize) AlertDialog(
         onDismissRequest = { confirmResummarize = false },
         title = { Text("Replace the current summary?") }, text = { Text("Your edits to the summary are lost.") },

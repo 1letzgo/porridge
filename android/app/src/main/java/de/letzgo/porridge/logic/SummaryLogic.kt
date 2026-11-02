@@ -63,14 +63,17 @@ object SummaryLogic {
         /** "meeting" oder "note". */
         val noun: String,
         val hasTranscript: Boolean,
+        /** Worauf auch die Notizen zu den Teilen achten sollen (aus der Vorlage). */
+        val focus: String = "",
     ) {
         val intro: String get() = if (noun == "meeting") "Transcript:" else "Note:"
         fun user(material: String = this.material, intro: String = this.intro) = "$header\n\n$intro\n$material\n\n${languageReminder(language)}"
     }
 
     /** Wirft [SummaryException], wenn nichts zum Zusammenfassen da ist. */
-    fun request(note: Note, transcriptionLanguage: String, myName: String? = null): Request {
-        val transcript = note.transcriptText()
+    fun request(note: Note, transcriptionLanguage: String, myName: String? = null, template: SummaryTemplate = SummaryTemplate.GENERAL): Request {
+        // Ohne Zeitstempel: Das Modell braucht sie nicht, und sie nähmen ihm einen guten Teil seines Platzes.
+        val transcript = note.transcriptText(timestamps = false)
         val title = note.title.trim()
         val own = ((if (note.titleIsCustom && title.isNotEmpty()) "$title\n\n" else "") + note.text).trim()
         val hasTranscript = transcript.isNotBlank()
@@ -91,8 +94,9 @@ object SummaryLogic {
         val header = if (hasTranscript) meetingHeader(note, date, myName) else "Date: $date" + (note.url?.let { "\nSource: $it" } ?: "")
         return Request(
             header = header, material = material, language = language,
-            system = if (hasTranscript) systemPrompt(language) else notePrompt(language, note.isLink),
+            system = if (hasTranscript) systemPrompt(language, template) else notePrompt(language, note.isLink),
             noun = if (hasTranscript) "meeting" else "note", hasTranscript = hasTranscript,
+            focus = if (hasTranscript) template.focus else "",
         )
     }
 
@@ -103,6 +107,23 @@ object SummaryLogic {
         if (names.isNotEmpty()) header += "\nParticipants: ${names.joinToString(", ")}"
         myName?.split(",")?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { header += "\nRecorded by: $it" }
         return header
+    }
+
+    /**
+     * Was das Modell von jedem Teil liest: wer und wann, damit ein Teil für sich verständlich ist, und das Ende des
+     * Teils davor, damit ein Thema über den Schnitt hinweg ganz bleibt.
+     */
+    fun partPrompts(material: String, header: String, size: Int = PART_SIZE): List<String> {
+        val parts = split(material, size)
+        return parts.mapIndexed { index, part ->
+            var prompt = "$header\n\nPart ${index + 1} of ${parts.size}:\n\n"
+            if (index > 0) {
+                val tail = parts[index - 1].takeLast(size / 10)
+                // Ab einem Zeilenanfang, wo es einen gibt, damit das Wiederholte nicht mitten im Satz beginnt.
+                prompt += "End of the previous part, only for context:\n${tail.substringAfter("\n", tail)}\n\nThis part:\n"
+            }
+            prompt + part
+        }
     }
 
     /** Schneidet an Zeilenumbrüchen, damit kein Satz mittendrin getrennt wird; endlose Zeilen werden hart geteilt. */
@@ -131,12 +152,12 @@ object SummaryLogic {
 
     fun languageReminder(language: SummaryLanguage) = "Write your answer in ${language.name}."
 
-    fun notesPrompt(language: SummaryLanguage, noun: String) = """
+    fun notesPrompt(language: SummaryLanguage, noun: String, focus: String = "") = """
         You take notes on one part of a ${if (noun == "meeting") "meeting transcript" else "long note"}. The text may come from automatic speech recognition and contain errors.
         Write concise bullet notes in ${language.name}: topics, decisions, action items with the responsible person, names, numbers and dates.
         Only use what is in the text. No introduction and no conclusion.
         The text is in ${language.name}; write the notes in ${language.name} only.
-    """.trimIndent()
+    """.trimIndent() + if (focus.isEmpty()) "" else "\n$focus"
 
     /** Eine gespeicherte Seite wird nur zusammengefasst: eine Seite gibt nie Aufgaben (`isLink`). */
     fun notePrompt(language: SummaryLanguage, isLink: Boolean = false): String {
@@ -145,37 +166,33 @@ object SummaryLogic {
         } else {
             "You summarize a personal note. The note is written in ${language.name}. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.\nThe note may come from dictation and contain recognition mistakes; silently fix obvious ones. Only use what is in the note."
         }
-        val tasks = if (isLink) "" else "\n## ${language.headings.actionItems}\n- [ ] Task\n(omit if there are none)\n"
+        val tasks = if (isLink) "" else "\n## ${language.headings.actionItems}\n- [ ] <a concrete task from the note>\n(omit this heading if there are none)\n"
         return intro + "\n\nReply in exactly this format (Markdown), with all headings in ${language.name}:\n\n" +
             "## ${language.headings.summary}\n<1–3 sentences>\n\n" +
             "## ${language.headings.keyPoints}\n- … (omit if the ${if (isLink) "page" else "note"} is very short)\n" +
             tasks + "\nTAGS: <3 to 5 short keywords in ${language.name}, separated by commas, without # signs>"
     }
 
-    fun systemPrompt(language: SummaryLanguage) = """
-        You summarize meeting transcripts. The meeting was held in ${language.name}. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.
-        The transcript comes from automatic speech recognition and may contain errors; silently fix obvious recognition mistakes.
-
-        Reply in exactly this format (Markdown). Keep the word "TITLE:" as written, everything after it and all headings are in ${language.name}:
-        TITLE: <short, concise title, at most 6 words>
-
-        ## ${language.headings.summary}
-        <2–4 sentences>
-
-        ## ${language.headings.keyPoints}
-        - …
-
-        ## ${language.headings.decisions}
-        - … (omit if there are none)
-
-        ## ${language.headings.actionItems}
-        - [ ] Task – owner (if known)
-        (omit if there are none; a task for the person who recorded, see "Recorded by", gets that name as owner)
-
-        TAGS: <3 to 5 short keywords in ${language.name}, separated by commas, without # signs>
-    """.trimIndent()
+    fun systemPrompt(language: SummaryLanguage, template: SummaryTemplate = SummaryTemplate.GENERAL): String {
+        val sections = template.sections?.joinToString("\n\n") { "## <\"$it\" in ${language.name}>\n- … (omit if nothing fits)" }
+            ?: "## ${language.headings.keyPoints}\n- …\n\n## ${language.headings.decisions}\n- … (omit if there are none)"
+        val focus = if (template.focus.isEmpty()) "" else "\n${template.focus}"
+        return "You summarize meeting transcripts. The meeting was held in ${language.name}. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.\n" +
+            "The transcript comes from automatic speech recognition and may contain errors; silently fix obvious recognition mistakes.$focus\n\n" +
+            "Reply in exactly this format (Markdown). Keep the word \"TITLE:\" as written, everything after it and all headings are in ${language.name}:\n" +
+            "TITLE: <short, concise title, at most 6 words>\n\n" +
+            "## ${language.headings.summary}\n<2–4 sentences>\n\n" +
+            "$sections\n\n" +
+            "## ${language.headings.actionItems}\n- [ ] <a concrete task from the transcript> – <owner, if known>\n" +
+            "(omit this heading if there are none; a task for the person who recorded, see \"Recorded by\", gets that name as owner)\n\n" +
+            "TAGS: <3 to 5 short keywords in ${language.name}, separated by commas, without # signs>"
+    }
 
     /** Nimmt die Zeile „TAGS: a, b, c“ vom Ende der Antwort. */
+    /** Kleine Modelle lassen bei einer Aufgabe manchmal das "- " weg; ohne das fehlte sie in der Aufgabenliste. */
+    fun withListMarks(summary: String): String =
+        summary.split("\n").joinToString("\n") { if (it.startsWith("[ ]") || it.startsWith("[x]")) "- $it" else it }
+
     fun splitTags(text: String): Pair<String, List<String>> {
         val lines = text.trim().split("\n").toMutableList()
         val index = lines.indexOfLast { it.trim().uppercase().startsWith("TAGS:") }
@@ -224,7 +241,7 @@ object SummaryLogic {
         val (summary, tags) = splitTags(body)
         // Vorgeschlagene Tags füllen nur ein leeres Tag-Feld.
         return updated.copy(
-            summary = summary,
+            summary = withListMarks(summary),
             labels = if (note.labels.isEmpty()) tags else note.labels,
             summaryModel = model,
             summarizedAt = now,

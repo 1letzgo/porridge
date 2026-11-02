@@ -5,6 +5,7 @@ import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.data.SummaryBilling
 import de.letzgo.porridge.logic.SummaryException
 import de.letzgo.porridge.logic.SummaryLogic
+import de.letzgo.porridge.logic.SummaryTemplate
 import de.letzgo.porridge.ml.TextModel
 import de.letzgo.porridge.ml.TextModels
 import de.letzgo.porridge.model.Note
@@ -22,8 +23,8 @@ object SummaryService {
             SummaryBilling.BYOK -> AIProvider.current.let { !it.requiresKey || it.apiKey.isNotEmpty() }
         }
 
-    suspend fun summarize(note: Note, progress: (String) -> Unit = {}): Note {
-        val request = SummaryLogic.request(note, Prefs.language, de.letzgo.porridge.data.Me.name)
+    suspend fun summarize(note: Note, template: SummaryTemplate = SummaryTemplate.GENERAL, progress: (String) -> Unit = {}): Note {
+        val request = SummaryLogic.request(note, Prefs.language, de.letzgo.porridge.data.Me.name, template)
         val (raw, model) = when (Prefs.billing) {
             SummaryBilling.LOCAL -> {
                 val local = TextModels.selected ?: throw SummaryException("No on-device model is available.")
@@ -52,10 +53,10 @@ object SummaryService {
             var isNotes = false
             // Lange Meetings: jeden Teil zu Notizen verdichten, bis alles in einen Durchgang passt.
             while (material.length > SummaryLogic.SINGLE_PASS_LIMIT) {
-                val parts = SummaryLogic.split(material)
+                val parts = SummaryLogic.partPrompts(material, request.header)
                 val notes = parts.mapIndexed { index, part ->
                     progress("Reading part ${index + 1} of ${parts.size} …")
-                    model.generate(SummaryLogic.notesPrompt(request.language, request.noun), "Part ${index + 1} of ${parts.size}:\n\n$part", 700)
+                    model.generate(SummaryLogic.notesPrompt(request.language, request.noun, request.focus), part, 700)
                 }
                 material = notes.joinToString("\n\n")
                 isNotes = true

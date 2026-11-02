@@ -50,6 +50,7 @@ enum AppSettings {
     static let speakerDetectionKey = "speakerDetection"
     static let billingKey = "summaryBilling"
     static let localModelKey = "localModel"
+    static let customTemplatesKey = "customSummaryTemplates"
     static let voiceRecognitionKey = "voiceRecognition"
     static let providerKey = "aiProvider"
     static let customBaseURLKey = "aiCustomBaseURL"

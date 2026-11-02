@@ -15,6 +15,7 @@ object Keys {
     const val VOICE_RECOGNITION = "voiceRecognition"
     const val BILLING = "summaryBilling"
     const val LOCAL_MODEL = "localModel"
+    const val CUSTOM_TEMPLATES = "customSummaryTemplates"
     const val PROVIDER = "aiProvider"
     const val CUSTOM_BASE_URL = "aiCustomBaseURL"
     /** Eigener Name (weitere Schreibweisen mit Komma): seine Aufgaben stehen unter „Mine“ (iOS: `myName`). */

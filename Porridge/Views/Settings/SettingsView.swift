@@ -20,6 +20,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.speakerDetectionKey) private var speakerDetection = true
     @AppStorage(AppSettings.voiceRecognitionKey) private var voiceRecognition = true
     @AppStorage(AppSettings.localModelKey) private var localModel = LocalModel.qwen3
+    @State private var showTemplates = false
     @AppStorage(AppSettings.billingKey) private var billing: SummaryBilling = .local
     @AppStorage(AppSettings.providerKey) private var provider = AIProvider.openRouter
     @AppStorage(AppSettings.customBaseURLKey) private var customBaseURL = ""
@@ -380,6 +381,14 @@ struct SettingsView: View {
         SettingsCard(title: "AI Summary") {
             TabSwitcher(selection: $billing, options: SummaryBilling.allCases.map { (value: $0, title: $0.label) })
                 .padding(.bottom, 4)
+
+            HStack {
+                Text("Custom Templates").font(.body)
+                Spacer(minLength: 12)
+                Button("Edit") { showTemplates = true }.buttonStyle(PillButtonStyle())
+            }
+            .sheet(isPresented: $showTemplates) { SummaryTemplatesView() }
+            CardDivider()
 
             switch billing {
             case .local:

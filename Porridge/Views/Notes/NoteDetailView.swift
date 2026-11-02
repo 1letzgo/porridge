@@ -33,6 +33,7 @@ struct NoteDetailView: View {
     @State private var summaryError: String?
     @State private var tab = NoteTab.note
     @State private var confirmResummarize = false
+    @State private var askTemplate = false
     @State private var player = AudioPlayback()
     @State private var renamingSpeaker: Speaker?
     @State private var renameText = ""
@@ -145,6 +146,14 @@ struct NoteDetailView: View {
                 if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
                 tab = .transcript
             }
+        }
+        .confirmationDialog("Which template?", isPresented: $askTemplate, titleVisibility: .visible) {
+            ForEach(SummaryTemplate.all) { option in
+                Button(option.name) { Task { await summarize(template: option) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if note.summary != nil { Text("This replaces the current summary; your edits to it are lost.") }
         }
         .alert("Replace the current summary?", isPresented: $confirmResummarize) {
             Button("Cancel", role: .cancel) {}
@@ -375,7 +384,7 @@ struct NoteDetailView: View {
                         Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
                     }
                     Button {
-                        if note.summary == nil { Task { await summarize() } } else { confirmResummarize = true }
+                        requestSummary()
                     } label: {
                         Label(note.summary == nil ? "Summarize" : "Summarize Again", systemImage: "sparkles")
                     }
@@ -546,7 +555,7 @@ struct NoteDetailView: View {
                                 Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
                                 Button { insertSummary() } label: { Label("Insert into Note", systemImage: "text.insert") }
                                 Button { copySummary() } label: { Label("Copy", systemImage: "doc.on.doc") }
-                                Button { confirmResummarize = true } label: { Label("Summarize Again", systemImage: "sparkles") }
+                                Button { requestSummary() } label: { Label("Summarize Again", systemImage: "sparkles") }
                                 Divider()
                                 Button(role: .destructive) { deleteSummary() } label: { Label("Delete Summary", systemImage: "trash") }
                             } label: {
@@ -565,7 +574,7 @@ struct NoteDetailView: View {
                         }
                     }
                     Button {
-                        confirmResummarize = true
+                        requestSummary()
                     } label: {
                         Label("Summarize Again", systemImage: "sparkles")
                     }
@@ -581,7 +590,7 @@ struct NoteDetailView: View {
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                     Button {
-                        Task { await summarize() }
+                        requestSummary()
                     } label: {
                         Label("Summarize", systemImage: "sparkles")
                     }
@@ -591,6 +600,18 @@ struct NoteDetailView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
             }
+        }
+    }
+
+    /// A recording asks which template to use, in the same question that warns about replacing a summary;
+    /// a note or a link has nothing to choose.
+    private func requestSummary() {
+        if !note.segments.isEmpty {
+            askTemplate = true
+        } else if note.summary == nil {
+            Task { await summarize() }
+        } else {
+            confirmResummarize = true
         }
     }
 
@@ -620,7 +641,7 @@ struct NoteDetailView: View {
         try? context.save()
     }
 
-    private func summarize() async {
+    private func summarize(template: SummaryTemplate = .general) async {
         guard !isSummarizing else { return }
         tab = .summary
         isSummarizing = true
@@ -634,7 +655,7 @@ struct NoteDetailView: View {
         editor.blur()
         try? await Task.sleep(for: .milliseconds(150))
         do {
-            try await SummaryService.summarize(note) { status in summaryStatus = status }
+            try await SummaryService.summarize(note, template: template) { status in summaryStatus = status }
             try? context.save()
         } catch {
             summaryError = error.localizedDescription
