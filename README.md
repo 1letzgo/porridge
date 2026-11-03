@@ -1,8 +1,64 @@
-# Porridge
+<p align="center">
+  <img src="Porridge/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="110" alt="Porridge icon">
+</p>
 
-Lokale KI-Transkription für Meetings und Notizen (iPhone & iPad, später Mac). SwiftUI, SwiftData + CloudKit, FluidAudio (Parakeet TDT v3 0.6B, pyannote).
+<h1 align="center">Porridge</h1>
 
-## Setup
+<p align="center">
+  <strong>Notes, meetings and dictation, transcribed on your device.</strong><br>
+  For iPhone, iPad, Mac and Android.
+</p>
+
+<p align="center">
+  <a href="https://github.com/1letzgo/porridge/releases?q=mac-v"><img alt="Mac release" src="https://img.shields.io/github/v/release/1letzgo/porridge?filter=mac-v*&label=Mac&color=24B4E9"></a>
+  <a href="https://github.com/1letzgo/porridge/releases?q=android-v"><img alt="Android release" src="https://img.shields.io/github/v/release/1letzgo/porridge?filter=android-v*&label=Android&color=29BD80"></a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/home.png" width="240" alt="Home list with tasks, projects and notes">
+  <img src="docs/screenshots/summary.png" width="240" alt="A meeting with its summary">
+  <img src="docs/screenshots/transcript.png" width="240" alt="A transcript with speakers">
+</p>
+
+Porridge records what is said in a meeting, writes it down with speaker names and turns it into a summary with tasks. Speech recognition runs on your device and summaries can too, so a recording does not have to leave it. Notes, tasks, saved links and projects live in one quiet list.
+
+## What it does
+
+- **Meetings:** Record a meeting and get a transcript with speakers. Porridge recognizes voices it has learned. A two-channel microphone assigns each channel to one person.
+- **Summaries with templates:** Choose General, One-on-One, Customer Call, Lecture or your own template each time. Tasks from a summary land in your task list as suggestions.
+- **Dictation:** Dictate into any note. On the Mac, a global shortcut types into whatever app you are using.
+- **Notes:** Headings, lists and checklists as you type, stored as Markdown.
+- **Links:** Share a page to Porridge to save its text and summarize it.
+- **Projects and tasks:** Keep notes, meetings, links and tasks together, with pinned projects at the top.
+- **Search and chat:** Search everything, or ask your notes a question and get an answer that names its sources.
+- **Sync:** iCloud on Apple devices, or your own Nextcloud across all platforms.
+- **Plaud import:** Bring in recordings from a Plaud recorder.
+
+<p align="center">
+  <img src="docs/screenshots/search.png" width="240" alt="Search across everything">
+  <img src="docs/screenshots/dark.png" width="240" alt="Dark mode">
+  <img src="docs/screenshots/android.png" width="240" alt="The Android app">
+</p>
+
+## On your device
+
+| | Runs locally | Optional |
+| --- | --- | --- |
+| **Speech** | Parakeet TDT v3 (25 European languages), Apple Speech on Apple devices | |
+| **Speakers** | pyannote | |
+| **Summaries and chat** | Qwen3 on all platforms, Apple Intelligence on Apple devices | Your own key for OpenRouter, OpenAI, Anthropic, Google, Mistral, Groq or a compatible server |
+
+Models download once and then work offline. With iCloud, audio stays on the device that recorded it; with Nextcloud, recordings sync too.
+
+## Get it
+
+| Platform | How | Needs |
+| --- | --- | --- |
+| **Mac** | [Latest release](https://github.com/1letzgo/porridge/releases?q=mac-v). Not notarized yet: open it the first time with right-click → Open. | macOS 15 |
+| **Android** | [Latest APK](https://github.com/1letzgo/porridge/releases?q=android-v). Later versions come through the in-app update. | Android 8 |
+| **iPhone and iPad** | Build from source, see below. | iOS 18 |
+
+## Build from source
 
 ```sh
 brew install xcodegen
@@ -10,40 +66,18 @@ xcodegen generate
 open Porridge.xcodeproj
 ```
 
-Team `699G2QY959`, Bundle-ID `de.letzgo.porridge`, iCloud-Container `iCloud.de.letzgo.porridge` (im Developer-Portal anlegen bzw. per Automatic Signing). Minimum iOS 18.
+Use the `Porridge` scheme for iPhone and iPad and `PorridgeMac` for the Mac. You need your own Apple team and iCloud container for signing. For Android, see [android/README.md](android/README.md).
 
-## Aufbau
+## Project layout
 
-| Pfad | Inhalt |
+| Path | Content |
 | --- | --- |
-| `Porridge/Models` | `Meeting`, `Note` (SwiftData, CloudKit-kompatibel), Transkript-Typen |
-| `Porridge/Services/AudioRecorder` | AVAudioEngine-Aufnahme → AAC, bis zu 2 Kanäle |
-| `Porridge/Services/AudioPreprocessor` | Mono-16-kHz-Mix für ASR + Energie pro Kanal |
-| `Porridge/Services/TranscriptionEngine` | FluidAudio: Parakeet v3 + Offline-Diarisierung |
-| `Porridge/Services/SpeakerAssigner` | Wörter → Sprecher (per Kanal oder per Diarisierung), Segmentierung |
-| `Porridge/Services/ProcessingService` | Serielle Verarbeitungs-Queue, Wiederaufnahme nach Absturz |
-| `Porridge/Services/SummaryService` | Zusammenfassung: lokal (Qwen3 4B per MLX) oder mit eigenem Key |
-| `Porridge/Services/LocalLLM` | Lokales Modell (MLX Swift LM), Download von Hugging Face |
-| `Porridge/Services/AIProvider`, `CloudLLM` | OpenRouter, OpenAI, Anthropic, Google Gemini, Mistral, eigener OpenAI-kompatibler Server |
+| `Porridge/Models` | SwiftData models |
+| `Porridge/Services` | Recording, transcription, summaries, chat, sync, Plaud |
+| `Porridge/Views`, `Porridge/Design` | SwiftUI views and the shared look |
+| `PorridgeMac` | Mac app: dictation shortcut, menu bar, updates |
+| `PorridgeWidgets`, `PorridgeShare` | Widgets, Live Activity and the share extension |
+| `android` | Native Android app in Kotlin and Compose |
+| `scripts` | Release scripts for Mac, Android and TestFlight |
 
-## Sprecher
-
-- **DJI Mic (Stereo-Modus) / 2-Kanal-USB-Mikro**: Ein Transkript aus dem Mono-Mix, jedes Wort wird dem Kanal mit der höheren (normalisierten) Energie zugeordnet. So gibt es keine doppelten Texte durch Übersprechen. Namen lassen sich bei der Aufnahme und danach vergeben.
-- **1 Kanal**: Sprecher werden per pyannote-Diarisierung (FluidAudio `OfflineDiarizerManager`) erkannt und als „Sprecher 1/2/…“ angelegt – umbenennbar, Segmente per Kontextmenü umhängbar. Abschaltbar in den Einstellungen.
-
-## Notizen
-
-- **Text**: Markdown in `Note.text` (Überschriften `#`–`###`, `**fett**`, `*kursiv*`, `~~durchgestrichen~~`, `` `Code` ``, Listen, Nummerierung, Checklisten `- [ ]`, Zitate `>`, Codeblöcke). `MarkdownEditor` (UITextView) formatiert live, eine Leiste über der Tastatur setzt Formate, Return setzt Listen fort, Checkboxen sind antippbar, „In Notiz suchen“ über das Menü.
-- **Tags**: `#wort` im Text, kein eigenes Feld; Tag-Liste und Filter in der Seitenleiste.
-- **Ordner**: `NoteFolder` (verschachtelt über `parentID`), `Note.folderID`; nil = Ordner „Notizen“.
-- **Organisation**: Anpinnen, Suche, Sortierung (Bearbeitet/Erstellt/Titel), Gruppen nach Datum.
-- **Papierkorb**: „Zuletzt gelöscht“ (`Note.deletedAt`), nach 30 Tagen endgültig gelöscht (`NoteStore`).
-- Nur iOS; für den Mac fehlen noch Editor-Fallback (`MarkdownEditor` ist UIKit) und Menü-Label.
-
-## Sync
-
-Texte, Sprecher, Zusammenfassungen: SwiftData → privater CloudKit-Container. Audio bleibt lokal auf dem aufnehmenden Gerät (`Application Support/Recordings`). Die API-Keys liegen im iCloud-Schlüsselbund.
-
-## Mac-App
-
-Die Services sind plattformneutral gehalten (`#if os(iOS)` nur um `AVAudioSession`/UIKit). Für macOS ein zweites Target in `project.yml` anlegen, das dieselben Quellen nutzt.
+The look and its rules are written down in [DESIGN.md](DESIGN.md).

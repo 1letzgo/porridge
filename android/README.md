@@ -10,7 +10,7 @@ What is shared 1:1:
   `versionCode` = `git rev-list --count HEAD`.
 - **Preference keys:** `data/Prefs.kt` `Keys` = the iOS `UserDefaults` keys.
 - **Data:** Room entities with the field names of the SwiftData models; `speakersData`/`segmentsData` hold the
-  same JSON as iOS. No sync: backup and restore as a file instead of CloudKit.
+  same JSON as iOS. Sync through Nextcloud, no CloudKit; backup and restore as a file as well.
 - **Golden files:** `../shared/fixtures/` (cases both platforms check; Android reads them as test resources).
 
 ## Build
