@@ -30,7 +30,7 @@ if [[ $UPLOAD == 1 && -n $(git status --porcelain) ]]; then
   exit 1
 fi
 
-VERSION=$(sed -n 's/^ *MARKETING_VERSION: *//p' project.yml | head -1)
+VERSION=$(sed -n 's/^ *MARKETING_VERSION: *//p' project.yml | head -1 | tr -d '"')
 BUILD=$(git rev-list --count HEAD)
 AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY_FILE" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER")
 
