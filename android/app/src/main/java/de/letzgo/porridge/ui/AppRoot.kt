@@ -19,9 +19,7 @@ import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.audio.RecordingSession
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.ui.components.ListPage
-import de.letzgo.porridge.ui.tasks.TaskDetailScreen
 import de.letzgo.porridge.ui.notes.NoteDetailScreen
-import de.letzgo.porridge.ui.tasks.TaskDetailScreen
 import de.letzgo.porridge.ui.notes.ListState
 import de.letzgo.porridge.ui.notes.NotesScreen
 import de.letzgo.porridge.ui.onboarding.OnboardingScreen
@@ -39,8 +37,7 @@ sealed interface Screen {
     data class Detail(val id: String, val draft: Note?) : Screen
     data class Recording(val title: String?) : Screen
     data object Settings : Screen
-    data object Plaud : Screen
-    data class Task(val id: String) : Screen
+    data class Plaud(val projectID: String?) : Screen
 }
 
 /** Ein geteilter Link, der noch geöffnet werden will (aus `MainActivity`, `ACTION_SEND`). */
@@ -88,12 +85,11 @@ fun AppRoot() {
                 onNewNote = { pid -> val draft = Note(projectIDs = listOfNotNull(pid)); push(Screen.Detail(draft.id, draft)) },
                 onRecord = { showCalendar = true },
                 onSettings = { push(Screen.Settings) },
-                onEditTask = { push(Screen.Task(it)) },
+                onPlaud = { pid -> push(Screen.Plaud(pid)) },
             )
-            is Screen.Task -> TaskDetailScreen(top.id, onOpenNote = { id -> pop(); open(id) }) { pop() }
             is Screen.Detail -> NoteDetailScreen(top.id, top.draft) { pop() }
-            is Screen.Settings -> SettingsScreen(onBack = { pop() }, onPlaud = { push(Screen.Plaud) }, onOpenNote = { id -> stack.clear(); open(id) })
-            is Screen.Plaud -> PlaudImportScreen(onBack = { pop() }) { id -> stack.clear(); open(id) }
+            is Screen.Settings -> SettingsScreen(onBack = { pop() })
+            is Screen.Plaud -> PlaudImportScreen(top.projectID, onBack = { pop() }) { id -> stack.clear(); open(id) }
             is Screen.Recording -> RecordingScreen(top.title, onFinish = { result, names, liveText ->
                 coroutines.launch {
                     // Aus einem offenen Projekt aufgenommen: das Meeting gehört dazu, die Ansicht bleibt.

@@ -16,7 +16,6 @@ import de.letzgo.porridge.model.ProcessingStatus
 import de.letzgo.porridge.model.Speaker
 import de.letzgo.porridge.model.SpeakerMode
 import de.letzgo.porridge.model.TranscriptSegment
-import de.letzgo.porridge.store.ActionItemStore
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.PorridgeDatabase
 import kotlinx.coroutines.CancellationException
@@ -40,6 +39,8 @@ object ProcessingService {
         data class NoteAudio(override val id: String) : Job
         /** Ein gespeicherter Link: Seite laden, dann (wahlweise) zusammenfassen. */
         data class Link(override val id: String, val summarize: Boolean) : Job
+        /** Die Zusammenfassung, um die jemand gebeten hat. */
+        data class Summary(override val id: String, val template: SummaryTemplate) : Job
     }
 
     private val db get() = PorridgeDatabase.shared
@@ -51,6 +52,15 @@ object ProcessingService {
     private val _stages = MutableStateFlow<Map<String, String>>(emptyMap())
     val stages: StateFlow<Map<String, String>> = _stages.asStateFlow()
 
+    /** Notizen, deren Zusammenfassung wartet oder gerade entsteht. */
+    private val _summarizing = MutableStateFlow<Set<String>>(emptySet())
+    val summarizing: StateFlow<Set<String>> = _summarizing.asStateFlow()
+    /** Warum eine Zusammenfassung scheiterte, bis die Notiz es gezeigt hat (ihr Bildschirm ist dann vielleicht längst zu). */
+    private val _summaryErrors = MutableStateFlow<Map<String, String>>(emptyMap())
+    val summaryErrors: StateFlow<Map<String, String>> = _summaryErrors.asStateFlow()
+
+    fun clearSummaryError(id: String) = _summaryErrors.update { it - id }
+
     /** Wird gerufen, solange Arbeit ansteht (der Vordergrunddienst hält die App wach). */
     var onBusyChanged: (Boolean) -> Unit = {}
 
@@ -60,6 +70,7 @@ object ProcessingService {
         if (queue.contains(job) || _stages.value.containsKey(job.id)) return
         queue.addLast(job)
         stage(job.id, "Waiting…")
+        if (job is Job.Summary) _summarizing.update { it + job.id }
         if (!running) {
             running = true
             onBusyChanged(true)
@@ -90,9 +101,11 @@ object ProcessingService {
                     is Job.Transcript -> processTranscript(job.id)
                     is Job.NoteAudio -> processNote(job.id)
                     is Job.Link -> processLink(job.id, job.summarize)
+                    is Job.Summary -> processSummary(job.id, job.template)
                 }
             }
             stage(job.id, null)
+            _summarizing.update { it - job.id }
         }
         onBusyChanged(false)
     }
@@ -104,7 +117,6 @@ object ProcessingService {
         val current = db.notes().get(before.id) ?: return
         val updated = SummaryLogic.carryOver(summarized, before, current)
         save(updated)
-        ActionItemStore().sync(updated)
     }
 
     // Aufnahmen mit Transkript
@@ -257,13 +269,16 @@ object ProcessingService {
     }
 
     /** Fasst eine Notiz auf Wunsch zusammen (Knopf in der Notiz). */
-    suspend fun summarize(id: String, template: SummaryTemplate = SummaryTemplate.GENERAL) {
+    private suspend fun processSummary(id: String, template: SummaryTemplate) {
         val note = db.notes().get(id) ?: return
         stage(id, "Summarizing…")
         try {
             saveSummary(note, SummaryService.summarize(note, template) { stage(id, it) })
-        } finally {
-            stage(id, null)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            val message = e.message ?: "The summary could not be written."
+            _summaryErrors.update { it + (id to message) }
         }
     }
 }

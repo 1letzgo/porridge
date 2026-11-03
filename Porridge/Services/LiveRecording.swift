@@ -17,6 +17,15 @@ enum LiveRecording {
         activity = try? Activity.request(attributes: attributes, content: .init(state: state, staleDate: nil))
     }
 
+    /// The clock stands still while paused and goes on from `elapsed` afterwards.
+    static func setPaused(_ paused: Bool, elapsed: TimeInterval) {
+        guard let activity else { return }
+        var state = activity.content.state
+        state.startedAt = Date().addingTimeInterval(-elapsed)
+        state.pausedAt = paused ? Date() : nil
+        Task { await activity.update(.init(state: state, staleDate: nil)) }
+    }
+
     /// Recording stopped, the last part is still being processed.
     static func markFinishing() {
         guard let activity else { return }
@@ -58,6 +67,8 @@ enum LiveRecording {
     static func start(kind: Kind, title: String, startedAt: Date = Date(), onStop: @escaping () -> Void) {
         RecordingCenter.stop = onStop
     }
+
+    static func setPaused(_ paused: Bool, elapsed: TimeInterval) {}
 
     static func markFinishing() {}
 

@@ -44,6 +44,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -178,6 +180,7 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
 
     val recorder = RecordingSession.recorder
     val live = RecordingSession.live
+    val paused = recorder?.isPaused?.collectAsState()?.value == true
     // Während eine Notiz getippt wird, braucht die Tastatur den Platz.
     val writing = WindowInsets.isImeVisible
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -187,8 +190,8 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
                 Spacer(Modifier.weight(1f))
                 if (recorder != null) Surface(shape = RoundedCornerShape(50), color = Brand.sky.copy(alpha = 0.14f)) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Mic, null, tint = Brand.navy, modifier = Modifier.size(16.dp))
-                        Text("  " + if (recorder.isSplitStereo) "${recorder.inputName} · 2 channels" else recorder.inputName, style = MaterialTheme.typography.labelLarge, color = Brand.navy)
+                        Icon(if (paused) Icons.Filled.Pause else Icons.Filled.Mic, null, tint = Brand.navy, modifier = Modifier.size(16.dp))
+                        Text("  " + if (paused) "Paused" else if (recorder.isSplitStereo) "${recorder.inputName} · 2 channels" else recorder.inputName, style = MaterialTheme.typography.labelLarge, color = Brand.navy)
                     }
                 }
             }
@@ -196,7 +199,7 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
             if (recorder != null) {
                 val elapsed by recorder.elapsed.collectAsState()
                 val levels by recorder.levels.collectAsState()
-                Text(elapsed.clockString, fontSize = if (writing) 28.sp else 56.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Light)
+                Text(elapsed.clockString, fontSize = if (writing) 28.sp else 56.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Light, color = if (paused) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified)
                 if (writing) Unit else if (recorder.isSplitStereo) {
                     for (index in 0..1) Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(12.dp).clip(CircleShape).background(speakerColor(index)))
@@ -206,7 +209,7 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
                     Text("Each microphone is assigned to one speaker. You can rename them now or later.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 } else LevelBar(levels.maxOrNull() ?: 0f, Modifier.fillMaxWidth())
             }
-            if (live != null) LiveCard(live, Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
+            if (live != null) LiveCard(live, paused, Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
             if (recorder != null && !finished) {
                 val elapsed by recorder.elapsed.collectAsState()
                 NoteList(writing)
@@ -221,7 +224,10 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
             } else if (writing) {
                 Unit
             } else if (recorder != null) {
-                SkyFab(Icons.Filled.Stop, "Stop", Modifier.size(76.dp), container = Brand.danger) { finish() }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    SkyFab(if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (paused) "Resume" else "Pause") { RecordingSession.setPaused(!paused) }
+                    SkyFab(Icons.Filled.Stop, "Stop", Modifier.size(76.dp), container = Brand.danger) { finish() }
+                }
             } else {
                 Spacer(Modifier.size(76.dp))
             }
@@ -235,7 +241,7 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
     error?.let { AlertDialog(onDismissRequest = { error = null; onCancel() }, title = { Text("Can't record") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { error = null; onCancel() }) { Text("OK") } }) }
 }
 
-/** Die Notizen bisher, wie Nachrichten in einem Chat, die neueste unten. */
+/** Die Notizen bisher als kurze Blasen, die neueste unten. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NoteList(writing: Boolean) {
@@ -263,7 +269,7 @@ private fun NoteList(writing: Boolean) {
     }
 }
 
-/** Das Eingabefeld für Notizen, wie im Chat. */
+/** Das Eingabefeld für Notizen. */
 @Composable
 private fun NoteField(text: String, onText: (String) -> Unit, onAdd: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -283,7 +289,7 @@ private fun LevelBar(level: Float, modifier: Modifier) {
 
 /** iOS: `LiveTranscriptCard`. */
 @Composable
-private fun LiveCard(live: LiveTranscriber, modifier: Modifier) {
+private fun LiveCard(live: LiveTranscriber, paused: Boolean, modifier: Modifier) {
     val phase by live.phase.collectAsState()
     val confirmed by live.confirmed.collectAsState()
     val volatile by live.volatile.collectAsState()
@@ -293,7 +299,7 @@ private fun LiveCard(live: LiveTranscriber, modifier: Modifier) {
                 is LiveTranscriber.Phase.Downloading -> Text("Downloading the speech model (one time) – ${(p.fraction * 100).toInt()} %", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LiveTranscriber.Phase.Preparing, LiveTranscriber.Phase.Idle -> Text("Preparing the live transcript…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 is LiveTranscriber.Phase.Unavailable -> Text(p.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LiveTranscriber.Phase.Running -> if (confirmed.isEmpty() && volatile.isEmpty()) Text("Listening…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LiveTranscriber.Phase.Running -> if (confirmed.isEmpty() && volatile.isEmpty()) Text(if (paused) "Paused" else "Listening…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else Text(androidx.compose.ui.text.buildAnnotatedString {
                     append(confirmed)
                     if (volatile.isNotEmpty()) {

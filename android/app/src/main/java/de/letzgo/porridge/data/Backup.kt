@@ -2,7 +2,6 @@ package de.letzgo.porridge.data
 
 import android.content.Context
 import android.net.Uri
-import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.model.VoiceProfile
@@ -16,8 +15,8 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /**
- * Android-eigen (iOS synchronisiert über iCloud): Sicherung als eine Zip-Datei mit Notizen, Ordnern, Stimmen,
- * Aufgaben und den Aufnahmen. Einspielen führt zusammen: gleiche ID, neuere Änderung gewinnt.
+ * Android-eigen (iOS synchronisiert über iCloud): Sicherung als eine Zip-Datei mit Notizen, Ordnern, Stimmen und den
+ * Aufnahmen. Einspielen führt zusammen: gleiche ID, neuere Änderung gewinnt. Aufgaben aus alten Sicherungen werden ignoriert.
  */
 object Backup {
     @Serializable
@@ -26,7 +25,6 @@ object Backup {
         val notes: List<Note>,
         val folders: List<NoteFolder>,
         val voiceProfiles: List<VoiceProfile>,
-        val actionItems: List<ActionItem>,
     )
 
     data class Result(val notes: Int, val recordings: Int)
@@ -34,7 +32,7 @@ object Backup {
     suspend fun export(context: Context, target: Uri): Result = withContext(Dispatchers.IO) {
         val db = PorridgeDatabase.shared
         val notes = db.notes().all()
-        val contents = Contents(notes = notes, folders = db.folders().all(), voiceProfiles = db.voiceProfiles().all(), actionItems = db.actionItems().all())
+        val contents = Contents(notes = notes, folders = db.folders().all(), voiceProfiles = db.voiceProfiles().all())
         var recordings = 0
         context.contentResolver.openOutputStream(target)!!.use { out ->
             ZipOutputStream(out).use { zip ->
@@ -84,8 +82,6 @@ object Backup {
         db.folders().upsertAll(data.folders.filter { it.id !in folders })
         val profiles = db.voiceProfiles().all().associateBy { it.id }
         db.voiceProfiles().upsertAll(data.voiceProfiles.filter { p -> profiles[p.id]?.let { it.updatedAt < p.updatedAt } ?: true })
-        val items = db.actionItems().all().map { it.id }.toSet()
-        db.actionItems().upsertAll(data.actionItems.filter { it.id !in items })
         Result(data.notes.size, recordings)
     }
 }

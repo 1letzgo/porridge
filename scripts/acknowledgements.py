@@ -158,7 +158,6 @@ def android():
         ("pyannote Segmentation 3.0 (ONNX)", "3.0", "MIT", "https://huggingface.co/pyannote/segmentation-3.0", pyannote_mit),
         ("WeSpeaker CAM++ VoxCeleb (ONNX)", "", "CC BY 4.0", "https://github.com/wenet-e2e/wespeaker",
          lambda: "Speaker embedding model trained by WeSpeaker on VoxCeleb; the model follows the license of its dataset.\n\n" + CC_BY_4()),
-        ("Qwen3 Embedding 0.6B (GGUF)", "0.6B", "Apache 2.0", "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF", APACHE),
         ("Qwen3 4B Instruct 2507 (GGUF)", "4B", "Apache 2.0", "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF", APACHE),
         ("Qwen3 1.7B (GGUF)", "1.7B", "Apache 2.0", "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF", APACHE),
         ("Nemotron 3.5 Bolt-E4B (GGUF)", "E4B", "OpenMDW 1.1", "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF",

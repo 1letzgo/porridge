@@ -83,8 +83,10 @@ import de.letzgo.porridge.ml.ModelManager
 import de.letzgo.porridge.ml.ModelPack
 import de.letzgo.porridge.ml.ModelState
 import de.letzgo.porridge.ml.SpeechModel
-import de.letzgo.porridge.ml.TextEmbedder
 import de.letzgo.porridge.ml.VoiceProfiles
+import de.letzgo.porridge.plaud.PlaudAccount
+import de.letzgo.porridge.plaud.PlaudImporter
+import de.letzgo.porridge.ui.plaud.PlaudLoginScreen
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.ProcessingStatus
@@ -101,9 +103,16 @@ import java.util.UUID
 
 /** iOS: `SettingsView` (Views/Settings/SettingsView.swift) — Karten wie auf iOS; statt iCloud eine Sicherung. */
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onPlaud: () -> Unit, onOpenNote: (String) -> Unit) {
+fun SettingsScreen(onBack: () -> Unit) {
     var showAcknowledgements by remember { mutableStateOf(false) }
     if (showAcknowledgements) return AcknowledgementsScreen { showAcknowledgements = false }
+    val context = LocalContext.current
+    var plaudSignedIn by remember { mutableStateOf(PlaudAccount.load().userToken != null) }
+    var showPlaudLogin by remember { mutableStateOf(false) }
+    if (showPlaudLogin) return PlaudLoginScreen(
+        onToken = { token, refresh -> PlaudImporter(context).signIn(token, refresh); plaudSignedIn = true; showPlaudLogin = false },
+        onCancel = { showPlaudLogin = false },
+    )
     BackHandler { onBack() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -116,7 +125,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaud: () -> Unit, onOpenNote: (String)
             VoicesCard()
             ModelsCard()
             SummaryCard()
-            ImportCard(onPlaud, onOpenNote)
+            PlaudCard(plaudSignedIn, onSignIn = { showPlaudLogin = true }, onSignOut = { PlaudAccount.clear(); plaudSignedIn = false })
             SyncCard()
             BackupCard()
             AboutCard()
@@ -137,8 +146,8 @@ private fun Card(title: String, footer: String? = null, content: @Composable Col
 }
 
 @Composable
-private fun Pill(label: String, onClick: () -> Unit, enabled: Boolean = true) =
-    Button(onClick = onClick, enabled = enabled, colors = ButtonDefaults.buttonColors(containerColor = Brand.sky.copy(alpha = 0.18f), contentColor = Brand.navy), shape = RoundedCornerShape(50)) { Text(label) }
+private fun Pill(label: String, onClick: () -> Unit, enabled: Boolean = true, destructive: Boolean = false) =
+    Button(onClick = onClick, enabled = enabled, colors = ButtonDefaults.buttonColors(containerColor = (if (destructive) Brand.danger else Brand.sky).copy(alpha = 0.18f), contentColor = if (destructive) Brand.danger else Brand.navy), shape = RoundedCornerShape(50)) { Text(label) }
 
 @Composable
 private fun ToggleRow(label: String, key: String) {
@@ -265,15 +274,13 @@ private fun ModelsCard() = Card("On-Device Models", footer = "Models run on this
     ModelRow(SpeechModel.pack, "Speech recognition · 0.6B") { SpeechModel.release() }
     HorizontalDivider()
     ModelRow(Diarizer.pack, "pyannote") { Diarizer.release() }
-    HorizontalDivider()
-    ModelRow(TextEmbedder.pack, "Finds notes by meaning in chat and search") {}
 }
 
-/** iOS: `youCard` — wer der Nutzer ist: seine Aufgaben stehen unter „Mine“, die Zusammenfassungen nennen ihn. */
+/** iOS: `youCard` — wer der Nutzer ist: die Zusammenfassungen nennen ihn. */
 @Composable
 private fun YouCard() {
     var name by remember { mutableStateOf(Prefs.string(Keys.MY_NAME).orEmpty()) }
-    Card("You", footer = "Tasks given to this name show under Mine. Separate other spellings with commas, e.g. “Anna, Anna Berg”.") {
+    Card("You", footer = "Marks you among the speakers and in summaries. Separate other spellings with commas, e.g. “Anna, Anna Berg”.") {
         OutlinedTextField(name, { name = it; Prefs.set(Keys.MY_NAME, it); NextcloudSync.syncSoon() }, label = { Text("Your Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     }
 }
@@ -460,36 +467,13 @@ private fun SyncCard() {
 
 /** iOS: `importCard` — Aufnahmen von außen: vom Plaud-Recorder oder als Audio- oder Videodatei. */
 @Composable
-private fun ImportCard(onPlaud: () -> Unit, onOpenNote: (String) -> Unit) {
-    val context = LocalContext.current
-    val coroutines = rememberCoroutineScope()
-    var error by remember { mutableStateOf<String?>(null) }
-    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        coroutines.launch {
-            runCatching {
-                val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-                    val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                    if (c.moveToFirst() && i >= 0) c.getString(i) else null
-                } ?: "Import"
-                val ext = name.substringAfterLast('.', "m4a")
-                val fileName = AudioStore.importFile(context, uri, ext)
-                val info = AudioStore.audioInfo(fileName)
-                val note = Note(
-                    title = name.substringBeforeLast('.'), titleIsCustom = true, statusRaw = ProcessingStatus.RECORDED.raw,
-                    audioFileName = fileName, inputName = "Import", duration = info?.first ?: 0.0, channelCount = info?.second ?: 1,
-                )
-                PorridgeDatabase.shared.notes().upsert(note)
-                ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
-                onOpenNote(note.id)
-            }.onFailure { error = it.message }
+private fun PlaudCard(signedIn: Boolean, onSignIn: () -> Unit, onSignOut: () -> Unit) {
+    Card("Plaud", footer = "Once signed in, the plus button on the home page imports recordings from your Plaud recorder.") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (signedIn) "Signed In" else "Plaud Account", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+            Pill(if (signedIn) "Sign Out" else "Sign In", if (signedIn) onSignOut else onSignIn, destructive = signedIn)
         }
     }
-    Card("Import") {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("Plaud Recordings", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", onPlaud) }
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("Audio or Video File", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Choose", { importer.launch(arrayOf("audio/*", "video/*")) }) }
-    }
-    error?.let { AlertDialog(onDismissRequest = { error = null }, title = { Text("Import Failed") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } }) }
 }
 
 @Composable
@@ -503,7 +487,7 @@ private fun BackupCard() {
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) coroutines.launch { message = runCatching { Backup.import(context, uri) }.fold({ "Restored ${it.notes} notes and ${it.recordings} recordings." }, { "Restore failed: ${it.message}" }) }
     }
-    Card("Backup", footer = message ?: "Notes, voices, tasks and recordings in one file. Restoring keeps the newer version of each note.") {
+    Card("Backup", footer = message ?: "Notes, voices and recordings in one file. Restoring keeps the newer version of each note.") {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Pill("Back Up", { exporter.launch("porridge-backup-${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.zip") })
             Pill("Restore", { importer.launch(arrayOf("application/zip", "application/octet-stream")) })

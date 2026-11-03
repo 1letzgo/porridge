@@ -15,24 +15,24 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/home.png" width="240" alt="Home list with tasks, projects and notes">
+  <img src="docs/screenshots/home.png" width="240" alt="Home list with projects and notes">
   <img src="docs/screenshots/summary.png" width="240" alt="A meeting with its summary">
   <img src="docs/screenshots/transcript.png" width="240" alt="A transcript with speakers">
 </p>
 
-Porridge records what is said in a meeting, writes it down with speaker names and turns it into a summary with tasks. Speech recognition runs on your device and summaries can too, so a recording does not have to leave it. Notes, tasks, saved links and projects live in one quiet list.
+Porridge records what is said in a meeting, writes it down with speaker names and turns it into a summary with tasks. Speech recognition runs on your device and summaries can too, so a recording does not have to leave it. Notes, saved links and projects live in one quiet list.
 
 ## What it does
 
 - **Meetings:** Record a meeting and get a transcript with speakers. Porridge recognizes voices it has learned. A two-channel microphone assigns each channel to one person.
-- **Summaries with templates:** Choose General, One-on-One, Customer Call, Lecture or your own template each time. Tasks from a summary land in your task list as suggestions.
+- **Summaries with templates:** Choose General, One-on-One, Customer Call, Lecture or your own template each time. Tasks stay in the summary, where you can tick them off.
 - **Dictation:** Dictate into any note. On the Mac, a global shortcut types into whatever app you are using.
 - **Notes:** Headings, lists and checklists as you type, stored as Markdown.
 - **Links:** Share a page to Porridge to save its text and summarize it.
-- **Projects and tasks:** Keep notes, meetings, links and tasks together, with pinned projects at the top.
-- **Search and chat:** Search everything, or ask your notes a question and get an answer that names its sources.
+- **Projects:** Keep notes, meetings and links together, with pinned projects at the top.
+- **Search:** Search notes, transcripts, summaries and saved pages, narrowed by kind or tag.
 - **Sync:** iCloud on Apple devices, or your own Nextcloud across all platforms.
-- **Plaud import without the cloud:** Copy recordings straight from a Plaud recorder over Bluetooth, so they do not have to go through Plaud's cloud. You sign in to Plaud once to connect the recorder; the transcript and summary then come from Porridge.
+- **Plaud import without the cloud:** Copy recordings straight from a Plaud recorder over Bluetooth, so they do not have to go through Plaud's cloud. You sign in to Plaud once in Settings to connect the recorder, then import from the plus button; the transcript and summary then come from Porridge.
 
 <p align="center">
   <img src="docs/screenshots/search.png" width="240" alt="Search across everything">
@@ -46,7 +46,7 @@ Porridge records what is said in a meeting, writes it down with speaker names an
 | --- | --- | --- |
 | **Speech** | Parakeet TDT v3 (25 European languages), Apple Speech on Apple devices | |
 | **Speakers** | pyannote | |
-| **Summaries and chat** | Nemotron 3.5 Bolt, Qwen3 4B or Qwen3 1.7B, recommended to suit your device; Apple Intelligence on Apple devices | Your own key for OpenRouter, OpenAI, Anthropic, Google, Mistral, Groq or a compatible server |
+| **Summaries** | Nemotron 3.5 Bolt, Qwen3 4B or Qwen3 1.7B, recommended to suit your device; Apple Intelligence on Apple devices | Your own key for OpenRouter, OpenAI, Anthropic, Google, Mistral, Groq or a compatible server |
 
 Models download once and then work offline. With iCloud, audio stays on the device that recorded it; with Nextcloud, recordings sync too.
 
@@ -73,7 +73,7 @@ Use the `Porridge` scheme for iPhone and iPad and `PorridgeMac` for the Mac. You
 | Path | Content |
 | --- | --- |
 | `Porridge/Models` | SwiftData models |
-| `Porridge/Services` | Recording, transcription, summaries, chat, sync, Plaud |
+| `Porridge/Services` | Recording, transcription, summaries, search, sync, Plaud |
 | `Porridge/Views`, `Porridge/Design` | SwiftUI views and the shared look |
 | `PorridgeMac` | Mac app: dictation shortcut, menu bar, updates |
 | `PorridgeWidgets`, `PorridgeShare` | Widgets, Live Activity and the share extension |
@@ -179,7 +179,6 @@ Porridge stands on the work of these projects. Thank you! The full license texts
 | [Nemotron 3.5 Bolt-E4B (GGUF)](https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF) | E4B | OpenMDW 1.1 |
 | [Qwen3 1.7B (GGUF)](https://huggingface.co/Qwen/Qwen3-1.7B-GGUF) | 1.7B | Apache 2.0 |
 | [Qwen3 4B Instruct 2507 (GGUF)](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | 4B | Apache 2.0 |
-| [Qwen3 Embedding 0.6B (GGUF)](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF) | 0.6B | Apache 2.0 |
 | [Qwen3.5 4B (GGUF)](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF) | 4B | Apache 2.0 |
 | [WeSpeaker CAM++ VoxCeleb (ONNX)](https://github.com/wenet-e2e/wespeaker) | – | CC BY 4.0 |
 

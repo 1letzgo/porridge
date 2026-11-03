@@ -23,6 +23,14 @@ class SyncMergeTest {
         assertEquals(setOf("version", "notes", "deleted"), SyncMerge.parseFile("{\"version\": 1, \"notes\": [], \"deleted\": {}}").keys)
     }
 
+    @Test fun theFormerTasksLeaveTheFileWithTheirTombstones() {
+        val file = SyncMerge.parseFile("""{"version":1,"notes":[],"actionItems":[{"id":"T","text":"Call"}],"voiceProfilesApple":[],"deleted":{"actionItems":{"U":5},"voiceProfilesApple":{"V":6}}}""")
+        assertEquals(setOf("version", "notes", "voiceProfilesApple", "deleted"), SyncMerge.withoutRetired(file).keys)
+        assertEquals(setOf("voiceProfilesApple"), SyncMerge.withoutRetired(file["deleted"] as kotlinx.serialization.json.JsonObject).keys)
+        // Auch eine kaputte alte Sammlung hält den Lauf nicht mehr an.
+        assertEquals(setOf("actionItems"), SyncMerge.parseFile("""{"actionItems":{}}""").keys)
+    }
+
     @Test fun aRecordWithoutBaseIsNotReadAsDeleted() {
         // So bleibt ein Eintrag, den dieses Gerät nicht lesen konnte: ohne Grundlage kommt er wieder, ohne Tombstone.
         val r = rec("A", "unreadable", 1)

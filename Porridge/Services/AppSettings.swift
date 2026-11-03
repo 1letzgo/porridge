@@ -54,7 +54,7 @@ enum AppSettings {
     static let voiceRecognitionKey = "voiceRecognition"
     static let providerKey = "aiProvider"
     static let customBaseURLKey = "aiCustomBaseURL"
-    /// The user's own name (and other ways it is written, comma separated): their tasks go under "Mine".
+    /// The user's own name (and other ways it is written, comma separated): the summaries name them.
     static let myNameKey = "myName"
     /// The voice marked as the user's in the speaker list (`VoiceProfile.id`), and its name for matching.
     static let myVoiceKey = "myVoice"

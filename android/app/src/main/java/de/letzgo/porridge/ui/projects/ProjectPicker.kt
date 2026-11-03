@@ -57,12 +57,11 @@ fun List<NoteFolder>.sortedByName(): List<NoteFolder> {
 }
 
 /**
- * Projekt-Pillen (violett) und „+ Project“ mit Auswahl aller Projekte und „New Project…“. Steht in einer `Row`;
- * [inherited]: Projekte, die von woanders kommen (die Notiz einer Aufgabe), blass und hier nicht abwählbar.
+ * Projekt-Pillen (violett) und „+ Project“ mit Auswahl aller Projekte und „New Project…“. Steht in einer `Row`.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit, inherited: List<String> = emptyList()) {
+fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit) {
     val projects by PorridgeDatabase.shared.folders().observeAll().collectAsState(initial = emptyList())
     val sorted = remember(projects) { projects.sortedByName() }
     val coroutines = rememberCoroutineScope()
@@ -70,15 +69,13 @@ fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit, inherited: 
     var creating by remember { mutableStateOf(false) }
 
     for (project in sorted) {
-        val own = project.id in assigned
-        val fromNote = project.id in inherited && !own
-        if (!own && !fromNote) continue
-        Surface(shape = RoundedCornerShape(50), color = Brand.project.copy(alpha = if (own) 0.18f else 0.08f)) {
-            Row(Modifier.padding(start = 12.dp, end = if (own) 4.dp else 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Folder, null, tint = Brand.project.copy(alpha = if (own) 1f else 0.5f), modifier = Modifier.size(14.dp))
+        if (project.id !in assigned) continue
+        Surface(shape = RoundedCornerShape(50), color = Brand.project.copy(alpha = 0.18f)) {
+            Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Folder, null, tint = Brand.project, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
-                Text(project.name, style = MaterialTheme.typography.labelLarge, color = Brand.project.copy(alpha = if (own) 1f else 0.6f))
-                if (own) Icon(Icons.Filled.Close, "Remove from Project", tint = Brand.project, modifier = Modifier.padding(start = 4.dp).size(16.dp).clip(CircleShape).combinedClickable(onClick = { onToggle(project.id) }))
+                Text(project.name, style = MaterialTheme.typography.labelLarge, color = Brand.project)
+                Icon(Icons.Filled.Close, "Remove from Project", tint = Brand.project, modifier = Modifier.padding(start = 4.dp).size(16.dp).clip(CircleShape).combinedClickable(onClick = { onToggle(project.id) }))
             }
         }
     }
@@ -92,12 +89,11 @@ fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit, inherited: 
         DropdownMenu(menu, onDismissRequest = { menu = false }) {
             for (project in sorted) {
                 // Archivierte Projekte stehen nicht mehr zur Wahl; zugeordnete bleiben abwählbar.
-                if (project.archivedAt != null && project.id !in assigned && project.id !in inherited) continue
-                val fromNote = project.id in inherited && project.id !in assigned
+                if (project.archivedAt != null && project.id !in assigned) continue
                 DropdownMenuItem(
-                    text = { Text(project.name) }, enabled = !fromNote,
+                    text = { Text(project.name) },
                     leadingIcon = {
-                        if (project.id in assigned || fromNote) Icon(Icons.Filled.Check, null, tint = Brand.project.copy(alpha = if (fromNote) 0.5f else 1f))
+                        if (project.id in assigned) Icon(Icons.Filled.Check, null, tint = Brand.project)
                         else Spacer(Modifier.size(24.dp))
                     },
                     onClick = { menu = false; onToggle(project.id) },
@@ -117,11 +113,10 @@ fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit, inherited: 
 }
 
 /**
- * iOS: `ProjectMenu` — „Projects…“ beim langen Drücken: alle Projekte zum Abhaken. [inherited] (die Notiz einer
- * Aufgabe) erscheinen abgehakt und gesperrt.
+ * iOS: `ProjectMenu` — „Projects…“ beim langen Drücken: alle Projekte zum Abhaken.
  */
 @Composable
-fun ProjectChooser(assigned: List<String>, onToggle: (String) -> Unit, onDismiss: () -> Unit, inherited: List<String> = emptyList()) {
+fun ProjectChooser(assigned: List<String>, onToggle: (String) -> Unit, onDismiss: () -> Unit) {
     val projects by PorridgeDatabase.shared.folders().observeAll().collectAsState(initial = emptyList())
     val sorted = remember(projects) { projects.sortedByName() }
     AlertDialog(
@@ -131,14 +126,13 @@ fun ProjectChooser(assigned: List<String>, onToggle: (String) -> Unit, onDismiss
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (sorted.isEmpty()) Text("Create a project with the plus button first.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 for (project in sorted) {
-                    if (project.archivedAt != null && project.id !in assigned && project.id !in inherited) continue
-                    val fromNote = project.id in inherited && project.id !in assigned
+                    if (project.archivedAt != null && project.id !in assigned) continue
                     Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !fromNote) { onToggle(project.id) }.padding(vertical = 4.dp),
+                        Modifier.fillMaxWidth().clickable { onToggle(project.id) }.padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(
-                            checked = project.id in assigned || fromNote, onCheckedChange = { onToggle(project.id) }, enabled = !fromNote,
+                            checked = project.id in assigned, onCheckedChange = { onToggle(project.id) },
                             colors = CheckboxDefaults.colors(checkedColor = Brand.project),
                         )
                         Text(project.name)

@@ -1,11 +1,9 @@
 import SwiftData
 import SwiftUI
 
-/// The projects of a note or task as violet pills, and a menu to add it to more (or a new one).
-/// `inherited` are the projects a task is in through its note: shown dimmed, changed on the note.
+/// The projects of a note as violet pills, and a menu to add it to more (or a new one).
 struct ProjectPills: View {
     let assigned: [String]
-    var inherited: [String] = []
     let onToggle: (NoteFolder) -> Void
 
     @Environment(\.modelContext) private var context
@@ -29,17 +27,6 @@ struct ProjectPills: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .chunkyPill(fill: .brandProject)
-            }
-            ForEach(projects.filter { inherited.contains(Projects.key($0)) && !assigned.contains(Projects.key($0)) }) { project in
-                HStack(spacing: 6) {
-                    Image(systemName: "folder").font(.caption)
-                    Text(project.name).font(.subheadline.weight(.semibold))
-                }
-                .foregroundStyle(Color.brandProject.opacity(0.6))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .overlay(Capsule().strokeBorder(Color.brandProject.opacity(0.3), lineWidth: 1))
-                .accessibilityLabel("\(project.name), from the note")
             }
             Menu {
                 ForEach(projects) { project in
@@ -80,7 +67,6 @@ struct ProjectPills: View {
 /// Missing when there are no projects yet (they are made in the Projects tab).
 struct ProjectMenu: View {
     let assigned: [String]
-    var inherited: [String] = []
     let onToggle: (NoteFolder) -> Void
 
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
@@ -91,14 +77,12 @@ struct ProjectMenu: View {
                 ForEach(projects) { project in
                     let key = Projects.key(project)
                     Button { onToggle(project) } label: {
-                        if assigned.contains(key) || inherited.contains(key) {
+                        if assigned.contains(key) {
                             Label(project.name, systemImage: "checkmark")
                         } else {
                             Text(project.name)
                         }
                     }
-                    // A project that comes from the task's note is changed on the note.
-                    .disabled(inherited.contains(key) && !assigned.contains(key))
                 }
             } label: {
                 Label("Projects", systemImage: "folder")

@@ -19,16 +19,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -62,7 +60,7 @@ import java.util.Locale
 
 /** iOS: `PlaudImportSheet` — listet die Aufnahmen auf einem Plaud-Recorder und übernimmt die gewählten als Notizen. */
 @Composable
-fun PlaudImportScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
+fun PlaudImportScreen(projectID: String?, onBack: () -> Unit, onOpen: (String) -> Unit) {
     val context = LocalContext.current
     val importer = remember { PlaudImporter(context) }
     val signedIn by importer.signedIn.collectAsState()
@@ -73,7 +71,6 @@ fun PlaudImportScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val progress by importer.progress.collectAsState()
     val error by importer.errorMessage.collectAsState()
     var showLogin by remember { mutableStateOf(false) }
-    var menu by remember { mutableStateOf(false) }
     var lastImported by remember { mutableStateOf<String?>(null) }
     val coroutines = rememberCoroutineScope()
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { coroutines.launch { importer.refresh() } }
@@ -95,13 +92,7 @@ fun PlaudImportScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack, enabled = importing == null) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close", tint = Brand.navy) }
             Text("Plaud", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
-            if (signedIn) Box {
-                IconButton(onClick = { menu = true }, enabled = importing == null) { Icon(Icons.Filled.MoreVert, "More", tint = Brand.navy) }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Reload") }, onClick = { menu = false; refresh() })
-                    DropdownMenuItem(text = { Text("Sign Out", color = Brand.danger) }, onClick = { menu = false; importer.signOut() })
-                }
-            }
+            if (signedIn) IconButton(onClick = { refresh() }, enabled = importing == null) { Icon(Icons.Filled.Refresh, "Reload", tint = Brand.navy) }
         }
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             when {
@@ -132,7 +123,7 @@ fun PlaudImportScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                                     importing == rec.sessionId -> OutlinedButton(onClick = { importer.cancelImport() }) { Text("Stop") }
                                     rec.imported -> Icon(Icons.Filled.CheckCircle, "Imported", tint = Brand.sky)
                                     else -> OutlinedButton(enabled = importing == null, onClick = {
-                                        coroutines.launch { importer.importRecording(rec)?.let { lastImported = PlaudImporter.addNote(it).id } }
+                                        coroutines.launch { importer.importRecording(rec)?.let { lastImported = PlaudImporter.addNote(it, projectID).id } }
                                     }) { Text("Import") }
                                 }
                             }
@@ -143,7 +134,7 @@ fun PlaudImportScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         }
         if (status.isNotEmpty() && importing != null) Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
         if (newOnes.isNotEmpty()) Button(
-            onClick = { coroutines.launch { for (rec in newOnes) { val audio = importer.importRecording(rec) ?: break; lastImported = PlaudImporter.addNote(audio).id } } },
+            onClick = { coroutines.launch { for (rec in newOnes) { val audio = importer.importRecording(rec) ?: break; lastImported = PlaudImporter.addNote(audio, projectID).id } } },
             enabled = importing == null, colors = ButtonDefaults.buttonColors(containerColor = Brand.sky),
             modifier = Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(),
         ) { Text(if (newOnes.size == 1) "Import 1 Recording" else "Import ${newOnes.size} Recordings") }

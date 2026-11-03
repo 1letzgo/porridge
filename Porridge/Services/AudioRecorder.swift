@@ -26,6 +26,7 @@ enum RecorderError: LocalizedError {
 @Observable
 final class AudioRecorder {
     private(set) var isRecording = false
+    private(set) var isPaused = false
     private(set) var elapsed: TimeInterval = 0
     private(set) var levels: [Float] = [0]
     private(set) var inputName = ""
@@ -42,7 +43,10 @@ final class AudioRecorder {
     @ObservationIgnored private var recordingFormat: AVAudioFormat?
     @ObservationIgnored private var writer: TapWriter?
     @ObservationIgnored private var fileName: String?
+    /// When the clock last started; nil while paused.
     @ObservationIgnored private var startDate: Date?
+    /// Recorded time before the last pause.
+    @ObservationIgnored private var recordedBeforePause: TimeInterval = 0
     @ObservationIgnored private var ticker: Task<Void, Never>?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
 
@@ -106,23 +110,48 @@ final class AudioRecorder {
         input.installTap(
             onBus: 0, bufferSize: 4096, format: hwFormat,
             block: Self.makeTapBlock(writer: writer, onBuffer: onBuffer) { [weak self] levels in
-                Task { @MainActor in self?.levels = levels }
+                Task { @MainActor in if self?.isPaused == false { self?.levels = levels } }
             }
         )
         engine.prepare()
         try engine.start()
 
         isRecording = true
+        isPaused = false
+        recordedBeforePause = 0
         startDate = Date()
         elapsed = 0
         ticker = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
-                guard let self, let start = self.startDate else { return }
-                self.elapsed = Date().timeIntervalSince(start)
+                guard let self else { return }
+                self.elapsed = self.recordedTime
             }
         }
         observeInterruptions()
+    }
+
+    /// The microphone keeps running and its sound is dropped: iOS may suspend an app in the background that
+    /// stops recording, and would not let it start again from there. So the file has no gap and no silence.
+    func pause() {
+        guard isRecording, !isPaused else { return }
+        writer?.isPaused = true
+        recordedBeforePause = recordedTime
+        startDate = nil
+        elapsed = recordedBeforePause
+        isPaused = true
+        levels = Array(repeating: 0, count: channelCount)
+    }
+
+    func resume() {
+        guard isRecording, isPaused else { return }
+        startDate = Date()
+        isPaused = false
+        writer?.isPaused = false
+    }
+
+    private var recordedTime: TimeInterval {
+        recordedBeforePause + (startDate.map { Date().timeIntervalSince($0) } ?? 0)
     }
 
     @discardableResult
@@ -140,7 +169,8 @@ final class AudioRecorder {
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
-        let duration = startDate.map { Date().timeIntervalSince($0) } ?? elapsed
+        let duration = recordedTime
+        isPaused = false
         self.fileName = nil
         return RecordingResult(
             fileName: fileName,
@@ -207,6 +237,7 @@ final class AudioRecorder {
         onLevels: @escaping @Sendable ([Float]) -> Void
     ) -> AVAudioNodeTapBlock {
         { buffer, _ in
+            guard !writer.isPaused else { return }
             writer.write(buffer)
             onLevels(levelsOf(buffer, channels: writer.channels))
             if let onBuffer, let mono = monoCopy(of: buffer, channels: writer.channels) {
@@ -253,6 +284,12 @@ private final class TapWriter: @unchecked Sendable {
     private let lock = NSLock()
     private let onFailure: @Sendable () -> Void
     private var failed = false
+    private var paused = false
+
+    var isPaused: Bool {
+        get { lock.withLock { paused } }
+        set { lock.withLock { paused = newValue } }
+    }
 
     init(file: AVAudioFile, channels: Int, onFailure: @escaping @Sendable () -> Void) {
         self.file = file

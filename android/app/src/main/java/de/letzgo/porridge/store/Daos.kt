@@ -4,7 +4,6 @@ import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Query
 import androidx.room.Upsert
-import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.model.VoiceProfile
@@ -78,34 +77,4 @@ interface VoiceProfileDao {
 
     @Delete
     suspend fun delete(profile: VoiceProfile)
-}
-
-@Dao
-interface ActionItemDao {
-    @Query("SELECT * FROM action_items ORDER BY createdAt DESC, `order`")
-    fun observeAll(): Flow<List<ActionItem>>
-
-    @Query("SELECT * FROM action_items")
-    suspend fun all(): List<ActionItem>
-
-    @Query("SELECT * FROM action_items WHERE id = :id")
-    suspend fun get(id: String): ActionItem?
-
-    @Query("SELECT * FROM action_items WHERE id = :id")
-    fun observe(id: String): Flow<ActionItem?>
-
-    @Query("SELECT * FROM action_items WHERE noteID = :noteID ORDER BY `order`")
-    suspend fun forNote(noteID: String): List<ActionItem>
-
-    @Upsert
-    suspend fun upsert(item: ActionItem)
-
-    @Upsert
-    suspend fun upsertAll(items: List<ActionItem>)
-
-    @Delete
-    suspend fun delete(item: ActionItem)
-
-    @Query("DELETE FROM action_items WHERE noteID = :noteID")
-    suspend fun deleteForNote(noteID: String)
 }

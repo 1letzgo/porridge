@@ -145,11 +145,16 @@ object SyncMerge {
     fun parseFile(text: String): JsonObject {
         val file = runCatching { PorridgeJson.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: throw SyncFileDamaged()
         if (file["deleted"].let { it != null && it !is JsonObject }) throw SyncFileDamaged()
-        for (key in listOf("notes", "actionItems", "folders", "voiceProfilesApple", "voiceProfilesAndroid")) {
+        for (key in listOf("notes", "folders", "voiceProfilesApple", "voiceProfilesAndroid")) {
             if (file[key].let { it != null && it !is JsonArray }) throw SyncFileDamaged()
         }
         return file
     }
+
+    /** Sammlungen, die es nicht mehr gibt (die früheren Aufgaben): Sie und ihre Tombstones gehen beim nächsten Schreiben aus der Datei. */
+    val RETIRED = setOf("actionItems")
+
+    fun withoutRetired(entries: Map<String, JsonElement>): Map<String, JsonElement> = entries - RETIRED
 
     fun updatedAt(record: JsonObject): Long =
         (record["updatedAt"] as? JsonPrimitive)?.longOrNull ?: (record["createdAt"] as? JsonPrimitive)?.longOrNull ?: 0

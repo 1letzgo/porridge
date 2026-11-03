@@ -13,6 +13,8 @@ struct RecordingActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         /// When the recording started; the widget counts up from here without updates.
         var startedAt: Date
+        /// Set while the recording is paused; the widget's clock stands still at this moment.
+        var pausedAt: Date?
         var isFinishing = false
     }
 

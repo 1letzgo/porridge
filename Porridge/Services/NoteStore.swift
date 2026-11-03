@@ -50,7 +50,6 @@ enum NoteStore {
         note.audioFileNames.forEach(AudioStore.delete)
         AudioStore.delete(note.pendingAudioFileName)
         AudioStore.delete(note.audioFileName)
-        ActionItems.remove(of: note.id, in: context)
         context.delete(note)
         try? context.save()
     }

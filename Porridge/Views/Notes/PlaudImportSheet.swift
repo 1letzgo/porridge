@@ -31,13 +31,8 @@ struct PlaudImportSheet: View {
                 }
                 if importer.signedIn {
                     ToolbarItem(placement: .primaryAction) {
-                        Menu {
-                            Button { Task { await importer.refresh() } } label: { Label("Reload", systemImage: "arrow.clockwise") }
-                            Button(role: .destructive) { importer.signOut() } label: { Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right") }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                        }
-                        .disabled(importer.importingId != nil)
+                        Button { Task { await importer.refresh() } } label: { Label("Reload", systemImage: "arrow.clockwise") }
+                            .disabled(importer.importingId != nil)
                     }
                 }
             }

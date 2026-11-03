@@ -51,7 +51,7 @@ object ModelManager {
     fun init(context: Context) {
         appContext = context.applicationContext
         root = File(context.filesDir, "Models").apply { mkdirs() }
-        (listOf(ModelCatalog.parakeet, ModelCatalog.diarizer, ModelCatalog.embedder) + LocalModel.entries.map { it.pack }).forEach { pack ->
+        (listOf(ModelCatalog.parakeet, ModelCatalog.diarizer) + LocalModel.entries.map { it.pack }).forEach { pack ->
             states[pack.id] = MutableStateFlow(if (pack.isInstalled(root)) ModelState.Installed else ModelState.NotInstalled)
             locks[pack.id] = Mutex()
         }
@@ -166,23 +166,35 @@ object ModelManager {
         states.getValue(pack.id).value = ModelState.NotInstalled
     }
 
-    // Wie viele Aufgaben (eine Zusammenfassung, eine Chat-Antwort) das LLM gerade nutzen. Es wird nicht freigegeben,
+    // Wie viele Aufgaben (Zusammenfassungen) das LLM gerade nutzen. Es wird nicht freigegeben,
     // solange es jemand nutzt; danach nach einer kurzen Pause (eine Reihe Zusammenfassungen hält es geladen).
     private var llmUsers = 0
     private var idleRelease: Job? = null
+    private var pendingRelease: (suspend () -> Unit)? = null
 
     @Synchronized fun beginLLMUse() {
         llmUsers++
         idleRelease?.cancel()
     }
 
+    /** Danach bleibt das Modell eine Weile geladen, damit die nächste Zusammenfassung sofort startet (iOS: 2 Minuten). */
     @Synchronized fun endLLMUse(release: suspend () -> Unit) {
         llmUsers = maxOf(0, llmUsers - 1)
         if (llmUsers > 0) return
+        pendingRelease = release
         idleRelease?.cancel()
         idleRelease = scope.launch {
-            delay(20_000)
+            delay(120_000)
             if (llmUsers == 0) release()
         }
+    }
+
+    /** App im Hintergrund oder Speicher knapp: Ein ungenutztes Modell wird sofort frei, sonst endet Android die App zuerst. */
+    @Synchronized fun releaseIdleLLM() {
+        val release = pendingRelease ?: return
+        if (llmUsers > 0) return
+        pendingRelease = null
+        idleRelease?.cancel()
+        idleRelease = scope.launch { release() }
     }
 }

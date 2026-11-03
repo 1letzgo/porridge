@@ -88,25 +88,19 @@ struct ProjectRow: View {
     }
 }
 
-/// One project opened: everything in it that is not archived (meetings, notes, links, tasks), filtered by kind.
+/// One project opened: everything in it that is not archived (meetings, notes, links), filtered by kind.
 struct ProjectPage: View {
     let project: NoteFolder
     let notes: [Note]
-    let items: [ActionItem]
     /// The note open in the detail column.
     @Binding var selection: UUID?
-    /// The task open in the detail column, marked in the list.
-    var selectedTaskID: UUID?
-    var onOpenNote: (UUID) -> Void
-    var onOpenTask: (ActionItem) -> Void
     /// Moves a note to the trash.
     var onRemove: (Note) -> Void
 
     @State private var filter = ProjectFilter.all
 
     var body: some View {
-        let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let content = ProjectContent(of: project, notes: notes, items: items, byID: byID)
+        let content = ProjectContent(of: project, notes: notes)
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -118,22 +112,11 @@ struct ProjectPage: View {
             }
             .padding(.bottom, Look.headerGap)
             List(selection: $selection) {
-                if filter.shows(.tasks), !content.tasks.isEmpty {
-                    Section {
-                        ForEach(content.tasks) { item in
-                            TaskRow(
-                                item: item, note: item.noteID.flatMap { byID[$0] }, selectedID: selectedTaskID,
-                                onOpen: onOpenNote, onEdit: onOpenTask
-                            )
-                        }
-                    } header: { ListHeader(title: "Tasks", tint: .brandTask, isFirst: true) }
-                }
-                let noTasks = !filter.shows(.tasks) || content.tasks.isEmpty
                 let noMeetings = !filter.shows(.meetings) || content.meetings.isEmpty
                 let noNotes = !filter.shows(.notes) || content.notes.isEmpty
-                section("Meetings", content.meetings, kind: .meetings, tint: .brandNavy, isFirst: noTasks)
-                section("Notes", content.notes, kind: .notes, tint: .brandSky, isFirst: noTasks && noMeetings)
-                section("Links", content.links, kind: .links, tint: .brandLink, isFirst: noTasks && noMeetings && noNotes)
+                section("Meetings", content.meetings, kind: .meetings, tint: .brandNavy, isFirst: true)
+                section("Notes", content.notes, kind: .notes, tint: .brandSky, isFirst: noMeetings)
+                section("Links", content.links, kind: .links, tint: .brandLink, isFirst: noMeetings && noNotes)
             }
             .cardList()
             .roomForFloatingButtons()
@@ -141,7 +124,7 @@ struct ProjectPage: View {
                 if content.count(filter) == 0 {
                     EmptyStateView(
                         title: "Nothing Here Yet",
-                        message: "Add meetings, notes, links and tasks to the project from their page.",
+                        message: "Add meetings, notes and links to the project from their page.",
                         systemImage: "folder"
                     )
                 }
@@ -177,15 +160,14 @@ struct ProjectPage: View {
     }
 }
 
-/// What is in a project, newest first; tasks open before done, as in the task list. Archived elements are not
+/// What is in a project, newest first. Archived elements are not
 /// in it: they are in the archive.
 struct ProjectContent {
     var meetings: [Note] = []
     var notes: [Note] = []
     var links: [Note] = []
-    var tasks: [ActionItem] = []
 
-    init(of project: NoteFolder, notes all: [Note], items: [ActionItem], byID: [UUID: Note]) {
+    init(of project: NoteFolder, notes all: [Note]) {
         let id = Projects.key(project)
         for note in all where !note.isDeleted && !note.isArchived && note.projectIDs.contains(id) {
             if note.isLink {
@@ -196,23 +178,19 @@ struct ProjectContent {
                 notes.append(note)
             }
         }
-        tasks = items
-            .filter { HomeList.isShownTask($0, notes: byID) && !$0.isArchived && Projects.contains($0, project: id, notes: byID) }
-            .sorted { a, b in a.isDone != b.isDone ? !a.isDone : a.updatedAt > b.updatedAt }
     }
 
     func count(_ kind: ProjectFilter) -> Int {
         switch kind {
-        case .all: meetings.count + notes.count + links.count + tasks.count
+        case .all: meetings.count + notes.count + links.count
         case .meetings: meetings.count
         case .notes: notes.count
         case .links: links.count
-        case .tasks: tasks.count
         }
     }
 
     var lastChange: Date? {
-        ((meetings + notes + links).map(\.updatedAt) + tasks.map(\.updatedAt)).max()
+        (meetings + notes + links).map(\.updatedAt).max()
     }
 
     var summary: String {
@@ -220,14 +198,13 @@ struct ProjectContent {
             (meetings.count, String(localized: "Meeting"), String(localized: "Meetings")),
             (notes.count, String(localized: "Note"), String(localized: "Notes")),
             (links.count, String(localized: "Link"), String(localized: "Links")),
-            (tasks.count, String(localized: "Task"), String(localized: "Tasks")),
         ].filter { $0.0 > 0 }.map { "\($0.0) \($0.0 == 1 ? $0.1 : $0.2)" }
         return parts.isEmpty ? String(localized: "Empty") : parts.joined(separator: " · ")
     }
 }
 
 enum ProjectFilter: CaseIterable {
-    case all, meetings, notes, links, tasks
+    case all, meetings, notes, links
 
     var title: LocalizedStringKey {
         switch self {
@@ -235,7 +212,6 @@ enum ProjectFilter: CaseIterable {
         case .meetings: "Meetings"
         case .notes: "Notes"
         case .links: "Links"
-        case .tasks: "Tasks"
         }
     }
 

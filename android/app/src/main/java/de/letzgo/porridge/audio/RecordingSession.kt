@@ -39,6 +39,7 @@ object RecordingSession {
     var startedAt = 0L
         private set
     val isRecording: Boolean get() = recorder?.isRecording?.value == true
+    val isPaused: Boolean get() = recorder?.isPaused?.value == true
     /** Was während der laufenden Aufnahme notiert wurde (iOS: `RecordingView.notes`). Liegt hier, weil die Aufnahme den Bildschirm überlebt. */
     val notes = mutableStateListOf<RecordingNote>()
 
@@ -68,6 +69,14 @@ object RecordingSession {
         RecordingService.update(appContext)
         transcriber?.let { scope.launch { it.start(Prefs.language.takeIf { l -> l != "auto" }) } }
         return rec
+    }
+
+    /** Die Uhr der Benachrichtigung steht in der Pause und läuft danach bei der aufgenommenen Zeit weiter. */
+    fun setPaused(paused: Boolean) {
+        val rec = recorder ?: return
+        rec.setPaused(paused)
+        if (!paused) startedAt = System.currentTimeMillis() - (rec.elapsed.value * 1000).toLong()
+        RecordingService.update(appContext)
     }
 
     /** Hält an; liefert die Aufnahme und den Live-Text. */

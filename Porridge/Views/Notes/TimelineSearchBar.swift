@@ -23,11 +23,10 @@ struct TagToken: Identifiable, Hashable {
 
 /// The kinds of elements the search can be narrowed to.
 enum SearchKind: CaseIterable {
-    case tasks, meetings, notes, links
+    case meetings, notes, links
 
     var title: LocalizedStringKey {
         switch self {
-        case .tasks: "Tasks"
         case .meetings: "Meetings"
         case .notes: "Notes"
         case .links: "Links"
@@ -36,7 +35,6 @@ enum SearchKind: CaseIterable {
 
     func matches(_ note: Note) -> Bool {
         switch self {
-        case .tasks: false
         case .meetings: note.isRecording && !note.isLink
         case .notes: !note.isRecording && !note.isLink
         case .links: note.isLink
@@ -47,13 +45,12 @@ enum SearchKind: CaseIterable {
 /// What the one long list can be narrowed to with its filter button. It only narrows what the list shows: an
 /// element in a project stays in its project.
 enum HomeFilter: CaseIterable {
-    case all, projects, tasks, meetings, notes, links
+    case all, projects, meetings, notes, links
 
     var title: LocalizedStringKey {
         switch self {
         case .all: "All"
         case .projects: "Projects"
-        case .tasks: SearchKind.tasks.title
         case .meetings: SearchKind.meetings.title
         case .notes: SearchKind.notes.title
         case .links: SearchKind.links.title
@@ -64,7 +61,6 @@ enum HomeFilter: CaseIterable {
         switch self {
         case .all: "line.3.horizontal.decrease"
         case .projects: "folder.fill"
-        case .tasks: "checklist"
         case .meetings: "mic.fill"
         case .notes: "square.and.pencil"
         case .links: "link"
@@ -76,7 +72,6 @@ enum HomeFilter: CaseIterable {
         switch self {
         case .all: .brandNavy
         case .projects: .brandProject
-        case .tasks: .brandTask
         case .meetings: .accentColor
         case .notes: .brandSky
         case .links: .brandLink
@@ -84,12 +79,11 @@ enum HomeFilter: CaseIterable {
     }
 
     var showsProjects: Bool { self == .all || self == .projects }
-    var showsTasks: Bool { self == .all || self == .tasks }
 
     func matches(_ note: Note) -> Bool {
         switch self {
         case .all: true
-        case .projects, .tasks: false
+        case .projects: false
         case .meetings: SearchKind.meetings.matches(note)
         case .notes: SearchKind.notes.matches(note)
         case .links: SearchKind.links.matches(note)

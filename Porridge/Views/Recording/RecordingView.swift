@@ -26,13 +26,13 @@ struct RecordingView: View {
                 Text(recorder.elapsed.clockString)
                     .font(.system(size: writingNote ? 28 : 60, weight: .bold))
                     .monospacedDigit()
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(recorder.isPaused ? .secondary : .primary)
                     .contentTransition(.numericText())
 
                 // While a note is being typed the keyboard needs the room.
                 if !writingNote { meters }
 
-                LiveTranscriptCard(live: live)
+                LiveTranscriptCard(live: live, isPaused: recorder.isPaused)
                     .onTapGesture { writingNote = false }
 
                 noteList
@@ -47,7 +47,7 @@ struct RecordingView: View {
                         .padding(.horizontal)
                 }
 
-                if !writingNote { stopButton }
+                if !writingNote { recordingButtons }
             }
             .padding()
             .animation(.snappy, value: writingNote)
@@ -90,7 +90,7 @@ struct RecordingView: View {
 
             Spacer()
 
-            Label(inputLabel, systemImage: recorder.isExternal ? "mic.badge.plus" : "mic")
+            Label(recorder.isPaused ? "Paused" : inputLabel, systemImage: recorder.isPaused ? "pause.fill" : recorder.isExternal ? "mic.badge.plus" : "mic")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.accentColor)
                 .padding(.horizontal, 14)
@@ -99,7 +99,7 @@ struct RecordingView: View {
         }
     }
 
-    /// The notes so far, like the messages of a chat, newest at the bottom.
+    /// The notes so far as short bubbles, newest at the bottom.
     @ViewBuilder
     private var noteList: some View {
         if !notes.isEmpty {
@@ -221,6 +221,26 @@ struct RecordingView: View {
         return nil
     }
 
+    private var recordingButtons: some View {
+        HStack(spacing: 24) {
+            pauseButton
+            stopButton
+        }
+        .padding(.bottom, 8)
+    }
+
+    private var pauseButton: some View {
+        Button(action: togglePause) {
+            Image(systemName: recorder.isPaused ? "play.fill" : "pause.fill")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 64, height: 64)
+                .brandSurface(Circle())
+        }
+        .accessibilityLabel(recorder.isPaused ? "Resume recording" : "Pause recording")
+        .disabled(!recorder.isRecording)
+    }
+
     private var stopButton: some View {
         Button {
             finish()
@@ -235,7 +255,11 @@ struct RecordingView: View {
         }
         .accessibilityLabel("Stop recording")
         .disabled(!recorder.isRecording)
-        .padding(.bottom, 8)
+    }
+
+    private func togglePause() {
+        if recorder.isPaused { recorder.resume() } else { recorder.pause() }
+        LiveRecording.setPaused(recorder.isPaused, elapsed: recorder.elapsed)
     }
 
     private func start() async {
@@ -275,6 +299,7 @@ struct RecordingView: View {
 /// Scrolling live transcript, newest text at the bottom.
 struct LiveTranscriptCard: View {
     let live: LiveTranscriber
+    var isPaused = false
     var minHeight: CGFloat = 120
     var body: some View {
         ScrollViewReader { proxy in
@@ -312,9 +337,9 @@ struct LiveTranscriptCard: View {
                 .foregroundStyle(.secondary)
         case .running:
             if live.text.isEmpty {
-                Label("Listening…", systemImage: "waveform")
+                Label(isPaused ? "Paused" : "Listening…", systemImage: "waveform")
                     .foregroundStyle(.secondary)
-                    .symbolEffect(.variableColor.iterative)
+                    .symbolEffect(.variableColor.iterative, isActive: !isPaused)
             } else {
                 paragraphs
             }

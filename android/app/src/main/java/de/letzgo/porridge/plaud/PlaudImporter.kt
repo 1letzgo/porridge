@@ -57,16 +57,6 @@ class PlaudImporter(context: Context) {
         _signedIn.value = true
     }
 
-    fun signOut() {
-        ble.disconnect()
-        PlaudAccount.clear()
-        account = PlaudAccount()
-        privateKey = null
-        _recordings.value = emptyList()
-        _signedIn.value = false
-        _status.value = ""
-    }
-
     /** Die Anmeldung gilt nicht mehr: Tokens vergessen, Schlüssel und Signaturen behalten (sie bleiben gültig). */
     private fun expireSignIn() {
         account = account.copy(userToken = null, refreshToken = null)
@@ -250,13 +240,13 @@ class PlaudImporter(context: Context) {
         private fun markImported(id: Long) = Prefs.set(Keys.PLAUD_IMPORTED, Prefs.stringSet(Keys.PLAUD_IMPORTED) + id.toString())
 
         /** Legt eine übernommene Aufnahme als neue Notiz an und startet die Transkription. */
-        suspend fun addNote(audio: PlaudImportedAudio): Note = withContext(NonCancellable) {
+        suspend fun addNote(audio: PlaudImportedAudio, projectID: String? = null): Note = withContext(NonCancellable) {
             val info = AudioStore.audioInfo(audio.fileName)
             val note = Note(
                 createdAt = audio.date, updatedAt = audio.date, title = Note.defaultMeetingTitle(audio.date), statusRaw = ProcessingStatus.RECORDED.raw,
                 audioFileName = audio.fileName, duration = audio.duration, inputName = "Plaud", channelCount = info?.second ?: 1,
             )
-            PorridgeDatabase.shared.notes().upsert(note)
+            PorridgeDatabase.shared.notes().upsert(if (projectID != null) note.copy(projectIDs = listOf(projectID)) else note)
             // Erst jetzt: Eine Aufnahme, die vor ihrer Notiz als erledigt gilt, würde nie wieder angeboten.
             markImported(audio.sessionId)
             ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))

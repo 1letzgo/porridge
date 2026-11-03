@@ -16,7 +16,7 @@ actor RollingRecognizer {
     private var newSamples = 0
     private var runTask: Task<Void, Never>?
     private var stopped = false
-    private var paused = false
+    private var failedDecodes = 0
     private var appended = 0
 
     /// Re-decode after this much new audio.
@@ -41,19 +41,9 @@ actor RollingRecognizer {
         }
     }
 
-    /// While the app is in the background (phone locked) nobody sees the live text: don't burn CPU
-    /// and don't collect audio. The final transcript is made from the recording afterwards.
-    func setPaused(_ paused: Bool) {
-        self.paused = paused
-        if paused {
-            segment.removeAll()
-            newSamples = 0
-        }
-    }
-
     /// Adds 16 kHz mono samples.
     func append(_ samples: [Float]) {
-        guard !stopped, !paused else { return }
+        guard !stopped else { return }
         segment.append(contentsOf: samples)
         newSamples += samples.count
         appended += 1
@@ -79,10 +69,16 @@ actor RollingRecognizer {
     }
 
     private func tick() async {
-        guard !stopped, !paused, newSamples >= decodeInterval, segment.count >= minimumDecode / 2 else { return }
+        guard !stopped, newSamples >= decodeInterval, segment.count >= minimumDecode / 2 else { return }
         newSamples = 0
         let snapshot = segment
-        guard let text = await decode(snapshot), !stopped else { return }
+        let decoded = await decode(snapshot)
+        guard !stopped else { return }
+        guard let text = decoded else {
+            markGapAfterRepeatedFailures()
+            return
+        }
+        failedDecodes = 0
         volatile = text
 
         if snapshot.count >= commitLength {
@@ -90,6 +86,24 @@ actor RollingRecognizer {
         }
         publish()
     }
+
+    /// The system may refuse the model while the phone is locked. The sound of this stretch is given up,
+    /// with a mark in the text so the gap shows; the final transcript comes from the recording and has it.
+    private func markGapAfterRepeatedFailures() {
+        failedDecodes += 1
+        guard failedDecodes >= 3 else { return }
+        failedDecodes = 0
+        segment.removeAll()
+        newSamples = 0
+        let open = volatile
+        volatile = ""
+        if !open.isEmpty || !confirmed.hasSuffix(Self.gapMarker) {
+            confirmed = [confirmed, open, Self.gapMarker].filter { !$0.isEmpty }.joined(separator: " ")
+            publish()
+        }
+    }
+
+    private static let gapMarker = "[… not transcribed live …]"
 
     /// Closes the piece at its quietest spot; what was spoken after that spot stays open.
     private func commit(_ snapshot: [Float]) async {

@@ -1,7 +1,6 @@
 package de.letzgo.porridge.data
 
 import de.letzgo.porridge.logic.ProjectsLogic
-import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.store.PorridgeDatabase
@@ -18,7 +17,7 @@ object Projects {
     suspend fun rename(project: NoteFolder, name: String) =
         db.folders().upsert(project.copy(name = name.trim(), updatedAt = System.currentTimeMillis()))
 
-    /** Archiviert nur das Projekt; seine Notizen und Aufgaben bleiben unverändert darin. */
+    /** Archiviert nur das Projekt; seine Notizen bleiben unverändert darin. */
     suspend fun archive(project: NoteFolder) {
         val now = System.currentTimeMillis()
         db.folders().upsert(project.copy(archivedAt = now, isPinned = false, updatedAt = now))
@@ -30,11 +29,9 @@ object Projects {
     suspend fun togglePin(project: NoteFolder) =
         db.folders().upsert(project.copy(isPinned = !project.isPinned, updatedAt = System.currentTimeMillis()))
 
-    /** Löscht nur das Projekt; seine Notizen und Aufgaben bleiben und verlieren die Zuordnung. */
+    /** Löscht nur das Projekt; seine Notizen bleiben und verlieren die Zuordnung. */
     suspend fun delete(project: NoteFolder) {
-        val (notes, items) = ProjectsLogic.removing(project.id, db.notes().all(), db.actionItems().all(), System.currentTimeMillis())
-        db.notes().upsertAll(notes)
-        db.actionItems().upsertAll(items)
+        db.notes().upsertAll(ProjectsLogic.removing(project.id, db.notes().all(), System.currentTimeMillis()))
         db.folders().deleteAll(listOf(project.id))
     }
 
@@ -42,11 +39,6 @@ object Projects {
     suspend fun toggle(note: Note, projectID: String) {
         val current = db.notes().get(note.id) ?: note
         db.notes().upsert(current.copy(projectIDs = ProjectsLogic.toggled(current.projectIDs, projectID), updatedAt = System.currentTimeMillis()))
-    }
-
-    suspend fun toggle(item: ActionItem, projectID: String) {
-        val current = db.actionItems().get(item.id) ?: item
-        db.actionItems().upsert(current.copy(projectIDs = ProjectsLogic.toggled(current.projectIDs, projectID), updatedAt = System.currentTimeMillis()))
     }
 
     /** Einmalig beim Start: Notizen in Ordnern gehören danach zum gleichnamigen Projekt. */

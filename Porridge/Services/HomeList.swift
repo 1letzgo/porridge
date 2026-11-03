@@ -6,19 +6,16 @@ import SwiftData
 enum HomeList {
     /// How many projects that are not pinned the list shows before "More".
     static let recentProjects = 5
-    /// How many elements (pinned notes, open tasks, notes) the list shows before "More".
+    /// How many elements (pinned notes, notes) the list shows before "More".
     static let maxElements = 25
 
     /// Shares `maxElements` out from the top of the list down, unless all are asked for. `hidden` is how many that
     /// leaves out when not all are shown.
-    static func elementLimits(
-        pinned: Int, tasks: Int, notes: Int, showAll: Bool
-    ) -> (pinned: Int, tasks: Int, notes: Int, hidden: Int) {
-        let total = pinned + tasks + notes
+    static func elementLimits(pinned: Int, notes: Int, showAll: Bool) -> (pinned: Int, notes: Int, hidden: Int) {
+        let total = pinned + notes
         let budget = showAll ? total : maxElements
         let shownPinned = min(pinned, budget)
-        let shownTasks = min(tasks, budget - shownPinned)
-        return (shownPinned, shownTasks, min(notes, budget - shownPinned - shownTasks), max(0, total - maxElements))
+        return (shownPinned, min(notes, budget - shownPinned), max(0, total - maxElements))
     }
 
     static func activeProjects(_ projects: [NoteFolder]) -> [NoteFolder] {
@@ -54,26 +51,8 @@ enum HomeList {
         notes.filter { !$0.isDeleted && !$0.isArchived && !isInProject($0.projectIDs, projects) }
     }
 
-    static func tasks(_ items: [ActionItem], notes: [UUID: Note], projects: Set<String>) -> [ActionItem] {
-        items.filter { item in
-            guard isShownTask(item, notes: notes), !item.isArchived, !isInProject(item.projectIDs, projects) else { return false }
-            return !isInProject(item.noteID.flatMap { notes[$0] }?.projectIDs ?? [], projects)
-        }
-    }
-
     static func archivedNotes(_ notes: [Note]) -> [Note] {
         notes.filter { $0.isArchived && !$0.isDeleted }
-    }
-
-    static func archivedTasks(_ items: [ActionItem], notes: [UUID: Note]) -> [ActionItem] {
-        items.filter { $0.isArchived && isShownTask($0, notes: notes) }
-    }
-
-    /// A task that was not dropped and whose note was not deleted (a task whose note is gone stays on its own).
-    static func isShownTask(_ item: ActionItem, notes: [UUID: Note]) -> Bool {
-        guard item.kind == .task, item.review != .dismissed else { return false }
-        guard let id = item.noteID, let note = notes[id] else { return true }
-        return !note.isDeleted && !note.isLink
     }
 
     private static func isInProject(_ ids: [String], _ projects: Set<String>) -> Bool {
@@ -81,19 +60,13 @@ enum HomeList {
     }
 }
 
-/// Archiving keeps an element out of the lists without deleting it; it stays in the search and the chat.
+/// Archiving keeps an element out of the lists without deleting it; it stays in the search.
 enum Archive {
     static func set(_ archived: Bool, _ note: Note, in context: ModelContext) {
         guard note.modelContext != nil else { return }
         note.archivedAt = archived ? Date() : nil
         if archived { note.isPinned = false }
         note.updatedAt = Date()
-        try? context.save()
-    }
-
-    static func set(_ archived: Bool, _ item: ActionItem, in context: ModelContext) {
-        item.archivedAt = archived ? Date() : nil
-        item.updatedAt = Date()
         try? context.save()
     }
 

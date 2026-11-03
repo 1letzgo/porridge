@@ -30,6 +30,9 @@ data class RecordingResult(val fileName: String, val duration: Double, val chann
 class AudioRecorder(private val context: Context) {
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+    /** Das Mikrofon läuft weiter und sein Ton wird verworfen, die Datei hat also weder Lücke noch Stille. */
+    private val _isPaused = MutableStateFlow(false)
+    val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
     private val _elapsed = MutableStateFlow(0.0)
     val elapsed: StateFlow<Double> = _elapsed.asStateFlow()
     /** Pegel je Kanal, 0…1 (iOS: -55…-5 dB). */
@@ -120,6 +123,10 @@ class AudioRecorder(private val context: Context) {
                     interrupted()
                     return
                 }
+                if (_isPaused.value) {
+                    if (_levels.value.any { it > 0f }) _levels.value = List(channels) { 0f }
+                    continue
+                }
                 aac.write(buffer, n)
                 report(buffer, n, channels, aac, resampler)
             }
@@ -152,9 +159,14 @@ class AudioRecorder(private val context: Context) {
         }
     }
 
+    fun setPaused(paused: Boolean) {
+        if (running) _isPaused.value = paused
+    }
+
     fun stop(): RecordingResult? {
         if (!running) return null
         running = false
+        _isPaused.value = false
         thread?.join(2000)
         thread = null
         runCatching { record?.stop() }

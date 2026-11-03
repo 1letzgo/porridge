@@ -21,13 +21,11 @@ final class HomeFilterTests: XCTestCase {
         XCTAssertEqual(shown(.meetings), ["meeting"])
         XCTAssertEqual(shown(.notes), ["plain"])
         XCTAssertEqual(shown(.links), ["link"])
-        XCTAssertEqual(shown(.tasks), [])
         XCTAssertEqual(shown(.projects), [])
     }
 
-    func testShowsProjectsAndTasksOnlyWhereItSays() {
+    func testShowsProjectsOnlyWhereItSays() {
         XCTAssertEqual(HomeFilter.allCases.filter(\.showsProjects), [.all, .projects])
-        XCTAssertEqual(HomeFilter.allCases.filter(\.showsTasks), [.all, .tasks])
     }
 
     func testThinkingIsRemoved() {
@@ -41,17 +39,17 @@ final class HomeFilterTests: XCTestCase {
         XCTAssertEqual(LocalModel.nemotronBolt.repoID, "lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit")
     }
     func testElementLimitSharesFromTheTopDown() {
-        let few = HomeList.elementLimits(pinned: 2, tasks: 3, notes: 4, showAll: false)
-        XCTAssertEqual([few.pinned, few.tasks, few.notes, few.hidden], [2, 3, 4, 0])
-        let many = HomeList.elementLimits(pinned: 2, tasks: 10, notes: 30, showAll: false)
-        XCTAssertEqual([many.pinned, many.tasks, many.notes, many.hidden], [2, 10, 13, 17])
-        let manyTasks = HomeList.elementLimits(pinned: 0, tasks: 40, notes: 5, showAll: false)
-        XCTAssertEqual([manyTasks.pinned, manyTasks.tasks, manyTasks.notes, manyTasks.hidden], [0, 25, 0, 20])
+        let few = HomeList.elementLimits(pinned: 2, notes: 4, showAll: false)
+        XCTAssertEqual([few.pinned, few.notes, few.hidden], [2, 4, 0])
+        let many = HomeList.elementLimits(pinned: 2, notes: 40, showAll: false)
+        XCTAssertEqual([many.pinned, many.notes, many.hidden], [2, 23, 17])
+        let manyPinned = HomeList.elementLimits(pinned: 40, notes: 5, showAll: false)
+        XCTAssertEqual([manyPinned.pinned, manyPinned.notes, manyPinned.hidden], [25, 0, 20])
     }
 
     func testElementLimitShowsAllWhenAskedAndStillCountsTheHidden() {
-        let all = HomeList.elementLimits(pinned: 2, tasks: 10, notes: 30, showAll: true)
-        XCTAssertEqual([all.pinned, all.tasks, all.notes, all.hidden], [2, 10, 30, 17])
+        let all = HomeList.elementLimits(pinned: 2, notes: 40, showAll: true)
+        XCTAssertEqual([all.pinned, all.notes, all.hidden], [2, 40, 17])
     }
 
     func testRecordingNotesBecomeListItemsWithTheirTime() {

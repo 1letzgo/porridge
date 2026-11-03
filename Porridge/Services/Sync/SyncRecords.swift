@@ -79,48 +79,6 @@ enum SyncRecords {
         [r["audioFileName"] as? String].compactMap { $0 } + (r["audioFileNames"] as? [String] ?? [])
     }
 
-    // MARK: ActionItem
-
-    static func record(_ item: ActionItem) -> SyncRecord {
-        var r: SyncRecord = [
-            "id": item.id.uuidString,
-            "kindRaw": item.kindRaw,
-            "text": item.text,
-            "isDone": item.isDone,
-            "createdAt": ms(item.createdAt),
-            "order": item.order,
-            "source": item.source,
-            "details": item.details,
-            "updatedAt": ms(item.updatedAt),
-            "reviewRaw": item.reviewRaw,
-            "projectIDs": item.projectIDs,
-        ]
-        r["noteID"] = item.noteID?.uuidString
-        r["owner"] = item.owner
-        r["doneAt"] = item.doneAt.map { ms($0) }
-        r["summaryKey"] = item.summaryKey
-        r["archivedAt"] = item.archivedAt.map { ms($0) }
-        return r
-    }
-
-    static func apply(_ r: SyncRecord, to item: ActionItem) {
-        item.noteID = uuid(r["noteID"])
-        item.kindRaw = r["kindRaw"] as? String ?? ActionItem.Kind.task.rawValue
-        item.text = r["text"] as? String ?? ""
-        item.owner = r["owner"] as? String
-        item.isDone = r["isDone"] as? Bool ?? false
-        item.doneAt = date(r["doneAt"])
-        item.createdAt = date(r["createdAt"]) ?? item.createdAt
-        item.order = (r["order"] as? NSNumber)?.intValue ?? 0
-        item.source = r["source"] as? String ?? "summary"
-        item.details = r["details"] as? String ?? ""
-        item.summaryKey = r["summaryKey"] as? String
-        item.updatedAt = date(r["updatedAt"]) ?? item.updatedAt
-        item.reviewRaw = r["reviewRaw"] as? String ?? ActionItem.Review.accepted.rawValue
-        item.projectIDs = r["projectIDs"] as? [String] ?? []
-        item.archivedAt = date(r["archivedAt"])
-    }
-
     // MARK: NoteFolder
 
     static func record(_ folder: NoteFolder) -> SyncRecord {

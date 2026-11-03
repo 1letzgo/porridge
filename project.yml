@@ -23,7 +23,7 @@ settings:
   base:
     DEVELOPMENT_TEAM: 699G2QY959
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: 1.0
+    MARKETING_VERSION: 1.1
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGN_STYLE: Automatic
 targets:
@@ -52,6 +52,7 @@ targets:
         com.apple.security.application-groups:
           - group.de.letzgo.porridge
         aps-environment: development
+        com.apple.developer.background-tasks.continued-processing.gpu: true
         com.apple.developer.kernel.increased-memory-limit: true
         com.apple.developer.icloud-container-identifiers:
           - iCloud.de.letzgo.porridge
@@ -69,8 +70,11 @@ targets:
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your device.
         NSCalendarsFullAccessUsageDescription: Porridge shows today's appointments so you can record a meeting for one of them.
         NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
+        BGTaskSchedulerPermittedIdentifiers:
+          - de.letzgo.porridge.summary.*
         UIBackgroundModes:
           - audio
+          - processing
           - remote-notification
         UILaunchScreen:
           UIColorName: BrandSky

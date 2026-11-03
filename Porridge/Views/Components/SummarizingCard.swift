@@ -4,6 +4,7 @@ import SwiftUI
 struct SummarizingCard: View {
     let message: String
     let status: String?
+    var model: String?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -19,11 +20,12 @@ struct SummarizingCard: View {
             }
             .buttonStyle(ChunkyButtonStyle())
             .disabled(true)
-            if let status {
-                Text(status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(spacing: 2) {
+                if let status { Text(status) }
+                if let model { Text(model) }
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)

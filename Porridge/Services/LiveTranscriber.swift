@@ -1,9 +1,6 @@
 import AVFoundation
 import FluidAudio
 import Observation
-#if canImport(UIKit)
-import UIKit
-#endif
 
 /// Shows what is being said while recording. Parakeet v3 re-transcribes the running piece about once
 /// a second (see `RollingRecognizer`); the final transcript still comes from the batch pipeline.
@@ -38,7 +35,6 @@ final class LiveTranscriber {
     @ObservationIgnored private let continuation: AsyncStream<AVAudioPCMBuffer>.Continuation
     @ObservationIgnored private var rolling: RollingRecognizer?
     @ObservationIgnored private var feedTask: Task<Void, Never>?
-    @ObservationIgnored private var lifecycleObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var appleLive: AnyObject?
 
     init() {
@@ -63,7 +59,6 @@ final class LiveTranscriber {
             }
             self.rolling = rolling
             await rolling.start()
-            pauseInBackground(rolling)
             // Single consumer keeps the buffers in order.
             let stream = self.stream
             feedTask = Task.detached {
@@ -106,26 +101,6 @@ final class LiveTranscriber {
         }
     }
 
-    /// No live decoding while the phone is locked or the app is in the background.
-    private func pauseInBackground(_ rolling: RollingRecognizer) {
-        #if canImport(UIKit)
-        let center = NotificationCenter.default
-        lifecycleObservers = [
-            center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
-                Task { await rolling.setPaused(true) }
-            },
-            center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
-                Task { await rolling.setPaused(false) }
-            },
-        ]
-        #endif
-    }
-
-    private func removeLifecycleObservers() {
-        lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
-        lifecycleObservers = []
-    }
-
     func observeDownload(_ state: ModelManager.State) {
         if case .downloading(let progress) = state, case .downloading = phase {
             phase = .downloading(progress)
@@ -141,7 +116,6 @@ final class LiveTranscriber {
             appleLive = nil
             return text
         }
-        removeLifecycleObservers()
         if let rolling {
             let final = await rolling.finish()
             if !final.isEmpty { setText(confirmed: final, volatile: "") }
@@ -151,7 +125,6 @@ final class LiveTranscriber {
     }
 
     func cancel() {
-        removeLifecycleObservers()
         continuation.finish()
         feedTask?.cancel()
         if #available(iOS 26, macOS 26, *), let live = appleLive as? AppleSpeech.Live { live.cancel() }

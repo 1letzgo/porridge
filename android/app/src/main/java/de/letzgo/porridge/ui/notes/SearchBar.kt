@@ -26,7 +26,7 @@ import de.letzgo.porridge.logic.ProjectsLogic
 import de.letzgo.porridge.model.Note
 
 /**
- * iOS: `SearchPane` + `TimelineSearchBar` — Suchfeld, darunter eine Art zur Wahl (Tasks, Meetings, Notes, Links) und
+ * iOS: `SearchPane` + `TimelineSearchBar` — Suchfeld, darunter eine Art zur Wahl (Meetings, Notes, Links) und
  * die Tags, gewählte als Marken. Tags gibt es nur hier.
  */
 @Composable
@@ -42,14 +42,14 @@ fun SearchBar(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         )
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            for (k in listOf(ProjectsLogic.Kind.TASK, ProjectsLogic.Kind.MEETING, ProjectsLogic.Kind.NOTE, ProjectsLogic.Kind.LINK)) {
+            for (k in listOf(ProjectsLogic.Kind.MEETING, ProjectsLogic.Kind.NOTE, ProjectsLogic.Kind.LINK)) {
                 FilterChip(selected = kind == k, onClick = { onKind(if (kind == k) null else k) }, label = { Text(k.title) })
             }
             for (token in tokens) InputChip(selected = true, onClick = { onTokens(tokens - token) }, label = { Text("#$token") }, trailingIcon = { Icon(Icons.Filled.Close, "Remove #$token") })
             for ((tag, count) in tags) if (tag.lowercase() !in tokens) AssistChip(onClick = { onTokens(tokens + tag.lowercase()) }, label = { Text("#$tag  $count") })
         }
         if (text.isBlank() && tokens.isEmpty() && kind == null) {
-            Text("Search your tasks, notes, meetings and links, archived ones too.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
+            Text("Search your notes, meetings and links, archived ones too.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
         }
     }
 }

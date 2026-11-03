@@ -168,6 +168,7 @@ actor LocalLLM {
         let task = Task<ModelContainer, Error> {
             // Keep MLX's buffer cache small; the weights themselves take most of the memory.
             Memory.cacheLimit = 32 * 1024 * 1024
+            let started = Date()
             let hub = HubClient(cache: HubCache(cacheDirectory: Self.directory(for: model)))
             let container = try await loadModelContainer(
                 from: HubBridge(upstream: hub),
@@ -175,6 +176,7 @@ actor LocalLLM {
                 configuration: ModelConfiguration(id: model.repoID),
                 progressHandler: { progress?($0.fractionCompleted) }
             )
+            print("[llm] \(model.rawValue) loaded in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
             return container
         }
         loading = task
@@ -195,19 +197,23 @@ actor LocalLLM {
 
     /// One answer to a system + user message pair, without any history.
     func generate(model: LocalModel, system: String, user: String, maxTokens: Int) async throws -> String {
-        if model == .apple { return try await AppleLLM.generate(system: system, user: user, maxTokens: maxTokens) }
-        let container = try await load(model, progress: nil)
-        let session = ChatSession(
-            container,
-            instructions: system,
-            generateParameters: GenerateParameters(maxTokens: maxTokens, temperature: 0.3, topP: 0.9),
-            // Qwen3.5 thinks out loud by default; a summary needs only the answer. Nemotron reads the same switch.
-            additionalContext: ["enable_thinking": false]
-        )
+        if model == .apple {
+            return try await ForegroundWork.retrying { try await AppleLLM.generate(system: system, user: user, maxTokens: maxTokens) }
+        }
         // A failing GPU (memory, app in the background) is reported as an error instead of ending the app.
         let answer: String
         do {
-            answer = try await withError { try await session.respond(to: user) }
+            answer = try await ForegroundWork.retrying {
+                let container = try await load(model, progress: nil)
+                let session = ChatSession(
+                    container,
+                    instructions: system,
+                    generateParameters: GenerateParameters(maxTokens: maxTokens, temperature: 0.3, topP: 0.9),
+                    // Qwen3.5 thinks out loud by default; a summary needs only the answer. Nemotron reads the same switch.
+                    additionalContext: ["enable_thinking": false]
+                )
+                return try await withError { try await session.respond(to: user) }
+            }
         } catch {
             Self.logFailure("\(error.localizedDescription) (prompt \(user.count) characters)")
             throw error
@@ -282,6 +288,12 @@ private struct HubBridge: MLXLMCommon.Downloader {
     ) async throws -> URL {
         guard let repoID = HuggingFace.Repo.ID(rawValue: id) else {
             throw LocalLLMError.invalidModelID(id)
+        }
+        // A model that is here starts without asking the network; only what is missing goes on to the download.
+        if let local = try? await upstream.downloadSnapshot(
+            of: repoID, revision: revision ?? "main", matching: patterns, localFilesOnly: true
+        ) {
+            return local
         }
         return try await upstream.downloadSnapshot(
             of: repoID,

@@ -5,7 +5,6 @@ import androidx.room.InvalidationTracker
 import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.PorridgeJson
 import de.letzgo.porridge.data.Prefs
-import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.model.ProcessingStatus
@@ -77,7 +76,7 @@ object NextcloudSync {
 
     private const val FILE_NAME = "porridge-sync.json"
     private const val LAST_SYNC_KEY = "nextcloudLastSync"
-    private val TABLES = arrayOf("notes", "action_items", "folders", "voice_profiles")
+    private val TABLES = arrayOf("notes", "folders", "voice_profiles")
 
     val isActive: Boolean get() = SyncMode.chosen == SyncMode.NEXTCLOUD && _status.value.account != null
 
@@ -196,10 +195,6 @@ object NextcloudSync {
                     },
                 ),
                 Collection(
-                    "actionItems", ActionItem.serializer(), { it.id },
-                    load = { db.actionItems().all() }, save = { db.actionItems().upsertAll(it) }, delete = { it.forEach { item -> db.actionItems().delete(item) } },
-                ),
-                Collection(
                     "folders", NoteFolder.serializer(), { it.id },
                     load = { db.folders().all() }, save = { db.folders().upsertAll(it) }, delete = { db.folders().deleteAll(it.map { f -> f.id }) },
                 ),
@@ -269,10 +264,10 @@ object NextcloudSync {
             if (remote == null && attempt == 0) dav.makeFolder(dav.root)
             val file = remote?.let { SyncMerge.parseFile(it.data.decodeToString()) } ?: JsonObject(emptyMap())
             val tombstones = file["deleted"] as? JsonObject
-            val output = file.toMutableMap()
+            val output = SyncMerge.withoutRetired(file).toMutableMap()
             output["version"] = JsonPrimitive(1)
             // Beginnt mit der Datei: Die Stimmen der anderen Plattform haben eigene Tombstones.
-            val deleted = tombstones.orEmpty().toMutableMap()
+            val deleted = SyncMerge.withoutRetired(tombstones.orEmpty()).toMutableMap()
             var unreadable = 0
             val newBase = mutableMapOf<String, MutableMap<String, SyncBase>>()
             ownWriteAt = System.currentTimeMillis()

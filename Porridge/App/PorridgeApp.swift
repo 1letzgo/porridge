@@ -32,6 +32,11 @@ struct PorridgeApp: App {
             RootView()
                 .environment(processing)
                 .environment(ModelManager.shared)
+                #if os(iOS)
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                    Task { await ModelManager.shared.releaseLLM() }
+                }
+                #endif
                 .task {
                     await ModelManager.clearCompiledModelsAfterUpdate()
                     LiveRecording.endStale()
@@ -47,6 +52,8 @@ struct PorridgeApp: App {
         .onChange(of: scenePhase) { _, phase in
             // Back in the app: pick up what the other devices did.
             if phase == .active { NextcloudSync.shared.syncSoon(after: .zero) }
+            // A big model in memory gets an app in the background ended first.
+            if phase == .background { Task { await ModelManager.shared.releaseLLM() } }
         }
     }
 }

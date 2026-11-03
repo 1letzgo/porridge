@@ -126,12 +126,10 @@ final class ModelManager {
             #if os(iOS)
             if !model.isInstalled {
                 try await fetchInBackground(model, onProgress: onProgress)
-                // The rest of the way uses the GPU, which iOS refuses to an app in the background.
-                while UIApplication.shared.applicationState != .active {
-                    try await Task.sleep(for: .seconds(1))
-                }
             }
             #endif
+            // The rest of the way uses the GPU, which iOS refuses to an app in the background.
+            await ForegroundWork.waitUntilAllowed()
             try await LocalLLM.shared.prepare(model) { fraction in
                 Task { @MainActor in
                     let manager = ModelManager.shared
@@ -197,7 +195,7 @@ final class ModelManager {
     }
     #endif
 
-    /// How many tasks (a summary, a chat answer) are using the summary model right now. It is not freed while
+    /// How many summaries are using the summary model right now. It is not freed while
     /// somebody uses it: unloading it in the middle of a generation crashes the app.
     @ObservationIgnored private var llmUsers = 0
     @ObservationIgnored private var idleRelease: Task<Void, Never>?
@@ -207,13 +205,14 @@ final class ModelManager {
         idleRelease?.cancel()
     }
 
-    /// Ends one use; once nobody uses the model, it is freed after a short pause (a queue of summaries keeps it loaded).
+    /// Ends one use; once nobody uses the model, it is freed after a while, so the next summary starts
+    /// at once. The app frees it sooner when it goes to the background or memory runs short (`PorridgeApp`).
     func endLLMUse() {
         llmUsers = max(0, llmUsers - 1)
         guard llmUsers == 0 else { return }
         idleRelease?.cancel()
         idleRelease = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(20))
+            try? await Task.sleep(for: .seconds(120))
             if !Task.isCancelled { await releaseLLM() }
         }
     }

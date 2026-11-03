@@ -6,7 +6,7 @@ import de.letzgo.porridge.data.SecureStore
 
 /**
  * iOS: `AIProvider` (Services/AIProvider.swift) — der eine Cloud-Dienst, für den der Nutzer seinen eigenen Schlüssel
- * mitbringt. Schreibt Zusammenfassungen und beantwortet den Chat.
+ * mitbringt. Schreibt Zusammenfassungen.
  */
 enum class AIProvider(val raw: String, val label: String, val baseURL: String?, val style: Style) {
     OPEN_ROUTER("openRouter", "OpenRouter", "https://openrouter.ai/api/v1", Style.OPENAI_COMPATIBLE),

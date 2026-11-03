@@ -28,9 +28,6 @@ struct NoteDetailView: View {
     /// Live text of the running dictation; only shown, written to the note when the final text is ready.
     @State private var liveText = ""
     @State private var editor = NoteEditorController()
-    @State private var isSummarizing = false
-    @State private var summaryStatus: String?
-    @State private var summaryError: String?
     @State private var tab = NoteTab.note
     @State private var confirmResummarize = false
     @State private var askTemplate = false
@@ -127,7 +124,7 @@ struct NoteDetailView: View {
             // Load the speech model right away so the first piece is transcribed without delay.
             Task { try? await ModelManager.shared.ensureASR() }
             if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
-            tab = opensOnSummary ? .summary : .note
+            tab = opensOnSummary || isSummarizing ? .summary : .note
         }
         .onDisappear {
             player.stop()
@@ -161,7 +158,7 @@ struct NoteDetailView: View {
         #if os(macOS)
         .alert("Which template?", isPresented: $askTemplate) {
             ForEach(SummaryTemplate.all) { option in
-                Button(option.name) { Task { await summarize(template: option) } }
+                Button(option.name) { summarize(template: option) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -170,7 +167,7 @@ struct NoteDetailView: View {
         #endif
         .alert("Replace the current summary?", isPresented: $confirmResummarize) {
             Button("Cancel", role: .cancel) {}
-            Button("Summarize Again", role: .destructive) { Task { await summarize() } }
+            Button("Summarize Again", role: .destructive) { summarize() }
         } message: {
             Text("Your edits to the summary are lost.")
         }
@@ -191,7 +188,7 @@ struct NoteDetailView: View {
             Button("Cancel", role: .cancel) {}
         }
         .alert("Summary Failed", isPresented: .constant(summaryError != nil)) {
-            Button("OK") { summaryError = nil }
+            Button("OK") { processing.clearSummaryError(note.id) }
         } message: {
             Text(summaryError ?? "")
         }
@@ -249,7 +246,7 @@ struct NoteDetailView: View {
 
     @ViewBuilder
     private var statusView: some View {
-        if let stage = processing.stages[note.id] {
+        if let stage = processing.stages[note.id], !isSummarizing {
             HStack(spacing: 12) {
                 ProgressView().tint(Color.brandNavy)
                 VStack(alignment: .leading, spacing: 2) {
@@ -449,8 +446,12 @@ struct NoteDetailView: View {
         }
     }
 
+    private var isSummarizing: Bool { processing.summarizing.contains(note.id) }
+    private var summaryError: String? { processing.summaryErrors[note.id] }
+
     private var canSummarize: Bool {
-        !(note.text.isEmpty && note.title.isEmpty && note.segments.isEmpty && (note.pageText ?? "").isEmpty)
+        processing.stages[note.id] == nil
+            && !(note.text.isEmpty && note.title.isEmpty && note.segments.isEmpty && (note.pageText ?? "").isEmpty)
     }
 
     // MARK: - Article
@@ -462,7 +463,7 @@ struct NoteDetailView: View {
                     .font(.body)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else if processing.stages[note.id] != nil || note.pageText == nil, note.status != .failed {
+            } else if (processing.stages[note.id] != nil && !isSummarizing) || note.pageText == nil, note.status != .failed {
                 Text("The text of the page appears here once it is loaded.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -559,7 +560,7 @@ struct NoteDetailView: View {
     private var summaryTab: some View {
         NoteTabScroll {
             if isSummarizing {
-                SummarizingCard(message: summarizeMessage, status: summaryStatus)
+                SummarizingCard(message: summarizeMessage, status: processing.stages[note.id], model: SummaryService.modelLabel)
             } else if let summary = note.summary {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -633,7 +634,7 @@ struct NoteDetailView: View {
             askTemplate = true
             #endif
         } else if note.summary == nil {
-            Task { await summarize() }
+            summarize()
         } else {
             confirmResummarize = true
         }
@@ -650,7 +651,7 @@ struct NoteDetailView: View {
         )
         for option in SummaryTemplate.all {
             alert.addAction(UIAlertAction(title: option.name, style: .default) { _ in
-                Task { await summarize(template: option) }
+                summarize(template: option)
             })
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .destructive))
@@ -683,28 +684,21 @@ struct NoteDetailView: View {
         } else {
             note.summary = text
         }
-        ActionItems.sync(note, in: context)
         try? context.save()
     }
 
-    private func summarize(template: SummaryTemplate = .general) async {
+    /// Runs in the queue, like a transcript: it goes on when this screen closes.
+    private func summarize(template: SummaryTemplate = .general) {
         guard !isSummarizing else { return }
         tab = .summary
-        isSummarizing = true
-        summaryStatus = nil
-        defer {
-            isSummarizing = false
-            summaryStatus = nil
-        }
         // The editor hands its text to the note a moment after typing; make sure it has.
         focused = false
         editor.blur()
-        try? await Task.sleep(for: .milliseconds(150))
-        do {
-            try await SummaryService.summarize(note, template: template) { status in summaryStatus = status }
-            try? context.save()
-        } catch {
-            summaryError = error.localizedDescription
+        let job = ProcessingService.Job.summary(note.id, template)
+        let processing = processing
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            processing.enqueue(job)
         }
     }
 
@@ -729,13 +723,11 @@ struct NoteDetailView: View {
         note.summary = nil
         note.summaryModel = nil
         note.summarizedAt = nil
-        ActionItems.remove(of: note.id, in: context)
         try? context.save()
     }
 
-    /// A checkbox in the summary was tapped: the n-th task line ticks the n-th item with the same wording.
     private func toggleSummaryTask(line: Int) {
-        ActionItems.toggleSummaryLine(line, of: note, in: context)
+        SummaryTasks.toggleLine(line, of: note, in: context)
     }
 
     /// The note while dictating: live text in the accent color and a blinking cursor where it appears.

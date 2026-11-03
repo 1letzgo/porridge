@@ -94,7 +94,7 @@ import de.letzgo.porridge.AppGraph
 import de.letzgo.porridge.audio.AudioPlayback
 import de.letzgo.porridge.audio.InlineDictation
 import de.letzgo.porridge.audio.RecordingSession
-import de.letzgo.porridge.logic.ActionItemsLogic
+import de.letzgo.porridge.logic.SummaryChecklist
 import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.Me
 import de.letzgo.porridge.data.Prefs
@@ -110,7 +110,6 @@ import de.letzgo.porridge.model.clockString
 import de.letzgo.porridge.model.durationText
 import de.letzgo.porridge.ml.VoiceProfiles
 import de.letzgo.porridge.processing.ProcessingService
-import de.letzgo.porridge.store.ActionItemStore
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.NoteStore
 import de.letzgo.porridge.store.PorridgeDatabase
@@ -153,9 +152,9 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     val editor = remember { NoteEditorController() }
     var liveText by remember { mutableStateOf("") }
     var dictationStart by remember { mutableStateOf(0) }
-    var summaryStatus by remember { mutableStateOf<String?>(null) }
-    var isSummarizing by remember { mutableStateOf(false) }
-    var summaryError by remember { mutableStateOf<String?>(null) }
+    val summarizing by ProcessingService.summarizing.collectAsState()
+    val summaryErrors by ProcessingService.summaryErrors.collectAsState()
+    val isSummarizing = note.id in summarizing
     var confirmResummarize by remember { mutableStateOf(false) }
     var confirmDeleteAudio by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Speaker?>(null) }
@@ -172,7 +171,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
         if (note.isLink) add(NoteTab.ARTICLE)
         if (!opensOnSummary) add(NoteTab.SUMMARY)
     }
-    var tab by remember { mutableStateOf(if (opensOnSummary) NoteTab.SUMMARY else NoteTab.NOTE) }
+    var tab by remember { mutableStateOf(if (opensOnSummary || note.id in ProcessingService.summarizing.value) NoteTab.SUMMARY else NoteTab.NOTE) }
     if (tab !in tabs) tab = tabs.first()
 
     /**
@@ -224,21 +223,13 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
 
     var askTemplate by remember { mutableStateOf(false) }
 
+    // Läuft in der Warteschlange wie ein Transkript: Sie geht weiter, wenn dieser Bildschirm zugeht.
     suspend fun summarize(template: SummaryTemplate = SummaryTemplate.GENERAL) {
         if (isSummarizing) return
         tab = NoteTab.SUMMARY
-        isSummarizing = true
-        summaryStatus = null
         editor.blur()
         delay(150)
-        try {
-            ProcessingService.summarize(note.id, template)
-        } catch (e: Throwable) {
-            summaryError = e.message
-        } finally {
-            isSummarizing = false
-            summaryStatus = null
-        }
+        ProcessingService.enqueue(ProcessingService.Job.Summary(note.id, template))
     }
 
     // Eine Aufnahme fragt nach der Vorlage, in derselben Frage, die vor dem Ersetzen warnt; Notiz und Link haben nichts zu wählen.
@@ -269,7 +260,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                             DropdownMenuItem(text = { Text("Recover") }, onClick = { act { coroutines.launch { NoteStore().restore(note); onClose() } } })
                         } else {
                             DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { act { update { it.copy(isPinned = !it.isPinned) } } })
-                            DropdownMenuItem(text = { Text(if (note.summary == null) "Summarize" else "Summarize Again") }, enabled = !isSummarizing && canSummarize(note), onClick = {
+                            DropdownMenuItem(text = { Text(if (note.summary == null) "Summarize" else "Summarize Again") }, enabled = stage == null && canSummarize(note), onClick = {
                                 act { requestSummary() }
                             })
                             DropdownMenuItem(text = { Text(if (note.summary == null) "Write Summary" else "Edit Summary") }, enabled = !isSummarizing, onClick = { act { tab = NoteTab.SUMMARY; editingSummary = true } })
@@ -298,18 +289,18 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                     note, onAdd = { addingTag = true },
                     onProject = { id -> update { n -> n.copy(projectIDs = ProjectsLogic.toggled(n.projectIDs, id)) } },
                 ) { tag -> update { n -> n.copy(labels = n.labels.filter { !it.equals(tag, true) }) } }
-                StatusPanel(note, stage)
+                StatusPanel(note, stage.takeUnless { isSummarizing })
                 if (note.speakers.isNotEmpty()) SpeakerChips(note.speakers) { renaming = it }
                 if (tabs.size > 1) TabSwitcher(tabs, tab) { tab = it }
                 Box(Modifier.padding(bottom = if (note.hasLocalAudio && tab != NoteTab.NOTE) 0.dp else 8.dp)) {
                     when (tab) {
-                        NoteTab.SUMMARY -> SummaryTab(note, isSummarizing, summaryStatus ?: stage, onSummarize = { requestSummary() },
+                        NoteTab.SUMMARY -> SummaryTab(note, isSummarizing, stage, onSummarize = { requestSummary() },
                             onEdit = { editingSummary = true }, onInsert = { update { n -> n.copy(text = if (n.text.isEmpty()) n.summary.orEmpty() else n.text + "\n\n" + n.summary) } },
                             onCopy = { copy(context, note.summary.orEmpty()) },
-                            onDelete = { coroutines.launch { db.notes().upsert(note.copy(summary = null, summaryModel = null, summarizedAt = null)); ActionItemStore().remove(note.id) } },
+                            onDelete = { coroutines.launch { db.notes().upsert(note.copy(summary = null, summaryModel = null, summarizedAt = null)) } },
                             onToggleTask = { line -> coroutines.launch { toggleSummaryTask(note, line) } })
                         NoteTab.TRANSCRIPT -> TranscriptTab(note, player) { segment, speaker -> update { n -> n.withSegments(n.segments.map { if (it.id == segment.id) it.copy(speakerId = speaker.id) else it }) } }
-                        NoteTab.ARTICLE -> ArticleTab(note, stage, context)
+                        NoteTab.ARTICLE -> ArticleTab(note, stage.takeUnless { isSummarizing }, context)
                         NoteTab.NOTE -> if (dictationPhase != InlineDictation.Phase.IDLE) {
                             DictationPreview(note.text, dictationStart, liveText, dictationPhase == InlineDictation.Phase.POLISHING)
                         } else {
@@ -387,7 +378,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
         confirmButton = { TextButton(onClick = { confirmDeleteAudio = false; player.stop(); AudioStore.delete(note.audioFileName); update { it.copy(audioFileName = null) } }) { Text("Delete Recording", color = Brand.danger) } },
         dismissButton = { TextButton(onClick = { confirmDeleteAudio = false }) { Text("Cancel") } },
     )
-    summaryError?.let { AlertDialog(onDismissRequest = { summaryError = null }, title = { Text("Summary Failed") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { summaryError = null }) { Text("OK") } }) }
+    summaryErrors[note.id]?.let { AlertDialog(onDismissRequest = { ProcessingService.clearSummaryError(note.id) }, title = { Text("Summary Failed") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { ProcessingService.clearSummaryError(note.id) }) { Text("OK") } }) }
     val dictationError by dictation.error.collectAsState()
     dictationError?.let { AlertDialog(onDismissRequest = { dictation.dismissError() }, title = { Text("Dictation") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { dictation.dismissError() }) { Text("OK") } }) }
     if (editingSummary) SummaryEditorSheet(note.summary.orEmpty(), onDismiss = { editingSummary = false }) { text ->
@@ -396,7 +387,6 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
             val trimmed = text.trim()
             val updated = if (trimmed.isEmpty()) note.copy(summary = null, summaryModel = null, summarizedAt = null) else note.copy(summary = trimmed)
             db.notes().upsert(updated)
-            ActionItemStore().sync(updated)
         }
     }
     if (showMerge) MergeNotesSheet(note, onDismiss = { showMerge = false }) { player.stop(); tab = NoteTab.TRANSCRIPT }
@@ -413,20 +403,12 @@ private fun copy(context: Context, text: String) {
     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Porridge", text))
 }
 
-/** Ein Tipp auf eine Checkbox der Zusammenfassung: die n-te Aufgabenzeile hakt den n-ten Eintrag gleichen Wortlauts ab. */
+/** Ein Tipp auf eine Checkbox der Zusammenfassung ändert ihre Zeile, auf dem frischen Stand der Datenbank. */
 private suspend fun toggleSummaryTask(note: Note, line: Int) {
     val db = PorridgeDatabase.shared
-    val parsed = ActionItemsLogic.parse(note.summary.orEmpty())
-    val task = parsed.firstOrNull { it.line == line } ?: return
-    val before = parsed.takeWhile { it.line < line }.count { it.key == task.key }
-    val store = ActionItemStore()
-    var siblings = db.actionItems().forNote(note.id).filter { it.isFromSummary && ActionItemsLogic.matchKey(it) == task.key }
-    if (before >= siblings.size) {
-        // Noch keine Einträge (alte Zusammenfassung): erst anlegen, dann abhaken.
-        store.sync(note)
-        siblings = db.actionItems().forNote(note.id).filter { it.isFromSummary && ActionItemsLogic.matchKey(it) == task.key }
-    }
-    siblings.getOrNull(before)?.let { store.setDone(it, !task.done) }
+    val current = db.notes().get(note.id) ?: return
+    val summary = SummaryChecklist.toggled(current.summary.orEmpty(), line) ?: return
+    db.notes().upsert(current.copy(summary = summary, updatedAt = System.currentTimeMillis()))
 }
 
 /** Die Notiz gibt es nicht (mehr): Zurück geht trotzdem. Der Hinweis erscheint erst, wenn sie nicht bloß noch lädt. */
@@ -604,6 +586,7 @@ private fun SummaryTab(
                     CircularProgressIndicator(color = Brand.sky)
                     Text(message, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     status?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)) }
+                    de.letzgo.porridge.cloud.SummaryService.modelLabel?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
             note.summary != null -> {

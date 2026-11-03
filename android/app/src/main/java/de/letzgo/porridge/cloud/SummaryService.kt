@@ -23,6 +23,13 @@ object SummaryService {
             SummaryBilling.BYOK -> AIProvider.current.let { !it.requiresKey || it.apiKey.isNotEmpty() }
         }
 
+    /** Das Modell der nächsten Zusammenfassung, so benannt wie neben einer fertigen. */
+    val modelLabel: String?
+        get() = when (Prefs.billing) {
+            SummaryBilling.LOCAL -> TextModels.selected?.let { "${it.displayName} (on-device)" }
+            SummaryBilling.BYOK -> "${AIProvider.current.label} · ${AIProvider.current.model}"
+        }
+
     suspend fun summarize(note: Note, template: SummaryTemplate = SummaryTemplate.GENERAL, progress: (String) -> Unit = {}): Note {
         val request = SummaryLogic.request(note, Prefs.language, de.letzgo.porridge.data.Me.name, template)
         val (raw, model) = when (Prefs.billing) {

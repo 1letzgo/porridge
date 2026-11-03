@@ -1,7 +1,7 @@
 package de.letzgo.porridge.ml
 
 /**
- * Das lokale Sprachmodell, wie Zusammenfassung und Chat es brauchen (iOS: `LocalLLM` + `ModelManager.ensureLLM`).
+ * Das lokale Sprachmodell, wie die Zusammenfassung es braucht (iOS: `LocalLLM` + `ModelManager.ensureLLM`).
  * Die Umsetzung mit llama.cpp liegt in `ml/LocalLLM.kt`; Tests nutzen eine Attrappe.
  */
 interface TextModel {

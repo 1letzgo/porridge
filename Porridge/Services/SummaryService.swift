@@ -120,8 +120,14 @@ enum SummaryService {
         note.summaryModel = model
         note.summarizedAt = Date()
         note.updatedAt = Date()
-        // The tasks and decisions of the summary become items of their own (ticked off across all notes).
-        if let context = note.modelContext { ActionItems.sync(note, in: context) }
+    }
+
+    /// The model the next summary is written with, as it is named next to a finished one.
+    static var modelLabel: String {
+        switch AppSettings.billing {
+        case .local: "\(LocalModel.selected.displayName) (on-device)"
+        case .byok: "\(AIProvider.current.label) · \(AIProvider.current.model)"
+        }
     }
 
     /// Runs the model chosen in Settings (on this device or with the user's own key); returns the answer and a label of the model.
@@ -129,21 +135,24 @@ enum SummaryService {
         switch AppSettings.billing {
         case .local:
             let raw = try await summarizeLocally(header: header, material: material, language: language, system: system, noun: noun, focus: focus, progress: progress)
-            return (raw, "\(LocalModel.selected.displayName) (on-device)")
+            return (raw, modelLabel)
         case .byok:
             let provider = AIProvider.current
             let key = provider.apiKey
             if provider.requiresKey, key.isEmpty { throw SummaryError.missingAPIKey(provider.label) }
             progress("Writing summary…")
             let intro = noun == "meeting" ? "Transcript:" : "Note:"
-            let raw = try await CloudLLM.complete(
-                provider: provider,
-                apiKey: key,
-                model: provider.model,
-                system: system,
-                user: "\(header)\n\n\(intro)\n\(material)\n\n\(languageReminder(language))"
-            )
-            return (raw, "\(provider.label) · \(provider.model)")
+            // iOS suspends the app in the background after a while, which cuts the connection.
+            let raw = try await ForegroundWork.retrying(waitsFirst: false) {
+                try await CloudLLM.complete(
+                    provider: provider,
+                    apiKey: key,
+                    model: provider.model,
+                    system: system,
+                    user: "\(header)\n\n\(intro)\n\(material)\n\n\(languageReminder(language))"
+                )
+            }
+            return (raw, modelLabel)
         }
     }
 
@@ -320,7 +329,7 @@ enum SummaryService {
         return header
     }
 
-    /// Small models sometimes drop the "- " of a task line; without it the task would neither tick nor reach the list.
+    /// Small models sometimes drop the "- " of a task line; without it the task would not tick.
     static func withListMarks(_ summary: String) -> String {
         summary.components(separatedBy: "\n").map { line in
             line.hasPrefix("[ ]") || line.hasPrefix("[x]") ? "- " + line : line

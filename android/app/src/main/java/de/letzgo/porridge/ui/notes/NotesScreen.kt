@@ -3,6 +3,12 @@ package de.letzgo.porridge.ui.notes
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.GraphicEq
+import de.letzgo.porridge.plaud.PlaudAccount
+import de.letzgo.porridge.store.AudioStore
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -37,9 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
@@ -96,17 +100,14 @@ import de.letzgo.porridge.data.LinkImport
 import de.letzgo.porridge.data.Projects
 import de.letzgo.porridge.logic.HomeListLogic
 import de.letzgo.porridge.logic.ProjectsLogic
-import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.model.ProcessingStatus
 import de.letzgo.porridge.model.durationText
 import de.letzgo.porridge.processing.ProcessingService
-import de.letzgo.porridge.store.ActionItemStore
 import de.letzgo.porridge.store.NoteStore
 import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.ui.Brand
-import de.letzgo.porridge.ui.chat.ChatPanel
 import de.letzgo.porridge.ui.components.ChromeBar
 import de.letzgo.porridge.ui.components.EmptyState
 import de.letzgo.porridge.ui.components.LinkOrange
@@ -118,9 +119,6 @@ import de.letzgo.porridge.ui.projects.ProjectChooser
 import de.letzgo.porridge.ui.projects.ProjectDetail
 import de.letzgo.porridge.ui.projects.ProjectRow
 import de.letzgo.porridge.ui.projects.sortedByName
-import de.letzgo.porridge.ui.tasks.TaskListRow
-import de.letzgo.porridge.ui.tasks.doneTaskSection
-import de.letzgo.porridge.ui.tasks.openTaskSections
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -142,7 +140,6 @@ class ListState {
     var searchKind by mutableStateOf<ProjectsLogic.Kind?>(null)
     /** Worauf die lange Liste eingeengt ist, gewählt mit dem Knopf neben der Suche. */
     var homeFilter by mutableStateOf(HomeListLogic.HomeFilter.ALL)
-    var showDone by mutableStateOf(false)
     /** „More“ wurde getippt: die Liste zeigt alle Projekte, nicht nur die letzten. */
     var showAllProjects by mutableStateOf(false)
     /** „More“ wurde getippt: die Liste zeigt alle Elemente, nicht nur die ersten [HomeListLogic.MAX_ELEMENTS]. */
@@ -154,7 +151,7 @@ class ListState {
     fun clearSearch() { search = ""; tagTokens = emptyList(); searchKind = null }
 }
 
-/** iOS: `NotesView` (Views/Notes/NotesView.swift) — die eine lange Liste, ihre Unterseiten und darüber der Chat. */
+/** iOS: `NotesView` (Views/Notes/NotesView.swift) — die eine lange Liste, ihre Unterseiten und darüber die Suche. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotesScreen(
@@ -164,42 +161,45 @@ fun NotesScreen(
     onNewNote: (projectID: String?) -> Unit,
     onRecord: () -> Unit,
     onSettings: () -> Unit,
-    onEditTask: (String) -> Unit,
+    /** Plaud-Import, auf Wunsch gleich in ein Projekt. */
+    onPlaud: (projectID: String?) -> Unit,
 ) {
     val db = PorridgeDatabase.shared
     // Bis die Datenbank geantwortet hat, ist nichts da: eine leere Liste setzte die Scroll-Position zurück.
     val loadedNotes by db.notes().observeAll().collectAsState(initial = null)
-    val loadedItems by db.actionItems().observeAll().collectAsState(initial = null)
     val loadedFolders by db.folders().observeAll().collectAsState(initial = null)
     val notes = loadedNotes.orEmpty()
-    val items = loadedItems.orEmpty()
     val folders = loadedFolders.orEmpty()
-    val loaded = loadedNotes != null && loadedItems != null && loadedFolders != null
+    val loaded = loadedNotes != null && loadedFolders != null
     val page = list.page
     val openProject = (page as? ListPage.Project)?.let { p -> folders.firstOrNull { it.id == p.id } }
     val stages by ProcessingService.stages.collectAsState()
     val indexVersion by AppGraph.index.version.collectAsState()
     val coroutines = rememberCoroutineScope()
     val context = LocalContext.current
-    /** Der Chat liegt über der jeweiligen Ansicht (iOS: `ChatSheet`). */
-    var showChat by remember { mutableStateOf(false) }
-    /** Die Suche ebenso, als Karte neben dem Chat. */
+    /** Die Suche liegt als Karte über der jeweiligen Ansicht. */
     var showSearch by remember { mutableStateOf(false) }
     var creatingProject by remember { mutableStateOf(false) }
     /** Wohin Neues kommt: ins offene Projekt. */
     val projectForNew = (page as? ListPage.Project)?.id
     var showCreate by remember { mutableStateOf(false) }
+    // Bei jedem Öffnen neu: Angemeldet wird in den Einstellungen, und eine Anmeldung kann auslaufen.
+    val plaudSignedIn = remember(showCreate) { PlaudAccount.load().userToken != null }
+    var audioImportError by remember { mutableStateOf<String?>(null) }
+    val audioImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        coroutines.launch {
+            runCatching { importAudio(context, uri, projectForNew) }.onSuccess { onOpen(it.id) }.onFailure { audioImportError = it.message }
+        }
+    }
     var showAddLink by remember { mutableStateOf(false) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
 
-    // Beim Start: Papierkorb leeren, Aufgaben nachtragen, unterbrochene Verarbeitung fortsetzen (iOS: `.task`).
+    // Beim Start: Papierkorb leeren, unterbrochene Verarbeitung fortsetzen (iOS: `.task`).
     LaunchedEffect(Unit) {
         NoteStore().purgeExpired()
         // Ordner werden Projekte (einmalig; danach hat keine Notiz mehr einen Ordner).
         Projects.migrateFolders()
-        ActionItemStore().backfill(db.notes().all())
-        // Leer gelassene, von Hand angelegte Aufgaben (Plus getippt, wieder geschlossen) gehen.
-        ActionItemStore().dropEmptyManual()
         ProcessingService.resumePending()
     }
     // Der Index folgt den Notizen: nur Geändertes wird neu geschnitten und eingebettet.
@@ -221,7 +221,6 @@ fun NotesScreen(
     fun closeSearch() { showSearch = false; list.clearSearch() }
     // Die Zurück-Geste (auch vom Rand) schließt erst die offene Karte, dann die Unterseite.
     BackHandler(enabled = page != ListPage.Home) { goBack() }
-    BackHandler(enabled = showChat) { showChat = false }
     BackHandler(enabled = showSearch) { closeSearch() }
 
     val trash = remember(notes) { notes.filter { it.isDeleted }.sortedByDescending { it.deletedAt } }
@@ -255,45 +254,38 @@ fun NotesScreen(
             val scroll = list.scroll(page)
             when {
                 !loaded -> Spacer(listModifier)
-                page == ListPage.Home -> HomeList(list, notes, items, folders, stages, onOpen, { onEditTask(it.id) }, scroll, listModifier)
+                page == ListPage.Home -> HomeList(list, notes, folders, stages, onOpen, scroll, listModifier)
                 page is ListPage.Project ->
                     if (openProject == null) Spacer(listModifier)
-                    else ProjectDetail(openProject, notes, items, stages, onOpen, { onEditTask(it.id) }, scroll, listModifier)
-                page == ListPage.Archive -> ArchiveList(notes, items, folders, stages, onOpen, { onEditTask(it.id) }, { list.page = ListPage.Project(it) }, scroll, listModifier)
+                    else ProjectDetail(openProject, notes, stages, onOpen, scroll, listModifier)
+                page == ListPage.Archive -> ArchiveList(notes, folders, stages, onOpen, { list.page = ListPage.Project(it) }, scroll, listModifier)
                 else -> TrashList(trash, stages, onOpen, scroll, listModifier)
             }
         }
-        // Derselbe Plus-Knopf auf jeder Seite, unten links Chat und Suche (iOS: `createMenu`). In einem offenen Projekt
+        // Derselbe Plus-Knopf auf jeder Seite, unten links die Suche (iOS: `createMenu`). In einem offenen Projekt
         // kommt alles Neue ins Projekt; die Liste bleibt, wo sie ist, das Neue öffnet sich darüber.
         CreateMenu(
             showCreate, { showCreate = it },
             showsPlus = page != ListPage.Archive && page != ListPage.Trash,
             onProject = if (page == ListPage.Home) ({ creatingProject = true }) else null,
-            onTask = {
-                coroutines.launch {
-                    val item = ActionItemStore().newTask()
-                    projectForNew?.let { Projects.toggle(item, it) }
-                    onEditTask(item.id)
-                }
-            },
             onNote = { onNewNote(projectForNew) },
             onMeeting = onRecord, onLink = { showAddLink = true },
-            showChat = showChat, onChat = { showChat = it },
-            chat = { ChatPanel(notes, items, onOpen = { id -> showChat = false; onOpen(id) }, onClose = { showChat = false }) },
+            onImportAudio = { audioImporter.launch(arrayOf("audio/*", "video/*")) },
+            onImportPlaud = if (plaudSignedIn) ({ onPlaud(projectForNew) }) else null,
             filter = if (page == ListPage.Home) list.homeFilter else null,
             onFilter = { list.homeFilter = it; coroutines.launch { list.scroll(ListPage.Home).scrollToItem(0) } },
             showSearch = showSearch, onSearch = { if (it) showSearch = true else closeSearch() },
             // Ein Treffer schließt die Karte; die Anfrage bleibt für den Weg zurück zu den Treffern.
             search = {
                 SearchPanel(
-                    list, notes, items, stages, indexVersion,
+                    list, notes, stages, indexVersion,
                     onOpen = { id -> showSearch = false; onOpen(id) },
-                    onEditTask = { item -> showSearch = false; onEditTask(item.id) },
                 )
             },
         )
     }
 
+    audioImportError?.let { AlertDialog(onDismissRequest = { audioImportError = null }, title = { Text("Import Failed") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { audioImportError = null }) { Text("OK") } }) }
     if (showAddLink) AddLinkDialog(onDismiss = { showAddLink = false }) { address ->
         showAddLink = false
         val pid = projectForNew
@@ -320,7 +312,6 @@ fun NotesScreen(
 private fun filterIcon(filter: HomeListLogic.HomeFilter): ImageVector = when (filter) {
     HomeListLogic.HomeFilter.ALL -> Icons.Filled.FilterList
     HomeListLogic.HomeFilter.PROJECTS -> Icons.Filled.Folder
-    HomeListLogic.HomeFilter.TASKS -> Icons.Filled.Checklist
     HomeListLogic.HomeFilter.MEETINGS -> Icons.Filled.Mic
     HomeListLogic.HomeFilter.NOTES -> Icons.Outlined.EditNote
     HomeListLogic.HomeFilter.LINKS -> Icons.Filled.Link
@@ -331,33 +322,30 @@ private fun filterIcon(filter: HomeListLogic.HomeFilter): ImageVector = when (fi
 private fun filterTint(filter: HomeListLogic.HomeFilter): Color = when (filter) {
     HomeListLogic.HomeFilter.ALL, HomeListLogic.HomeFilter.MEETINGS -> Brand.navy
     HomeListLogic.HomeFilter.PROJECTS -> Brand.project
-    HomeListLogic.HomeFilter.TASKS -> Brand.task
     HomeListLogic.HomeFilter.NOTES -> Brand.sky
     HomeListLogic.HomeFilter.LINKS -> LinkOrange
 }
 
-/** iOS: Startseite von `NotesView` — Projekte, Angeheftetes, Aufgaben, dann Meetings, Notizen und Links nach Datum; am Ende Archiv und Papierkorb. */
+/** iOS: Startseite von `NotesView` — Projekte, Angeheftetes, dann Meetings, Notizen und Links nach Datum; am Ende Archiv und Papierkorb. */
 @Composable
 private fun HomeList(
-    list: ListState, notes: List<Note>, items: List<ActionItem>, folders: List<NoteFolder>, stages: Map<String, String>,
-    onOpen: (String) -> Unit, onEditTask: (ActionItem) -> Unit, state: LazyListState, modifier: Modifier,
+    list: ListState, notes: List<Note>, folders: List<NoteFolder>, stages: Map<String, String>,
+    onOpen: (String) -> Unit, state: LazyListState, modifier: Modifier,
 ) {
     val filter = list.homeFilter
-    val projects = remember(folders, notes, items, list.showAllProjects, filter) {
+    val projects = remember(folders, notes, list.showAllProjects, filter) {
         val active = if (filter.showsProjects) HomeListLogic.activeProjects(folders) else emptyList()
         val showAll = list.showAllProjects || filter == HomeListLogic.HomeFilter.PROJECTS
-        HomeListLogic.shownProjects(active, showAll) { ProjectsLogic.lastChange(it, notes, items) }
+        HomeListLogic.shownProjects(active, showAll) { ProjectsLogic.lastChange(it, notes) }
     }
-    val tasks = remember(items, notes, folders, filter) { if (filter.showsTasks) HomeListLogic.homeTasks(items, notes, folders) else emptyList() }
     val home = remember(notes, folders, filter) { HomeListLogic.homeNotes(notes, folders).filter(filter::matches) }
     val (pinned, rest) = remember(home) { home.partition { it.isPinned } }
-    val openTasks = remember(tasks) { tasks.count { !it.first.isDone || it.first.needsReview } }
-    val limits = HomeListLogic.elementLimits(pinned.size, openTasks, rest.size, list.showAllElements)
-    val archiveCount = remember(folders, notes, items) { HomeListLogic.archiveCount(folders, notes, items) }
+    val limits = HomeListLogic.elementLimits(pinned.size, rest.size, list.showAllElements)
+    val archiveCount = remember(folders, notes) { HomeListLogic.archiveCount(folders, notes) }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
         if (projects.shown.isNotEmpty()) {
             item(key = "h-projects") { SectionHeader("Projects", color = Brand.project) }
-            projectRows(projects.shown, notes, items) { list.page = ListPage.Project(it) }
+            projectRows(projects.shown, notes) { list.page = ListPage.Project(it) }
             if (projects.hidden > 0 && filter != HomeListLogic.HomeFilter.PROJECTS) item(key = "more-projects") {
                 MoreRow(projects.hidden, list.showAllProjects, Brand.project) { list.showAllProjects = !list.showAllProjects }
             }
@@ -366,15 +354,13 @@ private fun HomeList(
             item(key = "h-pinned") { SectionHeader("Pinned") }
             noteRows(pinned.take(limits.pinned), stages, onOpen)
         }
-        openTaskSections(tasks, limits.tasks, onOpen, onEditTask)
         dateGroups(rest.take(limits.notes), stages, onOpen)
         if (limits.hidden > 0) item(key = "more-elements") {
             MoreRow(limits.hidden, list.showAllElements, Brand.sky) { list.showAllElements = !list.showAllElements }
         }
-        doneTaskSection(tasks, list.showDone, { list.showDone = it }, onOpen, onEditTask)
-        if (projects.shown.isEmpty() && tasks.isEmpty() && home.isEmpty()) {
+        if (projects.shown.isEmpty() && home.isEmpty()) {
             item(key = "empty") {
-                if (filter == HomeListLogic.HomeFilter.ALL) EmptyState("Nothing Here Yet", "Add notes, meetings, links, tasks and projects with the plus button.", Icons.AutoMirrored.Filled.Notes)
+                if (filter == HomeListLogic.HomeFilter.ALL) EmptyState("Nothing Here Yet", "Add notes, meetings, links and projects with the plus button.", Icons.AutoMirrored.Filled.Notes)
                 else EmptyState("Nothing to Show", "The list has nothing of this kind.", filterIcon(filter))
             }
         }
@@ -386,27 +372,25 @@ private fun HomeList(
     }
 }
 
-/** Das Archiv: Projekte (sie lassen sich öffnen), dann Aufgaben, dann Notizen nach Datum. */
+/** Das Archiv: Projekte (sie lassen sich öffnen), dann Notizen nach Datum. */
 @Composable
 private fun ArchiveList(
-    notes: List<Note>, items: List<ActionItem>, folders: List<NoteFolder>, stages: Map<String, String>,
-    onOpen: (String) -> Unit, onEditTask: (ActionItem) -> Unit, onProject: (String) -> Unit, state: LazyListState, modifier: Modifier,
+    notes: List<Note>, folders: List<NoteFolder>, stages: Map<String, String>,
+    onOpen: (String) -> Unit, onProject: (String) -> Unit, state: LazyListState, modifier: Modifier,
 ) {
     val projects = remember(folders) { HomeListLogic.archivedProjects(folders).sortedByName() }
-    val tasks = remember(items, notes) { HomeListLogic.archivedTasks(items, notes) }
     val archived = remember(notes) { HomeListLogic.archivedNotes(notes) }
-    if (projects.isEmpty() && tasks.isEmpty() && archived.isEmpty()) {
+    if (projects.isEmpty() && archived.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            EmptyState("Nothing Archived", "Archive projects, tasks and notes you are done with. They stay in chat and search.", Icons.Filled.Archive)
+            EmptyState("Nothing Archived", "Archive projects and notes you are done with. They stay in the search.", Icons.Filled.Archive)
         }
         return
     }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
         if (projects.isNotEmpty()) {
             item(key = "h-projects") { SectionHeader("Projects", color = Brand.project) }
-            projectRows(projects, notes, items, onProject)
+            projectRows(projects, notes, onProject)
         }
-        taskRows("Tasks", tasks, onOpen, onEditTask)
         dateGroups(archived, stages, onOpen)
     }
 }
@@ -425,25 +409,25 @@ private fun TrashList(trash: List<Note>, stages: Map<String, String>, onOpen: (S
     }
 }
 
-/** iOS: `SearchPane` als Karte — Suchfeld, Arten und Tags, darunter die Treffer: auch Archiviertes, Aufgaben zuerst. */
+/** iOS: `SearchPane` als Karte — Suchfeld, Arten und Tags, darunter die Treffer, auch Archiviertes. */
 @Composable
 private fun SearchPanel(
-    list: ListState, notes: List<Note>, items: List<ActionItem>, stages: Map<String, String>, indexVersion: Any?,
-    onOpen: (String) -> Unit, onEditTask: (ActionItem) -> Unit,
+    list: ListState, notes: List<Note>, stages: Map<String, String>, indexVersion: Any?,
+    onOpen: (String) -> Unit,
 ) {
     val tags = remember(notes) { tagCounts(notes.filter { !it.isDeleted }) }
     Column(Modifier.fillMaxSize()) {
         SearchBar(list.search, { list.search = it }, list.tagTokens, { list.tagTokens = it }, tags, list.searchKind, { list.searchKind = it })
         if (list.search.isNotBlank() || list.tagTokens.isNotEmpty() || list.searchKind != null) {
-            SearchResults(list, notes, items, stages, indexVersion, onOpen, onEditTask, Modifier.weight(1f))
+            SearchResults(list, notes, stages, indexVersion, onOpen, Modifier.weight(1f))
         }
     }
 }
 
 @Composable
 private fun SearchResults(
-    list: ListState, notes: List<Note>, items: List<ActionItem>, stages: Map<String, String>, indexVersion: Any?,
-    onOpen: (String) -> Unit, onEditTask: (ActionItem) -> Unit, modifier: Modifier,
+    list: ListState, notes: List<Note>, stages: Map<String, String>, indexVersion: Any?,
+    onOpen: (String) -> Unit, modifier: Modifier,
 ) {
     val query = list.search
     val tokens = list.tagTokens
@@ -451,29 +435,21 @@ private fun SearchResults(
     val foundNotes = remember(notes, query, tokens, kind, indexVersion) {
         HomeListLogic.searchNotes(notes, query, tokens, kind, if (query.isBlank()) null else AppGraph.index.noteIDs(query))
     }
-    val foundTasks = remember(items, notes, query, tokens, kind) { HomeListLogic.searchTasks(items, notes, query, tokens, kind) }
-    if (foundNotes.isEmpty() && foundTasks.isEmpty()) {
+    if (foundNotes.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { EmptyState("No Results", "Nothing matches your search.", Icons.Filled.Search) }
         return
     }
     LazyColumn(modifier.fillMaxWidth(), state = rememberLazyListState(), contentPadding = PaddingValues(bottom = 16.dp)) {
-        taskRows("Tasks", foundTasks, onOpen, onEditTask)
         dateGroups(foundNotes, stages, onOpen)
     }
 }
 
-private fun LazyListScope.projectRows(projects: List<NoteFolder>, notes: List<Note>, items: List<ActionItem>, onProject: (String) -> Unit) {
-    items(projects, key = { "p-" + it.id }) { project -> ProjectRow(project, notes, items, onProject) }
+private fun LazyListScope.projectRows(projects: List<NoteFolder>, notes: List<Note>, onProject: (String) -> Unit) {
+    items(projects, key = { "p-" + it.id }) { project -> ProjectRow(project, notes, onProject) }
 }
 
 private fun LazyListScope.noteRows(notes: List<Note>, stages: Map<String, String>, onOpen: (String) -> Unit) {
     items(notes, key = { "n-" + it.id }) { note -> NoteSwipeRow(note, stages[note.id], onOpen) }
-}
-
-private fun LazyListScope.taskRows(title: String, tasks: List<Pair<ActionItem, Note?>>, onOpen: (String) -> Unit, onEditTask: (ActionItem) -> Unit) {
-    if (tasks.isEmpty()) return
-    item(key = "h-$title") { SectionHeader(title, tasks.size, color = Brand.task) }
-    items(tasks, key = { "t-" + it.first.id }) { (item, note) -> TaskListRow(item, note, onOpen, onEditTask) }
 }
 
 private fun LazyListScope.dateGroups(notes: List<Note>, stages: Map<String, String>, onOpen: (String) -> Unit) {
@@ -645,34 +621,30 @@ private fun groups(list: List<Note>): List<Pair<String, List<Note>>> {
 @Composable
 private fun CreateMenu(
     open: Boolean, onOpen: (Boolean) -> Unit, showsPlus: Boolean, onProject: (() -> Unit)?,
-    onTask: () -> Unit, onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit,
-    showChat: Boolean, onChat: (Boolean) -> Unit, chat: @Composable () -> Unit,
+    onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit,
+    onImportAudio: () -> Unit, onImportPlaud: (() -> Unit)?,
     /** Die Wahl für die lange Liste; null, wo es den Knopf nicht gibt. */
     filter: HomeListLogic.HomeFilter?, onFilter: (HomeListLogic.HomeFilter) -> Unit,
     showSearch: Boolean, onSearch: (Boolean) -> Unit, search: @Composable () -> Unit,
 ) {
-    val cardOpen = showChat || showSearch
+    val cardOpen = showSearch
     var filterOpen by remember { mutableStateOf(false) }
     BackHandler(enabled = open || filterOpen) { onOpen(false); filterOpen = false }
     // Andere Seite oder offene Karte: die Arten klappen wieder ein.
     if (filter == null || cardOpen) filterOpen = false
-    // Beim Zuklappen bleibt die Karte stehen, die zuletzt offen war.
-    var searchLast by remember { mutableStateOf(false) }
-    if (cardOpen) searchLast = showSearch
     Box(Modifier.fillMaxSize()) {
         if (open || filterOpen || cardOpen) Box(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (cardOpen) 0.18f else 0.08f)).combinedClickableNoRipple {
                 onOpen(false)
                 filterOpen = false
-                if (showChat) onChat(false)
                 if (showSearch) onSearch(false)
             },
         )
-        // Chat und Suche klappen wie das Plus-Menü aus ihrem Knopf auf: eine Karte über der Ansicht (iOS: `ChatPanel`).
+        // Die Suche klappt wie das Plus-Menü aus ihrem Knopf auf: eine Karte über der Ansicht (iOS: `OverlayPanel`).
         Column(Modifier.align(Alignment.BottomStart).fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)) {
             AnimatedVisibility(cardOpen, Modifier.weight(1f)) {
                 Surface(shape = RoundedCornerShape(22.dp), shadowElevation = 10.dp, color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().padding(bottom = 14.dp)) {
-                    if (searchLast) search() else chat()
+                    search()
                 }
             }
             if (!cardOpen) Spacer(Modifier.weight(1f))
@@ -693,15 +665,16 @@ private fun CreateMenu(
                         content = if (isAll) Brand.navy else Color.White,
                     ) { onOpen(false); filterOpen = !filterOpen }
                 }
-                if (!showChat) SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
-                if (!showSearch) SkyFab(if (showChat) Icons.Filled.Close else Icons.Filled.ChatBubble, if (showChat) "Close Chat" else "Chat", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); filterOpen = false; onChat(!showChat) }
+                SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
             }
         }
         if (showsPlus && !cardOpen) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             AnimatedVisibility(open) {
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    CreateOption("Import Audio", Icons.Filled.FileDownload, Brand.navy) { onOpen(false); onImportAudio() }
+                    if (onImportPlaud != null) CreateOption("Import Plaud", Icons.Filled.GraphicEq, Brand.navy) { onOpen(false); onImportPlaud() }
+                    HorizontalDivider(Modifier.width(150.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
                     if (onProject != null) CreateOption("Project", Icons.Filled.Folder, Brand.project) { onOpen(false); onProject() }
-                    CreateOption("Task", Icons.Filled.Checklist, Brand.task) { onOpen(false); onTask() }
                     CreateOption("Link", Icons.Filled.Link, LinkOrange) { onOpen(false); onLink() }
                     CreateOption("Meeting", Icons.Filled.Mic, Brand.navy) { onOpen(false); onMeeting() }
                     CreateOption("Note", Icons.Outlined.EditNote, Brand.sky) { onOpen(false); onNote() }
@@ -710,6 +683,24 @@ private fun CreateMenu(
             SkyFab(Icons.Filled.Add, if (open) "Close" else "Create", Modifier.rotate(if (open) 45f else 0f)) { filterOpen = false; onOpen(!open) }
         }
     }
+}
+
+/** Eine gewählte Audio- oder Videodatei wird ein Meeting, das transkribiert wird. */
+private suspend fun importAudio(context: android.content.Context, uri: android.net.Uri, projectID: String?): Note {
+    val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+        val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+        if (c.moveToFirst() && i >= 0) c.getString(i) else null
+    } ?: "Import"
+    val fileName = AudioStore.importFile(context, uri, name.substringAfterLast('.', "m4a"))
+    val info = AudioStore.audioInfo(fileName)
+    val note = Note(
+        title = name.substringBeforeLast('.'), titleIsCustom = true, statusRaw = ProcessingStatus.RECORDED.raw,
+        audioFileName = fileName, inputName = "Import", duration = info?.first ?: 0.0, channelCount = info?.second ?: 1,
+        projectIDs = listOfNotNull(projectID),
+    )
+    PorridgeDatabase.shared.notes().upsert(note)
+    ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
+    return note
 }
 
 @Composable

@@ -9,7 +9,7 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * iOS: `LocalLLM` (Services/LocalLLM.swift, MLX). Auf Android llama.cpp mit GGUF-Modellen. Implementiert [TextModel]
- * für Zusammenfassung und Chat.
+ * für die Zusammenfassung.
  */
 class LocalLLM(val model: LocalModel) : TextModel {
     private val mutex = Mutex()
@@ -23,10 +23,12 @@ class LocalLLM(val model: LocalModel) : TextModel {
             mutex.withLock {
                 if (loaded == null) {
                     val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 6)
+                    val started = System.currentTimeMillis()
                     loaded = Llama.loadModel(
                         model.pack.file(ModelManager.root, "model.gguf").path,
                         LlamaConfig(contextSize = 8192, threads = threads, gpuLayers = 0, temperature = 0.3f, topP = 0.9f, topK = 40, seed = -1),
                     )
+                    Log.i("Porridge", "llm ${model.raw} loaded in ${System.currentTimeMillis() - started} ms")
                 }
             }
         }

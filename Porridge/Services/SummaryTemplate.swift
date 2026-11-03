@@ -1,7 +1,7 @@
 import Foundation
 
 /// What a meeting summary looks at and which sections it has. Whatever the template, the summary starts with its
-/// summary section and ends with the tasks and tags, because the task list and the tag field read those.
+/// summary section and ends with the tasks and tags, because ticking a task and the tag field read those.
 struct SummaryTemplate: Codable, Hashable, Identifiable {
     var id: String
     var name: String

@@ -5,7 +5,7 @@ import SwiftData
 @MainActor
 enum TestStore {
     static func context() throws -> ModelContext {
-        let schema = Schema([ActionItem.self, Meeting.self, Note.self, NoteFolder.self, VoiceProfile.self])
+        let schema = Schema([Meeting.self, Note.self, NoteFolder.self, VoiceProfile.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return ModelContext(try ModelContainer(for: schema, configurations: configuration))
     }

@@ -30,7 +30,7 @@ enum SyncMode: String, CaseIterable, Identifiable {
     static let active = chosen
 }
 
-/// Sync through a Nextcloud: one file `Porridge/porridge-sync.json` with all notes, tasks, folders and voices,
+/// Sync through a Nextcloud: one file `Porridge/porridge-sync.json` with all notes, folders and voices,
 /// read by the iPhone, the Mac and Android alike, plus the recordings in `Porridge/Recordings/`.
 ///
 /// Every run reads the file, merges it three ways with this device (what changed on one side wins, when both
@@ -154,8 +154,11 @@ final class NextcloudSync {
 
             var output = file
             output["version"] = 1
+            // Tasks of older versions are gone, in the file too.
+            output["actionItems"] = nil
             // Starts from the file: the other platform's voices have tombstones of their own.
             var deleted = tombstones.mapValues { $0.mapValues(\.int64Value) }
+            deleted["actionItems"] = nil
             var newBase: [String: [String: SyncBase]] = [:]
             applying = true
             defer { applying = false }
@@ -216,7 +219,6 @@ final class NextcloudSync {
     /// This device's records of every collection in the file.
     private func collections(_ context: ModelContext) throws -> [Collection] {
         let notes = try context.fetch(FetchDescriptor<Note>())
-        let items = try context.fetch(FetchDescriptor<ActionItem>())
         let folders = try context.fetch(FetchDescriptor<NoteFolder>())
         let voices = try context.fetch(FetchDescriptor<VoiceProfile>())
         func locals<T>(_ models: [T], id: (T) -> UUID, record: (T) -> SyncRecord) -> [String: SyncMerge.Local] {
@@ -227,7 +229,6 @@ final class NextcloudSync {
         }
         return [
             Collection(key: "notes", local: locals(notes, id: \.id, record: SyncRecords.record), frozen: Set(notes.filter(SyncRecords.isFrozen).map(\.id.uuidString))),
-            Collection(key: "actionItems", local: locals(items, id: \.id, record: SyncRecords.record), frozen: []),
             Collection(key: "folders", local: locals(folders, id: \.id, record: SyncRecords.record), frozen: []),
             Collection(key: "voiceProfilesApple", local: locals(voices, id: \.id, record: SyncRecords.record), frozen: []),
         ]
@@ -253,18 +254,6 @@ final class NextcloudSync {
                 for file in [note.audioFileName].compactMap({ $0 }) + note.audioFileNames { AudioStore.delete(file) }
                 context.delete(note)
             }
-        case "actionItems":
-            let byID = Dictionary(try context.fetch(FetchDescriptor<ActionItem>()).map { ($0.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
-            for (id, r) in result.toApply {
-                let item = byID[id] ?? {
-                    let item = ActionItem()
-                    item.id = UUID(uuidString: id) ?? UUID()
-                    context.insert(item)
-                    return item
-                }()
-                SyncRecords.apply(r, to: item)
-            }
-            for id in result.toDelete { byID[id].map(context.delete) }
         case "folders":
             let byID = Dictionary(try context.fetch(FetchDescriptor<NoteFolder>()).map { ($0.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
             for (id, r) in result.toApply {

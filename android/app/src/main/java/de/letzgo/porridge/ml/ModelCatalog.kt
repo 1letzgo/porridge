@@ -49,11 +49,6 @@ object ModelCatalog {
         ),
     )
 
-    /** iOS: `NLContextualEmbedding` (eingebaut). Hier ein mehrsprachiges Einbettungsmodell für llama.cpp. */
-    val embedder = ModelPack(
-        "qwen3-embedding-0.6b", "Meaning Search",
-        listOf(ModelFile(hf("Qwen/Qwen3-Embedding-0.6B-GGUF", "Qwen3-Embedding-0.6B-Q8_0.gguf"), "model.gguf", "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439", 639_150_592)),
-    )
 }
 
 /** iOS: `LocalModel` — die Zusammenfassungsmodelle auf dem Gerät. */

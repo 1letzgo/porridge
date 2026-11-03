@@ -16,6 +16,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import de.letzgo.porridge.MainActivity
 import de.letzgo.porridge.R
+import de.letzgo.porridge.model.clockString
 
 /**
  * Ersatz für die Live Activity (iOS: `Shared/RecordingActivity.swift`, `PorridgeWidgets`, `LiveRecording.swift`):
@@ -70,11 +71,12 @@ class RecordingService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
         if (recording) {
             val stop = PendingIntent.getService(this, 1, Intent(this, RecordingService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-            builder.setContentTitle(RecordingSession.title.ifEmpty { "Recording" })
-                .setContentText("Porridge is recording")
-                .setUsesChronometer(true)
-                .setWhen(RecordingSession.startedAt)
-                .addAction(0, "Stop", stop)
+            builder.setContentTitle(RecordingSession.title.ifEmpty { "Recording" }).addAction(0, "Stop", stop)
+            if (RecordingSession.isPaused) {
+                builder.setContentText("Paused · ${RecordingSession.recorder?.elapsed?.value?.clockString.orEmpty()}").setShowWhen(false)
+            } else {
+                builder.setContentText("Porridge is recording").setUsesChronometer(true).setWhen(RecordingSession.startedAt)
+            }
         } else if (busy) {
             builder.setContentTitle("Transcribing…").setContentText("Porridge is working on your recordings").setProgress(0, 0, true)
         } else {

@@ -47,10 +47,8 @@ struct SettingsView: View {
     @State private var permissionTick = 0
     #endif
     @State private var modelError: String?
-    @State private var showPlaud = false
-    @State private var showAudioImporter = false
-    @State private var importedAudio: String?
-    @State private var audioImportError: String?
+    @State private var showPlaudLogin = false
+    @State private var plaudSignedIn = PlaudAccount.isSignedIn
 
     /// A downloaded model that can be deleted.
     private enum ModelKind: Identifiable {
@@ -78,7 +76,6 @@ struct SettingsView: View {
     /// Pushed onto the list's navigation stack (iOS): the system back button closes it, no own stack or Done button.
     var isPushed = false
     /// Opens a note that was imported here; without it (Mac: a window of its own) the card says it is done.
-    var onOpenNote: ((UUID) -> Void)?
 
     /// The Settings window of the Mac has no bar of its own above the content: give the first section air.
     private var settingsTopPadding: CGFloat {
@@ -186,18 +183,11 @@ struct SettingsView: View {
         } message: {
             Text("Names already given in meetings stay.")
         }
-        .sheet(isPresented: $showPlaud) {
-            PlaudImportSheet { audio in
-                PlaudImporter.addNote(audio, context: context, processing: processing)
+        .sheet(isPresented: $showPlaudLogin) {
+            PlaudLoginView { token, refreshToken in
+                PlaudImporter().signIn(token: token, refreshToken: refreshToken)
+                plaudChanged()
             }
-        }
-        .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio, .movie]) { result in
-            importAudio(result)
-        }
-        .alert("Import Failed", isPresented: Binding(get: { audioImportError != nil }, set: { if !$0 { audioImportError = nil } })) {
-            Button("OK") { audioImportError = nil }
-        } message: {
-            Text(audioImportError ?? "")
         }
         .alert("Download Failed", isPresented: Binding(get: { modelError != nil }, set: { if !$0 { modelError = nil } })) {
             Button("OK") { modelError = nil }
@@ -233,7 +223,7 @@ struct SettingsView: View {
         if billing == .byok {
             cloudCard
         }
-        importCard
+        plaudCard
         SyncCard()
         aboutCard
     }
@@ -241,9 +231,9 @@ struct SettingsView: View {
 
     // MARK: - Cards
 
-    /// Who the user is: their tasks go under "Mine", and the summaries name them.
+    /// Who the user is: the summaries name them.
     private var youCard: some View {
-        SettingsCard(title: "You", footer: "Tasks given to this name show under Mine. Separate other spellings with commas, e.g. “Anna, Anna Berg”.") {
+        SettingsCard(title: "You", footer: "Summaries use this name for you. Separate other spellings with commas, e.g. “Anna, Anna Berg”.") {
             TextField("Your Name", text: $myName)
                 .textContentType(.name)
                 .autocorrectionDisabled()
@@ -343,38 +333,27 @@ struct SettingsView: View {
         }
     }
 
-    private var importCard: some View {
-        SettingsCard(title: "Import") {
+    private var plaudCard: some View {
+        SettingsCard(title: "Plaud", footer: "Once signed in, the plus button on the home page imports recordings from your Plaud recorder.") {
             HStack {
-                Text("Plaud Recordings").font(.body)
+                Text(plaudSignedIn ? "Signed In" : "Plaud Account").font(.body)
                 Spacer(minLength: 12)
-                Button("Open") { showPlaud = true }
-                    .buttonStyle(PillButtonStyle())
-            }
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Audio or Video File").font(.body)
-                    if let importedAudio {
-                        Text("Imported “\(importedAudio)”")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                Button(plaudSignedIn ? "Sign Out" : "Sign In", role: plaudSignedIn ? .destructive : nil) {
+                    if plaudSignedIn {
+                        PlaudAccount.clear()
+                        plaudChanged()
+                    } else {
+                        showPlaudLogin = true
                     }
                 }
-                Spacer(minLength: 12)
-                Button("Choose") { showAudioImporter = true }
-                    .buttonStyle(PillButtonStyle())
+                .buttonStyle(PillButtonStyle())
             }
         }
     }
 
-    private func importAudio(_ result: Result<URL, Error>) {
-        do {
-            let note = try NoteStore.importAudio(from: result.get(), context: context, processing: processing)
-            importedAudio = note.title
-            onOpenNote?(note.id)
-        } catch {
-            audioImportError = error.localizedDescription
-        }
+    private func plaudChanged() {
+        plaudSignedIn = PlaudAccount.isSignedIn
+        NotificationCenter.default.post(name: .plaudAccountChanged, object: nil)
     }
 
     private var summaryCard: some View {
@@ -661,7 +640,7 @@ private struct SyncCard: View {
     private var footer: String? {
         switch mode {
         case .off: "Notes stay on this device."
-        case .iCloud: "Notes, tasks and transcripts sync between your Apple devices. Recordings stay on the device that made them."
+        case .iCloud: "Notes and transcripts sync between your Apple devices. Recordings stay on the device that made them."
         case .nextcloud: nil
         }
     }

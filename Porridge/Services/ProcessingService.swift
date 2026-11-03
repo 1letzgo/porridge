@@ -5,7 +5,7 @@ import SwiftData
 import UIKit
 #endif
 
-/// Serial queue that turns recordings into transcripts.
+/// Serial queue that turns recordings into transcripts and notes into summaries. It outlives every screen.
 @MainActor
 @Observable
 final class ProcessingService {
@@ -16,16 +16,22 @@ final class ProcessingService {
         case note(UUID)
         /// A saved web link: load the page, then (optionally) summarize it.
         case link(UUID, summarize: Bool)
+        /// The summary somebody asked for, in the note or with its template.
+        case summary(UUID, SummaryTemplate)
 
         var id: UUID {
             switch self {
-            case .transcript(let id), .note(let id), .link(let id, _): id
+            case .transcript(let id), .note(let id), .link(let id, _), .summary(let id, _): id
             }
         }
     }
 
     /// Human readable progress per note id.
     private(set) var stages: [UUID: String] = [:]
+    /// Notes whose requested summary is waiting or being written.
+    private(set) var summarizing: Set<UUID> = []
+    /// Why a summary failed, until the note has shown it (its screen may have been closed by then).
+    private(set) var summaryErrors: [UUID: String] = [:]
 
     @ObservationIgnored private let container: ModelContainer
     @ObservationIgnored private var queue: [Job] = []
@@ -41,7 +47,12 @@ final class ProcessingService {
         guard !queue.contains(job), stages[job.id] == nil else { return }
         queue.append(job)
         stages[job.id] = "Waiting…"
+        if case .summary = job { summarizing.insert(job.id) }
         runIfNeeded()
+    }
+
+    func clearSummaryError(_ id: UUID) {
+        summaryErrors[id] = nil
     }
 
     /// Picks up recordings that were interrupted (app killed while transcribing).
@@ -71,9 +82,11 @@ final class ProcessingService {
                     case .transcript(let id): await processTranscript(id)
                     case .note(let id): await processNote(id)
                     case .link(let id, let summarize): await processLink(id, summarize: summarize)
+                    case .summary(let id, let template): await processSummary(id, template: template)
                     }
                 }
                 stages[job.id] = nil
+                summarizing.remove(job.id)
             }
             isRunning = false
         }
@@ -240,6 +253,34 @@ final class ProcessingService {
             try? await SummaryService.summarize(note) { [weak self] status in self?.stages[id] = status }
             save()
         }
+    }
+
+    // MARK: - Summaries
+
+    private func processSummary(_ id: UUID, template: SummaryTemplate) async {
+        guard let note = fetchNote(id) else { return }
+        #if os(iOS)
+        var continued: AnyObject?
+        if #available(iOS 26, *), AppSettings.billing == .local, LocalModel.selected != .apple {
+            continued = ContinuedSummaryTask.begin(title: "Summarizing", subtitle: note.title)
+        }
+        #endif
+        var succeeded = false
+        do {
+            try await SummaryService.summarize(note, template: template) { [weak self] status in
+                self?.stages[id] = status
+                #if os(iOS)
+                if #available(iOS 26, *) { (continued as? ContinuedSummaryTask)?.update(status) }
+                #endif
+            }
+            succeeded = true
+            save()
+        } catch {
+            summaryErrors[id] = error.localizedDescription
+        }
+        #if os(iOS)
+        if #available(iOS 26, *) { (continued as? ContinuedSummaryTask)?.end(success: succeeded) }
+        #endif
     }
 
     // MARK: - Helpers

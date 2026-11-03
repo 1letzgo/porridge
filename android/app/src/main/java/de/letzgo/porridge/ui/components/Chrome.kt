@@ -58,7 +58,7 @@ fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, onBack
     }
 }
 
-/** iOS: `ListPage` — was die Liste zeigt: die lange Startseite oder eine Unterseite mit Zurück. Chat und Suche liegen als Karten darüber. */
+/** iOS: `ListPage` — was die Liste zeigt: die lange Startseite oder eine Unterseite mit Zurück. Die Suche liegt als Karte darüber. */
 sealed interface ListPage {
     data object Home : ListPage
     data class Project(val id: String) : ListPage

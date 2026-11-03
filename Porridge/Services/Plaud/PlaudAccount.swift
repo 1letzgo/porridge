@@ -16,6 +16,9 @@ struct PlaudAccount: Codable {
 
     private static let account = "plaud.account"
 
+    /// Whether the plus button offers the Plaud import.
+    static var isSignedIn: Bool { load().userToken != nil }
+
     static func load() -> PlaudAccount {
         guard let text = Keychain.get(account), let data = text.data(using: .utf8),
               let value = try? JSONDecoder().decode(PlaudAccount.self, from: data) else { return PlaudAccount() }
@@ -30,4 +33,9 @@ struct PlaudAccount: Codable {
     static func clear() {
         Keychain.set(nil, for: account)
     }
+}
+
+extension Notification.Name {
+    /// Signed in or out in Settings.
+    static let plaudAccountChanged = Notification.Name("de.letzgo.porridge.plaudAccountChanged")
 }

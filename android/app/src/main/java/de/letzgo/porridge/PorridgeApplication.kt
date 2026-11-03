@@ -12,8 +12,6 @@ import de.letzgo.porridge.data.SecureStore
 import de.letzgo.porridge.ml.LocalLLM
 import de.letzgo.porridge.ml.LocalModel
 import de.letzgo.porridge.ml.ModelManager
-import de.letzgo.porridge.ml.SentenceEmbedders
-import de.letzgo.porridge.ml.TextEmbedder
 import de.letzgo.porridge.ml.TextModels
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.PorridgeDatabase
@@ -31,7 +29,8 @@ class PorridgeApplication : Application() {
         // Ohne gespeicherte Wahl das Modell, das zum Arbeitsspeicher passt.
         if (Prefs.string(Keys.LOCAL_MODEL) == null || !hasChosenModel()) Prefs.set(Keys.LOCAL_MODEL, LocalModel.recommended(this).raw)
         selectLocalModel()
-        SentenceEmbedders.current = TextEmbedder
+        // Das Modell der früheren Bedeutungssuche belegt sonst über 600 MB, ohne dass etwas es nutzt.
+        java.io.File(ModelManager.root, "qwen3-embedding-0.6b").deleteRecursively()
         RecordingSession.init(this)
         AppGraph.init(this)
         ProcessingService.onBusyChanged = { RecordingSession.setBusy(it) }
@@ -39,7 +38,13 @@ class PorridgeApplication : Application() {
         // Zurück in der App: holen, was die anderen Geräte getan haben.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) = NextcloudSync.syncSoon(0)
+            override fun onStop(owner: LifecycleOwner) = ModelManager.releaseIdleLLM()
         })
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) ModelManager.releaseIdleLLM()
     }
 
     private fun hasChosenModel() = getSharedPreferences("porridge", MODE_PRIVATE).contains(Keys.LOCAL_MODEL)

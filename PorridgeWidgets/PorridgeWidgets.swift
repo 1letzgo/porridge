@@ -27,12 +27,12 @@ struct RecordingLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label(context.attributes.kind == .meeting ? "Meeting" : "Note", systemImage: "mic.fill")
+                    Label(context.attributes.kind == .meeting ? "Meeting" : "Note", systemImage: context.state.pausedAt == nil ? "mic.fill" : "pause.fill")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.brandSky)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(timerInterval: context.state.startedAt...Date.distantFuture, countsDown: false)
+                    Text(timerInterval: context.state.startedAt...Date.distantFuture, pauseTime: context.state.pausedAt, countsDown: false)
                         .font(.title3.weight(.semibold).monospacedDigit())
                         .multilineTextAlignment(.trailing)
                         .frame(maxWidth: 80)
@@ -47,14 +47,14 @@ struct RecordingLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                Image(systemName: "mic.fill").foregroundStyle(.red)
+                Image(systemName: context.state.pausedAt == nil ? "mic.fill" : "pause.fill").foregroundStyle(.red)
             } compactTrailing: {
-                Text(timerInterval: context.state.startedAt...Date.distantFuture, countsDown: false)
+                Text(timerInterval: context.state.startedAt...Date.distantFuture, pauseTime: context.state.pausedAt, countsDown: false)
                     .monospacedDigit()
                     .frame(maxWidth: 44)
                     .foregroundStyle(Color.brandSky)
             } minimal: {
-                Image(systemName: "mic.fill").foregroundStyle(.red)
+                Image(systemName: context.state.pausedAt == nil ? "mic.fill" : "pause.fill").foregroundStyle(.red)
             }
         }
     }
@@ -65,20 +65,20 @@ private struct LockScreenView: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: "mic.fill")
+            Image(systemName: context.state.pausedAt == nil ? "mic.fill" : "pause.fill")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(width: 48, height: 48)
                 .background(Circle().fill(Color.brandSky))
             VStack(alignment: .leading, spacing: 2) {
-                Text(context.attributes.kind == .meeting ? "Recording meeting" : "Dictating note")
+                Text(context.state.pausedAt != nil ? "Paused" : context.attributes.kind == .meeting ? "Recording meeting" : "Dictating note")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.brandNavy.opacity(0.6))
                 Text(context.attributes.title)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(Color.brandNavy)
                     .lineLimit(1)
-                Text(timerInterval: context.state.startedAt...Date.distantFuture, countsDown: false)
+                Text(timerInterval: context.state.startedAt...Date.distantFuture, pauseTime: context.state.pausedAt, countsDown: false)
                     .font(.title2.weight(.bold).monospacedDigit())
                     .foregroundStyle(Color.brandNavy)
             }

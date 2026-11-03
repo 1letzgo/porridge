@@ -12,7 +12,7 @@ struct SyncBase: Codable, Equatable {
     var remote: String
 }
 
-/// Three-way merge of one collection (notes, tasks, …) between this device and the sync file. Kept free of
+/// Three-way merge of one collection (notes, folders, …) between this device and the sync file. Kept free of
 /// SwiftData so the same rules can run on Android (`SyncMerge.kt`).
 enum SyncMerge {
     struct Local {
@@ -145,7 +145,7 @@ enum SyncMerge {
     static func parseFile(_ data: Data) throws -> [String: Any] {
         guard let file = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { throw NextcloudError.damagedFile }
         if let deleted = file["deleted"], !(deleted is [String: [String: NSNumber]]) { throw NextcloudError.damagedFile }
-        for key in ["notes", "actionItems", "folders", "voiceProfilesApple", "voiceProfilesAndroid"] {
+        for key in ["notes", "folders", "voiceProfilesApple", "voiceProfilesAndroid"] {
             if let records = file[key], !(records is [SyncRecord]) { throw NextcloudError.damagedFile }
         }
         return file

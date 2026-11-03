@@ -7,7 +7,6 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.model.VoiceProfile
@@ -16,13 +15,12 @@ import de.letzgo.porridge.model.VoiceProfile
  * iOS: `AppContainer` (SwiftData + CloudKit). Auf Android eine lokale Room-Datenbank ohne Sync;
  * Sicherung über `data/Backup.kt`. Schema in `app/schemas/` (Migrationen ab Version 2 dort prüfen).
  */
-@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class, ActionItem::class], version = 6, exportSchema = true)
+@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class], version = 7, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class PorridgeDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
     abstract fun folders(): FolderDao
     abstract fun voiceProfiles(): VoiceProfileDao
-    abstract fun actionItems(): ActionItemDao
 
     companion object {
         @Volatile private var instance: PorridgeDatabase? = null
@@ -32,7 +30,7 @@ abstract class PorridgeDatabase : RoomDatabase() {
         fun init(context: Context) {
             if (instance != null) return
             instance = Room.databaseBuilder(context.applicationContext, PorridgeDatabase::class.java, "porridge.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
         }
 
@@ -75,6 +73,13 @@ abstract class PorridgeDatabase : RoomDatabase() {
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE folders ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /** Aufgaben gibt es nur noch als Zeilen der Zusammenfassung: die Tabelle und alles darin geht. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS action_items")
             }
         }
 

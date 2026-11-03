@@ -12,10 +12,8 @@ extension Color {
     static let brandLink = Color(red: 0.98, green: 0.56, blue: 0.14)
     /// Projects: violet.
     static let brandProject = Color(red: 0.49, green: 0.36, blue: 0.84)
-    /// Tasks: a fresh green next to the sky blue.
+    /// Check boxes in summaries: a fresh green next to the sky blue.
     static let brandTask = Color(red: 0.16, green: 0.74, blue: 0.50)
-    /// Chat.
-    static let brandChat = Color(red: 0.90, green: 0.25, blue: 0.24)
     /// Recording and failed downloads on a tinted pill.
     static let brandAlert = Color(red: 1, green: 0.42, blue: 0.42)
 
@@ -353,7 +351,7 @@ struct ChromePillButtonStyle: ButtonStyle {
 }
 
 /// Options as quiet text tabs sharing the full width; the selected one sits on a light sky pill.
-/// The switcher of the start page (Timeline / Chat / Search) and of the note views.
+/// The switcher of the start page (Timeline / Search) and of the note views.
 struct TabSwitcher<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]

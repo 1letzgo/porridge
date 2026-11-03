@@ -53,8 +53,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.letzgo.porridge.data.Projects
 import de.letzgo.porridge.logic.ProjectsLogic
-import de.letzgo.porridge.logic.ProjectsLogic.Element
-import de.letzgo.porridge.model.ActionItem
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.ui.Brand
@@ -62,7 +60,6 @@ import de.letzgo.porridge.ui.components.EmptyState
 import de.letzgo.porridge.ui.components.RowIcon
 import de.letzgo.porridge.ui.notes.NoteSwipeRow
 import de.letzgo.porridge.ui.notes.TextPrompt
-import de.letzgo.porridge.ui.tasks.TaskListRow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -74,14 +71,14 @@ import java.util.Locale
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-internal fun ProjectRow(project: NoteFolder, notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> Unit) {
+internal fun ProjectRow(project: NoteFolder, notes: List<Note>, onOpen: (String) -> Unit) {
     val coroutines = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     // Anzahl und letzte Änderung (eigene oder die des neuesten Eintrags).
-    val (count, changed) = remember(project, notes, items) {
-        ProjectsLogic.elements(project.id, notes, items).size to ProjectsLogic.lastChange(project, notes, items)
+    val (count, changed) = remember(project, notes) {
+        ProjectsLogic.elements(project.id, notes).size to ProjectsLogic.lastChange(project, notes)
     }
     val archived = project.archivedAt != null
     fun toggleArchive() { coroutines.launch { if (project.archivedAt != null) Projects.unarchive(project) else Projects.archive(project) } }
@@ -130,28 +127,28 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, items: List<Acti
     if (deleting) AlertDialog(
         onDismissRequest = { deleting = false },
         title = { Text("Delete project “${project.name}”?") },
-        text = { Text("Its notes, meetings, links and tasks stay; they are only no longer in this project.") },
+        text = { Text("Its notes, meetings and links stay; they are only no longer in this project.") },
         confirmButton = { TextButton(onClick = { deleting = false; coroutines.launch { Projects.delete(project) } }) { Text("Delete", color = Brand.danger) } },
         dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel") } },
     )
 }
 
-/** iOS: Detailseite von `ProjectsPane` — die nicht archivierten Notizen, Meetings, Links und Aufgaben eines Projekts, mit Chips nach Art. */
+/** iOS: Detailseite von `ProjectsPane` — die nicht archivierten Notizen, Meetings und Links eines Projekts, mit Chips nach Art. */
 @Composable
 internal fun ProjectDetail(
-    project: NoteFolder, notes: List<Note>, items: List<ActionItem>, stages: Map<String, String>,
-    onOpen: (String) -> Unit, onEditTask: (ActionItem) -> Unit, state: LazyListState, modifier: Modifier = Modifier,
+    project: NoteFolder, notes: List<Note>, stages: Map<String, String>,
+    onOpen: (String) -> Unit, state: LazyListState, modifier: Modifier = Modifier,
 ) {
     /** null = alles. */
     var filter by remember { mutableStateOf<ProjectsLogic.Kind?>(null) }
     LaunchedEffect(project.id) { filter = null }
-    val all = remember(project.id, notes, items) { ProjectsLogic.elements(project.id, notes, items) }
-    val shown = filter?.let { k -> all.filter { it.kind == k } } ?: all
+    val all = remember(project.id, notes) { ProjectsLogic.elements(project.id, notes) }
+    val shown = filter?.let { k -> all.filter { ProjectsLogic.kind(it) == k } } ?: all
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val chips = listOf<ProjectsLogic.Kind?>(null) + ProjectsLogic.Kind.entries
             for (kind in chips) {
-                val count = kind?.let { k -> all.count { it.kind == k } } ?: all.size
+                val count = kind?.let { k -> all.count { ProjectsLogic.kind(it) == k } } ?: all.size
                 FilterChip(
                     selected = filter == kind, onClick = { filter = kind },
                     label = { Text("${kind?.title ?: "All"} $count") },
@@ -162,19 +159,14 @@ internal fun ProjectDetail(
         if (shown.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 EmptyState(
-                    "Nothing Here Yet", "Add notes, meetings, links or tasks to this project from their page, or tap the plus button for a new note.",
+                    "Nothing Here Yet", "Add notes, meetings or links to this project from their page, or tap the plus button for a new note.",
                     Icons.Filled.FolderOpen,
                 )
             }
             return@Column
         }
         LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
-            items(shown, key = { it.id }) { element ->
-                when (element) {
-                    is Element.NoteElement -> NoteSwipeRow(element.note, stages[element.note.id], onOpen, projectID = project.id)
-                    is Element.TaskElement -> TaskListRow(element.item, element.note, onOpen, onEditTask)
-                }
-            }
+            items(shown, key = { it.id }) { note -> NoteSwipeRow(note, stages[note.id], onOpen, projectID = project.id) }
         }
     }
 }

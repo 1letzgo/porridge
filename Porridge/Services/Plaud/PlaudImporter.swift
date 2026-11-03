@@ -98,16 +98,6 @@ final class PlaudImporter {
         }
     }
 
-    func signOut() {
-        ble.disconnect()
-        PlaudAccount.clear()
-        account = PlaudAccount()
-        privateKey = nil
-        recordings = []
-        signedIn = false
-        status = ""
-    }
-
     // MARK: List
 
     /// Connects to the recorder (if needed) and reads its recordings.
@@ -291,7 +281,7 @@ final class PlaudImporter {
     }
 
     /// Stores an imported recording as a new note and starts transcribing it.
-    static func addNote(_ audio: PlaudImportedAudio, context: ModelContext, processing: ProcessingService) {
+    static func addNote(_ audio: PlaudImportedAudio, projectID: String? = nil, context: ModelContext, processing: ProcessingService) {
         let note = Note()
         note.createdAt = audio.date
         note.updatedAt = audio.date
@@ -300,6 +290,7 @@ final class PlaudImporter {
         note.audioFileName = audio.fileName
         note.duration = audio.duration
         note.inputName = "Plaud"
+        if let projectID { note.projectIDs = [projectID] }
         if let info = AudioStore.audioInfo(for: audio.fileName) { note.channelCount = info.channels }
         context.insert(note)
         try? context.save()
