@@ -114,7 +114,6 @@ final class Note {
         if !title.isEmpty { parts.append("# \(title)") }
         parts.append(createdAt.formatted(date: .long, time: .shortened))
         if let url { parts.append(url) }
-        if let url { parts.append(url) }
         if !text.isEmpty { parts.append(text) }
         if let summary, !summary.isEmpty { parts.append("## Summary\n\n\(summary)") }
         if !segments.isEmpty { parts.append("## Transcript\n\n\(transcriptText())") }

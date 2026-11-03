@@ -60,6 +60,8 @@ struct NotesView: View {
     @State private var projectName = ""
     @State private var renamingProject: NoteFolder?
     @State private var deletingProject: NoteFolder?
+    /// A note in Recently Deleted that is about to go for good.
+    @State private var deletingNow: Note?
 
     var body: some View {
         NavigationSplitView(preferredCompactColumn: $column) {
@@ -113,7 +115,10 @@ struct NotesView: View {
         }
         .alert("Rename Project", isPresented: .constant(renamingProject != nil)) {
             TextField("Name", text: $projectName)
-            Button("Cancel", role: .cancel) { renamingProject = nil }
+            Button("Cancel", role: .cancel) {
+                renamingProject = nil
+                projectName = ""
+            }
             Button("Rename") {
                 if let renamingProject { Projects.rename(renamingProject, to: projectName, in: context) }
                 renamingProject = nil
@@ -168,7 +173,23 @@ struct NotesView: View {
         #endif
         .confirmationDialog("Delete all notes in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
             Button("Delete All", role: .destructive) {
+                if let selection, notes.first(where: { $0.id == selection })?.isDeleted == true { self.selection = nil }
                 notes.filter(\.isDeleted).forEach { NoteStore.deletePermanently($0, in: context) }
+            }
+        } message: {
+            Text("This cannot be undone.")
+        }
+        .confirmationDialog(
+            "Delete this note now?",
+            isPresented: Binding(get: { deletingNow != nil }, set: { if !$0 { deletingNow = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Now", role: .destructive) {
+                if let note = deletingNow {
+                    if selection == note.id { selection = nil }
+                    NoteStore.deletePermanently(note, in: context)
+                }
+                deletingNow = nil
             }
         } message: {
             Text("This cannot be undone.")
@@ -379,6 +400,7 @@ struct NotesView: View {
             dateSections(groups(archivedNotes), isFirst: folders.isEmpty && tasks.isEmpty)
         }
         .cardList()
+        .roomForFloatingButtons()
         .overlay {
             if folders.isEmpty, tasks.isEmpty, archivedNotes.isEmpty {
                 EmptyStateView(
@@ -393,15 +415,18 @@ struct NotesView: View {
     private var trash: some View {
         let deleted = notes.filter(\.isDeleted).sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
         return List(selection: $selection) {
-            Section {
-                ForEach(deleted) { note in row(note) }
-            } header: {
-                Text("Notes are deleted after \(NoteStore.trashDays) days.")
-                    .font(.footnote)
-                    .textCase(nil)
+            if !deleted.isEmpty {
+                Section {
+                    ForEach(deleted) { note in row(note) }
+                } header: {
+                    Text("Notes are deleted after \(NoteStore.trashDays) days.")
+                        .font(.footnote)
+                        .textCase(nil)
+                }
             }
         }
         .cardList()
+        .roomForFloatingButtons()
         .overlay {
             if deleted.isEmpty {
                 EmptyStateView(title: "Nothing Deleted", message: "Deleted notes stay here for \(NoteStore.trashDays) days.", systemImage: "trash")
@@ -1071,10 +1096,10 @@ struct NotesView: View {
 
     /// Moves a note to the trash, or deletes it for good when it already is there.
     private func remove(_ note: Note) {
-        if selection == note.id { selection = nil }
         if note.isDeleted {
-            NoteStore.deletePermanently(note, in: context)
+            deletingNow = note
         } else {
+            if selection == note.id { selection = nil }
             NoteStore.trash(note, in: context)
         }
     }
@@ -1188,7 +1213,7 @@ struct NoteRow: View {
     private func daysLeft(_ deletedAt: Date) -> String {
         let passed = Calendar.current.dateComponents([.day], from: deletedAt, to: Date()).day ?? 0
         let left = max(0, NoteStore.trashDays - passed)
-        return String(localized: "\(left) days left")
+        return left <= 1 ? String(localized: "Deleted tomorrow") : String(localized: "\(left) days left")
     }
 }
 

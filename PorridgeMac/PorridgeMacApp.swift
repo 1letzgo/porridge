@@ -92,11 +92,16 @@ struct PorridgeMacApp: App {
 /// Tells about a newer version once it is found; "Skip" keeps quiet until the version after it.
 private struct UpdateAlert: ViewModifier {
     let update: AppUpdate
+    /// Closed for now by Download; the version stays on offer in the menu, and only "Skip" skips it.
+    @State private var closedTag: String?
 
     func body(content: Content) -> some View {
         content.alert(
             "Porridge \(update.available?.version ?? "") is available",
-            isPresented: .init(get: { update.available != nil }, set: { if !$0 { update.skip() } })
+            isPresented: .init(
+                get: { update.available.map { $0.tag != closedTag } ?? false },
+                set: { if !$0 { closedTag = update.available?.tag } }
+            )
         ) {
             Button("Download") { update.download() }
             Button("Skip This Version", role: .cancel) { update.skip() }

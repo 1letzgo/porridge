@@ -41,7 +41,7 @@ struct NoteListRow: View {
                 }
                 ProjectMenu(assigned: note.projectIDs) { Projects.toggle($0, on: note, in: context) }
                 archiveButton
-                ShareLink(item: note.title.isEmpty ? note.text : "\(note.title)\n\n\(note.text)") {
+                ShareLink(item: note.exportText) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
                 Divider()

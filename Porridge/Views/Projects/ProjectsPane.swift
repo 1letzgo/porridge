@@ -217,11 +217,11 @@ struct ProjectContent {
 
     var summary: String {
         let parts = [
-            (meetings.count, String(localized: "Meetings")),
-            (notes.count, String(localized: "Notes")),
-            (links.count, String(localized: "Links")),
-            (tasks.count, String(localized: "Tasks")),
-        ].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
+            (meetings.count, String(localized: "Meeting"), String(localized: "Meetings")),
+            (notes.count, String(localized: "Note"), String(localized: "Notes")),
+            (links.count, String(localized: "Link"), String(localized: "Links")),
+            (tasks.count, String(localized: "Task"), String(localized: "Tasks")),
+        ].filter { $0.0 > 0 }.map { "\($0.0) \($0.0 == 1 ? $0.1 : $0.2)" }
         return parts.isEmpty ? String(localized: "Empty") : parts.joined(separator: " · ")
     }
 }

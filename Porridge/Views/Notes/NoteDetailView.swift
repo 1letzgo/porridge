@@ -51,7 +51,8 @@ struct NoteDetailView: View {
         var list: [(NoteTab, String)] = []
         // Meetings and links open on their summary (first tab); they have no text field of their own unless they have text.
         if opensOnSummary { list.append((.summary, "Summary")) }
-        if !opensOnSummary || !note.text.isEmpty { list.append((.note, "Note")) }
+        // The tab stays while it is open, even when its text was just cleared.
+        if !opensOnSummary || !note.text.isEmpty || tab == .note { list.append((.note, "Note")) }
         if note.isRecording { list.append((.transcript, "Transcript")) }
         if note.isLink { list.append((.article, "Article")) }
         if !opensOnSummary { list.append((.summary, "Summary")) }
@@ -315,6 +316,7 @@ struct NoteDetailView: View {
                         .chunkyPill(fill: Color.speaker(speaker.colorIndex))
                     }
                     .buttonStyle(.plain)
+                    .disabled(note.isDeleted)
                 }
             }
             .padding(.bottom, 4)
@@ -509,7 +511,7 @@ struct NoteDetailView: View {
                             } label: {
                                 Label("Copy", systemImage: "doc.on.doc")
                             }
-                            if speakers.count > 1 {
+                            if speakers.count > 1, !note.isDeleted {
                                 Section("Assign Speaker") {
                                     ForEach(speakers) { speaker in
                                         Button(speaker.name) { reassign(segment, to: speaker) }
@@ -563,21 +565,23 @@ struct NoteDetailView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
                             MarkdownText(markdown: summary, onToggleTask: note.isDeleted || note.isLink ? nil : { toggleSummaryTask(line: $0) })
-                            Menu {
-                                Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
-                                Button { insertSummary() } label: { Label("Insert into Note", systemImage: "text.insert") }
-                                Button { copySummary() } label: { Label("Copy", systemImage: "doc.on.doc") }
-                                Button { requestSummary() } label: { Label("Summarize Again", systemImage: "sparkles") }
-                                Divider()
-                                Button(role: .destructive) { deleteSummary() } label: { Label("Delete Summary", systemImage: "trash") }
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.headline)
-                                    .foregroundStyle(Color.brandNavy)
-                                    .frame(width: 32, height: 32)
-                                    .contentShape(Rectangle())
+                            if !note.isDeleted {
+                                Menu {
+                                    Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
+                                    Button { insertSummary() } label: { Label("Insert into Note", systemImage: "text.insert") }
+                                    Button { copySummary() } label: { Label("Copy", systemImage: "doc.on.doc") }
+                                    Button { requestSummary() } label: { Label("Summarize Again", systemImage: "sparkles") }
+                                    Divider()
+                                    Button(role: .destructive) { deleteSummary() } label: { Label("Delete Summary", systemImage: "trash") }
+                                } label: {
+                                    Image(systemName: "ellipsis")
+                                        .font(.headline)
+                                        .foregroundStyle(Color.brandNavy)
+                                        .frame(width: 32, height: 32)
+                                        .contentShape(Rectangle())
+                                }
+                                .accessibilityLabel("Summary Options")
                             }
-                            .accessibilityLabel("Summary Options")
                         }
                         if let model = note.summaryModel {
                             Text("Created with \(model)")
@@ -585,13 +589,15 @@ struct NoteDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    Button {
-                        requestSummary()
-                    } label: {
-                        Label("Summarize Again", systemImage: "sparkles")
+                    if !note.isDeleted {
+                        Button {
+                            requestSummary()
+                        } label: {
+                            Label("Summarize Again", systemImage: "sparkles")
+                        }
+                        .buttonStyle(ChunkyButtonStyle())
+                        .disabled(!canSummarize)
                     }
-                    .buttonStyle(ChunkyButtonStyle())
-                    .disabled(!canSummarize)
                 }
             } else {
                 VStack(spacing: 16) {
@@ -601,13 +607,15 @@ struct NoteDetailView: View {
                     Text(summarizeMessage)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                    Button {
-                        requestSummary()
-                    } label: {
-                        Label("Summarize", systemImage: "sparkles")
+                    if !note.isDeleted {
+                        Button {
+                            requestSummary()
+                        } label: {
+                            Label("Summarize", systemImage: "sparkles")
+                        }
+                        .buttonStyle(ChunkyButtonStyle())
+                        .disabled(!canSummarize)
                     }
-                    .buttonStyle(ChunkyButtonStyle())
-                    .disabled(!canSummarize)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)

@@ -410,7 +410,7 @@ final class NoteTextCoordinator: NSObject {
 
     /// A click on a checkbox ticks it.
     func toggleCheckbox(near index: Int) -> Bool {
-        guard let storage else { return false }
+        guard let storage, textView?.isEditable == true else { return false }
         for candidate in [index, index - 1] where candidate >= 0 && candidate < storage.length {
             guard storage.attribute(.attachment, at: candidate, effectiveRange: nil) != nil else { continue }
             let checked = storage.attribute(.noteChecked, at: candidate, effectiveRange: nil) as? Bool ?? false

@@ -98,8 +98,9 @@ struct MergeNotesSheet: View {
                 Label("Some recordings are not on this device. The merged meeting will have no audio.", systemImage: "exclamationmark.triangle")
                     .font(.footnote)
                     .foregroundStyle(Color.brandNavy.opacity(0.7))
-            } else if !chosen.isEmpty {
-                Text("Combined in time order into “\(base.title)”. The other meetings are removed.")
+            }
+            if !chosen.isEmpty {
+                Text("Combined in time order into “\(base.displayTitle)”. The other meetings are removed.")
                     .font(.footnote)
                     .foregroundStyle(Color.brandNavy.opacity(0.7))
                     .multilineTextAlignment(.center)

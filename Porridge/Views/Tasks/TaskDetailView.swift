@@ -75,13 +75,25 @@ struct TaskDetailView: View {
 
                     Rectangle().fill(Look.hairline).frame(height: 0.5)
 
-                    NoteBodyEditor(text: $item.details, controller: editor, placeholder: "Notes")
+                    NoteBodyEditor(text: $item.details, controller: editor, placeholder: "Notes", growsWithText: true)
                         .frame(minHeight: 280)
                 }
                 .padding()
                 .frame(maxWidth: 820)
                 .frame(maxWidth: .infinity)
         }
+        #if os(iOS)
+        .scrollDismissesKeyboard(.interactively)
+        // The format bar lies over the end of the page; the cursor stays above it.
+        .contentMargins(.bottom, editor.isEditing ? 58 : 0, for: .scrollContent)
+        .overlay(alignment: .bottom) {
+            if editor.isEditing {
+                NoteKeyboardBar(controller: editor)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+            }
+        }
+        #endif
         .background(Color.appBackground)
         .navigationTitle("")
         .inlineNavigationTitle()
