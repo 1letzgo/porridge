@@ -276,4 +276,10 @@ class HomeListLogicTest {
         val notes = listOf(de.letzgo.porridge.model.RecordingNote(65.0, "Ask about pricing"), de.letzgo.porridge.model.RecordingNote(3725.0, "Send the plan"))
         assertEquals("- 1:05 Ask about pricing\n- 1:02:05 Send the plan", de.letzgo.porridge.model.RecordingNote.markdown(notes))
     }
+
+    @Test fun recommendedModelFollowsTheMemory() {
+        assertEquals(de.letzgo.porridge.ml.LocalModel.NEMOTRON_BOLT, de.letzgo.porridge.ml.LocalModel.recommended(12.0))
+        assertEquals(de.letzgo.porridge.ml.LocalModel.QWEN3, de.letzgo.porridge.ml.LocalModel.recommended(8.0))
+        assertEquals(de.letzgo.porridge.ml.LocalModel.QWEN3_SMALL, de.letzgo.porridge.ml.LocalModel.recommended(6.0))
+    }
 }

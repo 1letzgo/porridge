@@ -20,6 +20,7 @@ enum LocalLLMError: LocalizedError {
 /// On-device language models that can write the summary. Each one is downloaded on its own.
 enum LocalModel: String, CaseIterable, Identifiable {
     case qwen3
+    case qwen3Small
     case qwen35
     case nemotronBolt
     /// Built into the system: not downloaded, see `AppleLLM`.
@@ -34,6 +35,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
         switch self {
         case .apple: "Apple Intelligence"
         case .qwen3: "Qwen3 4B"
+        case .qwen3Small: "Qwen3 1.7B"
         case .qwen35: "Qwen3.5 4B"
         case .nemotronBolt: "Nemotron 3.5 Bolt-E4B"
         }
@@ -43,6 +45,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
         switch self {
         case .apple: ""
         case .qwen3: "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+        case .qwen3Small: "mlx-community/Qwen3-1.7B-4bit"
         case .qwen35: "mlx-community/Qwen3.5-4B-MLX-4bit"
         case .nemotronBolt: "lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit"
         }
@@ -52,6 +55,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
         switch self {
         case .apple: "built into the system"
         case .qwen3: "approx. 2.3 GB"
+        case .qwen3Small: "approx. 1 GB"
         case .qwen35: "approx. 3.1 GB"
         case .nemotronBolt: "approx. 4.2 GB"
         }
@@ -59,7 +63,23 @@ enum LocalModel: String, CaseIterable, Identifiable {
 
     /// The model used for summaries.
     static var selected: LocalModel {
-        LocalModel(rawValue: UserDefaults.standard.string(forKey: AppSettings.localModelKey) ?? "") ?? .qwen3
+        LocalModel(rawValue: UserDefaults.standard.string(forKey: AppSettings.localModelKey) ?? "") ?? recommended
+    }
+
+    /// The model that suits this much memory; the same limits as on Android.
+    static func recommended(memoryGB: Double) -> LocalModel {
+        if memoryGB >= 11 { return .nemotronBolt }
+        return memoryGB >= 7.5 ? .qwen3 : .qwen3Small
+    }
+
+    static var recommended: LocalModel {
+        recommended(memoryGB: Double(ProcessInfo.processInfo.physicalMemory) / 1e9)
+    }
+
+    /// Without a stored choice: a model that is already here keeps working, otherwise the one that suits the device.
+    static var defaultChoice: LocalModel {
+        if recommended.isInstalled { return recommended }
+        return downloadable.first(where: \.isInstalled) ?? recommended
     }
 
     /// Size of the finished download; a smaller folder means the download was interrupted.
@@ -67,6 +87,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
         switch self {
         case .apple: 0
         case .qwen3: 2_280_000_000
+        case .qwen3Small: 984_000_000
         case .qwen35: 3_060_000_000
         case .nemotronBolt: 4_231_000_000
         }

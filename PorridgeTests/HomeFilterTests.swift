@@ -59,4 +59,10 @@ final class HomeFilterTests: XCTestCase {
         XCTAssertEqual(RecordingNote.markdown(notes), "- \(TimeInterval(65).clockString) Ask about pricing\n- \(TimeInterval(3725).clockString) Send the plan")
         XCTAssertEqual(RecordingNote.markdown([]), "")
     }
+
+    func testRecommendedModelFollowsTheMemory() {
+        XCTAssertEqual(LocalModel.recommended(memoryGB: 12), .nemotronBolt)
+        XCTAssertEqual(LocalModel.recommended(memoryGB: 8), .qwen3)
+        XCTAssertEqual(LocalModel.recommended(memoryGB: 6), .qwen3Small)
+    }
 }

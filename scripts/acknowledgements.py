@@ -101,6 +101,7 @@ def apple():
          lambda: speaker_notice() + "\n\n" + CC_BY_4()),
         ("Qwen3 4B Instruct 2507 (MLX, 4-bit)", "4B", "Apache 2.0", "https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit", APACHE),
         ("Qwen3.5 4B (MLX, 4-bit)", "4B", "Apache 2.0", "https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit", APACHE),
+        ("Qwen3 1.7B (MLX, 4-bit)", "1.7B", "Apache 2.0", "https://huggingface.co/mlx-community/Qwen3-1.7B-4bit", APACHE),
         ("Nemotron 3.5 Bolt-E4B (MLX, 4-bit)", "E4B", "OpenMDW 1.1", "https://huggingface.co/lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit",
          lambda: gh("OpenMDW/OpenMDW", "1.1/LICENSE.OpenMDW-1.1", "main")),
     ]
@@ -160,6 +161,8 @@ def android():
         ("Qwen3 Embedding 0.6B (GGUF)", "0.6B", "Apache 2.0", "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF", APACHE),
         ("Qwen3 4B Instruct 2507 (GGUF)", "4B", "Apache 2.0", "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF", APACHE),
         ("Qwen3 1.7B (GGUF)", "1.7B", "Apache 2.0", "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF", APACHE),
+        ("Nemotron 3.5 Bolt-E4B (GGUF)", "E4B", "OpenMDW 1.1", "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF",
+         lambda: gh("OpenMDW/OpenMDW", "1.1/LICENSE.OpenMDW-1.1", "main")),
     ]
     return [("Libraries", libs), ("Models", models)]
 

@@ -19,7 +19,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.speechEngineKey) private var engine = SpeechEngine.parakeet
     @AppStorage(AppSettings.speakerDetectionKey) private var speakerDetection = true
     @AppStorage(AppSettings.voiceRecognitionKey) private var voiceRecognition = true
-    @AppStorage(AppSettings.localModelKey) private var localModel = LocalModel.qwen3
+    @AppStorage(AppSettings.localModelKey) private var localModel = LocalModel.recommended
     @State private var showTemplates = false
     @AppStorage(AppSettings.billingKey) private var billing: SummaryBilling = .local
     @AppStorage(AppSettings.providerKey) private var provider = AIProvider.openRouter
@@ -417,7 +417,8 @@ struct SettingsView: View {
                 }
                 ForEach(LocalModel.downloadable) { model in
                     ModelRow(
-                        title: model.displayName, subtitle: "Summaries on your device · \(model.sizeText)",
+                        title: model.displayName,
+                        subtitle: (model == .recommended ? "Recommended for this device · " : "Summaries on your device · ") + model.sizeText,
                         state: models.llmState(model),
                         onDelete: { pendingDeletion = .summary(model) },
                         onCancel: { Task { await models.deleteLLM(model) } }

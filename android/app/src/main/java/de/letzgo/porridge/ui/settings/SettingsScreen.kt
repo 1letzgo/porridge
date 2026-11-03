@@ -313,7 +313,7 @@ private fun SummaryCard() {
             }
             for (m in LocalModel.entries) {
                 HorizontalDivider()
-                ModelRow(m.pack, "Summaries on your device") { coroutines.launch { LocalLLM.of(m).unload() } }
+                ModelRow(m.pack, if (m == LocalModel.recommended(context)) "Recommended for this device" else "Summaries on your device") { coroutines.launch { LocalLLM.of(m).unload() } }
             }
         } else {
             Picker("Provider", AIProvider.entries.map { it to it.label }, provider) { provider = it; AIProvider.current = it }

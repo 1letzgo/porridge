@@ -200,6 +200,13 @@
      "text": "parakeet-tdt-v3-core-ml"
     },
     {
+     "name": "Qwen3 1.7B (MLX, 4-bit)",
+     "version": "1.7B",
+     "license": "Apache 2.0",
+     "url": "https://huggingface.co/mlx-community/Qwen3-1.7B-4bit",
+     "text": "fluidaudio"
+    },
+    {
      "name": "Qwen3 4B Instruct 2507 (MLX, 4-bit)",
      "version": "4B",
      "license": "Apache 2.0",

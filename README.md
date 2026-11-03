@@ -46,7 +46,7 @@ Porridge records what is said in a meeting, writes it down with speaker names an
 | --- | --- | --- |
 | **Speech** | Parakeet TDT v3 (25 European languages), Apple Speech on Apple devices | |
 | **Speakers** | pyannote | |
-| **Summaries and chat** | Qwen3 on all platforms, Apple Intelligence on Apple devices | Your own key for OpenRouter, OpenAI, Anthropic, Google, Mistral, Groq or a compatible server |
+| **Summaries and chat** | Nemotron 3.5 Bolt, Qwen3 4B or Qwen3 1.7B, recommended to suit your device; Apple Intelligence on Apple devices | Your own key for OpenRouter, OpenAI, Anthropic, Google, Mistral, Groq or a compatible server |
 
 Models download once and then work offline. With iCloud, audio stays on the device that recorded it; with Nextcloud, recordings sync too.
 
@@ -125,6 +125,7 @@ Porridge stands on the work of these projects. Thank you! The full license texts
 | --- | --- | --- |
 | [Nemotron 3.5 Bolt-E4B (MLX, 4-bit)](https://huggingface.co/lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit) | E4B | OpenMDW 1.1 |
 | [Parakeet TDT v3 (Core ML)](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml) | 0.6B | CC BY 4.0 |
+| [Qwen3 1.7B (MLX, 4-bit)](https://huggingface.co/mlx-community/Qwen3-1.7B-4bit) | 1.7B | Apache 2.0 |
 | [Qwen3 4B Instruct 2507 (MLX, 4-bit)](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit) | 4B | Apache 2.0 |
 | [Qwen3.5 4B (MLX, 4-bit)](https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit) | 4B | Apache 2.0 |
 | [Speaker Diarization Community-1 (Core ML)](https://huggingface.co/FluidInference/speaker-diarization-coreml) | – | CC BY 4.0 |
@@ -175,6 +176,7 @@ Porridge stands on the work of these projects. Thank you! The full license texts
 | --- | --- | --- |
 | [Parakeet TDT v3 (ONNX, int8)](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8) | 0.6B | CC BY 4.0 |
 | [pyannote Segmentation 3.0 (ONNX)](https://huggingface.co/pyannote/segmentation-3.0) | 3.0 | MIT |
+| [Nemotron 3.5 Bolt-E4B (GGUF)](https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF) | E4B | OpenMDW 1.1 |
 | [Qwen3 1.7B (GGUF)](https://huggingface.co/Qwen/Qwen3-1.7B-GGUF) | 1.7B | Apache 2.0 |
 | [Qwen3 4B Instruct 2507 (GGUF)](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | 4B | Apache 2.0 |
 | [Qwen3 Embedding 0.6B (GGUF)](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF) | 0.6B | Apache 2.0 |

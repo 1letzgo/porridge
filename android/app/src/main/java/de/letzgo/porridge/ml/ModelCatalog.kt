@@ -93,6 +93,13 @@ enum class LocalModel(val raw: String, val displayName: String, val pack: ModelP
             return info.totalMem / 1e9
         }
 
-        fun recommended(context: Context) = if (totalMemoryGB(context) >= 7.5) QWEN3 else QWEN3_SMALL
+        /** Das Modell, das zu so viel Arbeitsspeicher passt; dieselben Grenzen wie auf iOS. */
+        fun recommended(memoryGB: Double) = when {
+            memoryGB >= 11 -> NEMOTRON_BOLT
+            memoryGB >= 7.5 -> QWEN3
+            else -> QWEN3_SMALL
+        }
+
+        fun recommended(context: Context) = recommended(totalMemoryGB(context))
     }
 }

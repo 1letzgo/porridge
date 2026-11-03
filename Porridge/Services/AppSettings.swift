@@ -80,7 +80,7 @@ enum AppSettings {
             onboardingDoneKey: false,
             speakerDetectionKey: true,
             billingKey: SummaryBilling.local.rawValue,
-            localModelKey: LocalModel.qwen3.rawValue,
+            localModelKey: LocalModel.defaultChoice.rawValue,
             voiceRecognitionKey: true,
             providerKey: AIProvider.openRouter.rawValue,
         ])
