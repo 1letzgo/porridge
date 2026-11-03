@@ -261,4 +261,14 @@ class HomeListLogicTest {
         assertEquals(SyncMerge.hash(older), SyncMerge.hash(record))
         assertEquals(null, PorridgeJson.decodeFromJsonElement(NoteFolder.serializer(), older).archivedAt)
     }
+
+    @Test fun elementLimitSharesFromTheTopDown() {
+        assertEquals(HomeListLogic.ElementLimits(2, 3, 4, 0), HomeListLogic.elementLimits(2, 3, 4, showAll = false))
+        assertEquals(HomeListLogic.ElementLimits(2, 10, 13, 17), HomeListLogic.elementLimits(2, 10, 30, showAll = false))
+        assertEquals(HomeListLogic.ElementLimits(0, 25, 0, 20), HomeListLogic.elementLimits(0, 40, 5, showAll = false))
+    }
+
+    @Test fun elementLimitShowsAllWhenAskedAndStillCountsTheHidden() {
+        assertEquals(HomeListLogic.ElementLimits(2, 10, 30, 17), HomeListLogic.elementLimits(2, 10, 30, showAll = true))
+    }
 }

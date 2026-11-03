@@ -117,7 +117,8 @@ import de.letzgo.porridge.ui.projects.ProjectDetail
 import de.letzgo.porridge.ui.projects.ProjectRow
 import de.letzgo.porridge.ui.projects.sortedByName
 import de.letzgo.porridge.ui.tasks.TaskListRow
-import de.letzgo.porridge.ui.tasks.taskSections
+import de.letzgo.porridge.ui.tasks.doneTaskSection
+import de.letzgo.porridge.ui.tasks.openTaskSections
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -142,6 +143,8 @@ class ListState {
     var showDone by mutableStateOf(false)
     /** „More“ wurde getippt: die Liste zeigt alle Projekte, nicht nur die letzten. */
     var showAllProjects by mutableStateOf(false)
+    /** „More“ wurde getippt: die Liste zeigt alle Elemente, nicht nur die ersten [HomeListLogic.MAX_ELEMENTS]. */
+    var showAllElements by mutableStateOf(false)
     private val scrollStates = HashMap<ListPage, LazyListState>()
 
     fun scroll(page: ListPage): LazyListState = scrollStates.getOrPut(page) { LazyListState() }
@@ -340,25 +343,27 @@ private fun HomeList(
     val tasks = remember(items, notes, folders, filter) { if (filter.showsTasks) HomeListLogic.homeTasks(items, notes, folders) else emptyList() }
     val home = remember(notes, folders, filter) { HomeListLogic.homeNotes(notes, folders).filter(filter::matches) }
     val (pinned, rest) = remember(home) { home.partition { it.isPinned } }
+    val openTasks = remember(tasks) { tasks.count { !it.first.isDone || it.first.needsReview } }
+    val limits = HomeListLogic.elementLimits(pinned.size, openTasks, rest.size, list.showAllElements)
     val archiveCount = remember(folders, notes, items) { HomeListLogic.archiveCount(folders, notes, items) }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
         if (projects.shown.isNotEmpty()) {
             item(key = "h-projects") { SectionHeader("Projects", color = Brand.project) }
             projectRows(projects.shown, notes, items) { list.page = ListPage.Project(it) }
             if (projects.hidden > 0 && filter != HomeListLogic.HomeFilter.PROJECTS) item(key = "more-projects") {
-                Text(
-                    if (list.showAllProjects) "Less" else "More (${projects.hidden})",
-                    style = MaterialTheme.typography.labelLarge, color = Brand.project,
-                    modifier = Modifier.fillMaxWidth().clickable { list.showAllProjects = !list.showAllProjects }.padding(horizontal = 20.dp, vertical = 12.dp),
-                )
+                MoreRow(projects.hidden, list.showAllProjects, Brand.project) { list.showAllProjects = !list.showAllProjects }
             }
         }
         if (pinned.isNotEmpty()) {
             item(key = "h-pinned") { SectionHeader("Pinned") }
-            noteRows(pinned, stages, onOpen)
+            noteRows(pinned.take(limits.pinned), stages, onOpen)
         }
-        taskSections(tasks, list.showDone, { list.showDone = it }, onOpen, onEditTask)
-        dateGroups(rest, stages, onOpen)
+        openTaskSections(tasks, limits.tasks, onOpen, onEditTask)
+        dateGroups(rest.take(limits.notes), stages, onOpen)
+        if (limits.hidden > 0) item(key = "more-elements") {
+            MoreRow(limits.hidden, list.showAllElements, Brand.sky) { list.showAllElements = !list.showAllElements }
+        }
+        doneTaskSection(tasks, list.showDone, { list.showDone = it }, onOpen, onEditTask)
         if (projects.shown.isEmpty() && tasks.isEmpty() && home.isEmpty()) {
             item(key = "empty") {
                 if (filter == HomeListLogic.HomeFilter.ALL) EmptyState("No Notes Yet", "Speak a thought – Porridge writes it down for you.", Icons.AutoMirrored.Filled.Notes)
@@ -366,8 +371,9 @@ private fun HomeList(
             }
         }
         if (filter == HomeListLogic.HomeFilter.ALL) {
-            item(key = "row-archive") { Column(Modifier.padding(top = 16.dp)) { PageRow("Archive", Icons.Filled.Archive, archiveCount) { list.page = ListPage.Archive } } }
-            item(key = "row-trash") { PageRow("Recently Deleted", Icons.Filled.Delete, notes.count { it.isDeleted }) { list.page = ListPage.Trash } }
+            if (archiveCount > 0) item(key = "row-archive") { PageRow("Archive", archiveCount, Brand.navy) { list.page = ListPage.Archive } }
+            val deleted = notes.count { it.isDeleted }
+            if (deleted > 0) item(key = "row-trash") { PageRow("Recently Deleted", deleted, Brand.danger) { list.page = ListPage.Trash } }
         }
     }
 }
@@ -469,19 +475,21 @@ private fun LazyListScope.dateGroups(notes: List<Note>, stages: Map<String, Stri
     }
 }
 
-/** Eine Zeile am Ende der Liste, die zu einer Unterseite führt. */
+/** Klappt an Ort und Stelle auf, was die Liste weglässt. */
 @Composable
-private fun PageRow(title: String, icon: ImageVector, count: Int, onClick: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.clickable(onClick = onClick)) {
-        Column {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                RowIcon(icon, Brand.navy)
-                Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Text(count.toString(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-        }
+private fun MoreRow(hidden: Int, expanded: Boolean, color: Color, onToggle: () -> Unit) {
+    Text(
+        if (expanded) "Less" else "More ($hidden)",
+        style = MaterialTheme.typography.labelLarge, color = color,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 20.dp, vertical = 12.dp),
+    )
+}
+
+/** Eine Kopfzeile wie „Done“ am Ende der Liste, die zu einer Unterseite führt. */
+@Composable
+private fun PageRow(title: String, count: Int, color: Color, onClick: () -> Unit) {
+    SectionHeader(title, count, Modifier.clickable(onClick = onClick), color = color) {
+        Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

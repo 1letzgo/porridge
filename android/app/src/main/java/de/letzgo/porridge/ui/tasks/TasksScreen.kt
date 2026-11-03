@@ -72,13 +72,15 @@ import java.util.Locale
  * dann Done eingeklappt. Abhaken hier hakt auch die Zeile in der Zusammenfassung ab; ein Tipp öffnet die Aufgabe als
  * eigene Seite.
  */
-fun LazyListScope.taskSections(
-    tasks: List<Pair<ActionItem, Note?>>, showDone: Boolean, onShowDone: (Boolean) -> Unit,
-    onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit,
+fun LazyListScope.openTaskSections(
+    tasks: List<Pair<ActionItem, Note?>>, limit: Int, onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit,
 ) {
-    val (new, mine, general, done) = HomeListLogic.sections(tasks, Me.names)
+    val (new, mine, general) = HomeListLogic.sections(tasks, Me.names)
     fun rows(list: List<Pair<ActionItem, Note?>>) = items(list, key = { "t-" + it.first.id }) { (item, note) -> TaskListRow(item, note, onOpen, onEdit) }
-    if (new.isNotEmpty()) {
+    val shownNew = new.take(limit)
+    val shownMine = mine.take(limit - shownNew.size)
+    val shownGeneral = general.take(limit - shownNew.size - shownMine.size)
+    if (shownNew.isNotEmpty()) {
         item(key = "h-tasks-new") {
             val coroutines = rememberCoroutineScope()
             SectionHeader("New", new.size, color = Brand.task) {
@@ -87,16 +89,24 @@ fun LazyListScope.taskSections(
                 }
             }
         }
-        rows(new)
+        rows(shownNew)
     }
-    if (mine.isNotEmpty()) {
+    if (shownMine.isNotEmpty()) {
         item(key = "h-tasks-mine") { SectionHeader("Mine", mine.size, color = Brand.task) }
-        rows(mine)
+        rows(shownMine)
     }
-    if (general.isNotEmpty()) {
+    if (shownGeneral.isNotEmpty()) {
         item(key = "h-tasks-general") { SectionHeader("General", general.size, color = Brand.task) }
-        rows(general)
+        rows(shownGeneral)
     }
+}
+
+/** Die erledigten Aufgaben, aufklappbar; auf der Startseite ganz unten über dem Papierkorb. */
+fun LazyListScope.doneTaskSection(
+    tasks: List<Pair<ActionItem, Note?>>, showDone: Boolean, onShowDone: (Boolean) -> Unit,
+    onOpen: (String) -> Unit, onEdit: (ActionItem) -> Unit,
+) {
+    val done = tasks.filter { it.first.isDone }
     if (done.isNotEmpty()) {
         item(key = "h-tasks-done") {
             val rotation by animateFloatAsState(if (showDone) 90f else 0f, label = "chevron")
@@ -104,7 +114,7 @@ fun LazyListScope.taskSections(
                 Icon(Icons.Filled.ChevronRight, if (showDone) "Hide" else "Show", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.rotate(rotation))
             }
         }
-        if (showDone) rows(done)
+        if (showDone) items(done, key = { "t-" + it.first.id }) { (item, note) -> TaskListRow(item, note, onOpen, onEdit) }
     }
 }
 

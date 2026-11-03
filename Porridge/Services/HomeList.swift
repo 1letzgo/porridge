@@ -6,6 +6,20 @@ import SwiftData
 enum HomeList {
     /// How many projects that are not pinned the list shows before "More".
     static let recentProjects = 5
+    /// How many elements (pinned notes, open tasks, notes) the list shows before "More".
+    static let maxElements = 25
+
+    /// Shares `maxElements` out from the top of the list down, unless all are asked for. `hidden` is how many that
+    /// leaves out when not all are shown.
+    static func elementLimits(
+        pinned: Int, tasks: Int, notes: Int, showAll: Bool
+    ) -> (pinned: Int, tasks: Int, notes: Int, hidden: Int) {
+        let total = pinned + tasks + notes
+        let budget = showAll ? total : maxElements
+        let shownPinned = min(pinned, budget)
+        let shownTasks = min(tasks, budget - shownPinned)
+        return (shownPinned, shownTasks, min(notes, budget - shownPinned - shownTasks), max(0, total - maxElements))
+    }
 
     static func activeProjects(_ projects: [NoteFolder]) -> [NoteFolder] {
         sorted(projects.filter { !$0.isArchived })

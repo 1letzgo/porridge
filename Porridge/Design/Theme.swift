@@ -224,6 +224,33 @@ struct ListHeader: View {
     }
 }
 
+/// A section header that can be tapped, with a chevron at its end: unfolds its section or leads to a page.
+struct ListHeaderButton: View {
+    let title: String
+    var count: Int?
+    var tint: Color = .brandSky
+    var isFirst = false
+    /// Unfolded: the chevron points down.
+    var isOpen = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ListHeader(title: title, count: count, tint: tint, isFirst: isFirst)
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                        .padding(.bottom, 9)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
+    }
+}
+
 /// A list row that opens a detail.
 struct ListRowLink<Content: View>: View {
     let value: UUID

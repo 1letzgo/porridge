@@ -29,6 +29,8 @@ struct NotesView: View {
     @State private var page = ListPage.home
     /// "More" was tapped: the list shows all projects, not only the latest.
     @State private var showAllProjects = false
+    /// "More" was tapped: the list shows all elements, not only the first `HomeList.maxElements`.
+    @State private var showAllElements = false
     /// What the long list is narrowed to, chosen with the button beside the search.
     @State private var homeFilter = HomeFilter.all
     /// The filter button is unfolded into its options.
@@ -300,7 +302,10 @@ struct NotesView: View {
         let loose = HomeList.notes(notes, projects: keys).filter(filter.matches)
         let pinned = loose.filter(\.isPinned)
         let tasks = filter.showsTasks ? HomeList.tasks(items, notes: byID, projects: keys) : []
-        let grouped = groups(loose.filter { !$0.isPinned })
+        let unpinned = loose.filter { !$0.isPinned }
+        let openTasks = tasks.filter { !$0.isDone || $0.needsReview }.count
+        let limits = HomeList.elementLimits(pinned: pinned.count, tasks: openTasks, notes: unpinned.count, showAll: showAllElements)
+        let grouped = groups(Array(unpinned.prefix(limits.notes)))
         let archived = HomeList.archivedProjects(projects).count + HomeList.archivedNotes(notes).count + HomeList.archivedTasks(items, notes: byID).count
         let deleted = notes.filter(\.isDeleted).count
         let isEmpty = folders.isEmpty && loose.isEmpty && tasks.isEmpty
@@ -310,26 +315,33 @@ struct NotesView: View {
             }
             if !pinned.isEmpty {
                 Section {
-                    ForEach(pinned) { note in row(note) }
+                    ForEach(pinned.prefix(limits.pinned)) { note in row(note) }
                 } header: {
                     ListHeader(title: "Pinned", tint: .brandSky, isFirst: folders.isEmpty)
                 }
             }
             TaskSections(
-                items: tasks, notes: byID, isFirst: folders.isEmpty && pinned.isEmpty,
+                items: tasks, notes: byID, part: .open, limit: limits.tasks, isFirst: folders.isEmpty && pinned.isEmpty,
                 onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) }
             )
-            dateSections(grouped, isFirst: folders.isEmpty && pinned.isEmpty && tasks.isEmpty)
-            if filter == .all, archived > 0 || deleted > 0 {
+            dateSections(grouped, isFirst: folders.isEmpty && pinned.isEmpty && openTasks == 0)
+            if limits.hidden > 0 {
                 Section {
-                    if archived > 0 {
-                        pageRow("Archive", systemImage: "archivebox", count: archived, tint: .brandNavy) { page = .archive }
-                    }
-                    if deleted > 0 {
-                        pageRow("Recently Deleted", systemImage: "trash", count: deleted, tint: .red) { page = .trash }
-                    }
-                } header: {
-                    ListHeader(title: "More", tint: .secondary, isFirst: isEmpty)
+                    moreRow(hidden: limits.hidden, isExpanded: showAllElements, tint: .brandSky) { showAllElements.toggle() }
+                }
+            }
+            TaskSections(
+                items: tasks, notes: byID, part: .done, isFirst: folders.isEmpty && pinned.isEmpty && openTasks == 0 && unpinned.isEmpty,
+                onOpen: { openFromChat($0) }, selectedID: openTaskItem?.id, onEdit: { openTask($0) }
+            )
+            if filter == .all, archived > 0 {
+                Section {} header: {
+                    ListHeaderButton(title: "Archive", count: archived, tint: .brandNavy, isFirst: isEmpty) { page = .archive }
+                }
+            }
+            if filter == .all, deleted > 0 {
+                Section {} header: {
+                    ListHeaderButton(title: "Recently Deleted", count: deleted, tint: .red, isFirst: isEmpty && archived == 0) { page = .trash }
                 }
             }
         }
@@ -464,7 +476,7 @@ struct NotesView: View {
                 )
             }
             if hidden > 0 {
-                moreProjectsRow(hidden: hidden)
+                moreRow(hidden: hidden, isExpanded: showAllProjects, tint: .brandProject) { showAllProjects.toggle() }
             }
         } header: {
             ListHeader(title: "Projects", tint: .brandProject, isFirst: isFirst)
@@ -499,46 +511,27 @@ struct NotesView: View {
         NoteListRow(note: note) { remove(note) }
     }
 
-    /// A row leading to a page of its own.
-    private func moreProjectsRow(hidden: Int) -> some View {
+    /// Unfolds what the list leaves out, in place.
+    private func moreRow(hidden: Int, isExpanded: Bool, tint: Color, toggle: @escaping () -> Void) -> some View {
         Button {
-            withAnimation(.snappy) { showAllProjects.toggle() }
+            withAnimation(.snappy, toggle)
         } label: {
             HStack(spacing: 4) {
-                Text(showAllProjects ? "Less" : "More")
-                if !showAllProjects {
+                Text(isExpanded ? "Less" : "More")
+                if !isExpanded {
                     Text("\(hidden)").foregroundStyle(.secondary)
                 }
-                Image(systemName: showAllProjects ? "chevron.up" : "chevron.down")
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.caption.weight(.bold))
                 Spacer(minLength: 0)
             }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.brandProject)
+            .foregroundStyle(tint)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .cardListRow()
         .listRowSeparator(.hidden, edges: .bottom)
-    }
-
-    private func pageRow(_ title: String, systemImage: String, count: Int, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                ThingsRowIcon(systemImage: systemImage, tint: tint)
-                Text(title)
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 0)
-                Text("\(count)")
-                    .foregroundStyle(.secondary)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.tertiary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .cardListRow()
     }
 
     private func addTask() {

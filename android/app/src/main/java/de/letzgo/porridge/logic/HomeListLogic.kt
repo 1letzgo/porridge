@@ -58,6 +58,21 @@ object HomeListLogic {
         return ShownProjects(pinned + (if (showAll) others else others.take(RECENT_PROJECTS)), maxOf(0, others.size - RECENT_PROJECTS))
     }
 
+    /** So viele Elemente (Angeheftetes, offene Aufgaben, Notizen) zeigt die Liste vor „More“. */
+    const val MAX_ELEMENTS = 25
+
+    /** [hidden]: so viele Elemente lässt die Liste weg, solange nicht alle gezeigt werden. */
+    data class ElementLimits(val pinned: Int, val tasks: Int, val notes: Int, val hidden: Int)
+
+    /** iOS: `elementLimits` — teilt [MAX_ELEMENTS] von oben nach unten auf, außer alle werden gezeigt. */
+    fun elementLimits(pinned: Int, tasks: Int, notes: Int, showAll: Boolean): ElementLimits {
+        val total = pinned + tasks + notes
+        val budget = if (showAll) total else MAX_ELEMENTS
+        val shownPinned = minOf(pinned, budget)
+        val shownTasks = minOf(tasks, budget - shownPinned)
+        return ElementLimits(shownPinned, shownTasks, minOf(notes, budget - shownPinned - shownTasks), maxOf(0, total - MAX_ELEMENTS))
+    }
+
     /** Meetings, Notizen und Links der Startseite, neueste zuerst. */
     fun homeNotes(notes: List<Note>, folders: List<NoteFolder>): List<Note> {
         val projects = existing(folders)

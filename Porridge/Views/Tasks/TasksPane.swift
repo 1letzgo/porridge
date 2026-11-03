@@ -4,8 +4,17 @@ import SwiftUI
 /// The tasks as sections of a longer list: new ones to look at first, then open, then the ones done (folded),
 /// each with the note it comes from. Ticking here ticks the line in the summary too.
 struct TaskSections: View {
+    enum Part {
+        /// New, Mine and General.
+        case open
+        case done
+    }
+
     let items: [ActionItem]
     let notes: [UUID: Note]
+    let part: Part
+    /// How many open tasks to show, from the top down.
+    var limit = Int.max
     /// Nothing above: the first section sits right under the bar.
     var isFirst = false
     /// Opens the note of a task.
@@ -33,15 +42,24 @@ struct TaskSections: View {
     }
 
     var body: some View {
+        switch part {
+        case .open: openSections
+        case .done: doneSection
+        }
+    }
+
+    @ViewBuilder private var openSections: some View {
         let all = tasks
         let new = all.filter { $0.item.needsReview }
         let open = all.filter { !$0.item.isDone && !$0.item.needsReview }
         let names = AppSettings.myNames(from: myName, voice: myVoiceName)
         let mine = open.filter { ActionItems.isMine($0.item, note: $0.note, names: names) }
         let general = open.filter { !ActionItems.isMine($0.item, note: $0.note, names: names) }
-        let done = all.filter { $0.item.isDone }
-        if !new.isEmpty {
-            Section { ForEach(new, id: \.item.id) { row($0.item, note: $0.note) } } header: {
+        let shownNew = new.prefix(limit)
+        let shownMine = mine.prefix(limit - shownNew.count)
+        let shownGeneral = general.prefix(limit - shownNew.count - shownMine.count)
+        if !shownNew.isEmpty {
+            Section { ForEach(shownNew, id: \.item.id) { row($0.item, note: $0.note) } } header: {
                 header("New", count: new.count, isFirst: isFirst)
                     .overlay(alignment: .bottomTrailing) {
                         Button("Accept All") {
@@ -54,34 +72,29 @@ struct TaskSections: View {
                     }
             }
         }
-        if !mine.isEmpty {
-            Section { ForEach(mine, id: \.item.id) { row($0.item, note: $0.note) } } header: {
+        if !shownMine.isEmpty {
+            Section { ForEach(shownMine, id: \.item.id) { row($0.item, note: $0.note) } } header: {
                 header("Mine", count: mine.count, isFirst: isFirst && new.isEmpty)
             }
         }
-        if !general.isEmpty {
-            Section { ForEach(general, id: \.item.id) { row($0.item, note: $0.note) } } header: {
+        if !shownGeneral.isEmpty {
+            Section { ForEach(shownGeneral, id: \.item.id) { row($0.item, note: $0.note) } } header: {
                 header("General", count: general.count, isFirst: isFirst && new.isEmpty && mine.isEmpty)
             }
         }
+    }
+
+    @ViewBuilder private var doneSection: some View {
+        let done = tasks.filter { $0.item.isDone }
         if !done.isEmpty {
             Section {
                 if showDone {
                     ForEach(done, id: \.item.id) { row($0.item, note: $0.note) }
                 }
             } header: {
-                Button { withAnimation(.snappy) { showDone.toggle() } } label: {
-                    header("Done", count: done.count, isFirst: isFirst && open.isEmpty && new.isEmpty)
-                        .overlay(alignment: .bottomTrailing) {
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.secondary)
-                                .rotationEffect(.degrees(showDone ? 90 : 0))
-                                .padding(.bottom, 9)
-                        }
-                        .contentShape(Rectangle())
+                ListHeaderButton(title: "Done", count: done.count, tint: .brandTask, isFirst: isFirst, isOpen: showDone) {
+                    withAnimation(.snappy) { showDone.toggle() }
                 }
-                .buttonStyle(.plain)
             }
         }
     }

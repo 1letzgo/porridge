@@ -40,4 +40,17 @@ final class HomeFilterTests: XCTestCase {
         XCTAssertEqual(LocalModel(rawValue: "nemotronBolt"), .nemotronBolt)
         XCTAssertEqual(LocalModel.nemotronBolt.repoID, "lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit")
     }
+    func testElementLimitSharesFromTheTopDown() {
+        let few = HomeList.elementLimits(pinned: 2, tasks: 3, notes: 4, showAll: false)
+        XCTAssertEqual([few.pinned, few.tasks, few.notes, few.hidden], [2, 3, 4, 0])
+        let many = HomeList.elementLimits(pinned: 2, tasks: 10, notes: 30, showAll: false)
+        XCTAssertEqual([many.pinned, many.tasks, many.notes, many.hidden], [2, 10, 13, 17])
+        let manyTasks = HomeList.elementLimits(pinned: 0, tasks: 40, notes: 5, showAll: false)
+        XCTAssertEqual([manyTasks.pinned, manyTasks.tasks, manyTasks.notes, manyTasks.hidden], [0, 25, 0, 20])
+    }
+
+    func testElementLimitShowsAllWhenAskedAndStillCountsTheHidden() {
+        let all = HomeList.elementLimits(pinned: 2, tasks: 10, notes: 30, showAll: true)
+        XCTAssertEqual([all.pinned, all.tasks, all.notes, all.hidden], [2, 10, 30, 17])
+    }
 }
