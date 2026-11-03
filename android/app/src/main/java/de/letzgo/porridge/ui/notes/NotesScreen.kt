@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -635,7 +636,7 @@ private fun CreateMenu(
             },
         )
         // Chat und Suche klappen wie das Plus-Menü aus ihrem Knopf auf: eine Karte über der Ansicht (iOS: `ChatPanel`).
-        Column(Modifier.align(Alignment.BottomStart).fillMaxSize().imePadding().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)) {
+        Column(Modifier.align(Alignment.BottomStart).fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)) {
             AnimatedVisibility(cardOpen, Modifier.weight(1f)) {
                 Surface(shape = RoundedCornerShape(22.dp), shadowElevation = 10.dp, color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().padding(bottom = 14.dp)) {
                     if (searchLast) search() else chat()
