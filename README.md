@@ -124,7 +124,7 @@ Porridge stands on the work of these projects. Thank you! The full license texts
 
 | Project | Version | License |
 | --- | --- | --- |
-| [Nemotron 3.5 Bolt-E4B (MLX, 4-bit)](https://huggingface.co/lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit) | E4B | See model card |
+| [Nemotron 3.5 Bolt-E4B (MLX, 4-bit)](https://huggingface.co/lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit) | E4B | OpenMDW 1.1 |
 | [Parakeet TDT v3 (Core ML)](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml) | 0.6B | CC BY 4.0 |
 | [Qwen3 4B Instruct 2507 (MLX, 4-bit)](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit) | 4B | Apache 2.0 |
 | [Qwen3.5 4B (MLX, 4-bit)](https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit) | 4B | Apache 2.0 |

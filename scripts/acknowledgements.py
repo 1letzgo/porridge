@@ -91,6 +91,7 @@ def apple():
         ("Swift Syntax", v["swift-syntax"], "Apache 2.0", "https://github.com/swiftlang/swift-syntax", lambda: local("swift-syntax/LICENSE.txt")),
         ("Swift Transformers", v["swift-transformers"], "Apache 2.0", "https://github.com/huggingface/swift-transformers", lambda: local("swift-transformers/LICENSE")),
         ("yyjson", v["yyjson"], "MIT", "https://github.com/ibireme/yyjson", lambda: local("yyjson/LICENSE")),
+        ("plaude-archiver (Plaud Bluetooth protocol)", "", "MIT", "https://github.com/roopen219/plaude-archiver", lambda: gh("roopen219/plaude-archiver")),
     ]
     models = [
         ("Parakeet TDT v3 (Core ML)", "0.6B", "CC BY 4.0", "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml",
@@ -100,6 +101,8 @@ def apple():
          lambda: speaker_notice() + "\n\n" + CC_BY_4()),
         ("Qwen3 4B Instruct 2507 (MLX, 4-bit)", "4B", "Apache 2.0", "https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit", APACHE),
         ("Qwen3.5 4B (MLX, 4-bit)", "4B", "Apache 2.0", "https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit", APACHE),
+        ("Nemotron 3.5 Bolt-E4B (MLX, 4-bit)", "E4B", "OpenMDW 1.1", "https://huggingface.co/lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit",
+         lambda: gh("OpenMDW/OpenMDW", "1.1/LICENSE.OpenMDW-1.1", "main")),
     ]
     return [("Libraries", libs), ("Models", models)]
 
@@ -141,6 +144,7 @@ def android():
         ("Guava ListenableFuture", "1.0", "https://github.com/google/guava"),
     ]
     libs = [(n, v, "Apache 2.0", u, APACHE) for n, v, u in libs] + [
+        ("plaude-archiver (Plaud Bluetooth protocol)", "", "MIT", "https://github.com/roopen219/plaude-archiver", lambda: gh("roopen219/plaude-archiver")),
         ("sherpa-onnx", sherpa, "Apache 2.0", "https://github.com/k2-fsa/sherpa-onnx", lambda: gh("k2-fsa/sherpa-onnx")),
         ("ONNX Runtime (in sherpa-onnx)", "", "MIT", "https://github.com/microsoft/onnxruntime", lambda: gh("microsoft/onnxruntime")),
         ("llama-android", "0.1.1", "MIT", "https://github.com/ffmpegkit-maintained/llama-android", lambda: gh("ffmpegkit-maintained/llama-android")),
