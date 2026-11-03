@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Full-screen meeting recorder with live transcript.
 struct RecordingView: View {
-    var onFinish: (RecordingResult, [String], String) -> Void
+    var onFinish: (RecordingResult, [String], String, [RecordingNote]) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(ModelManager.self) private var models
@@ -12,6 +12,9 @@ struct RecordingView: View {
     @State private var errorMessage: String?
     @State private var confirmDiscard = false
     @State private var finished = false
+    @State private var notes: [RecordingNote] = []
+    @State private var noteDraft = ""
+    @FocusState private var writingNote: Bool
 
     var body: some View {
         ZStack {
@@ -21,16 +24,22 @@ struct RecordingView: View {
                 header
 
                 Text(recorder.elapsed.clockString)
-                    .font(.system(size: 60, weight: .bold))
+                    .font(.system(size: writingNote ? 28 : 60, weight: .bold))
                     .monospacedDigit()
                     .foregroundStyle(.primary)
                     .contentTransition(.numericText())
 
-                meters
+                // While a note is being typed the keyboard needs the room.
+                if !writingNote { meters }
 
                 LiveTranscriptCard(live: live)
+                    .onTapGesture { writingNote = false }
 
-                if let hint {
+                noteList
+
+                noteField
+
+                if !writingNote, let hint {
                     Text(hint)
                         .font(.footnote)
                         .multilineTextAlignment(.center)
@@ -38,9 +47,10 @@ struct RecordingView: View {
                         .padding(.horizontal)
                 }
 
-                stopButton
+                if !writingNote { stopButton }
             }
             .padding()
+            .animation(.snappy, value: writingNote)
         }
         .task { await start() }
         .onAppear {
@@ -87,6 +97,88 @@ struct RecordingView: View {
                 .padding(.vertical, 10)
                 .background(Color.brandSky.opacity(0.14), in: Capsule())
         }
+    }
+
+    /// The notes so far, like the messages of a chat, newest at the bottom.
+    @ViewBuilder
+    private var noteList: some View {
+        if !notes.isEmpty {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .trailing, spacing: 6) {
+                        ForEach(notes) { note in
+                            noteBubble(note).id(note.id)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .frame(maxHeight: writingNote ? 88 : 132)
+                .fixedSize(horizontal: false, vertical: notes.count < 3)
+                .onChange(of: notes.count) {
+                    if let last = notes.last { withAnimation(.snappy) { proxy.scrollTo(last.id, anchor: .bottom) } }
+                }
+            }
+        }
+    }
+
+    private func noteBubble(_ note: RecordingNote) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(note.at.clockString)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Text(note.text)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.brandSky.opacity(0.16), in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
+        .padding(.leading, 48)
+        .contextMenu {
+            Button(role: .destructive) {
+                notes.removeAll { $0.id == note.id }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private var noteField: some View {
+        HStack(spacing: 10) {
+            TextField("Add a note…", text: $noteDraft)
+                .focused($writingNote)
+                .submitLabel(.send)
+                .onSubmit(addNote)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.appBackground, in: RoundedRectangle(cornerRadius: Look.buttonRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Look.buttonRadius, style: .continuous)
+                        .strokeBorder(Look.hairline, lineWidth: Look.outline)
+                )
+            Button(action: addNote) {
+                Image(systemName: "arrow.up")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Color.brandSky, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(noteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel("Add Note")
+        }
+    }
+
+    /// Return with an empty field closes the keyboard, which brings the stop button back.
+    private func addNote() {
+        let text = noteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            writingNote = false
+            return
+        }
+        notes.append(RecordingNote(at: recorder.elapsed, text: text))
+        noteDraft = ""
+        writingNote = true
     }
 
     private var inputLabel: String {
@@ -172,7 +264,10 @@ struct RecordingView: View {
         let liveText = live.text
         LiveRecording.end()
         live.cancel()
-        onFinish(result, names, liveText)
+        var written = notes
+        let unsent = noteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !unsent.isEmpty { written.append(RecordingNote(at: result.duration, text: unsent)) }
+        onFinish(result, names, liveText, written)
         dismiss()
     }
 }

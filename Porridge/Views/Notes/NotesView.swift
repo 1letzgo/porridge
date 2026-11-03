@@ -83,8 +83,8 @@ struct NotesView: View {
             }
         }
         .fullScreenCoverOrSheet(isPresented: $showRecorder) {
-            RecordingView { result, names, liveText in
-                addRecording(from: result, speakerNames: names, liveText: liveText)
+            RecordingView { result, names, liveText, written in
+                addRecording(from: result, speakerNames: names, liveText: liveText, written: written)
             }
         }
         .sheet(isPresented: $showCalendar) {
@@ -1058,7 +1058,7 @@ struct NotesView: View {
     }
 
     /// A recorded meeting becomes a note that is transcribed with speakers.
-    private func addRecording(from result: RecordingResult, speakerNames: [String], liveText: String) {
+    private func addRecording(from result: RecordingResult, speakerNames: [String], liveText: String, written: [RecordingNote]) {
         let note = Note()
         note.title = appointmentTitle ?? Note.defaultMeetingTitle(for: note.createdAt)
         note.titleIsCustom = appointmentTitle != nil
@@ -1068,6 +1068,7 @@ struct NotesView: View {
         note.duration = result.duration
         note.channelCount = result.channelCount
         note.inputName = result.inputName
+        note.text = RecordingNote.markdown(written)
         if result.isSplitStereo {
             note.speakerMode = .channels
             note.speakers = [

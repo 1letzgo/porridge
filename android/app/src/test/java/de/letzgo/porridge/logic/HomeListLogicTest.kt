@@ -271,4 +271,9 @@ class HomeListLogicTest {
     @Test fun elementLimitShowsAllWhenAskedAndStillCountsTheHidden() {
         assertEquals(HomeListLogic.ElementLimits(2, 10, 30, 17), HomeListLogic.elementLimits(2, 10, 30, showAll = true))
     }
+
+    @Test fun recordingNotesBecomeListItemsWithTheirTime() {
+        val notes = listOf(de.letzgo.porridge.model.RecordingNote(65.0, "Ask about pricing"), de.letzgo.porridge.model.RecordingNote(3725.0, "Send the plan"))
+        assertEquals("- 1:05 Ask about pricing\n- 1:02:05 Send the plan", de.letzgo.porridge.model.RecordingNote.markdown(notes))
+    }
 }

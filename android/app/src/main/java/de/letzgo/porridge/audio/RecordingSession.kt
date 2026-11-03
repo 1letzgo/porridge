@@ -1,5 +1,7 @@
 package de.letzgo.porridge.audio
 
+import de.letzgo.porridge.model.RecordingNote
+import androidx.compose.runtime.mutableStateListOf
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +39,8 @@ object RecordingSession {
     var startedAt = 0L
         private set
     val isRecording: Boolean get() = recorder?.isRecording?.value == true
+    /** Was während der laufenden Aufnahme notiert wurde (iOS: `RecordingView.notes`). Liegt hier, weil die Aufnahme den Bildschirm überlebt. */
+    val notes = mutableStateListOf<RecordingNote>()
 
     /**
      * Beendet die Aufnahme, wenn ein Bildschirm sie gerade zeigt. Ein direkter Aufruf statt eines Zustands, denn Compose
@@ -51,6 +55,7 @@ object RecordingSession {
     /** Startet eine Aufnahme mit Live-Transkript. */
     fun start(title: String, withLive: Boolean = true): AudioRecorder {
         check(!isRecording) { "Already recording." }
+        notes.clear()
         val rec = AudioRecorder(appContext)
         rec.onInterrupted = ::requestStop
         val transcriber = if (withLive) LiveTranscriber() else null
@@ -112,6 +117,8 @@ object RecordingSession {
         // Bis das Transkript mit Sprechern fertig ist, steht der Live-Text da.
         if (liveText.isNotEmpty()) note = note.withSegments(listOf(TranscriptSegment(start = 0.0, end = result.duration, text = liveText)))
         if (projectID != null) note = note.copy(projectIDs = listOf(projectID))
+        note = note.copy(text = RecordingNote.markdown(notes))
+        notes.clear()
         PorridgeDatabase.shared.notes().upsert(note)
         ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
         return note

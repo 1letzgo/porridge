@@ -53,4 +53,10 @@ final class HomeFilterTests: XCTestCase {
         let all = HomeList.elementLimits(pinned: 2, tasks: 10, notes: 30, showAll: true)
         XCTAssertEqual([all.pinned, all.tasks, all.notes, all.hidden], [2, 10, 30, 17])
     }
+
+    func testRecordingNotesBecomeListItemsWithTheirTime() {
+        let notes = [RecordingNote(at: 65, text: "Ask about pricing"), RecordingNote(at: 3725, text: "Send the plan")]
+        XCTAssertEqual(RecordingNote.markdown(notes), "- \(TimeInterval(65).clockString) Ask about pricing\n- \(TimeInterval(3725).clockString) Send the plan")
+        XCTAssertEqual(RecordingNote.markdown([]), "")
+    }
 }

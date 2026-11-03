@@ -73,3 +73,11 @@ val Double.durationText: String
             else -> "${minutes / 60} h ${minutes % 60} min"
         }
     }
+
+/** iOS: `RecordingNote` — eine kurze Notiz, während der Aufnahme getippt, an ihrer Stelle im Meeting. */
+data class RecordingNote(val at: Double, val text: String, val id: String = java.util.UUID.randomUUID().toString()) {
+    companion object {
+        /** Die Notizen als Text des Meetings: je ein Listenpunkt mit Zeit. Die Zusammenfassung liest sie von dort. */
+        fun markdown(notes: List<RecordingNote>): String = notes.joinToString("\n") { "- ${it.at.clockString} ${it.text}" }
+    }
+}

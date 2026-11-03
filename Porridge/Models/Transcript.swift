@@ -19,6 +19,18 @@ struct TranscriptSegment: Codable, Hashable, Identifiable {
     var text: String
 }
 
+/// A short note typed during a recording, at its place in the meeting.
+struct RecordingNote: Identifiable, Equatable {
+    var id = UUID()
+    var at: TimeInterval
+    var text: String
+
+    /// The notes as the text of the meeting: one list item each, with the time. The summary reads them from there.
+    static func markdown(_ notes: [RecordingNote]) -> String {
+        notes.map { "- \($0.at.clockString) \($0.text)" }.joined(separator: "\n")
+    }
+}
+
 /// A recognized word with timing, independent of the ASR library.
 struct Word: Hashable, Sendable {
     var text: String

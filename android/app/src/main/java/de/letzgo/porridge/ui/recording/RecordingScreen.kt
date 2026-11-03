@@ -1,5 +1,22 @@
 package de.letzgo.porridge.ui.recording
 
+import de.letzgo.porridge.model.RecordingNote
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.key
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import android.Manifest
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -114,6 +131,7 @@ fun RecordMeetingSheet(onDismiss: () -> Unit, onStart: (title: String?) -> Unit)
 }
 
 /** iOS: `RecordingView` — Meeting-Aufnahme im Vollbild mit Live-Transkript. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, String) -> Unit, onCancel: () -> Unit) {
     val context = LocalContext.current
@@ -123,6 +141,7 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
     var started by remember { mutableStateOf(RecordingSession.isRecording) }
     val names = remember { mutableStateListOf("Speaker 1", "Speaker 2") }
     var finished by remember { mutableStateOf(false) }
+    var noteDraft by rememberSaveable { mutableStateOf("") }
 
     fun finish() {
         if (finished) return
@@ -130,6 +149,7 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
         coroutines.launch {
             // Auch wenn der Bildschirm dabei verschwindet: Die Aufnahme darf nicht halb geschlossen liegen bleiben.
             val (result, text) = withContext(NonCancellable) { RecordingSession.stop() }
+            if (noteDraft.isNotBlank() && result != null) RecordingSession.notes += RecordingNote(result.duration, noteDraft.trim())
             if (result != null) onFinish(result, names.toList(), text) else onCancel()
         }
     }
@@ -158,8 +178,10 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
 
     val recorder = RecordingSession.recorder
     val live = RecordingSession.live
+    // Während eine Notiz getippt wird, braucht die Tastatur den Platz.
+    val writing = WindowInsets.isImeVisible
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { confirmDiscard = true }, enabled = !finished, modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) { Icon(Icons.Filled.Close, "Discard") }
                 Spacer(Modifier.weight(1f))
@@ -174,8 +196,8 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
             if (recorder != null) {
                 val elapsed by recorder.elapsed.collectAsState()
                 val levels by recorder.levels.collectAsState()
-                Text(elapsed.clockString, fontSize = 56.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Light)
-                if (recorder.isSplitStereo) {
+                Text(elapsed.clockString, fontSize = if (writing) 28.sp else 56.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Light)
+                if (writing) Unit else if (recorder.isSplitStereo) {
                     for (index in 0..1) Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(12.dp).clip(CircleShape).background(speakerColor(index)))
                         OutlinedTextField(names[index], { names[index] = it }, singleLine = true, modifier = Modifier.padding(horizontal = 12.dp).width(160.dp))
@@ -185,9 +207,19 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
                 } else LevelBar(levels.maxOrNull() ?: 0f, Modifier.fillMaxWidth())
             }
             if (live != null) LiveCard(live, Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
+            if (recorder != null && !finished) {
+                val elapsed by recorder.elapsed.collectAsState()
+                NoteList(writing)
+                NoteField(noteDraft, { noteDraft = it }) {
+                    RecordingSession.notes += RecordingNote(elapsed, noteDraft.trim())
+                    noteDraft = ""
+                }
+            }
             // Der Stopp-Knopf nur, solange es etwas zu stoppen gibt: nicht vor dem Start und nicht beim Speichern.
             if (finished) {
                 CircularProgressIndicator(Modifier.size(76.dp).padding(16.dp), color = Brand.danger)
+            } else if (writing) {
+                Unit
             } else if (recorder != null) {
                 SkyFab(Icons.Filled.Stop, "Stop", Modifier.size(76.dp), container = Brand.danger) { finish() }
             } else {
@@ -201,6 +233,47 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
         dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Cancel") } },
     )
     error?.let { AlertDialog(onDismissRequest = { error = null; onCancel() }, title = { Text("Can't record") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { error = null; onCancel() }) { Text("OK") } }) }
+}
+
+/** Die Notizen bisher, wie Nachrichten in einem Chat, die neueste unten. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun NoteList(writing: Boolean) {
+    val notes = RecordingSession.notes
+    if (notes.isEmpty()) return
+    val scroll = rememberScrollState()
+    LaunchedEffect(notes.size) { scroll.animateScrollTo(scroll.maxValue) }
+    Column(Modifier.fillMaxWidth().heightIn(max = if (writing) 88.dp else 132.dp).verticalScroll(scroll), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (note in notes) key(note.id) {
+            var menu by remember { mutableStateOf(false) }
+            Box {
+                Row(
+                    Modifier.padding(start = 48.dp).clip(RoundedCornerShape(14.dp)).background(Brand.sky.copy(alpha = 0.16f))
+                        .combinedClickable(onClick = {}, onLongClick = { menu = true }).padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(note.at.clockString, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(note.text, style = MaterialTheme.typography.bodyMedium)
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { menu = false; notes.remove(note) })
+                }
+            }
+        }
+    }
+}
+
+/** Das Eingabefeld für Notizen, wie im Chat. */
+@Composable
+private fun NoteField(text: String, onText: (String) -> Unit, onAdd: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedTextField(
+            text, onText, Modifier.weight(1f), placeholder = { Text("Add a note…") }, singleLine = true, shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { if (text.isNotBlank()) onAdd() }),
+        )
+        IconButton(enabled = text.isNotBlank(), onClick = onAdd) { Icon(Icons.AutoMirrored.Filled.Send, "Add Note", tint = if (text.isNotBlank()) Brand.sky else MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
 }
 
 @Composable
