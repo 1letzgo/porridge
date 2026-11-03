@@ -663,6 +663,9 @@ struct NoteTextView: UIViewRepresentable {
     @Binding var text: String
     var isEditable = true
     let controller: NoteEditorController
+    /// As tall as its text, inside a page that scrolls as a whole; at least `minimumGrowingHeight`, so a tap below a short text still lands here.
+    var growsWithText = false
+    private let minimumGrowingHeight: CGFloat = 480
 
     func makeCoordinator() -> NoteTextCoordinator {
         NoteTextCoordinator(text: $text, controller: controller)
@@ -677,7 +680,8 @@ struct NoteTextView: UIViewRepresentable {
         textView.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: 200, right: 0)
         textView.textContainer.lineFragmentPadding = 0
         textView.keyboardDismissMode = .interactive
-        textView.alwaysBounceVertical = true
+        textView.isScrollEnabled = !growsWithText
+        textView.alwaysBounceVertical = !growsWithText
         textView.allowsEditingTextAttributes = false
         textView.smartQuotesType = .no
         textView.smartDashesType = .no
@@ -698,6 +702,12 @@ struct NoteTextView: UIViewRepresentable {
         coordinator.text = $text
         textView.isEditable = isEditable
         if text != coordinator.lastWritten { coordinator.load(text) }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: NotePlatformTextView, context: Context) -> CGSize? {
+        guard growsWithText, let width = proposal.width else { return nil }
+        let fitted = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: max(fitted.height, minimumGrowingHeight))
     }
 }
 

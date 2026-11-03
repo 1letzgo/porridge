@@ -35,6 +35,9 @@ class NoteEditText(context: Context, private val colors: Colors, private val onM
     AppCompatEditText(context, null, android.R.attr.editTextStyle) {
     data class Colors(val text: Int, val secondary: Int, val heading: Int, val accent: Int, val tag: Int)
 
+    /** Die Zeile der Marke im Feld, in Pixeln, wenn sich die Marke im fokussierten Feld bewegt. */
+    var onCaretLine: ((top: Int, bottom: Int) -> Unit)? = null
+
     private val buffer = EditableBuffer(editableText)
     val engine = NoteEditorEngine(buffer) { markdown ->
         lastWritten = markdown
@@ -107,6 +110,12 @@ class NoteEditText(context: Context, private val colors: Colors, private val onM
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
         super.onSelectionChanged(selStart, selEnd)
         if (ready && !rendering) engine.selectionChanged()
+        // Das Layout des neuen Texts steht erst nach diesem Aufruf.
+        if (ready && hasFocus()) post {
+            val layout = layout ?: return@post
+            val line = layout.getLineForOffset(selectionEnd.coerceAtLeast(0))
+            onCaretLine?.invoke(totalPaddingTop + layout.getLineTop(line), totalPaddingTop + layout.getLineBottom(line) + dp(16f))
+        }
     }
 
     // onSelectionChanged läuft schon im Konstruktor der Basisklasse, bevor die Felder hier stehen.

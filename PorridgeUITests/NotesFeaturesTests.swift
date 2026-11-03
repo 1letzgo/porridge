@@ -30,6 +30,23 @@ final class NotesFeaturesTests: XCTestCase {
         XCTAssertTrue(app.buttons["Checklist"].exists, "format bar missing")
     }
 
+    func testHeadScrollsAwayWithTheText() throws {
+        let app = launchApp()
+        app.newNote()
+        let editor = app.bodyEditor
+        XCTAssertTrue(editor.waitForExistence(timeout: 10), "editor missing")
+        editor.tap()
+        typeInBody(app, (1...40).map { "Line \($0)" }.joined(separator: "\n"))
+        app.buttons["Done"].firstMatch.tap()
+
+        for _ in 0..<4 { app.swipeDown() }
+        let top = app.titleField.frame.minY
+        app.swipeUp()
+        // Scrolled off the screen, the title reports no position at all.
+        let moved = app.titleField.frame.minY
+        XCTAssertTrue(moved.isInfinite || moved < top - 100, "the head stays in place: \(top) -> \(moved)")
+    }
+
     func testPinAndTrash() throws {
         let app = launchApp()
         let name = unique("Trash")

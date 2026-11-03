@@ -9,6 +9,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -99,6 +108,7 @@ class NoteEditorController {
  * iOS: `NoteBodyEditor` — der Text einer Notiz mit Überschriften, Listen, Checklisten, fett und kursiv, als Markdown
  * gespeichert. Die Formatleiste steht über der Tastatur.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NoteBodyEditor(
     text: String,
@@ -107,6 +117,8 @@ fun NoteBodyEditor(
     modifier: Modifier = Modifier,
     isEditable: Boolean = true,
     placeholder: String? = null,
+    /** So hoch wie der Text, für eine Seite, die als Ganzes scrollt; die zeigt dann [NoteFormatBar] selbst. */
+    growsWithText: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val editorColors = NoteEditText.Colors(
@@ -116,10 +128,21 @@ fun NoteBodyEditor(
     )
     var isEmpty by remember { mutableStateOf(text.isEmpty()) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    // Auf einer Seite, die als Ganzes scrollt, muss sie der Marke folgen: beim Tippen und wenn die Tastatur aufgeht.
+    val follow = remember { BringIntoViewRequester() }
+    var caret by remember { mutableStateOf<Rect?>(null) }
+    val keyboard = WindowInsets.ime.getBottom(LocalDensity.current)
+    if (growsWithText) LaunchedEffect(caret, keyboard) {
+        val rect = caret ?: return@LaunchedEffect
+        // Erst wenn das Feld seine neue Höhe hat, liegt die Zeile innerhalb.
+        repeat(2) { withFrameNanos { } }
+        follow.bringIntoView(rect)
+    }
     Column(modifier) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(if (growsWithText) Modifier.fillMaxWidth() else Modifier.weight(1f).fillMaxWidth()) {
             AndroidView(
-                modifier = Modifier.fillMaxSize(),
+                // Mindesthöhe: ein Tipp unter einem kurzen Text landet noch im Feld.
+                modifier = if (growsWithText) Modifier.fillMaxWidth().heightIn(min = 420.dp).bringIntoViewRequester(follow) else Modifier.fillMaxSize(),
                 factory = { context ->
                     NoteEditText(context, editorColors) { markdown ->
                         isEmpty = markdown.isEmpty()
@@ -128,6 +151,7 @@ fun NoteBodyEditor(
                         load(text)
                         controller.view = this
                         setOnFocusChangeListener { _, focused -> controller.isEditing = focused }
+                        if (growsWithText) onCaretLine = { top, bottom -> caret = Rect(0f, top.toFloat(), width.toFloat(), bottom.toFloat()) }
                         // Ein Compose-Feld (Titel) hält sonst den Fokus fest, und der Tipp hier bliebe wirkungslos.
                         setOnTouchListener { v, event ->
                             if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN && !v.hasFocus()) focusManager.clearFocus(force = true)
@@ -148,14 +172,14 @@ fun NoteBodyEditor(
                 Text(placeholder, color = colors.onSurfaceVariant.copy(alpha = 0.6f), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 4.dp, top = 8.dp))
             }
         }
-        if (controller.isEditing && isEditable) FormatBar(controller)
+        if (controller.isEditing && isEditable && !growsWithText) NoteFormatBar(controller)
     }
     LaunchedEffect(Unit) { isEmpty = text.isEmpty() }
 }
 
 /** iOS: Formatleiste über der Tastatur. */
 @Composable
-private fun FormatBar(controller: NoteEditorController) {
+fun NoteFormatBar(controller: NoteEditorController) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(0.dp)) {

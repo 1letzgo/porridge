@@ -84,13 +84,23 @@ struct NoteDetailView: View {
                     DictationStatus(dictation: dictation)
                     dictationPreview
                 } else {
-                    NoteBodyEditor(text: $note.text, isEditable: !note.isDeleted, controller: editor, placeholder: "Start typing or dictate …")
+                    NoteBodyEditor(text: $note.text, isEditable: !note.isDeleted, controller: editor, placeholder: "Start typing or dictate …", growsWithText: true)
                 }
             }
         }
         .padding()
         .frame(maxWidth: 820)
         .frame(maxWidth: .infinity)
+        .modifier(NotePageScroll(following: liveText, isEditing: editor.isEditing))
+        #if os(iOS)
+        .overlay(alignment: .bottom) {
+            if editor.isEditing, !note.isDeleted, tab == .note, dictation.phase == .idle {
+                NoteKeyboardBar(controller: editor)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+            }
+        }
+        #endif
         .background(Color.appBackground)
         .inlineNavigationTitle()
         .keyboardDoneBar(isShown: focused) { focused = false }
@@ -444,7 +454,7 @@ struct NoteDetailView: View {
     // MARK: - Article
 
     private var articleTab: some View {
-        ScrollView {
+        NoteTabScroll {
             if let text = note.pageText, !text.isEmpty {
                 Text(text)
                     .font(.body)
@@ -474,7 +484,7 @@ struct NoteDetailView: View {
     private var transcriptTab: some View {
         let segments = note.segments
         let speakers = note.speakers
-        ScrollView {
+        NoteTabScroll {
             if segments.isEmpty {
                 Text(note.status == .ready ? "No speech was detected." : "The transcript appears here once processing is done.")
                     .foregroundStyle(.secondary)
@@ -545,7 +555,7 @@ struct NoteDetailView: View {
     // MARK: - Summary
 
     private var summaryTab: some View {
-        ScrollView {
+        NoteTabScroll {
             if isSummarizing {
                 SummarizingCard(message: summarizeMessage, status: summaryStatus)
             } else if let summary = note.summary {
@@ -731,16 +741,19 @@ struct NoteDetailView: View {
 
         return TimelineView(.periodic(from: .now, by: 0.5)) { context in
             let on = Int(context.date.timeIntervalSinceReferenceDate * 2) % 2 == 0
+            let preview = Text("\(Text(before))\(Text(lead + live).foregroundStyle(Color.accentColor))\(Text("|").fontWeight(.bold).foregroundStyle(on ? Color.accentColor : Color.clear))\(Text(after))")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 5)
+                .padding(.top, 8)
+                .id(NotePageScroll.followedID)
+            #if os(iOS)
+            preview
+            #else
             ScrollViewReader { proxy in
-                ScrollView {
-                    Text("\(Text(before))\(Text(lead + live).foregroundStyle(Color.accentColor))\(Text("|").fontWeight(.bold).foregroundStyle(on ? Color.accentColor : Color.clear))\(Text(after))")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 5)
-                        .padding(.top, 8)
-                        .id("text")
-                }
-                .onChange(of: liveText) { proxy.scrollTo("text", anchor: .bottom) }
+                ScrollView { preview }
+                    .onChange(of: liveText) { proxy.scrollTo(NotePageScroll.followedID, anchor: .bottom) }
             }
+            #endif
         }
     }
 
@@ -906,5 +919,40 @@ private struct DictationStatus: View {
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(Color.accentColor)
+    }
+}
+
+/// iOS: the whole note page scrolls, head included. The Mac keeps the head in place and scrolls only the tab.
+private struct NotePageScroll: ViewModifier {
+    static let followedID = "followed"
+    /// The dictated text: the page stays with its end while it grows.
+    let following: String
+    let isEditing: Bool
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        ScrollViewReader { proxy in
+            ScrollView { content }
+                .scrollDismissesKeyboard(.interactively)
+                // The format bar lies over the end of the page; the cursor stays above it.
+                .contentMargins(.bottom, isEditing ? 58 : 0, for: .scrollContent)
+                .onChange(of: following) { proxy.scrollTo(Self.followedID, anchor: .bottom) }
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+/// The content of a tab: iOS scrolls it with the page, the Mac on its own.
+private struct NoteTabScroll<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        #if os(iOS)
+        VStack { content }
+        #else
+        ScrollView { content }
+        #endif
     }
 }

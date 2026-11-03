@@ -24,8 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,6 +69,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -230,6 +229,10 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
         }
     }
 
+    // Die ganze Seite scrollt, der Kopf mit; das Diktat bleibt an ihrem Ende.
+    val pageScroll = rememberScrollState()
+    LaunchedEffect(liveText) { if (dictationPhase != InlineDictation.Phase.IDLE) pageScroll.scrollTo(pageScroll.maxValue) }
+
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
             // Leiste: zurück, teilen, mehr.
@@ -264,7 +267,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                     }
                 }
             }
-            Column(Modifier.padding(horizontal = 16.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f).verticalScroll(pageScroll).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Header(note, onNext = { tab = NoteTab.NOTE; editor.focusStart() }) { title -> update { it.copy(title = title, titleIsCustom = true) } }
                 if (note.isDeleted) Text("This note is in Recently Deleted.", color = Brand.danger, style = MaterialTheme.typography.bodySmall)
                 else TagRow(
@@ -274,7 +277,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                 StatusPanel(note, stage)
                 if (note.speakers.isNotEmpty()) SpeakerChips(note.speakers) { renaming = it }
                 if (tabs.size > 1) TabSwitcher(tabs, tab) { tab = it }
-                Box(Modifier.weight(1f)) {
+                Box {
                     when (tab) {
                         NoteTab.SUMMARY -> SummaryTab(note, isSummarizing, summaryStatus ?: stage, onSummarize = { requestSummary() },
                             onEdit = { editingSummary = true }, onInsert = { update { n -> n.copy(text = if (n.text.isEmpty()) n.summary.orEmpty() else n.text + "\n\n" + n.summary) } },
@@ -286,11 +289,12 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                         NoteTab.NOTE -> if (dictationPhase != InlineDictation.Phase.IDLE) {
                             DictationPreview(note.text, dictationStart, liveText, dictationPhase == InlineDictation.Phase.POLISHING)
                         } else {
-                            NoteBodyEditor(note.text, { text -> update { it.copy(text = text) } }, editor, Modifier.fillMaxSize(), isEditable = !note.isDeleted, placeholder = "Start typing or dictate …")
+                            NoteBodyEditor(note.text, { text -> update { it.copy(text = text) } }, editor, Modifier.fillMaxSize(), isEditable = !note.isDeleted, growsWithText = true, placeholder = "Start typing or dictate …")
                         }
                     }
                 }
             }
+            if (tab == NoteTab.NOTE && editor.isEditing && !note.isDeleted) NoteFormatBar(editor)
             if (note.hasLocalAudio && tab != NoteTab.NOTE && !editor.isEditing) {
                 PlayerBar(player, Modifier.padding(horizontal = 16.dp, vertical = 8.dp).navigationBarsPadding())
             }
@@ -554,7 +558,7 @@ private fun SummaryTab(
         note.isLink -> "Let AI summarize this page."
         else -> "Let AI summarize this note."
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         when {
             isSummarizing -> Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -605,8 +609,8 @@ private fun TranscriptTab(note: Note, player: AudioPlayback, onAssign: (Transcri
         Text(if (note.status == ProcessingStatus.READY) "No speech was detected." else "The transcript appears here once processing is done.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)) {
-        items(segments, key = { it.id }) { segment ->
+    Column(Modifier.padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        for (segment in segments) key(segment.id) {
             val speaker = speakers.firstOrNull { it.id == segment.speakerId }
             val active = playing && time >= segment.start && time < segment.end
             var menu by remember { mutableStateOf(false) }
@@ -641,7 +645,7 @@ private fun TranscriptTab(note: Note, player: AudioPlayback, onAssign: (Transcri
 
 @Composable
 private fun ArticleTab(note: Note, stage: String?, context: Context) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         val text = note.pageText
         when {
             !text.isNullOrEmpty() -> Text(text, style = MaterialTheme.typography.bodyLarge)
@@ -670,7 +674,7 @@ private fun DictationPreview(text: String, start: Int, live: String, polishing: 
         pushStyle(androidx.compose.ui.text.SpanStyle(color = if (on) Brand.sky else Color.Transparent, fontWeight = FontWeight.Bold)); append("|"); pop()
         append(after)
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 5.dp, vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp)) {
         if (polishing) Text("Finishing the transcript …", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
         Text(annotated, style = MaterialTheme.typography.bodyLarge)
     }

@@ -26,39 +26,71 @@ struct NoteBodyEditor: View {
     let controller: NoteEditorController
     /// Shown in the empty editor, under the format bar.
     var placeholder: String?
+    /// iOS: as tall as its text, for a page that scrolls as a whole; that page then shows `NoteKeyboardBar` itself.
+    var growsWithText = false
 
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
             if isEditable { formatBar.padding(.bottom, 6) }
             #endif
+            #if os(iOS)
+            NoteTextView(text: $text, isEditable: isEditable, controller: controller, growsWithText: growsWithText)
+                .overlay(alignment: .topLeading) { placeholderText }
+            #else
             NoteTextView(text: $text, isEditable: isEditable, controller: controller)
-                .overlay(alignment: .topLeading) {
-                    if let placeholder, text.isEmpty {
-                        Text(placeholder)
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 4)
-                            .allowsHitTesting(false)
-                    }
-                }
+                .overlay(alignment: .topLeading) { placeholderText }
+            #endif
         }
         #if os(iOS)
         .overlay(alignment: .bottom) {
-            if controller.isEditing, isEditable { keyboardBar }
+            if controller.isEditing, isEditable, !growsWithText {
+                // The note screen has 16 pt of padding all around; the bar reaches out to 12 pt from the edge, 6 pt above the keyboard.
+                NoteKeyboardBar(controller: controller)
+                    .padding(.horizontal, -4)
+                    .padding(.bottom, -10)
+            }
         }
         #endif
     }
 
-    /// One bar over the keyboard with all the buttons, like in Notes.
-    private var keyboardBar: some View {
+    @ViewBuilder private var placeholderText: some View {
+        if let placeholder, text.isEmpty {
+            Text(placeholder)
+                .foregroundStyle(.tertiary)
+                .padding(.top, 4)
+                .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: Formatting
+
+    private var formatBar: some View {
+        let buttons = NoteFormatButtons(controller: controller)
+        return HStack(spacing: 18) {
+            buttons.formatMenu
+            buttons.checklistButton
+            buttons.outdentButton
+            buttons.indentButton
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// One bar over the keyboard with all the buttons, like in Notes.
+struct NoteKeyboardBar: View {
+    let controller: NoteEditorController
+
+    var body: some View {
+        let buttons = NoteFormatButtons(controller: controller)
         HStack {
-            formatMenu
+            buttons.formatMenu
             Spacer()
-            checklistButton
+            buttons.checklistButton
             Spacer()
-            outdentButton
+            buttons.outdentButton
             Spacer()
-            indentButton
+            buttons.indentButton
             Spacer()
             Button("Done") { controller.blur() }.fontWeight(.semibold)
         }
@@ -66,25 +98,14 @@ struct NoteBodyEditor: View {
         .padding(.horizontal, 22)
         .frame(height: 52)
         .modifier(BarBackground())
-        // The note screen has 16 pt of padding all around; the bar reaches out to 12 pt from the edge, 6 pt above the keyboard.
-        .padding(.horizontal, -4)
-        .padding(.bottom, -10)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
+}
 
-    // MARK: Formatting
+private struct NoteFormatButtons {
+    let controller: NoteEditorController
 
-    private var formatBar: some View {
-        HStack(spacing: 18) {
-            formatMenu
-            checklistButton
-            outdentButton
-            indentButton
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var formatMenu: some View {
+    var formatMenu: some View {
         Menu {
             Button("Title") { controller.perform(.setKind(.heading(1))) }
             Button("Heading") { controller.perform(.setKind(.heading(2))) }
@@ -105,17 +126,17 @@ struct NoteBodyEditor: View {
         .accessibilityLabel("Format")
     }
 
-    private var checklistButton: some View {
+    var checklistButton: some View {
         Button { controller.perform(.setKind(.checklist(checked: false))) } label: { Image(systemName: "checklist") }
             .accessibilityLabel("Checklist")
     }
 
-    private var outdentButton: some View {
+    var outdentButton: some View {
         Button { controller.perform(.shift(deeper: false)) } label: { Image(systemName: "decrease.indent") }
             .accessibilityLabel("Outdent")
     }
 
-    private var indentButton: some View {
+    var indentButton: some View {
         Button { controller.perform(.shift(deeper: true)) } label: { Image(systemName: "increase.indent") }
             .accessibilityLabel("Indent")
     }
