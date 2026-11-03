@@ -44,6 +44,7 @@ final class NoteTextCoordinator: NSObject {
         isAdjusting = true
         storage.setAttributedString(NoteMarkdown.attributed(from: markdown))
         isAdjusting = false
+        controller.isEmpty = storage.length == 0
         textView.selectedRange = NSRange(location: min(selected.location, storage.length), length: 0)
         resetTypingAttributes()
     }
@@ -52,6 +53,7 @@ final class NoteTextCoordinator: NSObject {
     /// notes list update while typing, which costs letters.
     func commit() {
         pendingCommit?.cancel()
+        controller.isEmpty = textView?.noteStorage?.length == 0
         pendingCommit = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(400))
             if !Task.isCancelled { self?.flush() }

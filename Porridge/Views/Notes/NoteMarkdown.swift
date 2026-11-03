@@ -353,13 +353,12 @@ enum NoteMarkdown {
         let attachment = NSTextAttachment()
         attachment.image = checkboxImage(checked: checked)
         // Sits on the baseline of the body text, a touch below so it centers on the x-height.
-        attachment.bounds = CGRect(x: 0, y: -3, width: checkboxSize, height: checkboxSize)
+        // The image has the gap after the box built in: a kern on an attachment is ignored by TextKit 2.
+        attachment.bounds = CGRect(x: 0, y: -3, width: checkboxSize + checkboxGap, height: checkboxSize)
         let result = NSMutableAttributedString(attachment: attachment)
         result.addAttributes([
             .noteChecked: checked,
             .font: baseFont(kind: .paragraph),
-            // The gap after the box: a kern on the attachment character.
-            .kern: checkboxGap,
         ], range: NSRange(location: 0, length: result.length))
         return result
     }
@@ -369,12 +368,26 @@ enum NoteMarkdown {
         #if os(macOS)
         let configuration = NSImage.SymbolConfiguration(pointSize: checkboxSize - 2, weight: .regular)
             .applying(.init(paletteColors: [checked ? tagColor : .secondaryLabelColor]))
-        return NSImage(systemSymbolName: name, accessibilityDescription: checked ? "Checked" : "Not checked")?
-            .withSymbolConfiguration(configuration)
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: checked ? "Checked" : "Not checked")?
+            .withSymbolConfiguration(configuration) else { return nil }
+        return NSImage(size: NSSize(width: checkboxSize + checkboxGap, height: checkboxSize), flipped: false) { _ in
+            symbol.draw(in: NSRect(x: 0, y: 0, width: checkboxSize, height: checkboxSize))
+            return true
+        }
         #else
         let configuration = UIImage.SymbolConfiguration(pointSize: checkboxSize - 2, weight: .regular)
-        return UIImage(systemName: name, withConfiguration: configuration)?
+        let symbol = UIImage(systemName: name, withConfiguration: configuration)?
             .withTintColor(checked ? tagColor : .secondaryLabel, renderingMode: .alwaysOriginal)
+        let asset = UIImageAsset()
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: checkboxSize + checkboxGap, height: checkboxSize), format: UIGraphicsImageRendererFormat(for: traits))
+            let image = renderer.image { _ in
+                traits.performAsCurrent { symbol?.draw(in: CGRect(x: 0, y: 0, width: checkboxSize, height: checkboxSize)) }
+            }
+            asset.register(image, with: traits)
+        }
+        return asset.image(with: .current)
         #endif
     }
 }

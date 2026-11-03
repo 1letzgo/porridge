@@ -47,6 +47,17 @@ final class NotesFeaturesTests: XCTestCase {
         XCTAssertTrue(moved.isInfinite || moved < top - 100, "the head stays in place: \(top) -> \(moved)")
     }
 
+    func testChecklistTextStaysClearOfTheBoxAndPlaceholder() throws {
+        let app = launchApp()
+        app.newNote()
+        let editor = app.bodyEditor
+        editor.tap()
+        XCTAssertTrue(app.staticTexts["Start typing or dictate…"].exists, "placeholder missing in the empty note")
+        app.buttons["Checklist"].tap()
+        app.typeText("Buy milk\nCall Maya\n")
+        XCTAssertFalse(app.staticTexts["Start typing or dictate…"].exists, "placeholder over the typed text")
+    }
+
     func testPinAndTrash() throws {
         let app = launchApp()
         let name = unique("Trash")

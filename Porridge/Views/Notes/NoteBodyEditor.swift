@@ -7,6 +7,8 @@ final class NoteEditorController {
     @ObservationIgnored private weak var coordinator: NoteTextCoordinator?
     /// The body is being edited (the format bar is showing above the keyboard).
     var isEditing = false
+    /// Nothing typed: follows every key press, while the note hears of the text only shortly after.
+    var isEmpty = true
 
     /// Cursor as a character offset in the note's Markdown; the end of the text when nothing is being edited.
     var cursorOffset: Int { coordinator?.cursorOffset() ?? 0 }
@@ -55,7 +57,7 @@ struct NoteBodyEditor: View {
     }
 
     @ViewBuilder private var placeholderText: some View {
-        if let placeholder, text.isEmpty {
+        if let placeholder, controller.isEmpty {
             Text(placeholder)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 4)
