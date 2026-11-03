@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.projects
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -126,7 +128,7 @@ fun ProjectChooser(assigned: List<String>, onToggle: (String) -> Unit, onDismiss
         onDismissRequest = onDismiss,
         title = { Text("Projects") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (sorted.isEmpty()) Text("Create a project with the plus button first.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 for (project in sorted) {
                     if (project.archivedAt != null && project.id !in assigned && project.id !in inherited) continue

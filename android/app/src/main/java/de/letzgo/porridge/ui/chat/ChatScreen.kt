@@ -37,7 +37,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,7 +60,6 @@ fun ChatScreen(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> U
     val thinking by chat.isThinking.collectAsState()
     val status by chat.status.collectAsState()
     var input by remember { mutableStateOf("") }
-    val coroutines = rememberCoroutineScope()
     val list = rememberLazyListState()
     LaunchedEffect(messages.size, thinking) { if (messages.isNotEmpty()) list.animateScrollToItem(messages.size) }
 
@@ -103,7 +101,8 @@ fun ChatScreen(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> U
             IconButton(enabled = input.isNotBlank() && !thinking, onClick = {
                 val question = input
                 input = ""
-                coroutines.launch { chat.ask(question, notes, items) }
+                // Läuft weiter, wenn die Karte zugeht; die Antwort steht beim nächsten Öffnen da.
+                AppGraph.scope.launch { chat.ask(question, notes, items) }
             }) { Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = Brand.sky) }
         }
     }

@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -62,7 +64,7 @@ fun AppUpdateDialog(release: AppUpdate.Release, onDismiss: () -> Unit) {
         onDismissRequest = { if (!downloading) onDismiss() },
         title = { Text("Porridge ${release.version} is available") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (release.notes.isNotEmpty()) Text(release.notes, style = MaterialTheme.typography.bodyMedium)
                 when {
                     error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)

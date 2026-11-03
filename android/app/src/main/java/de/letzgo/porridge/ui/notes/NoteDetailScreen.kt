@@ -1,5 +1,12 @@
 package de.letzgo.porridge.ui.notes
 
+import de.letzgo.porridge.ui.components.EmptyState
+import androidx.compose.material.icons.automirrored.filled.Notes
+import androidx.core.content.ContextCompat
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.content.pm.PackageManager
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -83,6 +90,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import de.letzgo.porridge.AppGraph
 import de.letzgo.porridge.audio.AudioPlayback
 import de.letzgo.porridge.audio.InlineDictation
 import de.letzgo.porridge.audio.RecordingSession
@@ -131,7 +139,10 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     val db = PorridgeDatabase.shared
     val stored by db.notes().observe(noteID).collectAsState(initial = null)
     var local by remember { mutableStateOf(draft) }
-    val note = stored ?: local ?: return
+    val note = stored ?: local ?: run {
+        MissingNote(onClose)
+        return
+    }
     val coroutines = rememberCoroutineScope()
     val saveLock = remember { kotlinx.coroutines.sync.Mutex() }
     val stages by ProcessingService.stages.collectAsState()
@@ -170,7 +181,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
      * Änderungen an Text und Titel sich nicht gegenseitig mit alten Werten überschreiben.
      */
     fun update(change: (Note) -> Note) {
-        coroutines.launch {
+        AppGraph.scope.launch {
             saveLock.withLock {
                 val current = db.notes().get(noteID) ?: local ?: return@withLock
                 val updated = change(current).copy(updatedAt = System.currentTimeMillis())
@@ -186,10 +197,16 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     LaunchedEffect(note.audioFileName) {
         note.audioFileName?.takeIf { note.hasLocalAudio }?.let { runCatching { player.load(it) } }
     }
-    DisposableEffect(Unit) { onDispose { player.stop(); if (dictationPhase == InlineDictation.Phase.RECORDING) dictation.cancel() } }
+    // Wer die Notiz während des Diktats verlässt, behält den Text: es wird beendet und gespeichert.
+    DisposableEffect(Unit) {
+        onDispose {
+            player.stop()
+            if (dictationPhase == InlineDictation.Phase.RECORDING) AppGraph.scope.launch { finishDictation(dictation, dictationStart, ::update) { liveText = "" } }
+        }
+    }
     // Der Stopp-Knopf in der Benachrichtigung beendet das Diktat.
     DisposableEffect(dictationPhase) {
-        val handler: () -> Unit = { coroutines.launch { finishDictation(dictation, note, dictationStart, ::update) { liveText = "" } } }
+        val handler: () -> Unit = { AppGraph.scope.launch { finishDictation(dictation, dictationStart, ::update) { liveText = "" } } }
         if (dictationPhase == InlineDictation.Phase.RECORDING) RecordingSession.stopHandler = handler
         onDispose { if (RecordingSession.stopHandler === handler) RecordingSession.stopHandler = null }
     }
@@ -200,6 +217,10 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
         liveText = listOf(confirmed, volatile).filter { it.isNotEmpty() }.joinToString(" ")
     }
     BackHandler { onClose() }
+
+    fun startDictation() = dictation.start(note.title.ifEmpty { "Note" })
+    // Abgelehnt: `start` meldet dann selbst, dass das Mikrofon fehlt.
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { startDictation() }
 
     var askTemplate by remember { mutableStateOf(false) }
 
@@ -224,7 +245,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     fun requestSummary() {
         when {
             note.segments.isNotEmpty() -> askTemplate = true
-            note.summary == null -> coroutines.launch { summarize() }
+            note.summary == null -> AppGraph.scope.launch { summarize() }
             else -> confirmResummarize = true
         }
     }
@@ -277,7 +298,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                 StatusPanel(note, stage)
                 if (note.speakers.isNotEmpty()) SpeakerChips(note.speakers) { renaming = it }
                 if (tabs.size > 1) TabSwitcher(tabs, tab) { tab = it }
-                Box {
+                Box(Modifier.padding(bottom = if (note.hasLocalAudio && tab != NoteTab.NOTE) 0.dp else 8.dp)) {
                     when (tab) {
                         NoteTab.SUMMARY -> SummaryTab(note, isSummarizing, summaryStatus ?: stage, onSummarize = { requestSummary() },
                             onEdit = { editingSummary = true }, onInsert = { update { n -> n.copy(text = if (n.text.isEmpty()) n.summary.orEmpty() else n.text + "\n\n" + n.summary) } },
@@ -295,6 +316,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                 }
             }
             if (tab == NoteTab.NOTE && editor.isEditing && !note.isDeleted) NoteFormatBar(editor)
+            else if (!(note.hasLocalAudio && tab != NoteTab.NOTE)) Spacer(Modifier.navigationBarsPadding())
             if (note.hasLocalAudio && tab != NoteTab.NOTE && !editor.isEditing) {
                 PlayerBar(player, Modifier.padding(horizontal = 16.dp, vertical = 8.dp).navigationBarsPadding())
             }
@@ -311,9 +333,10 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                         dictationStart = editor.cursorOffset.coerceAtMost(note.text.length)
                         liveText = ""
                         editor.blur()
-                        dictation.start(note.title.ifEmpty { "Note" })
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startDictation()
+                        else micPermission.launch(Manifest.permission.RECORD_AUDIO)
                     }
-                    InlineDictation.Phase.RECORDING -> coroutines.launch { finishDictation(dictation, note, dictationStart, ::update) { liveText = "" } }
+                    InlineDictation.Phase.RECORDING -> AppGraph.scope.launch { finishDictation(dictation, dictationStart, ::update) { liveText = "" } }
                     InlineDictation.Phase.POLISHING -> Unit
                 }
             }
@@ -341,9 +364,9 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     if (askTemplate) AlertDialog(
         onDismissRequest = { askTemplate = false }, title = { Text("Which template?") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (note.summary != null) Text("This replaces the current summary; your edits to it are lost.")
-                for (option in SummaryTemplate.all) TextButton(onClick = { askTemplate = false; coroutines.launch { summarize(option) } }) { Text(option.name, color = Brand.navy) }
+                for (option in SummaryTemplate.all) TextButton(onClick = { askTemplate = false; AppGraph.scope.launch { summarize(option) } }) { Text(option.name, color = Brand.navy) }
             }
         },
         confirmButton = {},
@@ -352,7 +375,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     if (confirmResummarize) AlertDialog(
         onDismissRequest = { confirmResummarize = false },
         title = { Text("Replace the current summary?") }, text = { Text("Your edits to the summary are lost.") },
-        confirmButton = { TextButton(onClick = { confirmResummarize = false; coroutines.launch { summarize() } }) { Text("Summarize Again", color = Brand.danger) } },
+        confirmButton = { TextButton(onClick = { confirmResummarize = false; AppGraph.scope.launch { summarize() } }) { Text("Summarize Again", color = Brand.danger) } },
         dismissButton = { TextButton(onClick = { confirmResummarize = false }) { Text("Cancel") } },
     )
     if (confirmDeleteAudio) AlertDialog(
@@ -403,8 +426,20 @@ private suspend fun toggleSummaryTask(note: Note, line: Int) {
     siblings.getOrNull(before)?.let { store.setDone(it, !task.done) }
 }
 
+/** Die Notiz gibt es nicht (mehr): Zurück geht trotzdem. Der Hinweis erscheint erst, wenn sie nicht bloß noch lädt. */
+@Composable
+private fun MissingNote(onClose: () -> Unit) {
+    BackHandler { onClose() }
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(600); settled = true }
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
+        IconButton(onClick = onClose, modifier = Modifier.padding(horizontal = 4.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Brand.navy) }
+        if (settled) EmptyState("Note Not Found", "It was deleted or is no longer on this device.", Icons.AutoMirrored.Filled.Notes)
+    }
+}
+
 /** Stoppt das Diktat und setzt den endgültigen Text der ganzen Aufnahme an die Cursorstelle. */
-private suspend fun finishDictation(dictation: InlineDictation, note: Note, start: Int, update: ((Note) -> Note) -> Unit, done: () -> Unit) {
+private suspend fun finishDictation(dictation: InlineDictation, start: Int, update: ((Note) -> Note) -> Unit, done: () -> Unit) {
     val result = dictation.stop() ?: return
     val text = result.text.trim()
     update { n ->
@@ -412,7 +447,8 @@ private suspend fun finishDictation(dictation: InlineDictation, note: Note, star
         val before = n.text.substring(0, at)
         val after = n.text.substring(at)
         val lead = if (text.isNotEmpty() && before.isNotEmpty() && !before.last().isWhitespace()) " " else ""
-        val newText = before + lead + text + after
+        val trail = if (text.isNotEmpty() && after.isNotEmpty() && !after.first().isWhitespace()) " " else ""
+        val newText = before + lead + text + trail + after
         val files = if (result.fileName != null && !(newText.isEmpty() && n.title.isEmpty())) n.audioFileNames + result.fileName else n.audioFileNames
         if (result.fileName != null && newText.isEmpty() && n.title.isEmpty()) AudioStore.delete(result.fileName)
         n.copy(text = newText, audioFileNames = files)
@@ -438,7 +474,7 @@ private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
                 singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Next, capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onNext = { onNext() }),
-                textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else Brand.navy),
+                textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = Brand.navy),
                 cursorBrush = SolidColor(Brand.sky), modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -570,7 +606,7 @@ private fun SummaryTab(
             note.summary != null -> {
                 var menu by remember { mutableStateOf(false) }
                 Row(verticalAlignment = Alignment.Top) {
-                    MarkdownText(note.summary, Modifier.weight(1f), onToggleTask = if (note.isDeleted) null else onToggleTask)
+                    MarkdownText(note.summary, Modifier.weight(1f), onToggleTask = if (note.isDeleted || note.isLink) null else onToggleTask)
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreHoriz, "Summary Options", tint = Brand.navy) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {

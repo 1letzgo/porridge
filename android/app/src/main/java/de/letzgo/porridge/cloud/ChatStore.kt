@@ -1,5 +1,6 @@
 package de.letzgo.porridge.cloud
 
+import kotlinx.coroutines.CancellationException
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.data.SummaryBilling
 import de.letzgo.porridge.logic.ActionItemsLogic
@@ -52,6 +53,7 @@ class ChatStore(private val index: ChatContextSource) {
                 return
             }
             val answer = runCatching { complete(q, history, context, tasks) }
+            answer.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             _messages.value = _messages.value + answer.fold(
                 onSuccess = { ChatMessage(ChatMessage.Role.ASSISTANT, it, ChatPrompt.sources(it, context)) },
                 onFailure = { ChatMessage(ChatMessage.Role.ASSISTANT, it.message ?: "Something went wrong.", isError = true) },

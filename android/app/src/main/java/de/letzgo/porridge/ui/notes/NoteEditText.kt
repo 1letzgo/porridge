@@ -124,7 +124,7 @@ class NoteEditText(context: Context, private val colors: Colors, private val onM
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_UP && layout != null) {
+        if (isEnabled && event.action == MotionEvent.ACTION_UP && layout != null) {
             val offset = getOffsetForPosition(event.x, event.y)
             val near = (offset - 1..offset).firstOrNull { it in 0 until text!!.length && buffer.style(it).checkbox }
             if (near != null) {

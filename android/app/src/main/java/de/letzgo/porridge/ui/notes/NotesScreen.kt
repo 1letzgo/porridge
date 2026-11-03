@@ -320,6 +320,7 @@ private fun filterIcon(filter: HomeListLogic.HomeFilter): ImageVector = when (fi
 }
 
 /** Farben wie im Plus-Menü (iOS: `HomeFilter.tint`). */
+@Composable
 private fun filterTint(filter: HomeListLogic.HomeFilter): Color = when (filter) {
     HomeListLogic.HomeFilter.ALL, HomeListLogic.HomeFilter.MEETINGS -> Brand.navy
     HomeListLogic.HomeFilter.PROJECTS -> Brand.project
@@ -504,6 +505,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
     val store = remember { NoteStore() }
     // Der Zustand des Wischens behält seinen ersten Callback; so sieht er immer den aktuellen Stand.
     val current by rememberUpdatedState(note)
+    var confirmDeleteNow by remember { mutableStateOf(false) }
     val state = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
         val latest = current
         when (value) {
@@ -519,14 +521,26 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
                 false
             }
             SwipeToDismissBoxValue.EndToStart -> {
-                coroutines.launch { if (latest.isDeleted) store.deletePermanently(latest) else store.trash(latest) }
-                true
+                if (latest.isDeleted) {
+                    // Endgültig erst nach der Rückfrage; die Zeile federt zurück.
+                    confirmDeleteNow = true
+                    false
+                } else {
+                    coroutines.launch { store.trash(latest) }
+                    true
+                }
             }
             SwipeToDismissBoxValue.Settled -> false
         }
     })
     var menu by remember { mutableStateOf(false) }
     var choosing by remember { mutableStateOf(false) }
+    if (confirmDeleteNow) AlertDialog(
+        onDismissRequest = { confirmDeleteNow = false },
+        title = { Text("Delete this note now?") }, text = { Text("This cannot be undone.") },
+        confirmButton = { TextButton(onClick = { confirmDeleteNow = false; coroutines.launch { store.deletePermanently(note) } }) { Text("Delete Now", color = Brand.danger) } },
+        dismissButton = { TextButton(onClick = { confirmDeleteNow = false }) { Text("Cancel") } },
+    )
     if (choosing) ProjectChooser(note.projectIDs, onToggle = { id -> coroutines.launch { Projects.toggle(note, id) } }, onDismiss = { choosing = false })
     val archived = note.archivedAt != null
     SwipeToDismissBox(
@@ -546,7 +560,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (note.isDeleted) {
                     DropdownMenuItem(text = { Text("Recover") }, onClick = { menu = false; coroutines.launch { store.restore(note) } })
-                    DropdownMenuItem(text = { Text("Delete Now", color = Brand.danger) }, onClick = { menu = false; coroutines.launch { store.deletePermanently(note) } })
+                    DropdownMenuItem(text = { Text("Delete Now", color = Brand.danger) }, onClick = { menu = false; confirmDeleteNow = true })
                 } else {
                     if (!archived) DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { PorridgeDatabase.shared.notes().upsert(note.copy(isPinned = !note.isPinned)) } })
                     DropdownMenuItem(text = { Text(if (archived) "Unarchive" else "Archive") }, onClick = { menu = false; coroutines.launch { if (archived) store.unarchive(note) else store.archive(note) } })
@@ -629,6 +643,7 @@ private fun CreateMenu(
 ) {
     val cardOpen = showChat || showSearch
     var filterOpen by remember { mutableStateOf(false) }
+    BackHandler(enabled = open || filterOpen) { onOpen(false); filterOpen = false }
     // Andere Seite oder offene Karte: die Arten klappen wieder ein.
     if (filter == null || cardOpen) filterOpen = false
     // Beim Zuklappen bleibt die Karte stehen, die zuletzt offen war.
@@ -664,12 +679,12 @@ private fun CreateMenu(
                     val isAll = filter == HomeListLogic.HomeFilter.ALL
                     SkyFab(
                         if (filterOpen) Icons.Filled.Close else filterIcon(filter), if (isAll) "Filter" else "Filter: ${filter.title}",
-                        container = if (isAll) MaterialTheme.colorScheme.background else filterTint(filter),
+                        container = if (isAll) MaterialTheme.colorScheme.surfaceContainerHigh else filterTint(filter),
                         content = if (isAll) Brand.navy else Color.White,
                     ) { onOpen(false); filterOpen = !filterOpen }
                 }
-                if (!showChat) SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = MaterialTheme.colorScheme.background, content = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
-                if (!showSearch) SkyFab(if (showChat) Icons.Filled.Close else Icons.Filled.ChatBubble, if (showChat) "Close Chat" else "Chat", container = MaterialTheme.colorScheme.background, content = Brand.navy) { onOpen(false); filterOpen = false; onChat(!showChat) }
+                if (!showChat) SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
+                if (!showSearch) SkyFab(if (showChat) Icons.Filled.Close else Icons.Filled.ChatBubble, if (showChat) "Close Chat" else "Chat", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); filterOpen = false; onChat(!showChat) }
             }
         }
         if (showsPlus && !cardOpen) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {

@@ -153,14 +153,15 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
         if (started) RecordingSession.stopHandler = handler
         onDispose { if (RecordingSession.stopHandler === handler) RecordingSession.stopHandler = null }
     }
-    BackHandler { confirmDiscard = true }
+    // Nach dem Stoppen wird gespeichert: nichts mehr zu verwerfen.
+    BackHandler { if (!finished) confirmDiscard = true }
 
     val recorder = RecordingSession.recorder
     val live = RecordingSession.live
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { confirmDiscard = true }, modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) { Icon(Icons.Filled.Close, "Discard") }
+                IconButton(onClick = { confirmDiscard = true }, enabled = !finished, modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) { Icon(Icons.Filled.Close, "Discard") }
                 Spacer(Modifier.weight(1f))
                 if (recorder != null) Surface(shape = RoundedCornerShape(50), color = Brand.sky.copy(alpha = 0.14f)) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -343,7 +343,7 @@ private fun CustomTemplatesDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text("Custom Templates") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (templates.isEmpty()) Text("Your own templates tell the summary what to look at, for example \u201cNote every price that is mentioned\u201d.")
                 for (template in templates) Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { editing = template }, Modifier.weight(1f)) { Text(template.name) }

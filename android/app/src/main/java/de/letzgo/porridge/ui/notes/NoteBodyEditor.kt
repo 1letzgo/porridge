@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.runtime.withFrameNanos
@@ -123,7 +124,7 @@ fun NoteBodyEditor(
     val colors = MaterialTheme.colorScheme
     val editorColors = NoteEditText.Colors(
         text = colors.onSurface.toArgb(), secondary = colors.onSurfaceVariant.toArgb(),
-        heading = Brand.navy.toArgb().takeIf { !androidx.compose.foundation.isSystemInDarkTheme() } ?: colors.onSurface.toArgb(),
+        heading = Brand.navy.toArgb(),
         accent = Brand.sky.toArgb(), tag = Brand.sky.toArgb(),
     )
     var isEmpty by remember { mutableStateOf(text.isEmpty()) }
@@ -180,7 +181,8 @@ fun NoteBodyEditor(
 /** iOS: Formatleiste über der Tastatur. */
 @Composable
 fun NoteFormatBar(controller: NoteEditorController) {
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+    // Ohne Tastatur liegt die Leiste über der Navigationsleiste; mit ihr hat das IME-Padding den Abstand schon verbraucht.
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding()) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
             @Composable fun button(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, command: NoteEditorCommand) =

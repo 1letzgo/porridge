@@ -43,7 +43,7 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier, onToggleTask: 
                 is NoteBlock.Kind.Heading -> Text(
                     inline(block.text), modifier = Modifier.padding(top = if (index == 0) 0.dp else 10.dp),
                     style = when (kind.level) { 1 -> MaterialTheme.typography.titleLarge; 2 -> MaterialTheme.typography.titleMedium; else -> MaterialTheme.typography.titleSmall }
-                        .copy(fontWeight = FontWeight.Bold, color = Brand.navy.takeIf { !androidx.compose.foundation.isSystemInDarkTheme() } ?: MaterialTheme.colorScheme.onSurface),
+                        .copy(fontWeight = FontWeight.Bold, color = Brand.navy),
                 )
                 NoteBlock.Kind.Bullet, NoteBlock.Kind.Numbered -> Row(Modifier.padding(start = indent)) {
                     Text(if (kind == NoteBlock.Kind.Bullet) "•" else "${numbers[index]}.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(22.dp))

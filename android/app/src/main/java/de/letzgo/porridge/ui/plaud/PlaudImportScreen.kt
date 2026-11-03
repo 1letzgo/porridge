@@ -83,7 +83,8 @@ fun PlaudImportScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     }
     LaunchedEffect(signedIn) { if (signedIn) refresh() }
     DisposableEffect(Unit) { onDispose { importer.disconnect() } }
-    BackHandler(enabled = importing == null && !showLogin) { onBack() }
+    // Während des Imports bleibt Zurück wirkungslos, statt die App zu verlassen.
+    BackHandler(enabled = !showLogin) { if (importing == null) onBack() }
 
     if (showLogin) {
         PlaudLoginScreen(onToken = { token, refresh -> showLogin = false; importer.signIn(token, refresh) }, onCancel = { showLogin = false })

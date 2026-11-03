@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.tasks
 
+import de.letzgo.porridge.ui.notes.NoteFormatBar
+import androidx.compose.foundation.verticalScroll
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -126,7 +128,8 @@ fun TaskDetailScreen(id: String, onOpenNote: (String) -> Unit, onClose: () -> Un
                 IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Outlined.Delete, "Delete", tint = Brand.danger) }
             }
             if (item == null || !loaded) return@Column
-            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Wie die Notiz scrollt die ganze Seite; das Feld wächst mit seinem Text.
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(verticalAlignment = Alignment.Top) {
                     IconButton(onClick = { coroutines.launch { store.setDone(item, !item.isDone) } }) {
                         Icon(
@@ -189,9 +192,10 @@ fun TaskDetailScreen(id: String, onOpenNote: (String) -> Unit, onClose: () -> Un
                 HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                 NoteBodyEditor(
                     details, { text -> details = text; save { it.copy(details = text) } }, editor,
-                    Modifier.fillMaxWidth().weight(1f).heightIn(min = 280.dp), placeholder = "Notes",
+                    Modifier.fillMaxWidth(), placeholder = "Notes", growsWithText = true,
                 )
             }
+            if (editor.isEditing) NoteFormatBar(editor)
         }
     }
     if (confirmDelete) AlertDialog(
