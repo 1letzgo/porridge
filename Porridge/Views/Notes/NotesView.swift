@@ -906,6 +906,7 @@ struct NotesView: View {
         switch page {
         case .project: openProject == nil ? .brandSky : .brandProject
         case .archive: .brandNavy
+        case .trash: .red
         default: .brandSky
         }
     }

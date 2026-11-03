@@ -75,7 +75,7 @@ fun MergeNotesSheet(base: Note, onDismiss: () -> Unit, onMerged: () -> Unit) {
     val coroutines = rememberCoroutineScope()
     ModalBottomSheet(onDismissRequest = { if (!working) onDismiss() }) {
         Column(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Merge with …", style = MaterialTheme.typography.titleLarge)
+            Text("Merge with…", style = MaterialTheme.typography.titleLarge)
             Text("The transcripts are joined in time order, speakers are matched and the recordings combined. The other notes are deleted.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (candidates.isEmpty()) Text("There are no other recordings to merge.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(Modifier.heightIn(max = 400.dp)) {

@@ -30,7 +30,7 @@ struct SummaryTemplatesView: View {
             }
             .navigationTitle("Custom Templates")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
                 ToolbarItem(placement: .primaryAction) {

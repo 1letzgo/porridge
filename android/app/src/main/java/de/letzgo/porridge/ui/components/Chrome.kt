@@ -116,4 +116,4 @@ val speakerColors = listOf(Color(0xFF24B4E9), Color(0xFFF2994A), Color(0xFF6FCF9
 fun speakerColor(index: Int) = speakerColors[((index % speakerColors.size) + speakerColors.size) % speakerColors.size]
 
 /** Farbe gespeicherter Links (iOS: `brandLink`). */
-val LinkOrange = Color(0xFFF2994A)
+val LinkOrange = Color(0xFFFA8F24)

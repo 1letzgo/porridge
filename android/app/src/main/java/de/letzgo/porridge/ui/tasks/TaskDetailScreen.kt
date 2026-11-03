@@ -122,8 +122,7 @@ fun TaskDetailScreen(id: String, onOpenNote: (String) -> Unit, onClose: () -> Un
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { close() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Done", tint = Brand.navy) }
-                Text("Task", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = Brand.navy)
+                IconButton(onClick = { close() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Brand.navy) }
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Outlined.Delete, "Delete", tint = Brand.danger) }
             }
@@ -138,8 +137,8 @@ fun TaskDetailScreen(id: String, onOpenNote: (String) -> Unit, onClose: () -> Un
                         )
                     }
                     Box(Modifier.weight(1f).padding(top = 10.dp)) {
-                        val style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface,
+                        val style = MaterialTheme.typography.headlineSmall.copy(
+                            fontWeight = FontWeight.Bold, color = Brand.navy,
                             textDecoration = if (item.isDone) TextDecoration.LineThrough else null,
                         )
                         if (title.isEmpty()) Text("Task", style = style.copy(color = MaterialTheme.colorScheme.onSurfaceVariant))

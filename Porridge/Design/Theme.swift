@@ -16,6 +16,8 @@ extension Color {
     static let brandTask = Color(red: 0.16, green: 0.74, blue: 0.50)
     /// Chat.
     static let brandChat = Color(red: 0.90, green: 0.25, blue: 0.24)
+    /// Recording and failed downloads on a tinted pill.
+    static let brandAlert = Color(red: 1, green: 0.42, blue: 0.42)
 
     // System surfaces, the same idea on iOS and macOS.
     #if canImport(UIKit)
@@ -78,6 +80,7 @@ struct ChunkyButtonStyle: ButtonStyle {
     var fill: Color = .brandSky
     var foreground: Color = .accentColor
     var horizontalPadding: CGFloat = 24
+    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
@@ -90,6 +93,7 @@ struct ChunkyButtonStyle: ButtonStyle {
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity)
             .background(fill.opacity(pressed ? 0.26 : 0.16), in: RoundedRectangle(cornerRadius: Look.buttonRadius, style: .continuous))
+            .opacity(isEnabled ? 1 : 0.45)
             .animation(.snappy(duration: 0.12), value: pressed)
     }
 }

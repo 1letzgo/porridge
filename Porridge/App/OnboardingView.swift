@@ -157,7 +157,7 @@ struct OnboardingView: View {
                 Text("Downloading … \(Int(progress * 100)) %").font(.caption).foregroundStyle(.secondary)
             }
         case .loading:
-            HStack { ProgressView(); Text("Preparing …").font(.caption).foregroundStyle(.secondary) }
+            HStack { ProgressView(); Text("Preparing…").font(.caption).foregroundStyle(.secondary) }
         case .ready, .installed:
             Label("Model is on your device", systemImage: "checkmark.circle.fill").foregroundStyle(Color.brandSky)
         case .failed(let message):
@@ -172,7 +172,7 @@ struct OnboardingView: View {
         case 0: "Get Started"
         case 1: micGranted == nil ? "Allow Microphone" : "Continue"
         case 2:
-            if isDownloading { "Downloading …" }
+            if isDownloading { "Downloading…" }
             else if case .failed = models.asr { "Try Again" }
             else if models.asr == .ready || models.asr == .installed { "Continue" }
             else { "Download & Continue" }

@@ -85,7 +85,7 @@ struct NoteDetailView: View {
                     DictationStatus(dictation: dictation)
                     dictationPreview
                 } else {
-                    NoteBodyEditor(text: $note.text, isEditable: !note.isDeleted, controller: editor, placeholder: "Start typing or dictate …", growsWithText: true)
+                    NoteBodyEditor(text: $note.text, isEditable: !note.isDeleted, controller: editor, placeholder: "Start typing or dictate…", growsWithText: true)
                 }
             }
         }
@@ -357,7 +357,7 @@ struct NoteDetailView: View {
                         .foregroundStyle(Color.brandNavy)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
-                        .chunkyPill(fill: .white)
+                        .chunkyPill(fill: .gray)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add Tag")
@@ -427,7 +427,7 @@ struct NoteDetailView: View {
                             Label("Copy Transcript", systemImage: "doc.on.doc")
                         }
                         Button { showMerge = true } label: {
-                            Label("Merge with …", systemImage: "arrow.triangle.merge")
+                            Label("Merge with…", systemImage: "arrow.triangle.merge")
                         }
                         .disabled(processing.stages[note.id] != nil || note.status != .ready)
                     }
@@ -871,7 +871,7 @@ private struct DictationButton: View {
                 }
                 FloatingActionButton(
                     systemImage: icon, label: label,
-                    fill: dictation.phase == .recording ? Color(red: 1, green: 0.42, blue: 0.42) : .brandSky,
+                    fill: dictation.phase == .recording ? Color.brandAlert : .brandSky,
                     action: action
                 )
                 if dictation.phase == .polishing {
@@ -905,19 +905,19 @@ private struct DictationStatus: View {
             switch dictation.phase {
             case .polishing:
                 ProgressView().controlSize(.small)
-                Text("Polishing …")
+                Text("Polishing…")
             default:
                 if case .downloading(let progress) = ModelManager.shared.asr {
                     ProgressView(value: progress).tint(Color.brandSky).frame(width: 60)
-                    Text("Downloading speech model …")
+                    Text("Downloading speech model…")
                 } else {
                     switch dictation.live.phase {
                     case .idle, .preparing, .downloading:
                         ProgressView().controlSize(.small)
-                        Text("Starting …")
+                        Text("Starting…")
                     case .running:
                         Image(systemName: "waveform").symbolEffect(.variableColor.iterative)
-                        Text("Listening …")
+                        Text("Listening…")
                     case .unavailable:
                         Image(systemName: "exclamationmark.circle")
                         Text("No live preview – the text appears when you stop")

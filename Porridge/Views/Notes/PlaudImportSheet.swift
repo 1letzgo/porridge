@@ -25,8 +25,8 @@ struct PlaudImportSheet: View {
             .background(Color.appGroupedBackground)
             .brandNavigationTitle("Plaud")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
                         .disabled(importer.importingId != nil)
                 }
                 if importer.signedIn {
@@ -76,7 +76,7 @@ struct PlaudImportSheet: View {
         VStack(spacing: 20) {
             if importer.isWorking {
                 ProgressView().controlSize(.large)
-                Text(importer.status.isEmpty ? "Connecting …" : importer.status)
+                Text(importer.status.isEmpty ? "Connecting…" : importer.status)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

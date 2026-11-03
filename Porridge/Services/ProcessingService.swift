@@ -40,7 +40,7 @@ final class ProcessingService {
     func enqueue(_ job: Job) {
         guard !queue.contains(job), stages[job.id] == nil else { return }
         queue.append(job)
-        stages[job.id] = "Waiting …"
+        stages[job.id] = "Waiting…"
         runIfNeeded()
     }
 
@@ -94,7 +94,7 @@ final class ProcessingService {
         save()
 
         do {
-            stages[id] = "Preparing audio …"
+            stages[id] = "Preparing audio…"
             let splitChannels = meeting.speakerMode == .channels
             let source = AudioStore.url(for: fileName)
             let prepared = try await Task.detached(priority: .userInitiated) {
@@ -102,9 +102,9 @@ final class ProcessingService {
             }.value
             defer { try? FileManager.default.removeItem(at: prepared.monoURL) }
 
-            stages[id] = "Loading speech model …"
+            stages[id] = "Loading speech model…"
             try await ModelManager.shared.ensureASR()
-            stages[id] = "Transcribing …"
+            stages[id] = "Transcribing…"
             let output = try await TranscriptionEngine.shared.transcribe(prepared.monoURL, language: AppSettings.language)
 
             var speakers = meeting.speakers
@@ -118,7 +118,7 @@ final class ProcessingService {
                     speakers.append(Speaker(id: channelID, name: "Speaker \(index + 1)", colorIndex: index))
                 }
             } else if AppSettings.speakerDetectionEnabled, !output.words.isEmpty {
-                stages[id] = "Detecting speakers …"
+                stages[id] = "Detecting speakers…"
                 do {
                     try await ModelManager.shared.ensureDiarizer()
                     let segments = try await TranscriptionEngine.shared.diarize(prepared.monoURL)
@@ -159,7 +159,7 @@ final class ProcessingService {
                 meeting.segments = [TranscriptSegment(speakerId: nil, start: 0, end: prepared.duration, text: output.text)]
             }
             if AppSettings.voiceRecognitionEnabled, !meeting.speakers.isEmpty {
-                stages[id] = "Recognizing voices …"
+                stages[id] = "Recognizing voices…"
                 meeting.speakers = await VoiceProfiles.identify(
                     meeting.speakers, segments: meeting.segments, audio: prepared.monoURL, context: context)
             }
@@ -183,16 +183,16 @@ final class ProcessingService {
         save()
 
         do {
-            stages[id] = "Preparing audio …"
+            stages[id] = "Preparing audio…"
             let source = AudioStore.url(for: fileName)
             let prepared = try await Task.detached(priority: .userInitiated) {
                 try AudioPreprocessor.prepare(source: source, measureChannels: false)
             }.value
             defer { try? FileManager.default.removeItem(at: prepared.monoURL) }
 
-            stages[id] = "Loading speech model …"
+            stages[id] = "Loading speech model…"
             try await ModelManager.shared.ensureASR()
-            stages[id] = "Transcribing …"
+            stages[id] = "Transcribing…"
             let output = try await TranscriptionEngine.shared.transcribe(prepared.monoURL, language: AppSettings.language)
 
             let text = Paragraphs.format(output.text.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -217,7 +217,7 @@ final class ProcessingService {
 
         // The page is loaded once; "Load Page Again" and a new link (status .recorded) load it.
         if note.pageText == nil || note.status == .recorded {
-            stages[id] = "Loading page …"
+            stages[id] = "Loading page…"
             do {
                 let page = try await LinkFetcher.fetch(address)
                 note.pageText = page.text
@@ -236,7 +236,7 @@ final class ProcessingService {
         }
 
         if summarize, note.summary == nil, !note.isDeleted, !(note.pageText ?? "").isEmpty, SummaryService.canRunWithoutAsking {
-            stages[id] = "Summarizing …"
+            stages[id] = "Summarizing…"
             try? await SummaryService.summarize(note) { [weak self] status in self?.stages[id] = status }
             save()
         }

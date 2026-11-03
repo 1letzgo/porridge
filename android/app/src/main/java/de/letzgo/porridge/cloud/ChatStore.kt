@@ -41,7 +41,7 @@ class ChatStore(private val index: ChatContextSource) {
         val history = _messages.value.takeLast(4)
         _messages.value = _messages.value + ChatMessage(ChatMessage.Role.USER, q)
         _isThinking.value = true
-        _status.value = "Searching your notes …"
+        _status.value = "Searching your notes…"
         try {
             index.refresh(notes)
             // Aufgaben und Entscheidungen gehen immer mit: „was ist noch offen?“ braucht die Liste, nicht Passagen.
@@ -73,11 +73,11 @@ class ChatStore(private val index: ChatContextSource) {
                 model.beginUse()
                 try {
                     val installed = model.isInstalled
-                    _status.value = if (installed) "Loading model …" else "Downloading model …"
+                    _status.value = if (installed) "Loading model…" else "Downloading model…"
                     model.ensureReady { fraction ->
-                        _status.value = if (!installed && fraction < 1) "Downloading model … ${(fraction * 100).toInt()} %" else "Loading model …"
+                        _status.value = if (!installed && fraction < 1) "Downloading model … ${(fraction * 100).toInt()} %" else "Loading model…"
                     }
-                    _status.value = "Thinking …"
+                    _status.value = "Thinking…"
                     model.generate(system, user, 700)
                 } finally {
                     model.endUse()
@@ -87,7 +87,7 @@ class ChatStore(private val index: ChatContextSource) {
                 val provider = AIProvider.current
                 val key = provider.apiKey
                 if (provider.requiresKey && key.isEmpty()) throw SummaryException.missingAPIKey(provider.label)
-                _status.value = "Thinking …"
+                _status.value = "Thinking…"
                 CloudLLM.complete(provider, key, provider.model, system, user)
             }
         }

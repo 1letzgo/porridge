@@ -58,14 +58,14 @@ struct MarkdownText: View {
                 if let onToggleTask {
                     Button { onToggleTask(line) } label: {
                         Image(systemName: done ? "checkmark.square.fill" : "square")
-                            .foregroundStyle(Color.brandSky)
+                            .foregroundStyle(Color.brandTask)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(done ? "Done" : "Open")
                 } else {
                     Image(systemName: done ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(Color.brandSky)
+                        .foregroundStyle(Color.brandTask)
                 }
                 Text(inline(text))
                     .strikethrough(done, color: .secondary)

@@ -60,7 +60,7 @@ private struct DictationOverlayView: View {
                     .foregroundStyle(Color.brandSky)
                     .symbolEffect(.pulse)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Listening …").font(.subheadline.weight(.bold))
+                    Text("Listening…").font(.subheadline.weight(.bold))
                     LevelMeter(level: controller.recorder.levels.max() ?? 0)
                 }
                 Spacer(minLength: 0)
@@ -69,7 +69,7 @@ private struct DictationOverlayView: View {
                     .foregroundStyle(Color.brandSky)
             case .transcribing:
                 ProgressView().controlSize(.small).tint(Color.brandSky)
-                Text("Writing it down …").font(.subheadline.weight(.bold))
+                Text("Writing it down…").font(.subheadline.weight(.bold))
                 Spacer(minLength: 0)
             case .message(let text):
                 Image(systemName: "info.circle.fill")

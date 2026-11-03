@@ -835,7 +835,7 @@ private struct ModelRow: View {
             case .loading:
                 ProgressView()
             case .failed:
-                Button("Retry", action: action).buttonStyle(PillButtonStyle(fill: Color(red: 1, green: 0.42, blue: 0.42)))
+                Button("Retry", action: action).buttonStyle(PillButtonStyle(fill: Color.brandAlert))
             }
         }
         .contentShape(Rectangle())
@@ -859,15 +859,18 @@ private struct ModelRow: View {
 /// Small capsule button: a wash of the color, like the main buttons.
 struct PillButtonStyle: ButtonStyle {
     var fill: Color = .brandSky
+    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
+        let destructive = configuration.role == .destructive
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.brandNavy)
+            .foregroundStyle(destructive ? Color.red : Color.brandNavy)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(fill.opacity(pressed ? 0.3 : 0.18), in: Capsule())
+            .background((destructive ? Color.red : fill).opacity(pressed ? 0.3 : 0.18), in: Capsule())
+            .opacity(isEnabled ? 1 : 0.45)
             .animation(.snappy(duration: 0.12), value: pressed)
     }
 }
@@ -998,7 +1001,7 @@ private struct ShortcutRecorderButton: View {
     @State private var flagsMonitor: Any?
 
     var body: some View {
-        Button(recording ? "Press shortcut …" : text) {
+        Button(recording ? "Press shortcut…" : text) {
             recording ? stop() : start()
         }
         .buttonStyle(PillButtonStyle(fill: recording ? .white : .brandSky))

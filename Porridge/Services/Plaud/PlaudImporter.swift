@@ -80,7 +80,7 @@ final class PlaudImporter {
             expireSignIn()
             throw PlaudAPIError.unauthorized
         }
-        status = "Renewing the Plaud sign-in …"
+        status = "Renewing the Plaud sign-in…"
         do {
             let renewed = try await PlaudAPI(userToken: token, host: account.apiHost).refreshUserToken(refreshToken: refreshToken)
             account.userToken = renewed.userToken
@@ -155,7 +155,7 @@ final class PlaudImporter {
             guard raw.prefix(8) == Data("PLAUD.AI".utf8) else {
                 throw PlaudBLEError.message("The recorder sent the recording in a format Porridge does not know.")
             }
-            status = "Converting …"
+            status = "Converting…"
             let ogg = try PlaudCrypto.decryptRecordingFile(raw, privateKey: key)
             // The cipher has no checksum, so damaged bytes would still "decrypt": the audio's own page checksums prove the copy whole.
             guard PlaudCrypto.isCompleteOgg(ogg) else {
@@ -205,7 +205,7 @@ final class PlaudImporter {
             } catch let error as PlaudBLEError where error.isRetryable && reconnects < 2 && !cancelRequested {
                 reconnects += 1
                 writer.close()
-                status = "Connection lost. Reconnecting …"
+                status = "Connection lost. Reconnecting…"
                 ble.disconnect()
                 try await ensureReady()
             }
@@ -218,7 +218,7 @@ final class PlaudImporter {
         let token = try await validUserToken()
         var api = PlaudAPI(userToken: token, host: account.apiHost)
         if account.privatePEM == nil {
-            status = "Fetching your encryption key …"
+            status = "Fetching your encryption key…"
             do {
                 let key = try await api.genKey()
                 account.privatePEM = key.priv
@@ -254,14 +254,14 @@ final class PlaudImporter {
     }
 
     private func connectAndUnlock(api: PlaudAPI, token: String) async throws {
-        status = "Looking for the recorder …"
+        status = "Looking for the recorder…"
         try await ble.connect(knownSerials: Set(account.signatures.keys))
         let saved = ble.isKnownPeripheral ? account.lastSerial : nil
         guard let serial = ble.discoveredSerial ?? saved else {
             throw PlaudBLEError.message("Could not read the serial number of the recorder.")
         }
         if account.signatures[serial] == nil {
-            status = "Authorising the recorder …"
+            status = "Authorising the recorder…"
             do {
                 let signed = try await api.snSign(serial: serial)
                 account.signatures[serial] = signed.sig

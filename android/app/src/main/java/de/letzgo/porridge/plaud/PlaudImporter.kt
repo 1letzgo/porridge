@@ -82,7 +82,7 @@ class PlaudImporter(context: Context) {
         val expiry = PlaudAPI.expiry(token) ?: return token
         if (expiry - System.currentTimeMillis() >= 120_000) return token
         val refresh = account.refreshToken ?: run { expireSignIn(); throw PlaudAPIException.Unauthorized() }
-        _status.value = "Renewing the Plaud sign-in …"
+        _status.value = "Renewing the Plaud sign-in…"
         return try {
             val renewed = PlaudAPI(token, account.apiHost).refreshUserToken(refresh)
             account = account.copy(userToken = renewed.userToken, refreshToken = renewed.refreshToken ?: refresh, apiHost = renewed.host)
@@ -129,7 +129,7 @@ class PlaudImporter(context: Context) {
             val raw = pullWithResume(PlaudRecordingInfo(recording.sessionId, recording.size), part)
             part.delete()
             if (!raw.copyOfRange(0, minOf(8, raw.size)).contentEquals("PLAUD.AI".toByteArray())) throw PlaudBLEException.Message("The recorder sent the recording in a format Porridge does not know.")
-            _status.value = "Converting …"
+            _status.value = "Converting…"
             val ogg = withContext(Dispatchers.Default) { PlaudCrypto.decryptRecordingFile(raw, key) }
             // Die Chiffre hat keine Prüfsumme: die Seiten-Prüfsummen des Audios beweisen, dass die Kopie heil ist.
             if (!PlaudCrypto.isCompleteOgg(ogg)) throw PlaudBLEException.Message("The copy of this recording is damaged. Please try again.")
@@ -171,7 +171,7 @@ class PlaudImporter(context: Context) {
             } catch (e: PlaudBLEException) {
                 if (!e.isRetryable || reconnects >= 2 || cancelRequested) throw e
                 reconnects++
-                _status.value = "Connection lost. Reconnecting …"
+                _status.value = "Connection lost. Reconnecting…"
                 ble.disconnect()
                 ensureReady()
             } finally {
@@ -184,7 +184,7 @@ class PlaudImporter(context: Context) {
         val token = validUserToken()
         val api = PlaudAPI(token, account.apiHost)
         if (account.privatePEM == null) {
-            _status.value = "Fetching your encryption key …"
+            _status.value = "Fetching your encryption key…"
             try {
                 val (priv, pub, host) = api.genKey()
                 account = account.copy(privatePEM = priv, publicPEM = pub, apiHost = host)
@@ -207,19 +207,19 @@ class PlaudImporter(context: Context) {
                 PlaudLog.log("connect attempt $attempt failed: $e")
                 val retryable = (e as? PlaudBLEException)?.isRetryable ?: false
                 if (!retryable || attempt >= attempts) throw e
-                _status.value = "Connection failed. Retrying ${attempt + 1} of $attempts …"
+                _status.value = "Connection failed. Retrying ${attempt + 1} of $attempts…"
                 delay(attempt * 1500L)
             }
         }
     }
 
     private suspend fun connectAndUnlock(api: PlaudAPI, token: String) {
-        _status.value = "Looking for the recorder …"
+        _status.value = "Looking for the recorder…"
         ble.connect(account.signatures.keys)
         val serial = ble.discoveredSerial ?: account.lastSerial.takeIf { ble.isKnownPeripheral }
             ?: throw PlaudBLEException.Message("Could not read the serial number of the recorder.")
         if (account.signatures[serial] == null) {
-            _status.value = "Authorising the recorder …"
+            _status.value = "Authorising the recorder…"
             try {
                 val (sig, host) = api.snSign(serial)
                 account = account.copy(signatures = account.signatures + (serial to sig), apiHost = host)

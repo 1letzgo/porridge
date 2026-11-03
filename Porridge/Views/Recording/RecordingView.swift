@@ -203,7 +203,7 @@ struct LiveTranscriptCard: View {
     private var content: some View {
         switch live.phase {
         case .idle, .preparing:
-            Label("Starting live transcription …", systemImage: "waveform")
+            Label("Starting live transcription…", systemImage: "waveform")
                 .foregroundStyle(.secondary)
         case .downloading(let progress):
             VStack(alignment: .leading, spacing: 8) {
@@ -217,7 +217,7 @@ struct LiveTranscriptCard: View {
                 .foregroundStyle(.secondary)
         case .running:
             if live.text.isEmpty {
-                Label("Listening …", systemImage: "waveform")
+                Label("Listening…", systemImage: "waveform")
                     .foregroundStyle(.secondary)
                     .symbolEffect(.variableColor.iterative)
             } else {

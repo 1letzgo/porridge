@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.notes
 
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -236,7 +238,12 @@ fun NotesScreen(
         ListPage.Archive -> Icons.Filled.Archive
         ListPage.Trash -> Icons.Filled.Delete
     }
-    val tint = if (page is ListPage.Project) Brand.project else Brand.sky
+    val tint = when (page) {
+        ListPage.Home -> Brand.sky
+        is ListPage.Project -> Brand.project
+        ListPage.Archive -> Brand.navy
+        ListPage.Trash -> Brand.danger
+    }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
@@ -367,7 +374,7 @@ private fun HomeList(
         doneTaskSection(tasks, list.showDone, { list.showDone = it }, onOpen, onEditTask)
         if (projects.shown.isEmpty() && tasks.isEmpty() && home.isEmpty()) {
             item(key = "empty") {
-                if (filter == HomeListLogic.HomeFilter.ALL) EmptyState("No Notes Yet", "Speak a thought – Porridge writes it down for you.", Icons.AutoMirrored.Filled.Notes)
+                if (filter == HomeListLogic.HomeFilter.ALL) EmptyState("Nothing Here Yet", "Add notes, meetings, links, tasks and projects with the plus button.", Icons.AutoMirrored.Filled.Notes)
                 else EmptyState("Nothing to Show", "The list has nothing of this kind.", filterIcon(filter))
             }
         }
@@ -479,11 +486,14 @@ private fun LazyListScope.dateGroups(notes: List<Note>, stages: Map<String, Stri
 /** Klappt an Ort und Stelle auf, was die Liste weglässt. */
 @Composable
 private fun MoreRow(hidden: Int, expanded: Boolean, color: Color, onToggle: () -> Unit) {
-    Text(
-        if (expanded) "Less" else "More ($hidden)",
-        style = MaterialTheme.typography.labelLarge, color = color,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 20.dp, vertical = 12.dp),
-    )
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(if (expanded) "Less" else "More", style = MaterialTheme.typography.labelLarge, color = color)
+        if (!expanded) Text("$hidden", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, tint = color, modifier = Modifier.size(18.dp))
+    }
 }
 
 /** Eine Kopfzeile wie „Done“ am Ende der Liste, die zu einer Unterseite führt. */

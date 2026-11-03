@@ -76,7 +76,7 @@ class RecordingService : Service() {
                 .setWhen(RecordingSession.startedAt)
                 .addAction(0, "Stop", stop)
         } else if (busy) {
-            builder.setContentTitle("Transcribing …").setContentText("Porridge is working on your recordings").setProgress(0, 0, true)
+            builder.setContentTitle("Transcribing…").setContentText("Porridge is working on your recordings").setProgress(0, 0, true)
         } else {
             val shown = downloads.toMap()
             val fraction = if (shown.isEmpty()) 0f else shown.values.sum() / shown.size

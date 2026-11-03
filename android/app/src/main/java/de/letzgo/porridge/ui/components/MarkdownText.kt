@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -54,8 +54,8 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier, onToggleTask: 
                     verticalAlignment = Alignment.Top,
                 ) {
                     Icon(
-                        if (kind.checked) Icons.Filled.CheckCircle else Icons.Outlined.Circle, contentDescription = if (kind.checked) "Done" else "Open",
-                        tint = if (kind.checked) Brand.sky else MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (kind.checked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, contentDescription = if (kind.checked) "Done" else "Open",
+                        tint = Brand.task,
                         modifier = Modifier.padding(top = 2.dp, end = 8.dp).size(20.dp),
                     )
                     Text(

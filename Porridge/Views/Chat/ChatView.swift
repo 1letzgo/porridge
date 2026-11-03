@@ -87,7 +87,7 @@ struct ChatView: View {
     private var thinking: some View {
         HStack(spacing: 12) {
             ProgressView()
-            Text(store.status.isEmpty ? "Thinking …" : store.status)
+            Text(store.status.isEmpty ? "Thinking…" : store.status)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
@@ -144,7 +144,7 @@ struct ChatView: View {
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            TextField("Ask your notes …", text: $input, axis: .vertical)
+            TextField("Ask your notes…", text: $input, axis: .vertical)
                 .lineLimit(1...4)
                 .focused($focused)
                 .submitLabel(.send)

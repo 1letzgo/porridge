@@ -34,7 +34,7 @@ object SummaryService {
                 val provider = AIProvider.current
                 val key = provider.apiKey
                 if (provider.requiresKey && key.isEmpty()) throw SummaryException.missingAPIKey(provider.label)
-                progress("Writing summary …")
+                progress("Writing summary…")
                 CloudLLM.complete(provider, key, provider.model, request.system, request.user()) to "${provider.label} · ${provider.model}"
             }
         }
@@ -45,9 +45,9 @@ object SummaryService {
         model.beginUse()
         try {
             val installed = model.isInstalled
-            progress(if (installed) "Loading model …" else "Downloading model …")
+            progress(if (installed) "Loading model…" else "Downloading model…")
             model.ensureReady { fraction ->
-                progress(if (!installed && fraction < 1) "Downloading model … ${(fraction * 100).toInt()} %" else "Loading model …")
+                progress(if (!installed && fraction < 1) "Downloading model … ${(fraction * 100).toInt()} %" else "Loading model…")
             }
             var material = request.material
             var isNotes = false
@@ -62,7 +62,7 @@ object SummaryService {
                 isNotes = true
                 if (parts.size == 1) break
             }
-            progress("Writing summary …")
+            progress("Writing summary…")
             val intro = if (isNotes) "Notes on the ${request.noun}, in order:" else request.intro
             return model.generate(request.system, request.user(material, intro), 1500)
         } finally {

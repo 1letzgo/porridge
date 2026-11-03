@@ -134,7 +134,7 @@ enum SummaryService {
             let provider = AIProvider.current
             let key = provider.apiKey
             if provider.requiresKey, key.isEmpty { throw SummaryError.missingAPIKey(provider.label) }
-            progress("Writing summary …")
+            progress("Writing summary…")
             let intro = noun == "meeting" ? "Transcript:" : "Note:"
             let raw = try await CloudLLM.complete(
                 provider: provider,
@@ -163,10 +163,10 @@ enum SummaryService {
         models.beginLLMUse()
         defer { models.endLLMUse() }
         let installed = local.isInstalled
-        progress(installed ? "Loading model …" : "Downloading model …")
+        progress(installed ? "Loading model…" : "Downloading model…")
         try await models.ensureLLM(local) { fraction in
             // Loading an installed model reports progress too: only a missing one is downloaded.
-            progress(!installed && fraction < 1 ? "Downloading model … \(Int(fraction * 100)) %" : "Loading model …")
+            progress(!installed && fraction < 1 ? "Downloading model … \(Int(fraction * 100)) %" : "Loading model…")
         }
         return try await condenseAndWrite(header: header, transcript: material, language: language, system: system, noun: noun, focus: focus, progress: progress)
     }
@@ -193,7 +193,7 @@ enum SummaryService {
             if parts.count == 1 { break }
         }
 
-        progress("Writing summary …")
+        progress("Writing summary…")
         let intro = isNotes ? "Notes on the \(noun), in order:" : (noun == "meeting" ? "Transcript:" : "Note:")
         let user = "\(header)\n\n\(intro)\n\(material)\n\n\(languageReminder(language))"
         return try await LocalLLM.shared.generate(model: LocalModel.selected, system: system, user: user, maxTokens: 1500)

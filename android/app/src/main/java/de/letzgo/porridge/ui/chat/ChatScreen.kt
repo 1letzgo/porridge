@@ -75,9 +75,9 @@ fun ChatScreen(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> U
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
                         Column(
                             Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(18.dp))
-                                .background(if (mine) Brand.sky else MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 14.dp, vertical = 10.dp),
+                                .background(if (mine) Brand.sky.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 14.dp, vertical = 10.dp),
                         ) {
-                            if (mine) Text(message.text, color = androidx.compose.ui.graphics.Color.White)
+                            if (mine) Text(message.text)
                             else if (message.isError) Text(message.text, color = Brand.danger)
                             else MarkdownText(message.text)
                             if (message.sources.isNotEmpty()) {
@@ -97,7 +97,7 @@ fun ChatScreen(notes: List<Note>, items: List<ActionItem>, onOpen: (String) -> U
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
-            OutlinedTextField(value = input, onValueChange = { input = it }, placeholder = { Text("Ask your notes …") }, modifier = Modifier.weight(1f), maxLines = 5, shape = RoundedCornerShape(22.dp))
+            OutlinedTextField(value = input, onValueChange = { input = it }, placeholder = { Text("Ask your notes…") }, modifier = Modifier.weight(1f), maxLines = 5, shape = RoundedCornerShape(22.dp))
             IconButton(enabled = input.isNotBlank() && !thinking, onClick = {
                 val question = input
                 input = ""

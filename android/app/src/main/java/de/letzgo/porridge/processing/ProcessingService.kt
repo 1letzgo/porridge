@@ -59,7 +59,7 @@ object ProcessingService {
     @Synchronized fun enqueue(job: Job) {
         if (queue.contains(job) || _stages.value.containsKey(job.id)) return
         queue.addLast(job)
-        stage(job.id, "Waiting …")
+        stage(job.id, "Waiting…")
         if (!running) {
             running = true
             onBusyChanged(true)
@@ -119,11 +119,11 @@ object ProcessingService {
         meeting = meeting.copy(statusRaw = ProcessingStatus.TRANSCRIBING.raw, errorMessage = null)
         save(meeting)
         try {
-            stage(id, "Preparing audio …")
+            stage(id, "Preparing audio…")
             val prepared = withContext(Dispatchers.IO) { AudioPreprocessor.prepare(AudioStore.file(fileName), meeting.speakerMode == SpeakerMode.CHANNELS) }
-            stage(id, "Loading speech model …")
+            stage(id, "Loading speech model…")
             SpeechModel.ensure()
-            stage(id, "Transcribing …")
+            stage(id, "Transcribing…")
             val words = SpeechModel.transcribe(prepared.pcm, Prefs.language) { stage(id, "Transcribing … ${(it * 100).toInt()} %") }
 
             var speakers = meeting.speakers
@@ -139,7 +139,7 @@ object ProcessingService {
                     if (speakers.none { it.id == channelID }) speakers = speakers + Speaker(channelID, "Speaker ${index + 1}", index)
                 }
             } else if (Prefs.speakerDetectionEnabled && words.isNotEmpty()) {
-                stage(id, "Detecting speakers …")
+                stage(id, "Detecting speakers…")
                 try {
                     Diarizer.ensure()
                     samples = prepared.floats()
@@ -174,7 +174,7 @@ object ProcessingService {
                 segments = listOf(TranscriptSegment(start = 0.0, end = prepared.duration, text = words.joinToString(" ") { it.text }))
             }
             if (Prefs.voiceRecognitionEnabled && speakers.isNotEmpty()) {
-                stage(id, "Recognizing voices …")
+                stage(id, "Recognizing voices…")
                 try {
                     speakers = VoiceProfiles().identify(speakers, segments, samples ?: prepared.floats())
                 } catch (e: CancellationException) {
@@ -205,11 +205,11 @@ object ProcessingService {
         if (!AudioStore.exists(fileName)) return
         save(note.copy(statusRaw = ProcessingStatus.TRANSCRIBING.raw, errorMessage = null))
         try {
-            stage(id, "Preparing audio …")
+            stage(id, "Preparing audio…")
             val prepared = withContext(Dispatchers.IO) { AudioPreprocessor.prepare(AudioStore.file(fileName), false) }
-            stage(id, "Loading speech model …")
+            stage(id, "Loading speech model…")
             SpeechModel.ensure()
-            stage(id, "Transcribing …")
+            stage(id, "Transcribing…")
             val words = SpeechModel.transcribe(prepared.pcm, Prefs.language)
             val text = Paragraphs.format(words.joinToString(" ") { it.text }.trim())
             val current = db.notes().get(id) ?: return
@@ -235,7 +235,7 @@ object ProcessingService {
         val address = note.url ?: return
         // Die Seite wird einmal geladen; „Load Page Again“ und ein neuer Link (Status recorded) laden sie.
         if (note.pageText == null || note.status == ProcessingStatus.RECORDED) {
-            stage(id, "Loading page …")
+            stage(id, "Loading page…")
             try {
                 val page = LinkFetcher.fetch(address)
                 val keepTitle = !(note.title.isEmpty() || note.title == address || note.title == note.domain)
@@ -251,7 +251,7 @@ object ProcessingService {
             }
         }
         if (summarize && note.summary == null && !note.isDeleted && !note.pageText.isNullOrEmpty() && SummaryService.canRunWithoutAsking) {
-            stage(id, "Summarizing …")
+            stage(id, "Summarizing…")
             runCatching { SummaryService.summarize(note) { stage(id, it) } }.onSuccess { saveSummary(note, it) }
         }
     }
@@ -259,7 +259,7 @@ object ProcessingService {
     /** Fasst eine Notiz auf Wunsch zusammen (Knopf in der Notiz). */
     suspend fun summarize(id: String, template: SummaryTemplate = SummaryTemplate.GENERAL) {
         val note = db.notes().get(id) ?: return
-        stage(id, "Summarizing …")
+        stage(id, "Summarizing…")
         try {
             saveSummary(note, SummaryService.summarize(note, template) { stage(id, it) })
         } finally {

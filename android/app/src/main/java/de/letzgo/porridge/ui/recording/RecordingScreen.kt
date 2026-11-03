@@ -87,10 +87,10 @@ fun RecordMeetingSheet(onDismiss: () -> Unit, onStart: (title: String?) -> Unit)
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Record Meeting", style = MaterialTheme.typography.titleLarge)
-            Surface(onClick = { onStart(null) }, shape = RoundedCornerShape(14.dp), color = Brand.sky, modifier = Modifier.fillMaxWidth()) {
+            Surface(onClick = { onStart(null) }, shape = RoundedCornerShape(14.dp), color = Brand.sky.copy(alpha = 0.35f), modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Mic, null, tint = Color.White)
-                    Text("  New Meeting", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Icon(Icons.Filled.Mic, null, tint = Brand.navy)
+                    Text("  New Meeting", color = Brand.navy, style = MaterialTheme.typography.titleMedium)
                 }
             }
             if (!asked) {
@@ -218,9 +218,9 @@ private fun LiveCard(live: LiveTranscriber, modifier: Modifier) {
         Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState(), reverseScrolling = true)) {
             when (val p = phase) {
                 is LiveTranscriber.Phase.Downloading -> Text("Downloading the speech model (one time) – ${(p.fraction * 100).toInt()} %", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LiveTranscriber.Phase.Preparing, LiveTranscriber.Phase.Idle -> Text("Preparing the live transcript …", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LiveTranscriber.Phase.Preparing, LiveTranscriber.Phase.Idle -> Text("Preparing the live transcript…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 is LiveTranscriber.Phase.Unavailable -> Text(p.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LiveTranscriber.Phase.Running -> if (confirmed.isEmpty() && volatile.isEmpty()) Text("Listening …", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LiveTranscriber.Phase.Running -> if (confirmed.isEmpty() && volatile.isEmpty()) Text("Listening…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else Text(androidx.compose.ui.text.buildAnnotatedString {
                     append(confirmed)
                     if (volatile.isNotEmpty()) {

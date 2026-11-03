@@ -59,7 +59,7 @@ struct ProjectPills: View {
                     .foregroundStyle(Color.brandProject)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .chunkyPill(fill: .white)
+                    .chunkyPill(fill: .gray)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)

@@ -112,7 +112,7 @@ fun PlaudImportScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 recordings.isEmpty() -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(24.dp)) {
                     if (working) {
                         CircularProgressIndicator(color = Brand.sky)
-                        Text(status.ifEmpty { "Connecting …" }, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                        Text(status.ifEmpty { "Connecting…" }, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
                         Text("Wake the recorder with its button. Close the Plaud app if it is open.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                     } else {
                         EmptyState(if (status.isEmpty()) "No Recorder Found" else "Nothing to Import", status.ifEmpty { "Wake the recorder with its button and try again." }, Icons.Filled.GraphicEq)

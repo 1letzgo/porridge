@@ -279,7 +279,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                             })
                             if (note.segments.isNotEmpty()) {
                                 DropdownMenuItem(text = { Text("Copy Transcript") }, onClick = { act { copy(context, note.transcriptText()) } })
-                                DropdownMenuItem(text = { Text("Merge with …") }, enabled = stage == null && note.status == ProcessingStatus.READY, onClick = { act { showMerge = true } })
+                                DropdownMenuItem(text = { Text("Merge with…") }, enabled = stage == null && note.status == ProcessingStatus.READY, onClick = { act { showMerge = true } })
                             }
                             if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Delete Recording", color = Brand.danger) }, onClick = { act { confirmDeleteAudio = true } })
                             HorizontalDivider()
@@ -290,7 +290,10 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
             }
             Column(Modifier.weight(1f).verticalScroll(pageScroll).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Header(note, onNext = { tab = NoteTab.NOTE; editor.focusStart() }) { title -> update { it.copy(title = title, titleIsCustom = true) } }
-                if (note.isDeleted) Text("This note is in Recently Deleted.", color = Brand.danger, style = MaterialTheme.typography.bodySmall)
+                if (note.isDeleted) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("In Recently Deleted", color = Brand.danger, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { coroutines.launch { NoteStore().restore(note); onClose() } }) { Text("Recover") }
+                }
                 else TagRow(
                     note, onAdd = { addingTag = true },
                     onProject = { id -> update { n -> n.copy(projectIDs = ProjectsLogic.toggled(n.projectIDs, id)) } },
@@ -310,7 +313,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                         NoteTab.NOTE -> if (dictationPhase != InlineDictation.Phase.IDLE) {
                             DictationPreview(note.text, dictationStart, liveText, dictationPhase == InlineDictation.Phase.POLISHING)
                         } else {
-                            NoteBodyEditor(note.text, { text -> update { it.copy(text = text) } }, editor, Modifier.fillMaxSize(), isEditable = !note.isDeleted, growsWithText = true, placeholder = "Start typing or dictate …")
+                            NoteBodyEditor(note.text, { text -> update { it.copy(text = text) } }, editor, Modifier.fillMaxSize(), isEditable = !note.isDeleted, growsWithText = true, placeholder = "Start typing or dictate…")
                         }
                     }
                 }
@@ -711,7 +714,7 @@ private fun DictationPreview(text: String, start: Int, live: String, polishing: 
         append(after)
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp)) {
-        if (polishing) Text("Finishing the transcript …", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+        if (polishing) Text("Finishing the transcript…", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
         Text(annotated, style = MaterialTheme.typography.bodyLarge)
     }
 }

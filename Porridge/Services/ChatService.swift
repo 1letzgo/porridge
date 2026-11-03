@@ -112,7 +112,7 @@ final class ChatStore {
         let history = messages.suffix(4)
         messages.append(ChatMessage(role: .user, text: question))
         isThinking = true
-        status = "Searching your notes …"
+        status = "Searching your notes…"
         defer {
             isThinking = false
             status = ""
@@ -191,18 +191,18 @@ final class ChatStore {
             ModelManager.shared.beginLLMUse()
             defer { ModelManager.shared.endLLMUse() }
             let installed = local.isInstalled
-            progress(installed ? "Loading model …" : "Downloading model …")
+            progress(installed ? "Loading model…" : "Downloading model…")
             try await ModelManager.shared.ensureLLM(local) { fraction in
                 // Loading an installed model reports progress too: only a missing one is downloaded.
-                progress(!installed && fraction < 1 ? "Downloading model … \(Int(fraction * 100)) %" : "Loading model …")
+                progress(!installed && fraction < 1 ? "Downloading model … \(Int(fraction * 100)) %" : "Loading model…")
             }
-            progress("Thinking …")
+            progress("Thinking…")
             return try await LocalLLM.shared.generate(model: local, system: system, user: user, maxTokens: 700)
         case .byok:
             let provider = AIProvider.current
             let key = provider.apiKey
             if provider.requiresKey, key.isEmpty { throw SummaryError.missingAPIKey(provider.label) }
-            progress("Thinking …")
+            progress("Thinking…")
             return try await CloudLLM.complete(provider: provider, apiKey: key, model: provider.model, system: system, user: user)
         }
     }
