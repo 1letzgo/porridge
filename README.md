@@ -10,8 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://testflight.apple.com/join/n4TkBTJA"><img alt="TestFlight for iPhone and iPad" src="https://img.shields.io/badge/iOS-TestFlight-1F3667"></a>
-  <a href="https://github.com/1letzgo/porridge/releases?q=mac-v"><img alt="Mac release" src="https://img.shields.io/github/v/release/1letzgo/porridge?filter=mac-v*&label=Mac&color=24B4E9"></a>
+  <a href="https://testflight.apple.com/join/n4TkBTJA"><img alt="TestFlight for iPhone, iPad and Mac" src="https://img.shields.io/badge/iOS%20%2B%20Mac-TestFlight-1F3667"></a>
   <a href="https://github.com/1letzgo/porridge/releases?q=android-v"><img alt="Android release" src="https://img.shields.io/github/v/release/1letzgo/porridge?filter=android-v*&label=Android&color=29BD80"></a>
 </p>
 
@@ -55,7 +54,7 @@ Models download once and then work offline. With iCloud, audio stays on the devi
 
 | Platform | How | Needs |
 | --- | --- | --- |
-| **Mac** | [Latest release](https://github.com/1letzgo/porridge/releases?q=mac-v). Not notarized yet: open it the first time with right-click → Open. | macOS 15 |
+| **Mac** | [Join the TestFlight beta](https://testflight.apple.com/join/n4TkBTJA). | macOS 15 |
 | **Android** | [Latest APK](https://github.com/1letzgo/porridge/releases?q=android-v). Later versions come through the in-app update. | Android 8 |
 | **iPhone and iPad** | [Join the TestFlight beta](https://testflight.apple.com/join/n4TkBTJA). | iOS 18 |
 
