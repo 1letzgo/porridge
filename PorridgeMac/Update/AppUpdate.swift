@@ -39,8 +39,18 @@ final class AppUpdate {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
 
+    /// TestFlight delivers the beta, so that build never looks at the GitHub releases (scripts/testflight-mac.sh).
+    static var isEnabled: Bool {
+        #if TESTFLIGHT
+        false
+        #else
+        true
+        #endif
+    }
+
     /// Starts the periodic check (a moment after launch, then every few hours).
     func start() {
+        guard Self.isEnabled else { return }
         timer?.cancel()
         timer = Task { [weak self] in
             try? await Task.sleep(for: .seconds(8))

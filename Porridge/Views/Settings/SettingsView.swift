@@ -521,7 +521,7 @@ struct SettingsView: View {
                 value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
             )
             #if os(macOS)
-            updateRow
+            if AppUpdate.isEnabled { updateRow }
             #endif
             CardDivider()
             AcknowledgementsRow()

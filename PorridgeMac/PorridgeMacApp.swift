@@ -64,10 +64,12 @@ struct PorridgeMacApp: App {
                     .keyboardShortcut("n")
             }
             CommandGroup(after: .appInfo) {
-                Button("Check for Updates…") {
-                    Task { await update.check(manual: true) }
+                if AppUpdate.isEnabled {
+                    Button("Check for Updates…") {
+                        Task { await update.check(manual: true) }
+                    }
+                    .disabled(update.checking)
                 }
-                .disabled(update.checking)
             }
         }
 
