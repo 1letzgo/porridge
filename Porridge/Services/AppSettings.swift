@@ -51,7 +51,7 @@ enum AppSettings {
     static let billingKey = "summaryBilling"
     static let localModelKey = "localModel"
     static let externalModelsKey = "summaryExternalModels"
-    /// New notes record right away; UI tests type instead.
+    /// Off by default: a new note opens for typing. On: it starts recording right away.
     static let recordsNewNotesKey = "recordsNewNotes"
     static let recordingsWiFiOnlyKey = "recordingsWiFiOnly"
     static let customTemplatesKey = "customSummaryTemplates"
@@ -86,7 +86,7 @@ enum AppSettings {
             billingKey: SummaryBilling.local.rawValue,
             localModelKey: LocalModel.defaultChoice.rawValue,
             voiceRecognitionKey: true,
-            recordsNewNotesKey: true,
+            recordsNewNotesKey: false,
             recordingsWiFiOnlyKey: true,
             providerKey: AIProvider.openRouter.rawValue,
         ])

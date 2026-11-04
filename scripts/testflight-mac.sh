@@ -5,7 +5,7 @@
 #   scripts/testflight-mac.sh            # archive, export and validate with Apple
 #   scripts/testflight-mac.sh --upload   # the same, then upload
 #
-# Version: MARKETING_VERSION from project.yml, build number: git rev-list --count HEAD.
+# Version: TESTFLIGHT_MARKETING_VERSION from project.yml (MARKETING_VERSION is for the GitHub releases), build number: git rev-list --count HEAD.
 # Needs the App Store Connect API key in ~/.appstoreconnect/private_keys.
 
 set -euo pipefail
@@ -30,7 +30,8 @@ if [[ $UPLOAD == 1 && -n $(git status --porcelain) ]]; then
   exit 1
 fi
 
-VERSION=$(sed -n 's/^ *MARKETING_VERSION: *//p' project.yml | head -1 | tr -d '"')
+VERSION=$(sed -n 's/^ *TESTFLIGHT_MARKETING_VERSION: *//p' project.yml | head -1 | tr -d '"')
+[[ -n $VERSION ]] || { echo "TESTFLIGHT_MARKETING_VERSION missing in project.yml" >&2; exit 1 }
 BUILD=$(git rev-list --count HEAD)
 AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY_FILE" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER")
 
@@ -40,7 +41,7 @@ echo "Building $SCHEME $VERSION ($BUILD) for TestFlight …"
 xcodegen generate --quiet
 xcodebuild -project Porridge.xcodeproj -scheme "$SCHEME" -configuration Release \
   -destination 'generic/platform=macOS' -archivePath "$OUT/$SCHEME.xcarchive" \
-  CURRENT_PROJECT_VERSION="$BUILD" CODE_SIGN_ENTITLEMENTS=PorridgeMac/PorridgeMacBeta.entitlements \
+  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" CODE_SIGN_ENTITLEMENTS=PorridgeMac/PorridgeMacBeta.entitlements \
   ENABLE_APP_SANDBOX=YES DISTRIBUTION_CONDITIONS=TESTFLIGHT \
   "${AUTH[@]}" archive -quiet
 

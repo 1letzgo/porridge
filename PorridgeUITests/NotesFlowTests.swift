@@ -28,6 +28,15 @@ final class NotesFlowTests: XCTestCase {
     }
 
     /// Settings and its subpages open in place; afterwards the list still answers as before.
+    func testRecordNewNotesSwitchInSettings() throws {
+        let app = launchApp()
+        let settings = app.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 30), "settings button missing")
+        settings.tap()
+        XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
+        XCTAssertTrue(app.reveal(app.switches["Record New Notes Automatically"].firstMatch), "switch missing")
+    }
+
     func testSettingsSubpageAndBack() throws {
         let app = launchApp()
         let settings = app.buttons["Settings"]

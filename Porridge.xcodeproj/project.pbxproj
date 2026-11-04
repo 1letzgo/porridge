@@ -99,6 +99,7 @@
 		5B54E0B81456FF223843810B /* NoteMediaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E643FF5DE4F5592C95134CAE /* NoteMediaViews.swift */; };
 		5E0DB858F25A8CE3E43F784E /* InlineDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */; };
 		5F08AE849C5ABF0CE8215BE3 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 997D57A54DECA618954AFC81 /* MLXLLM */; };
+		600822F0515992B3C1067DE5 /* AppSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4FD2A9BECD26688E68FAFE9 /* AppSettingsTests.swift */; };
 		60369FE490BF33CC6F3845E7 /* SummaryTemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A0B43E6BF68BEF6D3BF395 /* SummaryTemplatesView.swift */; };
 		6095E937F8EA4C5E145018F6 /* LinkInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */; };
 		60A353545E64B9FFCCCD7F5D /* LinkInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */; };
@@ -390,6 +391,7 @@
 		CF9B98C438AED2F5E6E75969 /* MeetingExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportTests.swift; sourceTree = "<group>"; };
 		CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		D2A5616AFD8592E91EE7A9D4 /* SummaryEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryEditorSheet.swift; sourceTree = "<group>"; };
+		D4FD2A9BECD26688E68FAFE9 /* AppSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsTests.swift; sourceTree = "<group>"; };
 		DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingActivity.swift; sourceTree = "<group>"; };
 		DDBFEA88590BF7A95A16C45E /* HomeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFilterTests.swift; sourceTree = "<group>"; };
 		DE1353083C7CC5218CFF6FB9 /* DictationSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSettings.swift; sourceTree = "<group>"; };
@@ -556,6 +558,7 @@
 		8726DEE065A83504200E9BD4 /* PorridgeTests */ = {
 			isa = PBXGroup;
 			children = (
+				D4FD2A9BECD26688E68FAFE9 /* AppSettingsTests.swift */,
 				DDBFEA88590BF7A95A16C45E /* HomeFilterTests.swift */,
 				CF9B98C438AED2F5E6E75969 /* MeetingExportTests.swift */,
 				A2EF8775CF439144C3EC58B2 /* NoteStoreTests.swift */,
@@ -1213,6 +1216,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				600822F0515992B3C1067DE5 /* AppSettingsTests.swift in Sources */,
 				86C2842E103B9BFCA4D8CFE3 /* HomeFilterTests.swift in Sources */,
 				D0C4C0EBF2FB41F1E6F43CF0 /* MeetingExportTests.swift in Sources */,
 				ED8E0E578CE44BBB0A5D99C5 /* NoteStoreTests.swift in Sources */,
@@ -1264,7 +1268,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
+				MARKETING_VERSION = "$(TESTFLIGHT_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -1287,7 +1291,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
+				MARKETING_VERSION = "$(TESTFLIGHT_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -1307,7 +1311,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
+				MARKETING_VERSION = "$(TESTFLIGHT_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge.share;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1343,7 +1347,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
+				MARKETING_VERSION = "$(TESTFLIGHT_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge.share;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1378,7 +1382,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
+				MARKETING_VERSION = "$(TESTFLIGHT_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge.widgets;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1435,7 +1439,6 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IOS_BUILD_NUMBER = 112;
-				IOS_MARKETING_VERSION = 1.0;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
@@ -1444,6 +1447,7 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
+				TESTFLIGHT_MARKETING_VERSION = 1.0;
 			};
 			name = Release;
 		};
@@ -1563,7 +1567,6 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IOS_BUILD_NUMBER = 112;
-				IOS_MARKETING_VERSION = 1.0;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -1573,6 +1576,7 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
+				TESTFLIGHT_MARKETING_VERSION = 1.0;
 			};
 			name = Debug;
 		};
@@ -1603,7 +1607,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
+				MARKETING_VERSION = "$(TESTFLIGHT_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge.widgets;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;

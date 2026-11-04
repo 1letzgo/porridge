@@ -230,12 +230,12 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     fun startDictation() = dictation.start(note.title.ifEmpty { "Note" })
     // Abgelehnt: `start` meldet dann selbst, dass das Mikrofon fehlt.
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { startDictation() }
-    // Eine gerade erstellte Notiz nimmt sofort auf (iOS: `startsRecording`). Ohne Mikrofon bleibt die Tastatur, ohne Meldung.
+    // Eine gerade erstellte Notiz nimmt sofort auf, wenn der Schalter an ist (iOS: `startsRecording`). Ohne Mikrofon bleibt die Tastatur, ohne Meldung.
     val micForNewNote = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) startDictation() }
     var didStartRecording by rememberSaveable { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (draft == null || didStartRecording) return@LaunchedEffect
+        if (draft == null || didStartRecording || !Prefs.bool(Keys.RECORDS_NEW_NOTES)) return@LaunchedEffect
         didStartRecording = true
         // Nach dem Fokus, den der Editor einer neuen Notiz gibt: Die Tastatur geht wieder weg.
         delay(300)

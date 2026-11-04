@@ -14,6 +14,8 @@ object Keys {
     const val ONBOARDING_DONE = "onboardingDone"
     const val LANGUAGE = "transcriptionLanguage"
     const val SPEAKER_DETECTION = "speakerDetection"
+    /** Aus: Eine neue Notiz öffnet zum Tippen. An: Sie nimmt sofort auf. */
+    const val RECORDS_NEW_NOTES = "recordsNewNotes"
     const val VOICE_RECOGNITION = "voiceRecognition"
     const val BILLING = "summaryBilling"
     const val LOCAL_MODEL = "localModel"
@@ -73,6 +75,7 @@ object Prefs {
         Keys.ONBOARDING_DONE to false,
         Keys.RECORDINGS_WIFI_ONLY to true,
         Keys.SPEAKER_DETECTION to true,
+        Keys.RECORDS_NEW_NOTES to false,
         Keys.BILLING to SummaryBilling.LOCAL.raw,
         Keys.LOCAL_MODEL to "qwen3",
         Keys.VOICE_RECOGNITION to true,

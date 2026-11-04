@@ -187,6 +187,8 @@ private fun TranscriptionCard() = Card("Transcription") {
     Picker("Language", transcriptionLanguages, language) { language = it; Prefs.set(Keys.LANGUAGE, it) }
     HorizontalDivider()
     ToggleRow("Detect Speakers", Keys.SPEAKER_DETECTION)
+    HorizontalDivider()
+    ToggleRow("Record New Notes Automatically", Keys.RECORDS_NEW_NOTES)
 }
 
 @Composable

@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.languageKey) private var language = "auto"
     @AppStorage(AppSettings.speechEngineKey) private var engine = SpeechEngine.parakeet
     @AppStorage(AppSettings.speakerDetectionKey) private var speakerDetection = true
+    @AppStorage(AppSettings.recordsNewNotesKey) private var recordsNewNotes = false
     @AppStorage(AppSettings.voiceRecognitionKey) private var voiceRecognition = true
     @State private var showTemplates = false
     @AppStorage(AppSettings.myNameKey) private var myName = ""
@@ -228,6 +229,10 @@ struct SettingsView: View {
             )
             CardDivider()
             ValueRow(title: "Microphone", value: inputDescription)
+            CardDivider()
+            Toggle("Record New Notes Automatically", isOn: $recordsNewNotes)
+                .font(.body)
+                .tint(Color.brandSky)
         }
     }
 
