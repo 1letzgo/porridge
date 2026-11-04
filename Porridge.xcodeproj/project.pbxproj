@@ -1257,12 +1257,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Porridge/Porridge.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = "$(IOS_BUILD_NUMBER)";
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = Porridge/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -1278,12 +1280,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Porridge/Porridge.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = "$(IOS_BUILD_NUMBER)";
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = Porridge/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -1296,12 +1300,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PorridgeShare/PorridgeShare.entitlements;
+				CURRENT_PROJECT_VERSION = "$(IOS_BUILD_NUMBER)";
 				INFOPLIST_FILE = PorridgeShare/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge.share;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1330,12 +1336,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PorridgeShare/PorridgeShare.entitlements;
+				CURRENT_PROJECT_VERSION = "$(IOS_BUILD_NUMBER)";
 				INFOPLIST_FILE = PorridgeShare/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge.share;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1363,12 +1371,14 @@
 		6A1BDE60127AB5FC032EB01C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CURRENT_PROJECT_VERSION = "$(IOS_BUILD_NUMBER)";
 				INFOPLIST_FILE = PorridgeWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge.widgets;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1424,6 +1434,8 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				IOS_BUILD_NUMBER = 112;
+				IOS_MARKETING_VERSION = 1.0;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
@@ -1550,6 +1562,8 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				IOS_BUILD_NUMBER = 112;
+				IOS_MARKETING_VERSION = 1.0;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -1582,12 +1596,14 @@
 		FF9054B21CAF6340B3FAF864 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CURRENT_PROJECT_VERSION = "$(IOS_BUILD_NUMBER)";
 				INFOPLIST_FILE = PorridgeWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = "$(IOS_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge.widgets;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
