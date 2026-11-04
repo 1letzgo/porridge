@@ -39,14 +39,12 @@ struct AcknowledgementsRow: View {
     @State private var isShown = false
     #endif
 
+    @Environment(\.openListPage) private var openListPage
+
     var body: some View {
         #if os(iOS)
-        NavigationLink {
-            AcknowledgementsView()
-        } label: {
-            label
-        }
-        .buttonStyle(.plain)
+        Button { openListPage(.acknowledgements) } label: { label }
+            .buttonStyle(.plain)
         #else
         Button { isShown = true } label: { label }
             .buttonStyle(.plain)
@@ -77,10 +75,7 @@ struct AcknowledgementsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            #if os(iOS)
-            ChromeBar(title: "Acknowledgements", systemImage: "heart.text.square.fill", onBack: { dismiss() })
-                .padding(.bottom, Look.headerGap)
-            #else
+            #if !os(iOS)
             HStack {
                 Text("Acknowledgements").font(.title2.weight(.bold))
                 Spacer()

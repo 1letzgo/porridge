@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import de.letzgo.porridge.plaud.PlaudImporter
+import de.letzgo.porridge.ui.components.ChromeBar
 import de.letzgo.porridge.ui.Brand
 import de.letzgo.porridge.ui.components.EmptyState
 import kotlinx.coroutines.launch
@@ -89,9 +90,7 @@ fun PlaudImportScreen(projectID: String?, onBack: () -> Unit, onOpen: (String) -
     }
     val newOnes = recordings.filter { !it.imported }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack, enabled = importing == null) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close", tint = Brand.navy) }
-            Text("Plaud", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+        ChromeBar("Plaud", Icons.Filled.GraphicEq, onBack = { if (importing == null) onBack() }) {
             if (signedIn) IconButton(onClick = { refresh() }, enabled = importing == null) { Icon(Icons.Filled.Refresh, "Reload", tint = Brand.navy) }
         }
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {

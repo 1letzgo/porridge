@@ -138,6 +138,7 @@ struct ProjectPage: View {
             Section {
                 ForEach(list) { note in
                     NoteListRow(note: note) { onRemove(note) }
+                        .lastInSection(note.id == list.last?.id)
                 }
             } header: { ListHeader(title: title, tint: tint, isFirst: isFirst) }
         }

@@ -200,6 +200,13 @@ struct ThingsRowIcon: View {
     }
 }
 
+extension View {
+    /// The header of the next section brings its own line: the last row of a section draws none.
+    func lastInSection(_ isLast: Bool) -> some View {
+        listRowSeparator(isLast ? .hidden : .automatic, edges: .bottom)
+    }
+}
+
 /// Things: bold title over a hairline, no symbol. The first one sits right under the bar (the gap comes from
 /// there, `Look.headerGap`); later ones keep a little more air than the list gives between sections.
 struct ListHeader: View {
@@ -508,6 +515,14 @@ struct BrandToolbarItem<Content: View>: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: placement) { content }
     }
+}
+
+/// Changes the screen at once: pages replace each other in place, without sliding in.
+@MainActor
+func withoutAnimation(_ change: () -> Void) {
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction, change)
 }
 
 // MARK: - Platform differences

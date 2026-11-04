@@ -22,7 +22,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
@@ -64,6 +68,7 @@ import de.letzgo.porridge.BuildConfig
 import de.letzgo.porridge.PorridgeApplication
 import de.letzgo.porridge.cloud.AIProvider
 import de.letzgo.porridge.cloud.CloudLLM
+import de.letzgo.porridge.cloud.SummaryModel
 import de.letzgo.porridge.data.AppUpdate
 import de.letzgo.porridge.data.Backup
 import de.letzgo.porridge.data.Me
@@ -86,6 +91,9 @@ import de.letzgo.porridge.ml.SpeechModel
 import de.letzgo.porridge.ml.VoiceProfiles
 import de.letzgo.porridge.plaud.PlaudAccount
 import de.letzgo.porridge.plaud.PlaudImporter
+import de.letzgo.porridge.ui.components.ChromeBar
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Settings
 import de.letzgo.porridge.ui.plaud.PlaudLoginScreen
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.model.Note
@@ -104,8 +112,12 @@ import java.util.UUID
 /** iOS: `SettingsView` (Views/Settings/SettingsView.swift) — Karten wie auf iOS; statt iCloud eine Sicherung. */
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
+    // Hier, damit die Seite nach einem Unterbildschirm an derselben Stelle steht.
+    val pageScroll = rememberScrollState()
     var showAcknowledgements by remember { mutableStateOf(false) }
     if (showAcknowledgements) return AcknowledgementsScreen { showAcknowledgements = false }
+    var showVoices by remember { mutableStateOf(false) }
+    if (showVoices) return VoicesScreen { showVoices = false }
     val context = LocalContext.current
     var plaudSignedIn by remember { mutableStateOf(PlaudAccount.load().userToken != null) }
     var showPlaudLogin by remember { mutableStateOf(false) }
@@ -115,14 +127,11 @@ fun SettingsScreen(onBack: () -> Unit) {
     )
     BackHandler { onBack() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Brand.navy) }
-            Text("Settings", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
-        }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+        ChromeBar("Settings", Icons.Filled.Settings, onBack = onBack) {}
+        Column(Modifier.fillMaxSize().verticalScroll(pageScroll).padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(22.dp)) {
             YouCard()
             TranscriptionCard()
-            VoicesCard()
+            VoicesCard(onOpen = { showVoices = true })
             ModelsCard()
             SummaryCard()
             PlaudCard(plaudSignedIn, onSignIn = { showPlaudLogin = true }, onSignOut = { PlaudAccount.clear(); plaudSignedIn = false })
@@ -181,32 +190,58 @@ private fun TranscriptionCard() = Card("Transcription") {
 }
 
 @Composable
-private fun VoicesCard() {
+private fun VoicesCard(onOpen: () -> Unit) {
+    val profiles by PorridgeDatabase.shared.voiceProfiles().observeAll().collectAsState(initial = emptyList())
+    Card("Voices") {
+        ToggleRow("Recognize Voices", Keys.VOICE_RECOGNITION)
+        HorizontalDivider()
+        Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Known Voices", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+            Text("${profiles.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** iOS: `VoicesView` — die gelernten Stimmen: welche die eigene ist, wie sie heißen, und eine vergessen. */
+@Composable
+private fun VoicesScreen(onBack: () -> Unit) {
     val profiles by PorridgeDatabase.shared.voiceProfiles().observeAll().collectAsState(initial = emptyList())
     val coroutines = rememberCoroutineScope()
     var renaming by remember { mutableStateOf<de.letzgo.porridge.model.VoiceProfile?>(null) }
     var forgetting by remember { mutableStateOf<de.letzgo.porridge.model.VoiceProfile?>(null) }
-    Card("Voices", footer = "Naming a speaker teaches Porridge the voice. Only a voice print is stored, never audio.") {
-        ToggleRow("Recognize Voices", Keys.VOICE_RECOGNITION)
-        // Die eigene Stimme oben.
-        var myVoice by remember { mutableStateOf(Me.voiceID) }
-        for (profile in profiles.sortedBy { if (it.id == myVoice) 0 else 1 }) {
-            val isMe = profile.id == myVoice
-            HorizontalDivider()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(if (isMe) "${profile.name} (me)" else profile.name, fontWeight = FontWeight.SemiBold)
-                    Text("${profile.seconds.toInt()} s of speech", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    // Die eigene Stimme oben.
+    var myVoice by remember { mutableStateOf(Me.voiceID) }
+    BackHandler { onBack() }
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).statusBarsPadding()) {
+        ChromeBar("Known Voices", Icons.Filled.Groups, onBack = onBack) {}
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (profiles.isNotEmpty()) Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 1.dp) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    profiles.sortedBy { if (it.id == myVoice) 0 else 1 }.forEachIndexed { index, profile ->
+                        val isMe = profile.id == myVoice
+                        if (index > 0) HorizontalDivider()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(if (isMe) "${profile.name} (me)" else profile.name, fontWeight = FontWeight.SemiBold)
+                                Text("${profile.seconds.toInt()} s of speech", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = { Me.setVoice(if (isMe) null else profile); myVoice = Me.voiceID }) {
+                                Icon(
+                                    if (isMe) Icons.Filled.AccountCircle else Icons.Outlined.AccountCircle,
+                                    if (isMe) "Not Me" else "This Is Me", tint = if (isMe) Brand.task else Brand.navy,
+                                )
+                            }
+                            TextButton(onClick = { renaming = profile }) { Text("Rename") }
+                            IconButton(onClick = { forgetting = profile }) { Icon(Icons.Outlined.Delete, "Forget Voice", tint = Brand.danger) }
+                        }
+                    }
                 }
-                IconButton(onClick = { Me.setVoice(if (isMe) null else profile); myVoice = Me.voiceID }) {
-                    Icon(
-                        if (isMe) Icons.Filled.AccountCircle else Icons.Outlined.AccountCircle,
-                        if (isMe) "Not Me" else "This Is Me", tint = if (isMe) Brand.task else Brand.navy,
-                    )
-                }
-                TextButton(onClick = { renaming = profile }) { Text("Rename") }
-                IconButton(onClick = { forgetting = profile }) { Icon(Icons.Outlined.Delete, "Forget Voice", tint = Brand.danger) }
             }
+            if (profiles.isEmpty()) Text(
+                "No voices yet. Naming a speaker in a meeting teaches Porridge the voice.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
     renaming?.let { p -> TextPrompt("Rename Voice", p.name, "Save", { renaming = null }) { name -> renaming = null; coroutines.launch { VoiceProfiles().rename(p, name) } } }
@@ -270,7 +305,7 @@ private fun ModelRow(pack: ModelPack, subtitle: String, unload: () -> Unit) {
 }
 
 @Composable
-private fun ModelsCard() = Card("On-Device Models", footer = if (SyncMode.chosen == SyncMode.NEXTCLOUD) "Models run on this phone. With Nextcloud, the audio is also copied to your folder there." else "Models run on this phone. Nothing leaves it.") {
+private fun ModelsCard() = Card("On-Device Models") {
     ModelRow(SpeechModel.pack, "Speech recognition · 0.6B") { SpeechModel.release() }
     HorizontalDivider()
     ModelRow(Diarizer.pack, "pyannote") { Diarizer.release() }
@@ -280,66 +315,149 @@ private fun ModelsCard() = Card("On-Device Models", footer = if (SyncMode.chosen
 @Composable
 private fun YouCard() {
     var name by remember { mutableStateOf(Prefs.string(Keys.MY_NAME).orEmpty()) }
-    Card("You", footer = "Marks you among the speakers and in summaries. Separate other spellings with commas, e.g. “Anna, Anna Berg”.") {
+    Card("You") {
         OutlinedTextField(name, { name = it; Prefs.set(Keys.MY_NAME, it); NextcloudSync.syncSoon() }, label = { Text("Your Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     }
 }
 
 @Composable
 private fun SummaryCard() {
-    val context = LocalContext.current
     val coroutines = rememberCoroutineScope()
-    var billing by remember { mutableStateOf(Prefs.billing) }
-    var local by remember { mutableStateOf(LocalModel.of(Prefs.string(Keys.LOCAL_MODEL))) }
-    var provider by remember { mutableStateOf(AIProvider.current) }
-    var key by remember(provider) { mutableStateOf(provider.apiKey) }
-    var baseURL by remember { mutableStateOf(AIProvider.customBaseURL) }
-    var model by remember(provider) { mutableStateOf(provider.model) }
-    var models by remember(provider) { mutableStateOf(provider.suggestedModels) }
-    var loadError by remember { mutableStateOf<String?>(null) }
     var editTemplates by remember { mutableStateOf(false) }
-    Card("AI Summary", footer = if (billing == SummaryBilling.BYOK) "Your key is stored on this phone, encrypted. One key per service." else "${LocalModel.totalMemoryGB(context).let { "%.0f".format(it) }} GB memory: ${LocalModel.recommended(context).displayName} recommended.") {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            SummaryBilling.entries.forEachIndexed { i, b ->
-                SegmentedButton(
-                    selected = billing == b, onClick = { billing = b; Prefs.set(Keys.BILLING, b.raw) }, shape = SegmentedButtonDefaults.itemShape(i, 2), icon = {},
-                    colors = SegmentedButtonDefaults.colors(activeContainerColor = Brand.sky.copy(alpha = 0.18f), activeContentColor = Brand.navy),
-                ) { Text(b.label) }
-            }
-        }
+    var addModel by remember { mutableStateOf(false) }
+    var default by remember { mutableStateOf(SummaryModel.current) }
+    var external by remember { mutableStateOf(SummaryModel.external) }
+    // Ein Download, der fertig wird, oder ein gelöschtes Modell ändern, was wählbar ist.
+    val states = LocalModel.entries.map { ModelManager.state(it.pack).collectAsState().value }
+    fun refresh() {
+        SummaryModel.repairCurrent()
+        default = SummaryModel.current
+        external = SummaryModel.external
+    }
+    LaunchedEffect(states) { refresh() }
+    Card("AI Summary") {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Custom Templates", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
             Pill("Edit", { editTemplates = true })
         }
         HorizontalDivider()
-        if (billing == SummaryBilling.LOCAL) {
-            Picker("Summary Model", LocalModel.entries.map { it to it.displayName }, local) {
-                local = it
-                Prefs.set(Keys.LOCAL_MODEL, it.raw)
-                PorridgeApplication.selectLocalModel()
-            }
-            for (m in LocalModel.entries) {
-                HorizontalDivider()
-                ModelRow(m.pack, if (m == LocalModel.recommended(context)) "Recommended for this device" else "Summaries on your device") { coroutines.launch { LocalLLM.of(m).unload() } }
+        val available = SummaryModel.available
+        if (available.isEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Default Model", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                Text("None added", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            Picker("Provider", AIProvider.entries.map { it to it.label }, provider) { provider = it; AIProvider.current = it }
-            if (provider == AIProvider.CUSTOM) OutlinedTextField(baseURL, { baseURL = it; AIProvider.customBaseURL = it }, label = { Text("Server address") }, placeholder = { Text("http://192.168.1.5:11434/v1") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(
-                key, { key = it; provider.apiKey = it }, label = { Text(if (provider == AIProvider.CUSTOM) "Custom server key (optional)" else "${provider.label} API Key") },
-                singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
-            )
-            Picker("Model", models.map { it.first to it.second }.let { list -> if (list.none { it.first == model } && model.isNotEmpty()) list + (model to model) else list }, model) { model = it; provider.model = it }
-            OutlinedTextField(model, { model = it; provider.model = it }, label = { Text("Model ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            if (provider.canListModels) OutlinedButton(enabled = key.isNotEmpty(), onClick = {
-                coroutines.launch {
-                    runCatching { CloudLLM.models(provider, key) }.onSuccess { ids -> loadError = null; if (ids.isNotEmpty()) models = ids.map { it to it } }.onFailure { loadError = it.message }
+            Picker("Default Model", available.map { it to it.name }, default) {
+                default = it
+                SummaryModel.current = it
+            }
+        }
+        LocalModel.entries.forEachIndexed { index, m ->
+            // Noch nicht Geladenes steht im Hinzufügen-Fenster.
+            if (states[index] != ModelState.NotInstalled && states[index] !is ModelState.Failed) {
+                HorizontalDivider()
+                ModelRow(m.pack, "On this device") { coroutines.launch { LocalLLM.of(m).unload() } }
+            }
+        }
+        for (model in external) {
+            HorizontalDivider()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(model.name, fontWeight = FontWeight.SemiBold)
+                    Text(model.place, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            }) { Text("Load Models") }
-            loadError?.let { Text(it, color = Brand.danger, style = MaterialTheme.typography.bodySmall) }
+                Icon(Icons.Filled.CheckCircle, "Added", tint = Brand.sky)
+                IconButton(onClick = { SummaryModel.remove(model); refresh() }) { Icon(Icons.Outlined.Delete, "Remove", tint = Brand.danger) }
+            }
+        }
+        HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Add Model", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+            Pill("Add", { addModel = true })
         }
     }
     if (editTemplates) CustomTemplatesDialog { editTemplates = false }
+    if (addModel) AddModelSheet(onDismiss = { addModel = false; refresh() })
+}
+
+/** iOS: `AddModelSheet` — ein Modell hinzufügen: ein noch nicht geladenes vom Gerät oder eines von einem Cloud-Dienst. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun AddModelSheet(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val coroutines = rememberCoroutineScope()
+    var provider by remember { mutableStateOf<AIProvider?>(null) }
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val chosen = provider
+            if (chosen != null) {
+                AddCloudModel(chosen, onBack = { provider = null }, onAdded = onDismiss)
+            } else {
+                Text("Add Model", style = MaterialTheme.typography.titleLarge)
+                Text("On This Device", style = MaterialTheme.typography.labelLarge, color = Brand.sky)
+                val recommended = LocalModel.recommended(context)
+                val open = LocalModel.entries.filter { ModelManager.state(it.pack).collectAsState().value.let { s -> s != ModelState.Installed && s != ModelState.Ready } }
+                if (open.isEmpty()) Text("All on-device models are added.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                for (m in open) ModelRow(m.pack, if (m == recommended) "Recommended for this device" else "On this device") { coroutines.launch { LocalLLM.of(m).unload() } }
+                HorizontalDivider()
+                Text("Cloud Service", style = MaterialTheme.typography.labelLarge, color = Brand.sky)
+                for (option in AIProvider.entries) {
+                    Row(Modifier.fillMaxWidth().clickable { provider = option }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(option.label, Modifier.weight(1f))
+                        Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Der Schlüssel eines Dienstes, einmal für alle seine Modelle, und das Modell, das dazukommt. */
+@Composable
+private fun AddCloudModel(provider: AIProvider, onBack: () -> Unit, onAdded: () -> Unit) {
+    var key by remember { mutableStateOf(provider.apiKey) }
+    var baseURL by remember { mutableStateOf(AIProvider.customBaseURL) }
+    var model by remember { mutableStateOf(provider.suggestedModels.firstOrNull()?.first.orEmpty()) }
+    var models by remember { mutableStateOf(provider.suggestedModels) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(key) {
+        loadError = null
+        if (!provider.canListModels || key.isBlank()) return@LaunchedEffect
+        delay(600)
+        runCatching { CloudLLM.models(provider, key.trim()) }
+            .onSuccess { ids ->
+                if (ids.isNotEmpty()) {
+                    models = ids.map { it to it }
+                    if (model !in ids) model = ids.firstOrNull { id -> listOf("haiku", "flash", "mini", "luna", "small").any { id.lowercase().contains(it) } } ?: ids.first()
+                }
+            }
+            .onFailure { if (it !is kotlinx.coroutines.CancellationException) loadError = it.message }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Brand.navy) }
+        Text(provider.label, style = MaterialTheme.typography.titleLarge)
+    }
+    if (provider == AIProvider.CUSTOM) OutlinedTextField(baseURL, { baseURL = it }, label = { Text("Server address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(
+        key, { key = it }, label = { Text(if (provider.requiresKey) "${provider.label} API Key" else "API Key (optional)") },
+        singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+    )
+    if (models.isNotEmpty()) Picker("Model", models.let { list -> if (list.none { it.first == model } && model.isNotEmpty()) list + (model to model) else list }, model) { model = it }
+    OutlinedTextField(model, { model = it }, label = { Text("Model ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    loadError?.let { Text(it, color = Brand.danger, style = MaterialTheme.typography.bodySmall) }
+    Button(
+        enabled = model.isNotBlank() && (if (provider == AIProvider.CUSTOM) baseURL.isNotBlank() else key.isNotBlank()),
+        onClick = {
+            provider.apiKey = key.trim()
+            if (provider == AIProvider.CUSTOM) AIProvider.customBaseURL = baseURL.trim()
+            SummaryModel.add(SummaryModel.Cloud(provider, model.trim()))
+            SummaryModel.repairCurrent()
+            onAdded()
+        },
+        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Brand.sky.copy(alpha = 0.18f), contentColor = Brand.navy),
+    ) { Text("Add Model") }
 }
 
 /** iOS: `SummaryTemplatesView` — die eigenen Vorlagen: ein Name und worauf die Zusammenfassung achten soll. */
@@ -397,7 +515,6 @@ private fun SyncCard() {
     var loginError by remember { mutableStateOf<String?>(null) }
     Card(
         "Sync",
-        footer = if (mode == SyncMode.NEXTCLOUD) "Notes and transcripts sync right away. Recordings upload from the device that made them and download when you ask for them." else "Notes stay on this phone.",
     ) {
         Picker("Sync With", SyncMode.entries.map { it to it.label }, mode) {
             mode = it
@@ -477,7 +594,7 @@ private fun SyncCard() {
 /** iOS: `importCard` — Aufnahmen von außen: vom Plaud-Recorder oder als Audio- oder Videodatei. */
 @Composable
 private fun PlaudCard(signedIn: Boolean, onSignIn: () -> Unit, onSignOut: () -> Unit) {
-    Card("Plaud", footer = "Once signed in, the plus button on the home page imports recordings from your Plaud recorder.") {
+    Card("Plaud") {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(if (signedIn) "Signed In" else "Plaud Account", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
             Pill(if (signedIn) "Sign Out" else "Sign In", if (signedIn) onSignOut else onSignIn, destructive = signedIn)
@@ -496,7 +613,7 @@ private fun BackupCard() {
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) coroutines.launch { message = runCatching { Backup.import(context, uri) }.fold({ "Restored ${it.notes} notes and ${it.recordings} recordings." }, { "Restore failed: ${it.message}" }) }
     }
-    Card("Backup", footer = message ?: "Notes, voices and the recordings on this phone in one file. Restoring keeps the newer version of each note.") {
+    Card("Backup", footer = message) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Pill("Back Up", { exporter.launch("porridge-backup-${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.zip") })
             Pill("Restore", { importer.launch(arrayOf("application/zip", "application/octet-stream")) })

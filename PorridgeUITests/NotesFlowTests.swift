@@ -27,6 +27,24 @@ final class NotesFlowTests: XCTestCase {
         }
     }
 
+    /// Settings and its subpages open in place; afterwards the list still answers as before.
+    func testSettingsSubpageAndBack() throws {
+        let app = launchApp()
+        let settings = app.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 30), "settings button missing")
+        settings.tap()
+        let row = app.buttons["Acknowledgements"].firstMatch
+        XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
+        XCTAssertTrue(app.reveal(row), "acknowledgements row missing")
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Libraries"].waitForExistence(timeout: 10), "acknowledgements did not open")
+        app.buttons["Back"].firstMatch.tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "settings missing after going back")
+        app.goBack()
+        app.buttons["Create"].tap()
+        XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 5), "plus did not open its menu")
+    }
+
     /// A note with content is kept and can be opened again from the search.
     func testNoteWithContentIsKeptAndReopens() throws {
         let app = launchApp()

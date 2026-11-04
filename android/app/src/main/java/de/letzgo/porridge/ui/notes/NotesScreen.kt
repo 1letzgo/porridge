@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -345,7 +346,8 @@ private fun HomeList(
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
         if (projects.shown.isNotEmpty()) {
             item(key = "h-projects") { SectionHeader("Projects", color = Brand.project) }
-            projectRows(projects.shown, notes) { list.page = ListPage.Project(it) }
+            // Mit „More“ darunter ist die Zeile nicht die letzte.
+            projectRows(projects.shown, notes, moreFollows = projects.hidden > 0 && filter != HomeListLogic.HomeFilter.PROJECTS) { list.page = ListPage.Project(it) }
             if (projects.hidden > 0 && filter != HomeListLogic.HomeFilter.PROJECTS) item(key = "more-projects") {
                 MoreRow(projects.hidden, list.showAllProjects, Brand.project) { list.showAllProjects = !list.showAllProjects }
             }
@@ -389,7 +391,7 @@ private fun ArchiveList(
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
         if (projects.isNotEmpty()) {
             item(key = "h-projects") { SectionHeader("Projects", color = Brand.project) }
-            projectRows(projects, notes, onProject)
+            projectRows(projects, notes, onProject = onProject)
         }
         dateGroups(archived, stages, onOpen)
     }
@@ -444,12 +446,13 @@ private fun SearchResults(
     }
 }
 
-private fun LazyListScope.projectRows(projects: List<NoteFolder>, notes: List<Note>, onProject: (String) -> Unit) {
-    items(projects, key = { "p-" + it.id }) { project -> ProjectRow(project, notes, onProject) }
+private fun LazyListScope.projectRows(projects: List<NoteFolder>, notes: List<Note>, moreFollows: Boolean = false, onProject: (String) -> Unit) {
+    itemsIndexed(projects, key = { _, it -> "p-" + it.id }) { index, project -> ProjectRow(project, notes, showsDivider = moreFollows || index < projects.lastIndex, onOpen = onProject) }
 }
 
 private fun LazyListScope.noteRows(notes: List<Note>, stages: Map<String, String>, onOpen: (String) -> Unit) {
-    items(notes, key = { "n-" + it.id }) { note -> NoteSwipeRow(note, stages[note.id], onOpen) }
+    // Die Überschrift darunter bringt ihre eigene Linie: Die letzte Zeile einer Gruppe zeichnet keine.
+    itemsIndexed(notes, key = { _, it -> "n-" + it.id }) { index, note -> NoteSwipeRow(note, stages[note.id], onOpen, showsDivider = index < notes.lastIndex) }
 }
 
 private fun LazyListScope.dateGroups(notes: List<Note>, stages: Map<String, String>, onOpen: (String) -> Unit) {
@@ -486,7 +489,7 @@ private fun PageRow(title: String, count: Int, color: Color, onClick: () -> Unit
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, projectID: String? = null) {
+internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, projectID: String? = null, showsDivider: Boolean = true) {
     val coroutines = rememberCoroutineScope()
     val store = remember { NoteStore() }
     // Der Zustand des Wischens behält seinen ersten Callback; so sieht er immer den aktuellen Stand.
@@ -542,7 +545,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
         },
     ) {
         Box {
-            NoteRow(note, stage, Modifier.combinedClickable(onClick = { onOpen(note.id) }, onLongClick = { menu = true }))
+            NoteRow(note, stage, Modifier.combinedClickable(onClick = { onOpen(note.id) }, onLongClick = { menu = true }), showsDivider)
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (note.isDeleted) {
                     DropdownMenuItem(text = { Text("Recover") }, onClick = { menu = false; coroutines.launch { store.restore(note) } })
@@ -561,7 +564,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
 
 /** iOS: `NoteRow` — Notizen in Sky, Meetings in Navy, Links in Orange. */
 @Composable
-internal fun NoteRow(note: Note, stage: String?, modifier: Modifier) {
+internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivider: Boolean = true) {
     val (icon, tint) = when {
         note.isLink -> Icons.Filled.Link to LinkOrange
         note.isRecording -> Icons.Outlined.GraphicEq to Brand.navy
@@ -590,7 +593,7 @@ internal fun NoteRow(note: Note, stage: String?, modifier: Modifier) {
                     Text(footer.joinToString("  ·  "), style = MaterialTheme.typography.labelSmall, color = if (note.isDeleted) Brand.danger.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
                 }
             }
-            HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            if (showsDivider) HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }

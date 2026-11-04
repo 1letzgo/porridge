@@ -62,19 +62,16 @@ enum SummaryService {
     /// True when a summary can start by itself: the chosen on-device model is already there, or a key is set.
     /// (Nothing is downloaded behind your back.)
     static var canRunWithoutAsking: Bool {
-        switch AppSettings.billing {
-        case .local:
-            return LocalModel.selected.isInstalled
-        case .byok:
-            let provider = AIProvider.current
-            return !provider.requiresKey || !provider.apiKey.isEmpty
+        switch SummaryModel.current {
+        case .local(let model): model.isInstalled
+        case .cloud(let provider, _): !provider.requiresKey || !provider.apiKey.isEmpty
         }
     }
 
     /// Summarizes a note into `note.summary`: its transcript (a recording) and its own text together.
     /// `progress` receives short status texts ("Reading part 2 of 5 …") while the work is running.
     /// A template only shapes the summary of a recording; notes and links keep their own short format.
-    static func summarize(_ note: Note, template: SummaryTemplate = .general, progress: @escaping (String) -> Void = { _ in }) async throws {
+    static func summarize(_ note: Note, template: SummaryTemplate = .general, model: SummaryModel? = nil, progress: @escaping (String) -> Void = { _ in }) async throws {
         // Without timestamps: the model does not need them, and they would take up a good part of its room.
         let transcript = note.transcriptText(timestamps: false)
         let title = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -97,7 +94,9 @@ enum SummaryService {
             material = (title.isEmpty ? "" : title + "\n\n") + note.text
         }
         let language = SummaryLanguage.detect(in: material)
-        let (raw, model) = try await run(
+        let chosen = model ?? .current
+        let raw = try await run(
+            model: chosen,
             header: hasTranscript ? header(for: note)
                 : "Date: \(note.createdAt.formatted(date: .long, time: .shortened))" + (note.url.map { "\nSource: \($0)" } ?? ""),
             material: material, language: language,
@@ -117,42 +116,34 @@ enum SummaryService {
         note.summary = withListMarks(summary)
         // Suggested tags only fill an empty tag field; tags you set yourself stay as they are.
         if note.labels.isEmpty { note.labels = tags }
-        note.summaryModel = model
+        note.summaryModel = chosen.label
         note.summarizedAt = Date()
         note.updatedAt = Date()
     }
 
     /// The model the next summary is written with, as it is named next to a finished one.
-    static var modelLabel: String {
-        switch AppSettings.billing {
-        case .local: "\(LocalModel.selected.displayName) (on-device)"
-        case .byok: "\(AIProvider.current.label) · \(AIProvider.current.model)"
-        }
-    }
+    static var modelLabel: String { SummaryModel.current.label }
 
-    /// Runs the model chosen in Settings (on this device or with the user's own key); returns the answer and a label of the model.
-    private static func run(header: String, material: String, language: SummaryLanguage, system: String, noun: String, focus: String, progress: @escaping (String) -> Void) async throws -> (String, String) {
-        switch AppSettings.billing {
-        case .local:
-            let raw = try await summarizeLocally(header: header, material: material, language: language, system: system, noun: noun, focus: focus, progress: progress)
-            return (raw, modelLabel)
-        case .byok:
-            let provider = AIProvider.current
+    /// Runs the model, on this device or with the user's own key.
+    private static func run(model: SummaryModel, header: String, material: String, language: SummaryLanguage, system: String, noun: String, focus: String, progress: @escaping (String) -> Void) async throws -> String {
+        switch model {
+        case .local(let local):
+            return try await summarizeLocally(local, header: header, material: material, language: language, system: system, noun: noun, focus: focus, progress: progress)
+        case .cloud(let provider, let id):
             let key = provider.apiKey
             if provider.requiresKey, key.isEmpty { throw SummaryError.missingAPIKey(provider.label) }
             progress("Writing summary…")
             let intro = noun == "meeting" ? "Transcript:" : "Note:"
             // iOS suspends the app in the background after a while, which cuts the connection.
-            let raw = try await ForegroundWork.retrying(waitsFirst: false) {
+            return try await ForegroundWork.retrying(waitsFirst: false) {
                 try await CloudLLM.complete(
                     provider: provider,
                     apiKey: key,
-                    model: provider.model,
+                    model: id,
                     system: system,
                     user: "\(header)\n\n\(intro)\n\(material)\n\n\(languageReminder(language))"
                 )
             }
-            return (raw, modelLabel)
         }
     }
 
@@ -162,13 +153,12 @@ enum SummaryService {
 
     /// A transcript up to this many characters is summarized in one go (roughly 5,000 tokens; the Apple model has
     /// room for about 4,000 in all, its instructions and answer included).
-    private static var singlePassLimit: Int { LocalModel.selected == .apple ? 5_000 : 14_000 }
+    private static func singlePassLimit(_ model: LocalModel) -> Int { model == .apple ? 5_000 : 14_000 }
     /// Longer transcripts are cut into parts of about this size; each part is condensed into notes first.
-    private static var partSize: Int { LocalModel.selected == .apple ? 4_000 : 11_000 }
+    private static func partSize(_ model: LocalModel) -> Int { model == .apple ? 4_000 : 11_000 }
 
-    private static func summarizeLocally(header: String, material: String, language: SummaryLanguage, system: String, noun: String, focus: String, progress: @escaping (String) -> Void) async throws -> String {
+    private static func summarizeLocally(_ local: LocalModel, header: String, material: String, language: SummaryLanguage, system: String, noun: String, focus: String, progress: @escaping (String) -> Void) async throws -> String {
         let models = ModelManager.shared
-        let local = LocalModel.selected
         models.beginLLMUse()
         defer { models.endLLMUse() }
         let installed = local.isInstalled
@@ -177,21 +167,21 @@ enum SummaryService {
             // Loading an installed model reports progress too: only a missing one is downloaded.
             progress(!installed && fraction < 1 ? "Downloading model … \(Int(fraction * 100)) %" : "Loading model…")
         }
-        return try await condenseAndWrite(header: header, transcript: material, language: language, system: system, noun: noun, focus: focus, progress: progress)
+        return try await condenseAndWrite(local, header: header, transcript: material, language: language, system: system, noun: noun, focus: focus, progress: progress)
     }
 
-    private static func condenseAndWrite(header: String, transcript: String, language: SummaryLanguage, system: String, noun: String, focus: String, progress: @escaping (String) -> Void) async throws -> String {
+    private static func condenseAndWrite(_ local: LocalModel, header: String, transcript: String, language: SummaryLanguage, system: String, noun: String, focus: String, progress: @escaping (String) -> Void) async throws -> String {
         var material = transcript
         var isNotes = false
 
         // Long meetings: condense every part into notes, repeat until everything fits in one pass.
-        while material.count > singlePassLimit {
-            let parts = partPrompts(of: material, header: header, size: partSize)
+        while material.count > singlePassLimit(local) {
+            let parts = partPrompts(of: material, header: header, size: partSize(local))
             var notes: [String] = []
             for (index, part) in parts.enumerated() {
                 progress("Reading part \(index + 1) of \(parts.count) …")
                 notes.append(try await LocalLLM.shared.generate(
-                    model: LocalModel.selected,
+                    model: local,
                     system: notesPrompt(language, noun: noun, focus: focus),
                     user: part,
                     maxTokens: 700
@@ -205,7 +195,7 @@ enum SummaryService {
         progress("Writing summary…")
         let intro = isNotes ? "Notes on the \(noun), in order:" : (noun == "meeting" ? "Transcript:" : "Note:")
         let user = "\(header)\n\n\(intro)\n\(material)\n\n\(languageReminder(language))"
-        return try await LocalLLM.shared.generate(model: LocalModel.selected, system: system, user: user, maxTokens: 1500)
+        return try await LocalLLM.shared.generate(model: local, system: system, user: user, maxTokens: 1500)
     }
 
     /// What the model reads of each part: who and when, so a part makes sense on its own, and the end of the part

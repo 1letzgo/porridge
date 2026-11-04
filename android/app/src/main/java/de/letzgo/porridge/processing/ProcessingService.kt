@@ -1,6 +1,7 @@
 package de.letzgo.porridge.processing
 
 import de.letzgo.porridge.audio.AudioPreprocessor
+import de.letzgo.porridge.cloud.SummaryModel
 import de.letzgo.porridge.cloud.SummaryService
 import de.letzgo.porridge.data.LinkFetcher
 import de.letzgo.porridge.data.Prefs
@@ -41,7 +42,7 @@ object ProcessingService {
         /** Ein gespeicherter Link: Seite laden, dann (wahlweise) zusammenfassen. */
         data class Link(override val id: String, val summarize: Boolean) : Job
         /** Die Zusammenfassung, um die jemand gebeten hat. */
-        data class Summary(override val id: String, val template: SummaryTemplate) : Job
+        data class Summary(override val id: String, val template: SummaryTemplate, val model: SummaryModel? = null) : Job
     }
 
     private val db get() = PorridgeDatabase.shared
@@ -56,6 +57,10 @@ object ProcessingService {
     /** Notizen, deren Zusammenfassung wartet oder gerade entsteht. */
     private val _summarizing = MutableStateFlow<Set<String>>(emptySet())
     val summarizing: StateFlow<Set<String>> = _summarizing.asStateFlow()
+
+    /** Das für eine Zusammenfassung gewählte Modell, wenn es nicht der Standard ist. */
+    private val _summaryModels = MutableStateFlow<Map<String, SummaryModel>>(emptyMap())
+    val summaryModels: StateFlow<Map<String, SummaryModel>> = _summaryModels.asStateFlow()
     /** Warum eine Zusammenfassung scheiterte, bis die Notiz es gezeigt hat (ihr Bildschirm ist dann vielleicht längst zu). */
     private val _summaryErrors = MutableStateFlow<Map<String, String>>(emptyMap())
     val summaryErrors: StateFlow<Map<String, String>> = _summaryErrors.asStateFlow()
@@ -71,7 +76,10 @@ object ProcessingService {
         if (queue.contains(job) || _stages.value.containsKey(job.id)) return
         queue.addLast(job)
         stage(job.id, "Waiting…")
-        if (job is Job.Summary) _summarizing.update { it + job.id }
+        if (job is Job.Summary) {
+            _summarizing.update { it + job.id }
+            job.model?.let { model -> _summaryModels.update { it + (job.id to model) } }
+        }
         if (!running) {
             running = true
             onBusyChanged(true)
@@ -102,11 +110,12 @@ object ProcessingService {
                     is Job.Transcript -> processTranscript(job.id)
                     is Job.NoteAudio -> processNote(job.id)
                     is Job.Link -> processLink(job.id, job.summarize)
-                    is Job.Summary -> processSummary(job.id, job.template)
+                    is Job.Summary -> processSummary(job.id, job.template, job.model)
                 }
             }
             stage(job.id, null)
             _summarizing.update { it - job.id }
+            _summaryModels.update { it - job.id }
         }
         onBusyChanged(false)
     }
@@ -303,11 +312,11 @@ object ProcessingService {
     }
 
     /** Fasst eine Notiz auf Wunsch zusammen (Knopf in der Notiz). */
-    private suspend fun processSummary(id: String, template: SummaryTemplate) {
+    private suspend fun processSummary(id: String, template: SummaryTemplate, model: SummaryModel?) {
         val note = db.notes().get(id) ?: return
         stage(id, "Summarizing…")
         try {
-            saveSummary(note, SummaryService.summarize(note, template) { stage(id, it) })
+            saveSummary(note, SummaryService.summarize(note, template, model) { stage(id, it) })
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {

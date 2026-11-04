@@ -12,29 +12,19 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(ProcessingService.self) private var processing
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \VoiceProfile.name) private var voices: [VoiceProfile]
-    @AppStorage(AppSettings.myVoiceKey) private var myVoice = ""
 
     @AppStorage(AppSettings.languageKey) private var language = "auto"
     @AppStorage(AppSettings.speechEngineKey) private var engine = SpeechEngine.parakeet
     @AppStorage(AppSettings.speakerDetectionKey) private var speakerDetection = true
     @AppStorage(AppSettings.voiceRecognitionKey) private var voiceRecognition = true
-    @AppStorage(AppSettings.localModelKey) private var localModel = LocalModel.recommended
     @State private var showTemplates = false
-    @AppStorage(AppSettings.billingKey) private var billing: SummaryBilling = .local
-    @AppStorage(AppSettings.providerKey) private var provider = AIProvider.openRouter
-    @AppStorage(AppSettings.customBaseURLKey) private var customBaseURL = ""
     @AppStorage(AppSettings.myNameKey) private var myName = ""
 
 
-    @State private var apiKey = AIProvider.current.apiKey
-    @State private var modelText = AIProvider.current.model
-    /// Models the provider reports for the entered key.
-    @State private var fetchedModels: [String] = []
+    @State private var defaultModel = SummaryModel.current
+    @State private var externalModels = SummaryModel.external
+    @State private var showAddModel = false
     @State private var inputDescription = ""
-    @State private var renamingVoice: VoiceProfile?
-    @State private var voiceName = ""
-    @State private var forgettingVoice: VoiceProfile?
     @State private var pendingDeletion: ModelKind?
     #if os(macOS)
     @AppStorage(DictationSettings.enabledKey) private var dictationEnabled = true
@@ -73,8 +63,8 @@ struct SettingsView: View {
         }
     }
 
-    /// Pushed onto the list's navigation stack (iOS): the system back button closes it, no own stack or Done button.
-    var isPushed = false
+    /// A page of the list column (iOS), under its bar: no own stack or Done button.
+    var isEmbedded = false
     /// Opens a note that was imported here; without it (Mac: a window of its own) the card says it is done.
 
     /// The Settings window of the Mac has no bar of its own above the content: give the first section air.
@@ -87,7 +77,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        if isPushed {
+        if isEmbedded {
             page
         } else {
             NavigationStack {
@@ -103,12 +93,6 @@ struct SettingsView: View {
 
     private var page: some View {
         VStack(spacing: 0) {
-            #if os(iOS)
-            if isPushed {
-                ChromeBar(title: "Settings", systemImage: "gearshape.fill", onBack: { dismiss() })
-                    .padding(.bottom, Look.headerGap)
-            }
-            #endif
             ScrollView {
                 VStack(spacing: 32) { cards }
                     .padding(.horizontal, 20)
@@ -122,7 +106,7 @@ struct SettingsView: View {
         .brandNavigationTitle("Settings")
         #if os(iOS)
         // Pushed: our own bar (ChromeBar) replaces the system one.
-        .toolbar(isPushed ? .hidden : .automatic, for: .navigationBar)
+        .toolbar(isEmbedded ? .hidden : .automatic, for: .navigationBar)
         #endif
         #if os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -132,7 +116,7 @@ struct SettingsView: View {
         .onAppear {
             refreshInput()
             models.refreshLLM()
-            fixLocalModelSelection()
+            refreshSummaryModels()
         }
         #if os(iOS)
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { note in
@@ -160,28 +144,9 @@ struct SettingsView: View {
         } message: {
             Text("You can download it again at any time.")
         }
-        .alert("Rename Voice", isPresented: Binding(get: { renamingVoice != nil }, set: { if !$0 { renamingVoice = nil } })) {
-            TextField("Name", text: $voiceName)
-            Button("Cancel", role: .cancel) { renamingVoice = nil }
-            Button("Save") {
-                let name = voiceName.trimmingCharacters(in: .whitespaces)
-                if let voice = renamingVoice, !name.isEmpty {
-                    VoiceProfiles.rename(voice, to: name, context: context)
-                }
-                renamingVoice = nil
-            }
-        }
-        .alert(
-            "Forget this voice?",
-            isPresented: Binding(get: { forgettingVoice != nil }, set: { if !$0 { forgettingVoice = nil } })
-        ) {
-            Button("Cancel", role: .cancel) { forgettingVoice = nil }
-            Button("Forget Voice", role: .destructive) {
-                if let voice = forgettingVoice { VoiceProfiles.delete(voice, context: context) }
-                forgettingVoice = nil
-            }
-        } message: {
-            Text("Names already given in meetings stay.")
+        .sheet(isPresented: $showTemplates) { SummaryTemplatesView() }
+        .sheet(isPresented: $showAddModel, onDismiss: refreshSummaryModels) {
+            AddModelSheet(onChange: refreshSummaryModels)
         }
         .sheet(isPresented: $showPlaudLogin) {
             PlaudLoginView { token, refreshToken in
@@ -196,21 +161,15 @@ struct SettingsView: View {
         }
         .onChange(of: models.llm) {
             reportFailure(in: Array(models.llm.values))
-            fixLocalModelSelection()
+            refreshSummaryModels()
         }
         .onChange(of: models.asr) { reportFailure(in: [models.asr]) }
         .onChange(of: models.diarizer) { reportFailure(in: [models.diarizer]) }
         .onChange(of: language) { Task { await models.refreshASR() } }
         .onChange(of: engine) { Task { await models.refreshASR() } }
-        .onChange(of: provider) {
-            apiKey = provider.apiKey
-            modelText = provider.model
-            fetchedModels = []
-        }
     }
 
-    /// Order: what happens to a recording (transcription, speakers, summary), the cloud service if
-    /// summaries use it, then imports, sync and about. Transcription always runs on the device.
+    /// Order: what happens to a recording (transcription, speakers, summary), then imports, sync and about. Transcription always runs on the device.
     @ViewBuilder
     private var cards: some View {
         #if os(macOS)
@@ -220,9 +179,6 @@ struct SettingsView: View {
         transcriptionCard
         speakersCard
         summaryCard
-        if billing == .byok {
-            cloudCard
-        }
         plaudCard
         SyncCard()
         aboutCard
@@ -233,7 +189,7 @@ struct SettingsView: View {
 
     /// Who the user is: the summaries name them.
     private var youCard: some View {
-        SettingsCard(title: "You", footer: "Summaries use this name for you. Separate other spellings with commas, e.g. “Anna, Anna Berg”.") {
+        SettingsCard(title: "You") {
             TextField("Your Name", text: $myName)
                 .textContentType(.name)
                 .autocorrectionDisabled()
@@ -264,11 +220,6 @@ struct SettingsView: View {
                     Task { try? await models.ensureLocalASR() }
                 }
             }
-            Text(SyncMode.chosen == .nextcloud
-                ? "Recordings are transcribed on this device. With Nextcloud, the audio is also copied to your folder there."
-                : "Recordings are transcribed on this device; audio never leaves it.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             CardDivider()
             MenuRow(
                 title: "Language",
@@ -283,60 +234,29 @@ struct SettingsView: View {
     /// Who said what: speaker detection with its model, then known voices.
     private var speakersCard: some View {
         SettingsCard(title: "Speakers") {
+            ModelRow(
+                title: "Speaker Model", subtitle: "pyannote · on this device · approx. 30 MB", state: models.diarizer,
+                onDelete: { pendingDeletion = .speakers }
+            ) {
+                Task { try? await models.ensureDiarizer() }
+            }
+            CardDivider()
             Toggle("Detect Speakers", isOn: $speakerDetection)
                 .font(.body)
                 .tint(Color.brandSky)
             if speakerDetection {
-                ModelRow(
-                    title: "Speaker Model", subtitle: "pyannote · on this device · approx. 30 MB", state: models.diarizer,
-                    onDelete: { pendingDeletion = .speakers }
-                ) {
-                    Task { try? await models.ensureDiarizer() }
-                }
                 CardDivider()
                 Toggle("Recognize Known Voices", isOn: $voiceRecognition)
                     .font(.body)
                     .tint(Color.brandSky)
-                // The user's own voice on top.
-                ForEach(voices.sorted { ($0.id.uuidString == myVoice ? 0 : 1) < ($1.id.uuidString == myVoice ? 0 : 1) }) { voice in
-                    let isMe = voice.id.uuidString == myVoice
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(isMe ? "\(voice.name) (me)" : voice.name).font(.body)
-                            Text("\(voice.seconds.clockString) of speech")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 8)
-                        Button {
-                            withAnimation(.snappy) { AppSettings.setMyVoice(isMe ? nil : voice) }
-                        } label: {
-                            Image(systemName: isMe ? "person.crop.circle.fill" : "person.crop.circle")
-                                .foregroundStyle(isMe ? Color.brandTask : Color.accentColor)
-                        }
-                        .accessibilityLabel(isMe ? "Not Me" : "This Is Me")
-                        Button {
-                            voiceName = voice.name
-                            renamingVoice = voice
-                        } label: {
-                            Image(systemName: "pencil")
-                        }
-                        .accessibilityLabel("Rename")
-                        Button {
-                            forgettingVoice = voice
-                        } label: {
-                            Image(systemName: "trash").foregroundStyle(.red)
-                        }
-                        .accessibilityLabel("Forget Voice")
-                    }
-                    .buttonStyle(.borderless)
-                }
+                CardDivider()
+                VoicesRow()
             }
         }
     }
 
     private var plaudCard: some View {
-        SettingsCard(title: "Plaud", footer: "Once signed in, the plus button on the home page imports recordings from your Plaud recorder.") {
+        SettingsCard(title: "Plaud") {
             HStack {
                 Text(plaudSignedIn ? "Signed In" : "Plaud Account").font(.body)
                 Spacer(minLength: 12)
@@ -360,137 +280,77 @@ struct SettingsView: View {
 
     private var summaryCard: some View {
         SettingsCard(title: "AI Summary") {
-            TabSwitcher(selection: $billing, options: SummaryBilling.allCases.map { (value: $0, title: $0.label) })
-                .padding(.bottom, 4)
-
             HStack {
                 Text("Custom Templates").font(.body)
                 Spacer(minLength: 12)
                 Button("Edit") { showTemplates = true }.buttonStyle(PillButtonStyle())
             }
-            .sheet(isPresented: $showTemplates) { SummaryTemplatesView() }
             CardDivider()
 
-            switch billing {
-            case .local:
-                // Only models that are on the device can be chosen.
-                if downloadedModels.isEmpty {
-                    ValueRow(title: "Summary Model", value: "None downloaded")
-                } else {
-                    MenuRow(
-                        title: "Summary Model",
-                        selection: $localModel,
-                        options: downloadedModels.map { (value: $0, title: $0.displayName) }
-                    )
+            if SummaryModel.available.isEmpty {
+                ValueRow(title: "Default Model", value: "None added")
+            } else {
+                MenuRow(
+                    title: "Default Model",
+                    selection: Binding(get: { defaultModel }, set: {
+                        defaultModel = $0
+                        SummaryModel.current = $0
+                    }),
+                    options: SummaryModel.available.map { (value: $0, title: $0.name) }
+                )
+            }
+            CardDivider()
+
+            if AppleLLM.availability == .available {
+                ModelRow(
+                    title: LocalModel.apple.displayName, subtitle: "On this device · built into the system",
+                    state: .installed
+                ) {}
+            }
+            ForEach(addedLocalModels) { model in
+                ModelRow(
+                    title: model.displayName,
+                    subtitle: "On this device · " + model.sizeText,
+                    state: models.llmState(model),
+                    onDelete: { pendingDeletion = .summary(model) },
+                    onCancel: { Task { await models.deleteLLM(model) } }
+                ) {
+                    Task { await models.downloadLLM(model) }
                 }
-                switch AppleLLM.availability {
-                case .available:
-                    ModelRow(
-                        title: LocalModel.apple.displayName, subtitle: "Built into the system · nothing to download",
-                        state: .installed
-                    ) {}
-                case .notEnabled:
-                    ValueRow(title: LocalModel.apple.displayName, value: "Turned off in system settings")
-                case .notReady:
-                    ValueRow(title: LocalModel.apple.displayName, value: "System is preparing it")
-                case .unsupported:
-                    EmptyView()
-                }
-                ForEach(LocalModel.downloadable) { model in
-                    ModelRow(
-                        title: model.displayName,
-                        subtitle: (model == .recommended ? "Recommended for this device · " : "Summaries on your device · ") + model.sizeText,
-                        state: models.llmState(model),
-                        onDelete: { pendingDeletion = .summary(model) },
-                        onCancel: { Task { await models.deleteLLM(model) } }
-                    ) {
-                        Task { await models.downloadLLM(model) }
+            }
+            ForEach(externalModels) { model in
+                ModelRow(
+                    title: model.name, subtitle: model.place, state: .installed,
+                    onDelete: {
+                        SummaryModel.remove(model)
+                        refreshSummaryModels()
                     }
-                }
-            case .byok:
-                if provider != .custom {
-                    MenuRow(title: "Model", selection: modelBinding, options: modelOptions)
-                        .task(id: "\(provider.rawValue)|\(apiKey)|\(customBaseURL)") { await loadModels() }
-                }
-                TextField("Model ID", text: modelBinding)
-                    .font(.footnote.monospaced())
-                    .plainFieldStyle()
-                    .brandField()
+                ) {}
+            }
+            CardDivider()
+            HStack {
+                Text("Add Model").font(.body)
+                Spacer(minLength: 12)
+                Button("Add") { showAddModel = true }.buttonStyle(PillButtonStyle())
             }
         }
     }
 
-    private var downloadedModels: [LocalModel] {
-        LocalModel.allCases.filter { models.llmState($0) == .installed || models.llmState($0) == .ready }
-    }
-
-    /// The chosen summary model must be one that is downloaded.
-    private func fixLocalModelSelection() {
-        let downloaded = downloadedModels
-        if let first = downloaded.first, !downloaded.contains(localModel) {
-            localModel = first
-        }
-    }
-
-    private var modelBinding: Binding<String> {
-        Binding(
-            get: { modelText },
-            set: {
-                modelText = $0
-                provider.model = $0
+    /// On the device or on the way there. The others are offered in `AddModelSheet`.
+    private var addedLocalModels: [LocalModel] {
+        LocalModel.downloadable.filter { model in
+            switch models.llmState(model) {
+            case .installed, .ready, .downloading, .loading: true
+            default: false
             }
-        )
-    }
-
-    private var modelOptions: [(value: String, title: String)] {
-        var options = fetchedModels.isEmpty
-            ? provider.suggestedModels.map { (value: $0.id, title: $0.name) }
-            : fetchedModels.map { (value: $0, title: $0) }
-        if !modelText.isEmpty, !options.contains(where: { $0.value == modelText }) {
-            options.append((value: modelText, title: modelText))
-        }
-        return options
-    }
-
-    /// Asks the provider which models this key can use; picks a sensible one if the current choice is not offered.
-    private func loadModels() async {
-        fetchedModels = []
-        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard billing == .byok, provider.canListModels, !key.isEmpty else { return }
-        try? await Task.sleep(for: .milliseconds(600))
-        guard !Task.isCancelled,
-              let list = try? await CloudLLM.models(provider: provider, apiKey: key), !list.isEmpty else { return }
-        fetchedModels = list
-        if !list.contains(modelText) {
-            let preferred = ["haiku", "flash", "mini", "luna", "small"]
-            let choice = list.first { id in preferred.contains { id.lowercased().contains($0) } } ?? list[0]
-            modelBinding.wrappedValue = choice
         }
     }
 
-    /// The service with the user's own key; shown when summaries use the cloud.
-    private var cloudCard: some View {
-        SettingsCard(
-            title: "Cloud Service",
-            footer: "Used for summaries. The key is stored in your iCloud Keychain."
-        ) {
-            MenuRow(
-                title: "Provider",
-                selection: $provider,
-                options: AIProvider.allCases.map { (value: $0, title: $0.label) }
-            )
-            if provider == .custom {
-                TextField("Server address, e.g. http://192.168.1.5:11434/v1", text: $customBaseURL)
-                    .urlFieldStyle()
-                    .brandField()
-            }
-            SecureField(provider.requiresKey ? "\(provider.label) API Key" : "API Key (optional)", text: $apiKey)
-                .secretFieldStyle()
-                .brandField()
-                .onChange(of: apiKey) {
-                    Keychain.set(apiKey.trimmingCharacters(in: .whitespacesAndNewlines), for: provider.keyAccount)
-                }
-        }
+    /// The default must be something that can be chosen.
+    private func refreshSummaryModels() {
+        SummaryModel.repairCurrent()
+        defaultModel = SummaryModel.current
+        externalModels = SummaryModel.external
     }
 
     private var aboutCard: some View {
@@ -588,7 +448,7 @@ private struct SyncCard: View {
     @State private var loginError: String?
 
     var body: some View {
-        SettingsCard(title: "Sync", footer: footer) {
+        SettingsCard(title: "Sync") {
             MenuRow(title: "Sync With", selection: $mode, options: SyncMode.allCases.map { (value: $0, title: $0.label) })
             if mode != SyncMode.active {
                 Label("Restart Porridge to switch to \(mode.label).", systemImage: "arrow.clockwise")
@@ -644,14 +504,6 @@ private struct SyncCard: View {
         }
     }
 
-    private var footer: String? {
-        switch mode {
-        case .off: "Notes stay on this device."
-        case .iCloud: "Notes and transcripts sync between your Apple devices. Recordings stay on the device that made them."
-        case .nextcloud: "Notes and transcripts sync right away. Recordings upload from the device that made them and download when you ask for them."
-        }
-    }
-
     private var status: String {
         if sync.isSyncing { return "Syncing…" }
         if SyncMode.active != .nextcloud { return "After restart" }
@@ -678,7 +530,7 @@ private struct SyncCard: View {
     }
 }
 
-private struct SettingsCard<Content: View>: View {
+struct SettingsCard<Content: View>: View {
     let title: String
     var footer: String?
     @ViewBuilder var content: Content
@@ -709,7 +561,7 @@ private struct SettingsCard<Content: View>: View {
     }
 }
 
-private struct CardDivider: View {
+struct CardDivider: View {
     var body: some View {
         Rectangle()
             .fill(Look.hairline)
@@ -717,7 +569,7 @@ private struct CardDivider: View {
     }
 }
 
-private struct ValueRow: View {
+struct ValueRow: View {
     let title: String
     let value: String
 
@@ -732,7 +584,7 @@ private struct ValueRow: View {
     }
 }
 
-private struct MenuRow<Value: Hashable>: View {
+struct MenuRow<Value: Hashable>: View {
     let title: String
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
@@ -769,7 +621,7 @@ private struct MenuRow<Value: Hashable>: View {
     }
 }
 
-private struct ModelRow: View {
+struct ModelRow: View {
     let title: String
     let subtitle: String
     let state: ModelManager.State
@@ -862,7 +714,7 @@ struct PillButtonStyle: ButtonStyle {
     }
 }
 
-private extension View {
+extension View {
     /// Text input with a hairline.
     func brandField() -> some View {
         self

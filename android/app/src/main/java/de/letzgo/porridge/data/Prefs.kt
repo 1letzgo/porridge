@@ -10,6 +10,7 @@ import android.content.SharedPreferences
 object Keys {
     const val SPEECH_ENGINE = "speechEngine"
     const val RECORDINGS_WIFI_ONLY = "recordingsWiFiOnly"
+    const val EXTERNAL_MODELS = "summaryExternalModels"
     const val ONBOARDING_DONE = "onboardingDone"
     const val LANGUAGE = "transcriptionLanguage"
     const val SPEAKER_DETECTION = "speakerDetection"

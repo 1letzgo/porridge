@@ -50,6 +50,7 @@ enum AppSettings {
     static let speakerDetectionKey = "speakerDetection"
     static let billingKey = "summaryBilling"
     static let localModelKey = "localModel"
+    static let externalModelsKey = "summaryExternalModels"
     /// New notes record right away; UI tests type instead.
     static let recordsNewNotesKey = "recordsNewNotes"
     static let recordingsWiFiOnlyKey = "recordingsWiFiOnly"

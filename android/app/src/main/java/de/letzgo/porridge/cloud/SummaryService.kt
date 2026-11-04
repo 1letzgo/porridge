@@ -30,22 +30,23 @@ object SummaryService {
             SummaryBilling.BYOK -> "${AIProvider.current.label} · ${AIProvider.current.model}"
         }
 
-    suspend fun summarize(note: Note, template: SummaryTemplate = SummaryTemplate.GENERAL, progress: (String) -> Unit = {}): Note {
+    /** [model] gilt nur für diese Zusammenfassung; `null` ist der Standard. */
+    suspend fun summarize(note: Note, template: SummaryTemplate = SummaryTemplate.GENERAL, model: SummaryModel? = null, progress: (String) -> Unit = {}): Note {
         val request = SummaryLogic.request(note, Prefs.language, de.letzgo.porridge.data.Me.name, template)
-        val (raw, model) = when (Prefs.billing) {
-            SummaryBilling.LOCAL -> {
-                val local = TextModels.selected ?: throw SummaryException("No on-device model is available.")
-                summarizeLocally(local, request, progress) to "${local.displayName} (on-device)"
+        val chosen = model ?: SummaryModel.current
+        val raw = when (chosen) {
+            is SummaryModel.Local -> {
+                val local = if (model == null) TextModels.selected ?: throw SummaryException("No on-device model is available.") else de.letzgo.porridge.ml.LocalLLM.of(chosen.model)
+                summarizeLocally(local, request, progress)
             }
-            SummaryBilling.BYOK -> {
-                val provider = AIProvider.current
-                val key = provider.apiKey
-                if (provider.requiresKey && key.isEmpty()) throw SummaryException.missingAPIKey(provider.label)
+            is SummaryModel.Cloud -> {
+                val key = chosen.provider.apiKey
+                if (chosen.provider.requiresKey && key.isEmpty()) throw SummaryException.missingAPIKey(chosen.provider.label)
                 progress("Writing summary…")
-                CloudLLM.complete(provider, key, provider.model, request.system, request.user()) to "${provider.label} · ${provider.model}"
+                CloudLLM.complete(chosen.provider, key, chosen.modelId, request.system, request.user())
             }
         }
-        return SummaryLogic.apply(note, raw, model, request.hasTranscript)
+        return SummaryLogic.apply(note, raw, chosen.label, request.hasTranscript)
     }
 
     internal suspend fun summarizeLocally(model: TextModel, request: SummaryLogic.Request, progress: (String) -> Unit): String {

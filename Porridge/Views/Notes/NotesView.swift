@@ -15,6 +15,8 @@ struct NotesView: View {
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
 
     @State private var selection: UUID?
+    /// The note's page on the stack (phone). Follows `selection`, so that one place opens it without animation.
+    @State private var notePath: [UUID] = []
     /// A new note that is not saved yet; it is stored when it gets its first content.
     @State private var draft: Note?
     /// Which column is shown on a narrow screen. Set from code so a new note opens reliably.
@@ -41,8 +43,8 @@ struct NotesView: View {
     @State private var confirmEmptyTrash = false
     @State private var showRecorder = false
     @State private var showCalendar = false
-    /// Settings pushed as a full page with a back button (iOS); the Mac uses `openSettings` (a sheet).
-    @State private var showSettings = false
+    /// Where the back pill of the settings page returns to (iOS; the Mac uses `openSettings`).
+    @State private var pageBeforeSettings = ListPage.home
     /// Dialog for a link typed or pasted by hand.
     @State private var showAddLink = false
     /// The plus button is unfolded into its options.
@@ -62,17 +64,53 @@ struct NotesView: View {
     /// A note in Recently Deleted that is about to go for good.
     @State private var deletingNow: Note?
 
-    var body: some View {
+    /// The note that is open, a new one not saved yet included.
+    private var selectedNote: Note? {
+        guard let selection else { return nil }
+        return notes.first { $0.id == selection } ?? (draft?.id == selection ? draft : nil)
+    }
+
+    private var splitView: some View {
         NavigationSplitView(preferredCompactColumn: $column) {
             list
         } detail: {
-            if let selection, let note = notes.first(where: { $0.id == selection }) ?? (draft?.id == selection ? draft : nil) {
+            if let note = selectedNote {
                 NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id)
                     .id(note.id)
             } else {
                 EmptyStateView(title: "No Note Selected", message: "Pick a note from the list.", systemImage: "note.text")
             }
         }
+    }
+
+    /// On a phone a note replaces the list at once, like a project does, instead of sliding in. It still is a
+    /// real page of the stack: the system covers the list, keeps its scroll position and handles accessibility.
+    @ViewBuilder
+    private var columns: some View {
+        #if os(iOS)
+        if sizeClass == .compact {
+            NavigationStack(path: $notePath) {
+                list
+                    .navigationDestination(for: UUID.self) { _ in
+                        if let note = selectedNote {
+                            NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id, onBack: { selection = nil })
+                                .id(note.id)
+                        }
+                    }
+            }
+            .onAppear { notePath = selection.map { [$0] } ?? [] }
+            .onChange(of: selection) { withoutAnimation { notePath = selection.map { [$0] } ?? [] } }
+            .onChange(of: notePath) { if notePath.isEmpty { selection = nil } }
+        } else {
+            splitView
+        }
+        #else
+        splitView
+        #endif
+    }
+
+    var body: some View {
+        columns
         .fullScreenCoverOrSheet(isPresented: $showRecorder) {
             RecordingView(title: appointmentTitle) { result, names, liveText, written in
                 addRecording(from: result, speakerNames: names, liveText: liveText, written: written)
@@ -226,9 +264,6 @@ struct NotesView: View {
         #if os(iOS)
         // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
         .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(isPresented: $showSettings) {
-            SettingsView(isPushed: true)
-        }
         #else
         .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 480)
         .toolbar {
@@ -270,6 +305,20 @@ struct NotesView: View {
             archive
         case .trash:
             trash
+        case .settings, .voices, .acknowledgements:
+            // Settings stays underneath its subpages so it keeps its scroll position.
+            ZStack {
+                SettingsView(isEmbedded: true)
+                    .opacity(page == .settings ? 1 : 0)
+                    .allowsHitTesting(page == .settings)
+                    .accessibilityHidden(page != .settings)
+                if page == .voices {
+                    VoicesView()
+                } else if page == .acknowledgements {
+                    AcknowledgementsView()
+                }
+            }
+            .environment(\.openListPage, { page = $0 })
         }
     }
 
@@ -314,7 +363,8 @@ struct NotesView: View {
             }
             if !pinned.isEmpty {
                 Section {
-                    ForEach(pinned.prefix(limits.pinned)) { note in row(note) }
+                    let shown = pinned.prefix(limits.pinned)
+                    ForEach(shown) { note in row(note, isLast: note.id == shown.last?.id) }
                 } header: {
                     ListHeader(title: "Pinned", tint: .brandSky, isFirst: folders.isEmpty)
                 }
@@ -382,7 +432,7 @@ struct NotesView: View {
         return List(selection: $selection) {
             if !deleted.isEmpty {
                 Section {
-                    ForEach(deleted) { note in row(note) }
+                    ForEach(deleted) { note in row(note, isLast: note.id == deleted.last?.id) }
                 } header: {
                     Text("Notes are deleted after \(NoteStore.trashDays) days.")
                         .font(.footnote)
@@ -415,6 +465,7 @@ struct NotesView: View {
                         }
                         .buttonStyle(.plain)
                         .cardListRow()
+                        .lastInSection(note.id == group.notes.last?.id)
                     }
                 } header: {
                     ListHeader(title: group.title, tint: .brandSky, isFirst: group.title == grouped.first?.title)
@@ -443,6 +494,8 @@ struct NotesView: View {
                     },
                     onDelete: { deletingProject = project }
                 )
+                // With "More" below it the row is not the last one.
+                .lastInSection(hidden == 0 && project.id == folders.last?.id)
             }
             if hidden > 0 {
                 moreRow(hidden: hidden, isExpanded: showAllProjects, tint: .brandProject) { showAllProjects.toggle() }
@@ -455,15 +508,16 @@ struct NotesView: View {
     private func dateSections(_ grouped: [(title: String, label: String, notes: [Note])], isFirst: Bool) -> some View {
         ForEach(grouped, id: \.title) { group in
             Section {
-                ForEach(group.notes) { note in row(note) }
+                ForEach(group.notes) { note in row(note, isLast: note.id == group.notes.last?.id) }
             } header: {
                 ListHeader(title: group.title, tint: .brandSky, isFirst: isFirst && group.title == grouped.first?.title)
             }
         }
     }
 
-    private func row(_ note: Note) -> some View {
+    private func row(_ note: Note, isLast: Bool) -> some View {
         NoteListRow(note: note) { remove(note) }
+            .lastInSection(isLast)
     }
 
     /// Unfolds what the list leaves out, in place.
@@ -535,7 +589,7 @@ struct NotesView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                if !(showSearch && keyboardShown) {
+                if !(showSearch && keyboardShown), !page.isSettings {
                     HStack(alignment: .bottom, spacing: 12) {
                         if !showSearch, page == .home {
                             FloatingActionButton(
@@ -679,8 +733,13 @@ struct NotesView: View {
                 Label("Delete All", systemImage: "trash")
             }
         }
-        Button { showSettings = true } label: {
-            Label("Settings", systemImage: "gearshape")
+        if !page.isSettings {
+            Button {
+                pageBeforeSettings = page
+                page = .settings
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
         }
     }
 
@@ -774,6 +833,9 @@ struct NotesView: View {
         case .project: openProject?.name ?? "Porridge"
         case .archive: "Archive"
         case .trash: "Recently Deleted"
+        case .settings: "Settings"
+        case .voices: "Known Voices"
+        case .acknowledgements: "Acknowledgements"
         }
     }
 
@@ -793,6 +855,8 @@ struct NotesView: View {
         case .home: nil
         case .project: { page = openProject?.isArchived == true ? .archive : .home }
         case .archive, .trash: { page = .home }
+        case .settings: { page = pageBeforeSettings }
+        case .voices, .acknowledgements: { page = .settings }
         }
     }
 
@@ -803,6 +867,9 @@ struct NotesView: View {
         case .project: openProject == nil ? "tray.full.fill" : "folder.fill"
         case .archive: "archivebox.fill"
         case .trash: "trash.fill"
+        case .settings: "gearshape.fill"
+        case .voices: "person.2.fill"
+        case .acknowledgements: "heart.text.square.fill"
         }
     }
 
@@ -929,7 +996,7 @@ struct NotesView: View {
         appointmentTitle = title
         Task {
             try? await Task.sleep(for: .milliseconds(450))
-            showRecorder = true
+            withoutAnimation { showRecorder = true }
         }
     }
 
@@ -1133,4 +1200,19 @@ enum ListPage: Hashable {
     case project(UUID)
     case archive
     case trash
+    case settings
+    case voices
+    case acknowledgements
+
+    var isSettings: Bool {
+        switch self {
+        case .settings, .voices, .acknowledgements: true
+        default: false
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// Goes to another page of the list column; for the subpages of Settings.
+    @Entry var openListPage: (ListPage) -> Void = { _ in }
 }

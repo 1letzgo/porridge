@@ -21,6 +21,8 @@ struct NoteDetailView: View {
     var onClose: () -> Void = {}
     /// A note that was just created records right away.
     var startsRecording = false
+    /// On a phone: the note has the app's own bar, with a back pill that calls this. Nil: the system's bar.
+    var onBack: (() -> Void)?
 
     @Environment(\.modelContext) private var context
     @Environment(ProcessingService.self) private var processing
@@ -41,7 +43,7 @@ struct NoteDetailView: View {
     @State private var editor = NoteEditorController()
     @State private var tab = NoteTab.note
     @State private var confirmResummarize = false
-    @State private var askTemplate = false
+    @State private var showSummaryOptions = false
     @State private var player = AudioPlayback()
     @State private var renamingSpeaker: Speaker?
     @State private var renameText = ""
@@ -124,6 +126,20 @@ struct NoteDetailView: View {
             }
         }
         .toolbar { toolbar }
+        #if os(iOS)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let onBack {
+                ChromeBar(title: barTitle, systemImage: barIcon, tint: barTint, onBack: onBack) {
+                    shareAction
+                    moreMenu
+                }
+                .padding(.bottom, Look.headerGap)
+                .background(Color.appBackground)
+            }
+        }
+        .toolbar(onBack == nil ? .automatic : .hidden, for: .navigationBar)
+        .swipeBack(onBack)
+        #endif
         .overlay(alignment: .bottomTrailing) {
             if tab == .note, processing.stages[note.id] == nil, !note.isDeleted {
                 DictationButton(dictation: dictation) {
@@ -180,7 +196,7 @@ struct NoteDetailView: View {
         }
         .alert("Continue Recording?", isPresented: $confirmContinueRecording) {
             Button("Cancel", role: .cancel) {}
-            Button("Continue") { showContinueRecording = true }
+            Button("Continue") { withoutAnimation { showContinueRecording = true } }
         } message: {
             Text("The new part is added to the meeting. The summary is removed and can be written again.")
         }
@@ -200,16 +216,11 @@ struct NoteDetailView: View {
                 tab = .transcript
             }
         }
-        #if os(macOS)
-        .alert("Which template?", isPresented: $askTemplate) {
-            ForEach(SummaryTemplate.all) { option in
-                Button(option.name) { summarize(template: option) }
+        .sheet(isPresented: $showSummaryOptions) {
+            SummaryOptionsSheet(replacesSummary: note.summary != nil) { template, model in
+                summarize(template: template, model: model)
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if note.summary != nil { Text(replaceWarning) }
         }
-        #endif
         .alert("Replace the current summary?", isPresented: $confirmResummarize) {
             Button("Cancel", role: .cancel) {}
             Button("Summarize Again", role: .destructive) { summarize() }
@@ -422,90 +433,98 @@ struct NoteDetailView: View {
 
     // MARK: - Toolbar
 
+    private var barTitle: String { note.isLink ? "Link" : note.isRecording ? "Meeting" : "Note" }
+    private var barIcon: String { note.isLink ? "link" : note.isRecording ? "waveform" : "text.alignleft" }
+    private var barTint: Color { note.isLink ? .brandLink : note.isRecording ? .brandNavy : .brandSky }
+
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        BrandToolbarItem(placement: .primaryAction) {
-            if note.isRecording, !note.isLink {
-                Button { showExport = true } label: {
-                    Label("Export", systemImage: "arrow.up.doc")
-                }
-                .brandToolbarButton()
-                .accessibilityLabel("Export")
+        BrandToolbarItem(placement: .primaryAction) { shareAction }
+        BrandToolbarItem(placement: .primaryAction) { moreMenu.buttonStyle(.plain) }
+    }
+
+    @ViewBuilder
+    private var shareAction: some View {
+        if note.isRecording, !note.isLink {
+            Button { showExport = true } label: {
+                Label("Export", systemImage: "arrow.up.doc")
+            }
+            .brandToolbarButton()
+            .accessibilityLabel("Export")
+        } else {
+            ShareLink(item: shareText) {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            .brandToolbarButton()
+            .accessibilityLabel("Share")
+        }
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            if note.isDeleted {
+                Button { restore() } label: { Label("Recover", systemImage: "arrow.uturn.backward") }
             } else {
-                ShareLink(item: shareText) {
-                    Label("Share", systemImage: "square.and.arrow.up")
+                Button { note.isPinned.toggle(); try? context.save() } label: {
+                    Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
                 }
-                .brandToolbarButton()
-                .accessibilityLabel("Share")
-            }
-        }
-        BrandToolbarItem(placement: .primaryAction) {
-            Menu {
-                if note.isDeleted {
-                    Button { restore() } label: { Label("Recover", systemImage: "arrow.uturn.backward") }
-                } else {
-                    Button { note.isPinned.toggle(); try? context.save() } label: {
-                        Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
+                Button {
+                    requestSummary()
+                } label: {
+                    Label(note.summary == nil ? "Summarize" : "Summarize Again", systemImage: "sparkles")
+                }
+                .disabled(isSummarizing || !canSummarize)
+                Button { startEditingSummary() } label: {
+                    Label(note.summary == nil ? "Write Summary" : "Edit Summary", systemImage: "pencil")
+                }
+                .disabled(isSummarizing)
+                Divider()
+                if note.hasLocalAudio {
+                    Button { processing.enqueue(.transcript(note.id)) } label: {
+                        Label("Transcribe Again", systemImage: "waveform")
                     }
+                    .disabled(processing.stages[note.id] != nil)
+                }
+                if note.isLink {
                     Button {
-                        requestSummary()
+                        note.status = .recorded
+                        processing.enqueue(.link(note.id, summarize: false))
                     } label: {
-                        Label(note.summary == nil ? "Summarize" : "Summarize Again", systemImage: "sparkles")
+                        Label("Load Page Again", systemImage: "arrow.clockwise")
                     }
-                    .disabled(isSummarizing || !canSummarize)
-                    Button { startEditingSummary() } label: {
-                        Label(note.summary == nil ? "Write Summary" : "Edit Summary", systemImage: "pencil")
+                    .disabled(processing.stages[note.id] != nil)
+                }
+                if note.isRecording, !note.isLink {
+                    Button {
+                        if note.summary == nil { withoutAnimation { showContinueRecording = true } } else { confirmContinueRecording = true }
+                    } label: {
+                        Label("Continue Recording", systemImage: "mic.badge.plus")
                     }
-                    .disabled(isSummarizing)
-                    Divider()
-                    if note.hasLocalAudio {
-                        Button { processing.enqueue(.transcript(note.id)) } label: {
-                            Label("Transcribe Again", systemImage: "waveform")
-                        }
-                        .disabled(processing.stages[note.id] != nil)
+                    .disabled(!canContinueRecording)
+                }
+                if !note.segments.isEmpty {
+                    Button { Clipboard.copy(note.transcriptText()) } label: {
+                        Label("Copy Transcript", systemImage: "doc.on.doc")
                     }
-                    if note.isLink {
-                        Button {
-                            note.status = .recorded
-                            processing.enqueue(.link(note.id, summarize: false))
-                        } label: {
-                            Label("Load Page Again", systemImage: "arrow.clockwise")
-                        }
-                        .disabled(processing.stages[note.id] != nil)
+                    Button { showMerge = true } label: {
+                        Label("Merge with…", systemImage: "arrow.triangle.merge")
                     }
-                    if note.isRecording, !note.isLink {
-                        Button {
-                            if note.summary == nil { showContinueRecording = true } else { confirmContinueRecording = true }
-                        } label: {
-                            Label("Continue Recording", systemImage: "mic.badge.plus")
-                        }
-                        .disabled(!canContinueRecording)
-                    }
-                    if !note.segments.isEmpty {
-                        Button { Clipboard.copy(note.transcriptText()) } label: {
-                            Label("Copy Transcript", systemImage: "doc.on.doc")
-                        }
-                        Button { showMerge = true } label: {
-                            Label("Merge with…", systemImage: "arrow.triangle.merge")
-                        }
-                        .disabled(processing.stages[note.id] != nil || note.status != .ready)
-                    }
-                    Divider()
-                    if note.hasLocalAudio {
-                        Button(role: .destructive) { confirmDeleteAudio = true } label: {
-                            Label("Delete Recording", systemImage: "waveform.slash")
-                        }
-                    }
-                    Button(role: .destructive) { NoteStore.trash(note, in: context); onClose() } label: {
-                        Label("Delete", systemImage: "trash")
+                    .disabled(processing.stages[note.id] != nil || note.status != .ready)
+                }
+                Divider()
+                if note.hasLocalAudio {
+                    Button(role: .destructive) { confirmDeleteAudio = true } label: {
+                        Label("Delete Recording", systemImage: "waveform.slash")
                     }
                 }
-            } label: {
-                BrandMenuLabel(title: "More", systemImage: "ellipsis")
+                Button(role: .destructive) { NoteStore.trash(note, in: context); onClose() } label: {
+                    Label("Delete", systemImage: "trash")
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("More")
+        } label: {
+            BrandMenuLabel(title: "More", systemImage: "ellipsis")
         }
+        .accessibilityLabel("More")
     }
 
     /// A recording that is on another device could not be joined with the new part.
@@ -668,7 +687,7 @@ struct NoteDetailView: View {
     private var summaryTab: some View {
         NoteTabScroll {
             if isSummarizing {
-                SummarizingCard(message: summarizeMessage, status: processing.stages[note.id], model: SummaryService.modelLabel)
+                SummarizingCard(message: summarizeMessage, status: processing.stages[note.id], model: processing.summaryModels[note.id]?.label ?? SummaryService.modelLabel)
             } else if let summary = note.summary {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -732,43 +751,17 @@ struct NoteDetailView: View {
         }
     }
 
-    /// A recording asks which template to use, in the same question that warns about replacing a summary;
+    /// A recording asks for the model and the template, in the same place that warns about replacing a summary;
     /// a note or a link has nothing to choose.
     private func requestSummary() {
         if !note.segments.isEmpty {
-            #if os(iOS)
-            presentTemplateAlert()
-            #else
-            askTemplate = true
-            #endif
+            showSummaryOptions = true
         } else if note.summary == nil {
             summarize()
         } else {
             confirmResummarize = true
         }
     }
-
-    private let replaceWarning = "This replaces the current summary; your edits to it are lost."
-
-    #if os(iOS)
-    /// UIKit, because the cancel button is red: SwiftUI colors no cancel button, and adds a second one to a red button
-    /// without that role.
-    private func presentTemplateAlert() {
-        let alert = UIAlertController(
-            title: "Which template?", message: note.summary == nil ? nil : replaceWarning, preferredStyle: .alert
-        )
-        for option in SummaryTemplate.all {
-            alert.addAction(UIAlertAction(title: option.name, style: .default) { _ in
-                summarize(template: option)
-            })
-        }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .destructive))
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive }
-        var top = scene?.windows.first { $0.isKeyWindow }?.rootViewController
-        while let presented = top?.presentedViewController { top = presented }
-        top?.present(alert, animated: true)
-    }
-    #endif
 
     private var summarizeMessage: String {
         note.isRecording
@@ -796,13 +789,13 @@ struct NoteDetailView: View {
     }
 
     /// Runs in the queue, like a transcript: it goes on when this screen closes.
-    private func summarize(template: SummaryTemplate = .general) {
+    private func summarize(template: SummaryTemplate = .general, model: SummaryModel? = nil) {
         guard !isSummarizing else { return }
         tab = .summary
         // The editor hands its text to the note a moment after typing; make sure it has.
         focused = false
         editor.blur()
-        let job = ProcessingService.Job.summary(note.id, template)
+        let job = ProcessingService.Job.summary(note.id, template, model)
         let processing = processing
         Task {
             try? await Task.sleep(for: .milliseconds(150))

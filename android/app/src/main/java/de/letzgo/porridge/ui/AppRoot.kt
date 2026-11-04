@@ -1,8 +1,8 @@
 package de.letzgo.porridge.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,7 +77,8 @@ fun AppRoot() {
         open(LinkImport.add(address).id)
     }
 
-    AnimatedContent(stack.lastOrNull(), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "screen") { top ->
+    // Seiten wechseln wie ein Projekt: sofort, ohne Blende.
+    AnimatedContent(stack.lastOrNull(), transitionSpec = { EnterTransition.None togetherWith ExitTransition.None }, label = "screen") { top ->
         when (top) {
             null -> NotesScreen(
                 list = list,

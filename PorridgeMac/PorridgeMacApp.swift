@@ -74,7 +74,7 @@ struct PorridgeMacApp: App {
         }
 
         Settings {
-            SettingsView(isPushed: true)
+            SettingsView(isEmbedded: true)
                 .environment(processing)
                 .environment(ModelManager.shared)
                 .frame(width: 640, height: 760)

@@ -43,6 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.letzgo.porridge.data.PorridgeJson
+import de.letzgo.porridge.ui.components.ChromeBar
+import androidx.compose.material.icons.filled.Favorite
 import de.letzgo.porridge.ui.Brand
 import kotlinx.serialization.Serializable
 
@@ -72,10 +74,7 @@ fun AcknowledgementsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val list = remember { Acknowledgements.load(context) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Brand.navy) }
-            Text("Acknowledgements", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
-        }
+        ChromeBar("Acknowledgements", Icons.Filled.Favorite, onBack = onBack) {}
         LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Text(

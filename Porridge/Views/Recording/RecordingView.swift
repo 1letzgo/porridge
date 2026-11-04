@@ -74,11 +74,11 @@ struct RecordingView: View {
                 live.cancel()
                 journal?.finish()
                 LiveRecording.end()
-                dismiss()
+                withoutAnimation { dismiss() }
             }
         }
         .alert("Can't Record", isPresented: .constant(errorMessage != nil)) {
-            Button("OK") { dismiss() }
+            Button("OK") { withoutAnimation { dismiss() } }
         } message: {
             Text(errorMessage ?? "")
         }
@@ -315,7 +315,7 @@ struct RecordingView: View {
         if !unsent.isEmpty { written.append(RecordingNote(at: result.duration, text: unsent)) }
         onFinish(result, names, liveText, written)
         journal?.finish()
-        dismiss()
+        withoutAnimation { dismiss() }
     }
 }
 

@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.notes
 
+import de.letzgo.porridge.ui.components.ChromeBar
+import androidx.compose.material.icons.filled.GraphicEq
 import de.letzgo.porridge.ui.components.EmptyState
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.core.content.ContextCompat
@@ -245,15 +247,15 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     var askTemplate by remember { mutableStateOf(false) }
 
     // Läuft in der Warteschlange wie ein Transkript: Sie geht weiter, wenn dieser Bildschirm zugeht.
-    suspend fun summarize(template: SummaryTemplate = SummaryTemplate.GENERAL) {
+    suspend fun summarize(template: SummaryTemplate = SummaryTemplate.GENERAL, model: de.letzgo.porridge.cloud.SummaryModel? = null) {
         if (isSummarizing) return
         tab = NoteTab.SUMMARY
         editor.blur()
         delay(150)
-        ProcessingService.enqueue(ProcessingService.Job.Summary(note.id, template))
+        ProcessingService.enqueue(ProcessingService.Job.Summary(note.id, template, model))
     }
 
-    // Eine Aufnahme fragt nach der Vorlage, in derselben Frage, die vor dem Ersetzen warnt; Notiz und Link haben nichts zu wählen.
+    // Eine Aufnahme fragt nach Modell und Vorlage, in demselben Fenster, die vor dem Ersetzen warnt; Notiz und Link haben nichts zu wählen.
     fun requestSummary() {
         when {
             note.segments.isNotEmpty() -> askTemplate = true
@@ -268,10 +270,13 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
-            // Leiste: zurück, teilen, mehr.
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Brand.navy) }
-                Spacer(Modifier.weight(1f))
+            // Leiste: zurück, Art der Notiz, teilen, mehr.
+            ChromeBar(
+                title = if (note.isLink) "Link" else if (note.isRecording) "Meeting" else "Note",
+                icon = if (note.isLink) Icons.Filled.Link else if (note.isRecording) Icons.Filled.GraphicEq else Icons.AutoMirrored.Filled.Notes,
+                tint = if (note.isLink) LinkOrange else if (note.isRecording) Brand.navy else Brand.sky,
+                onBack = onClose,
+            ) {
                 if (note.isRecording && !note.isLink) IconButton(onClick = { showExport = true }) { Icon(Icons.Filled.FileUpload, "Export", tint = Brand.navy) }
                 else IconButton(onClick = { share(context, note) }) { Icon(Icons.Filled.Share, "Share", tint = Brand.navy) }
                 Box {
@@ -406,17 +411,33 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
         val tag = Note.cleanTag(raw)
         if (tag.isNotEmpty() && note.tags.none { it.equals(tag, true) }) update { it.copy(labels = it.labels + tag) }
     }
-    if (askTemplate) AlertDialog(
-        onDismissRequest = { askTemplate = false }, title = { Text("Which template?") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                if (note.summary != null) Text("This replaces the current summary; your edits to it are lost.")
-                for (option in SummaryTemplate.all) TextButton(onClick = { askTemplate = false; AppGraph.scope.launch { summarize(option) } }) { Text(option.name, color = Brand.navy) }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = { askTemplate = false }) { Text("Cancel", color = Brand.danger) } },
-    )
+    if (askTemplate) {
+        // Gilt nur für diese Zusammenfassung; der Standard bleibt, wie er in den Einstellungen steht.
+        var chosen by remember { mutableStateOf(de.letzgo.porridge.cloud.SummaryModel.current) }
+        var open by remember { mutableStateOf(false) }
+        val options = de.letzgo.porridge.cloud.SummaryModel.run { if (current in available) available else listOf(current) + available }
+        AlertDialog(
+            onDismissRequest = { askTemplate = false }, title = { Text(if (note.summary == null) "Summarize" else "Summarize Again") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Model", style = MaterialTheme.typography.labelLarge, color = Brand.sky)
+                    Box {
+                        TextButton(onClick = { open = true }) { Text(chosen.menuTitle, color = Brand.navy) }
+                        DropdownMenu(open, onDismissRequest = { open = false }) {
+                            for (option in options) DropdownMenuItem(text = { Text(option.menuTitle) }, onClick = { chosen = option; open = false })
+                        }
+                    }
+                    (chosen as? de.letzgo.porridge.cloud.SummaryModel.Cloud)?.let { Text("The transcript goes to ${if (it.provider == de.letzgo.porridge.cloud.AIProvider.CUSTOM) "your server" else it.provider.label}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    HorizontalDivider()
+                    Text("Template", style = MaterialTheme.typography.labelLarge, color = Brand.sky, modifier = Modifier.padding(top = 8.dp))
+                    for (option in SummaryTemplate.all) TextButton(onClick = { askTemplate = false; AppGraph.scope.launch { summarize(option, chosen) } }) { Text(option.name, color = Brand.navy) }
+                    if (note.summary != null) Text("This replaces the current summary; your edits to it are lost.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { askTemplate = false }) { Text("Cancel", color = Brand.danger) } },
+        )
+    }
     if (confirmResummarize) AlertDialog(
         onDismissRequest = { confirmResummarize = false },
         title = { Text("Replace the current summary?") }, text = { Text("Your edits to the summary are lost.") },
@@ -476,7 +497,7 @@ private fun MissingNote(onClose: () -> Unit) {
     var settled by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { delay(600); settled = true }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
-        IconButton(onClick = onClose, modifier = Modifier.padding(horizontal = 4.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Brand.navy) }
+        ChromeBar("Note", Icons.AutoMirrored.Filled.Notes, onBack = onClose) {}
         if (settled) EmptyState("Note Not Found", "It was deleted or is no longer on this device.", Icons.AutoMirrored.Filled.Notes)
     }
 }
@@ -646,7 +667,7 @@ private fun SummaryTab(
                     CircularProgressIndicator(color = Brand.sky)
                     Text(message, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     status?.let { Text(it, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)) }
-                    de.letzgo.porridge.cloud.SummaryService.modelLabel?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    (ProcessingService.summaryModels.collectAsState().value[note.id]?.label ?: de.letzgo.porridge.cloud.SummaryService.modelLabel)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
             note.summary != null -> {

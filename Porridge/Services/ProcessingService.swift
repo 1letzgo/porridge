@@ -17,11 +17,12 @@ final class ProcessingService {
         /// A saved web link: load the page, then (optionally) summarize it.
         case link(UUID, summarize: Bool)
         /// The summary somebody asked for, in the note or with its template.
-        case summary(UUID, SummaryTemplate)
+        /// `model` is nil for the default.
+        case summary(UUID, SummaryTemplate, SummaryModel?)
 
         var id: UUID {
             switch self {
-            case .transcript(let id), .note(let id), .link(let id, _), .summary(let id, _): id
+            case .transcript(let id), .note(let id), .link(let id, _), .summary(let id, _, _): id
             }
         }
     }
@@ -30,6 +31,8 @@ final class ProcessingService {
     private(set) var stages: [UUID: String] = [:]
     /// Notes whose requested summary is waiting or being written.
     private(set) var summarizing: Set<UUID> = []
+    /// The model chosen for a summary that is waiting or being written, when it is not the default.
+    private(set) var summaryModels: [UUID: SummaryModel] = [:]
     /// Why a summary failed, until the note has shown it (its screen may have been closed by then).
     private(set) var summaryErrors: [UUID: String] = [:]
 
@@ -47,7 +50,10 @@ final class ProcessingService {
         guard !queue.contains(job), stages[job.id] == nil else { return }
         queue.append(job)
         stages[job.id] = "Waiting…"
-        if case .summary = job { summarizing.insert(job.id) }
+        if case .summary(_, _, let model) = job {
+            summarizing.insert(job.id)
+            summaryModels[job.id] = model
+        }
         runIfNeeded()
     }
 
@@ -82,11 +88,12 @@ final class ProcessingService {
                     case .transcript(let id): await processTranscript(id)
                     case .note(let id): await processNote(id)
                     case .link(let id, let summarize): await processLink(id, summarize: summarize)
-                    case .summary(let id, let template): await processSummary(id, template: template)
+                    case .summary(let id, let template, let model): await processSummary(id, template: template, model: model)
                     }
                 }
                 stages[job.id] = nil
                 summarizing.remove(job.id)
+                summaryModels[job.id] = nil
             }
             isRunning = false
         }
@@ -291,17 +298,17 @@ final class ProcessingService {
 
     // MARK: - Summaries
 
-    private func processSummary(_ id: UUID, template: SummaryTemplate) async {
+    private func processSummary(_ id: UUID, template: SummaryTemplate, model: SummaryModel?) async {
         guard let note = fetchNote(id) else { return }
         #if os(iOS)
         var continued: AnyObject?
-        if #available(iOS 26, *), AppSettings.billing == .local, LocalModel.selected != .apple {
+        if #available(iOS 26, *), case .local(let local) = model ?? .current, local != .apple {
             continued = ContinuedSummaryTask.begin(title: "Summarizing", subtitle: note.title)
         }
         #endif
         var succeeded = false
         do {
-            try await SummaryService.summarize(note, template: template) { [weak self] status in
+            try await SummaryService.summarize(note, template: template, model: model) { [weak self] status in
                 self?.stages[id] = status
                 #if os(iOS)
                 if #available(iOS 26, *) { (continued as? ContinuedSummaryTask)?.update(status) }

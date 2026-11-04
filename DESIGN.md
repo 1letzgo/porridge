@@ -32,6 +32,7 @@ Every kind of thing keeps its color everywhere: in the list icon, its section he
 - **Sheets:** "Cancel" on the left when closing throws work away, "Done" on the right when nothing is lost.
 - **Deleting for good always asks first.** Moving something to Recently Deleted does not, because it can come back.
 - **Main buttons** are a wash of their color with a navy label. Disabled buttons fade; destructive ones turn red.
+- **Summary models** are one list, on-device and cloud alike, with one default. Adding one happens in a sheet; a meeting chooses its model and template in one sheet, and that choice holds for this summary only.
 - **Menus** are grouped by a line: the note and its summary, the recording, what deletes.
 - **Native controls first.** Custom ones only where the system has no equivalent.
 - **Wording:** English Title Case for buttons and titles, "…" without a space before it.

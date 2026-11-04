@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
@@ -71,7 +72,7 @@ import java.util.Locale
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-internal fun ProjectRow(project: NoteFolder, notes: List<Note>, onOpen: (String) -> Unit) {
+internal fun ProjectRow(project: NoteFolder, notes: List<Note>, showsDivider: Boolean = true, onOpen: (String) -> Unit) {
     val coroutines = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
@@ -112,7 +113,7 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, onOpen: (String)
                             )
                         }
                     }
-                    HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    if (showsDivider) HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
             DropdownMenu(menu, onDismissRequest = { menu = false }) {
@@ -166,7 +167,7 @@ internal fun ProjectDetail(
             return@Column
         }
         LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
-            items(shown, key = { it.id }) { note -> NoteSwipeRow(note, stages[note.id], onOpen, projectID = project.id) }
+            itemsIndexed(shown, key = { _, it -> it.id }) { index, note -> NoteSwipeRow(note, stages[note.id], onOpen, projectID = project.id, showsDivider = index < shown.lastIndex) }
         }
     }
 }

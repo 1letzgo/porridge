@@ -50,7 +50,7 @@ extension XCUIApplication {
     }
 
     func goBack() {
-        navigationBars.buttons.element(boundBy: 0).tap()
+        buttons["Back"].firstMatch.tap()
         XCTAssertTrue(buttons["Create"].waitForExistence(timeout: 10), "list missing after going back")
     }
 
