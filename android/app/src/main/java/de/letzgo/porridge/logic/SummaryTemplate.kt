@@ -25,6 +25,11 @@ data class SummaryTemplate(
         val BUILT_IN = listOf(
             GENERAL,
             SummaryTemplate(
+                "team", "Team Meeting",
+                "This is a team meeting. Pay attention to the status of the work, what is blocking it, what was decided and who does what next.",
+                listOf("Status", "Blockers", "Decisions"),
+            ),
+            SummaryTemplate(
                 "oneOnOne", "One-on-One",
                 "This is a one-on-one conversation. Pay attention to how the person is doing, feedback in both directions, goals and what was agreed.",
                 listOf("Feedback", "Goals", "Agreements"),
@@ -38,6 +43,11 @@ data class SummaryTemplate(
                 "lecture", "Lecture",
                 "This is a lecture or talk. Pay attention to the content: concepts, definitions, examples and how they connect, not to who said what.",
                 listOf("Key Concepts", "Examples"),
+            ),
+            SummaryTemplate(
+                "interview", "Interview",
+                "This is an interview. Pay attention to what the person says: key statements, their reasons and memorable quotes in their own words. List a task only if someone explicitly committed to it.",
+                listOf("Key Statements", "Quotes"),
             ),
         )
 

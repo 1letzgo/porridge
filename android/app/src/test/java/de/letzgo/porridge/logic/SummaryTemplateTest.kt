@@ -26,6 +26,17 @@ class SummaryTemplateTest {
         assertTrue(prompt.contains("TAGS:"))
     }
 
+    @Test fun meetingPromptForbidsInventingAndAsksForOwnerAndDueDate() {
+        val prompt = SummaryLogic.systemPrompt(german)
+        assertTrue(prompt.contains("Only use what is in the transcript"))
+        assertTrue(prompt.contains("<owner, if known> – <due date, if named>"))
+    }
+
+    @Test fun onlyMeetingNotesMarkTasks() {
+        assertTrue(SummaryLogic.notesPrompt(german, "meeting").contains("TASK:"))
+        assertFalse(SummaryLogic.notesPrompt(german, "note").contains("TASK:"))
+    }
+
     @Test fun taskLinesWithoutAListMarkGetOne() {
         assertEquals("Text\n- [ ] Anna ruft an\n- [ ] Tom schreibt\n- [x] Lisa", SummaryLogic.withListMarks("Text\n[ ] Anna ruft an\n- [ ] Tom schreibt\n[x] Lisa"))
     }

@@ -15,6 +15,11 @@ struct SummaryTemplate: Codable, Hashable, Identifiable {
     static let builtIn: [SummaryTemplate] = [
         general,
         SummaryTemplate(
+            id: "team", name: "Team Meeting",
+            focus: "This is a team meeting. Pay attention to the status of the work, what is blocking it, what was decided and who does what next.",
+            sections: ["Status", "Blockers", "Decisions"]
+        ),
+        SummaryTemplate(
             id: "oneOnOne", name: "One-on-One",
             focus: "This is a one-on-one conversation. Pay attention to how the person is doing, feedback in both directions, goals and what was agreed.",
             sections: ["Feedback", "Goals", "Agreements"]
@@ -28,6 +33,11 @@ struct SummaryTemplate: Codable, Hashable, Identifiable {
             id: "lecture", name: "Lecture",
             focus: "This is a lecture or talk. Pay attention to the content: concepts, definitions, examples and how they connect, not to who said what.",
             sections: ["Key Concepts", "Examples"]
+        ),
+        SummaryTemplate(
+            id: "interview", name: "Interview",
+            focus: "This is an interview. Pay attention to what the person says: key statements, their reasons and memorable quotes in their own words. List a task only if someone explicitly committed to it.",
+            sections: ["Key Statements", "Quotes"]
         ),
     ]
 

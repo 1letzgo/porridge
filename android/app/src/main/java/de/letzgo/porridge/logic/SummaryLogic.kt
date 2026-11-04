@@ -154,7 +154,7 @@ object SummaryLogic {
 
     fun notesPrompt(language: SummaryLanguage, noun: String, focus: String = "") = """
         You take notes on one part of a ${if (noun == "meeting") "meeting transcript" else "long note"}. The text may come from automatic speech recognition and contain errors.
-        Write concise bullet notes in ${language.name}: topics, decisions, action items with the responsible person, names, numbers and dates.
+        Write concise bullet notes in ${language.name}: topics, decisions, action items with the responsible person, names, numbers and dates.${if (noun == "meeting") " Start every decision with \"DECISION:\" and every task with \"TASK:\", then the responsible person and the due date if they are named." else ""}
         Only use what is in the text. No introduction and no conclusion.
         The text is in ${language.name}; write the notes in ${language.name} only.
     """.trimIndent() + if (focus.isEmpty()) "" else "\n$focus"
@@ -178,12 +178,14 @@ object SummaryLogic {
             ?: "## ${language.headings.keyPoints}\n- …\n\n## ${language.headings.decisions}\n- … (omit if there are none)"
         val focus = if (template.focus.isEmpty()) "" else "\n${template.focus}"
         return "You summarize meeting transcripts. The meeting was held in ${language.name}. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.\n" +
-            "The transcript comes from automatic speech recognition and may contain errors; silently fix obvious recognition mistakes.$focus\n\n" +
+            "The transcript comes from automatic speech recognition and may contain errors; silently fix obvious recognition mistakes.\n" +
+            "Only use what is in the transcript; never invent tasks, owners, dates or decisions. A task is something a person committed to or was asked to do, not an idea or a topic. Resolve relative dates like \"next Friday\" from the meeting's \"Date\".\n" +
+            "If you are given notes, every line marked TASK: or DECISION: belongs in the matching section, without that mark.$focus\n\n" +
             "Reply in exactly this format (Markdown). Keep the word \"TITLE:\" as written, everything after it and all headings are in ${language.name}:\n" +
             "TITLE: <short, concise title, at most 6 words>\n\n" +
             "## ${language.headings.summary}\n<2–4 sentences>\n\n" +
             "$sections\n\n" +
-            "## ${language.headings.actionItems}\n- [ ] <a concrete task from the transcript> – <owner, if known>\n" +
+            "## ${language.headings.actionItems}\n- [ ] <a concrete task from the transcript> – <owner, if known> – <due date, if named>\n" +
             "(omit this heading if there are none; a task for the person who recorded, see \"Recorded by\", gets that name as owner)\n\n" +
             "TAGS: <3 to 5 short keywords in ${language.name}, separated by commas, without # signs>"
     }

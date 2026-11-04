@@ -246,7 +246,7 @@ enum SummaryService {
     static func notesPrompt(_ language: SummaryLanguage, noun: String, focus: String = "") -> String {
         """
         You take notes on one part of a \(noun == "meeting" ? "meeting transcript" : "long note"). The text may come from automatic speech recognition and contain errors.
-        Write concise bullet notes in \(language.name): topics, decisions, action items with the responsible person, names, numbers and dates.
+        Write concise bullet notes in \(language.name): topics, decisions, action items with the responsible person, names, numbers and dates.\(noun == "meeting" ? " Start every decision with \"DECISION:\" and every task with \"TASK:\", then the responsible person and the due date if they are named." : "")
         Only use what is in the text. No introduction and no conclusion.
         The text is in \(language.name); write the notes in \(language.name) only.\(focus.isEmpty ? "" : "\n" + focus)
         """
@@ -289,7 +289,9 @@ enum SummaryService {
         """
         return """
         You summarize meeting transcripts. The meeting was held in \(language.name). Write the whole summary in \(language.name) and in no other language, even though these instructions are in English.
-        The transcript comes from automatic speech recognition and may contain errors; silently fix obvious recognition mistakes.\(template.focus.isEmpty ? "" : "\n" + template.focus)
+        The transcript comes from automatic speech recognition and may contain errors; silently fix obvious recognition mistakes.
+        Only use what is in the transcript; never invent tasks, owners, dates or decisions. A task is something a person committed to or was asked to do, not an idea or a topic. Resolve relative dates like "next Friday" from the meeting's "Date".
+        If you are given notes, every line marked TASK: or DECISION: belongs in the matching section, without that mark.\(template.focus.isEmpty ? "" : "\n" + template.focus)
 
         Reply in exactly this format (Markdown). Keep the word "TITLE:" as written, everything after it and all headings are in \(language.name):
         TITLE: <short, concise title, at most 6 words>
@@ -300,7 +302,7 @@ enum SummaryService {
         \(sections)
 
         ## \(language.headings.actionItems)
-        - [ ] <a concrete task from the transcript> – <owner, if known>
+        - [ ] <a concrete task from the transcript> – <owner, if known> – <due date, if named>
         (omit this heading if there are none; a task for the person who recorded, see "Recorded by", gets that name as owner)
 
         TAGS: <3 to 5 short keywords in \(language.name), separated by commas, without # signs>

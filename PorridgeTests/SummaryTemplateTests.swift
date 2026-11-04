@@ -30,6 +30,26 @@ final class SummaryTemplateTests: XCTestCase {
         XCTAssertTrue(prompt.contains("## Wichtige Punkte"))
     }
 
+    func testMeetingPromptForbidsInventingAndAsksForOwnerAndDueDate() {
+        let prompt = SummaryService.systemPrompt(german, template: .general)
+        XCTAssertTrue(prompt.contains("Only use what is in the transcript"))
+        XCTAssertTrue(prompt.contains("<owner, if known> – <due date, if named>"))
+    }
+
+    func testNewTemplatesKeepClearOfTheTaskHeadings() throws {
+        for id in ["team", "interview"] {
+            let template = try XCTUnwrap(SummaryTemplate.builtIn.first { $0.id == id })
+            for section in template.sections ?? [] {
+                XCTAssertTrue(SummaryTasks.parse("## \(section)\n- Ein Punkt").isEmpty, section)
+            }
+        }
+    }
+
+    func testOnlyMeetingNotesMarkTasks() {
+        XCTAssertTrue(SummaryService.notesPrompt(german, noun: "meeting").contains("TASK:"))
+        XCTAssertFalse(SummaryService.notesPrompt(german, noun: "note").contains("TASK:"))
+    }
+
     func testTaskLinesWithoutAListMarkGetOne() {
         XCTAssertEqual(SummaryService.withListMarks("Text\n[ ] Anna ruft an\n- [ ] Tom schreibt\n[x] Lisa"), "Text\n- [ ] Anna ruft an\n- [ ] Tom schreibt\n- [x] Lisa")
     }
