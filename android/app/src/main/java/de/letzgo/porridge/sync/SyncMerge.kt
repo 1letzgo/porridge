@@ -19,6 +19,28 @@ data class SyncBase(val local: String, val remote: String)
  * Grabsteine (id → Zeitpunkt in ms).
  */
 object SyncMerge {
+    class FileResult(val failed: List<String>, val firstError: Throwable?)
+
+    /**
+     * Arbeitet die Aufnahmen einzeln ab: Eine Datei, die scheitert, hält die danach nicht auf, auch nicht beim nächsten Mal.
+     * Ein Abbruch der Coroutine geht gleich durch.
+     */
+    suspend fun eachFile(names: List<String>, work: suspend (String) -> Unit): FileResult {
+        val failed = mutableListOf<String>()
+        var firstError: Throwable? = null
+        for (name in names) {
+            try {
+                work(name)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed += name
+                if (firstError == null) firstError = e
+            }
+        }
+        return FileResult(failed, firstError)
+    }
+
     data class Local(val record: JsonObject, val updatedAt: Long)
 
     data class Result(

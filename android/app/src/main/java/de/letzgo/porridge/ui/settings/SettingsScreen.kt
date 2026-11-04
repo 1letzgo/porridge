@@ -270,7 +270,7 @@ private fun ModelRow(pack: ModelPack, subtitle: String, unload: () -> Unit) {
 }
 
 @Composable
-private fun ModelsCard() = Card("On-Device Models", footer = "Models run on this phone. Nothing leaves it.") {
+private fun ModelsCard() = Card("On-Device Models", footer = if (SyncMode.chosen == SyncMode.NEXTCLOUD) "Models run on this phone. With Nextcloud, the audio is also copied to your folder there." else "Models run on this phone. Nothing leaves it.") {
     ModelRow(SpeechModel.pack, "Speech recognition · 0.6B") { SpeechModel.release() }
     HorizontalDivider()
     ModelRow(Diarizer.pack, "pyannote") { Diarizer.release() }

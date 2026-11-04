@@ -153,4 +153,29 @@ class SyncMergeTest {
         // Nichts gesetzt, nirgends: die Datei bleibt ohne Eintrag.
         assertTrue(SyncMerge.mergeSettings(mapOf("myName" to ""), emptyMap(), emptyMap(), now = 60).file.isEmpty())
     }
+
+    @Test fun oneFailedRecordingDoesNotHoldBackTheOthers() = kotlinx.coroutines.test.runTest {
+        val failure = IllegalStateException("kaputt")
+        val done = mutableListOf<String>()
+        val result = SyncMerge.eachFile(listOf("a", "b", "c", "d")) { name ->
+            if (name == "a" || name == "c") throw failure
+            done += name
+        }
+        assertEquals(listOf("b", "d"), done)
+        assertEquals(listOf("a", "c"), result.failed)
+        assertEquals(failure, result.firstError)
+    }
+
+    @Test fun cancellingStopsTheRecordings() = kotlinx.coroutines.test.runTest {
+        val done = mutableListOf<String>()
+        assertThrows(kotlin.coroutines.cancellation.CancellationException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                SyncMerge.eachFile(listOf("a", "b")) { name ->
+                    done += name
+                    throw kotlin.coroutines.cancellation.CancellationException()
+                }
+            }
+        }
+        assertEquals(listOf("a"), done)
+    }
 }

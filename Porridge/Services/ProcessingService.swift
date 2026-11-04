@@ -107,77 +107,107 @@ final class ProcessingService {
         save()
 
         do {
-            stages[id] = "Preparing audio…"
-            let splitChannels = meeting.speakerMode == .channels
-            let source = AudioStore.url(for: fileName)
-            let prepared = try await Task.detached(priority: .userInitiated) {
-                try AudioPreprocessor.prepare(source: source, measureChannels: splitChannels)
-            }.value
-            defer { try? FileManager.default.removeItem(at: prepared.monoURL) }
+            try await transcribe(meeting, fileName: fileName, stageID: id)
+        } catch {
+            meeting.status = .failed
+            meeting.errorMessage = error.localizedDescription
+        }
+        save()
+    }
 
-            stages[id] = "Loading speech model…"
-            try await ModelManager.shared.ensureASR()
-            stages[id] = "Transcribing…"
-            let output = try await TranscriptionEngine.shared.transcribe(prepared.monoURL, language: AppSettings.language)
+    /// Fills `meeting` with the transcript and speakers of the recording.
+    private func transcribe(_ meeting: Note, fileName: String, stageID id: UUID) async throws {
+        stages[id] = "Preparing audio…"
+        let splitChannels = meeting.speakerMode == .channels
+        let source = AudioStore.url(for: fileName)
+        let prepared = try await Task.detached(priority: .userInitiated) {
+            try AudioPreprocessor.prepare(source: source, measureChannels: splitChannels)
+        }.value
+        defer { try? FileManager.default.removeItem(at: prepared.monoURL) }
 
-            var speakers = meeting.speakers
-            var diagnostics: String?
-            var speakerIds: [String?] = output.words.map { _ in nil }
+        stages[id] = "Loading speech model…"
+        try await ModelManager.shared.ensureASR()
+        stages[id] = "Transcribing…"
+        let output = try await TranscriptionEngine.shared.transcribe(prepared.monoURL, language: AppSettings.language)
 
-            if let energy = prepared.channelEnergy {
-                speakerIds = SpeakerAssigner.byChannel(output.words, energy: energy)
-                for (index, channelID) in [SpeakerAssigner.leftChannelID, SpeakerAssigner.rightChannelID].enumerated()
-                where !speakers.contains(where: { $0.id == channelID }) {
-                    speakers.append(Speaker(id: channelID, name: "Speaker \(index + 1)", colorIndex: index))
-                }
-            } else if AppSettings.speakerDetectionEnabled, !output.words.isEmpty {
-                stages[id] = "Detecting speakers…"
-                do {
-                    try await ModelManager.shared.ensureDiarizer()
-                    let segments = try await TranscriptionEngine.shared.diarize(prepared.monoURL)
-                    let assignment = SpeakerAssigner.byDiarization(output.words, segments: segments)
-                    // A single voice is kept too, so it can be recognized or named like any other.
-                    diagnostics = assignment.speakers.isEmpty
-                        ? "Speaker detection found no speech (\(segments.count) segments)." : nil
-                    if !assignment.speakers.isEmpty {
-                        speakerIds = assignment.ids
-                        speakers = assignment.speakers.enumerated().map { index, sid in
-                            speakers.first(where: { $0.id == sid })
-                                ?? Speaker(id: sid, name: "Speaker \(index + 1)", colorIndex: index)
-                        }
-                        meeting.speakerMode = .diarized
-                    } else {
-                        speakers = []
-                        meeting.speakerMode = .none
+        var speakers = meeting.speakers
+        var diagnostics: String?
+        var speakerIds: [String?] = output.words.map { _ in nil }
+
+        if let energy = prepared.channelEnergy {
+            speakerIds = SpeakerAssigner.byChannel(output.words, energy: energy)
+            for (index, channelID) in [SpeakerAssigner.leftChannelID, SpeakerAssigner.rightChannelID].enumerated()
+            where !speakers.contains(where: { $0.id == channelID }) {
+                speakers.append(Speaker(id: channelID, name: "Speaker \(index + 1)", colorIndex: index))
+            }
+        } else if AppSettings.speakerDetectionEnabled, !output.words.isEmpty {
+            stages[id] = "Detecting speakers…"
+            do {
+                try await ModelManager.shared.ensureDiarizer()
+                let segments = try await TranscriptionEngine.shared.diarize(prepared.monoURL)
+                let assignment = SpeakerAssigner.byDiarization(output.words, segments: segments)
+                // A single voice is kept too, so it can be recognized or named like any other.
+                diagnostics = assignment.speakers.isEmpty
+                    ? "Speaker detection found no speech (\(segments.count) segments)." : nil
+                if !assignment.speakers.isEmpty {
+                    speakerIds = assignment.ids
+                    speakers = assignment.speakers.enumerated().map { index, sid in
+                        speakers.first(where: { $0.id == sid })
+                            ?? Speaker(id: sid, name: "Speaker \(index + 1)", colorIndex: index)
                     }
-                } catch {
-                    // Speaker detection is optional; keep the plain transcript.
-                    diagnostics = "Speaker detection failed: \(error.localizedDescription)"
+                    meeting.speakerMode = .diarized
+                } else {
                     speakers = []
                     meeting.speakerMode = .none
                 }
-            }
-
-            meeting.segments = SpeakerAssigner.group(output.words, speakerIds: speakerIds)
-            // Drop speakers that ended up without any text (e.g. brief false detections).
-            let used = Set(meeting.segments.compactMap(\.speakerId))
-            meeting.speakers = speakers.filter { used.contains($0.id) }
-            if meeting.speakerMode == .diarized, meeting.speakers.isEmpty {
-                meeting.speakers = []
+            } catch {
+                // Speaker detection is optional; keep the plain transcript.
+                diagnostics = "Speaker detection failed: \(error.localizedDescription)"
+                speakers = []
                 meeting.speakerMode = .none
-                meeting.segments = meeting.segments.map { var s = $0; s.speakerId = nil; return s }
             }
-            meeting.errorMessage = diagnostics
-            if meeting.segments.isEmpty, !output.text.isEmpty {
-                meeting.segments = [TranscriptSegment(speakerId: nil, start: 0, end: prepared.duration, text: output.text)]
-            }
-            if AppSettings.voiceRecognitionEnabled, !meeting.speakers.isEmpty {
-                stages[id] = "Recognizing voices…"
-                meeting.speakers = await VoiceProfiles.identify(
-                    meeting.speakers, segments: meeting.segments, audio: prepared.monoURL, context: context)
-            }
-            meeting.duration = prepared.duration
-            meeting.status = .ready
+        }
+
+        meeting.segments = SpeakerAssigner.group(output.words, speakerIds: speakerIds)
+        // Drop speakers that ended up without any text (e.g. brief false detections).
+        let used = Set(meeting.segments.compactMap(\.speakerId))
+        meeting.speakers = speakers.filter { used.contains($0.id) }
+        if meeting.speakerMode == .diarized, meeting.speakers.isEmpty {
+            meeting.speakers = []
+            meeting.speakerMode = .none
+            meeting.segments = meeting.segments.map { var s = $0; s.speakerId = nil; return s }
+        }
+        meeting.errorMessage = diagnostics
+        if meeting.segments.isEmpty, !output.text.isEmpty {
+            meeting.segments = [TranscriptSegment(speakerId: nil, start: 0, end: prepared.duration, text: output.text)]
+        }
+        if AppSettings.voiceRecognitionEnabled, !meeting.speakers.isEmpty {
+            stages[id] = "Recognizing voices…"
+            meeting.speakers = await VoiceProfiles.identify(
+                meeting.speakers, segments: meeting.segments, audio: prepared.monoURL, context: context)
+        }
+        meeting.duration = prepared.duration
+        meeting.status = .ready
+    }
+
+    /// A meeting that was recorded further: the new part gets its own transcript, then joins the meeting. What was
+    /// there (names, corrections) stays. The part waits in `pendingAudioFileName`, so a failure or restart loses nothing.
+    private func processContinuation(_ meeting: Note, fileName: String) async {
+        let id = meeting.id
+        meeting.status = .transcribing
+        meeting.errorMessage = nil
+        save()
+        do {
+            let part = Note()
+            part.createdAt = Date()
+            part.audioFileName = fileName
+            part.speakerMode = AudioStore.audioInfo(for: fileName)?.channels == 2 ? .channels : .none
+            try await transcribe(part, fileName: fileName, stageID: id)
+            stages[id] = "Adding to the meeting…"
+            try await NoteMerger.append(part, to: meeting)
+            meeting.pendingAudioFileName = nil
+            meeting.errorMessage = part.errorMessage
+            meeting.updatedAt = Date()
         } catch {
             meeting.status = .failed
             meeting.errorMessage = error.localizedDescription
@@ -191,6 +221,10 @@ final class ProcessingService {
         guard let note = fetchNote(id),
               let fileName = note.pendingAudioFileName,
               AudioStore.exists(fileName) else { return }
+        if note.isRecording {
+            await processContinuation(note, fileName: fileName)
+            return
+        }
         note.status = .transcribing
         note.errorMessage = nil
         save()

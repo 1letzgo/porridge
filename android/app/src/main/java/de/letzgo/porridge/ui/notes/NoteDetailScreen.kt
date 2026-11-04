@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
@@ -74,6 +75,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -133,7 +135,7 @@ private enum class NoteTab(val title: String) { NOTE("Note"), TRANSCRIPT("Transc
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
+fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -> Unit = {}, onClose: () -> Unit) {
     val context = LocalContext.current
     val db = PorridgeDatabase.shared
     val stored by db.notes().observe(noteID).collectAsState(initial = null)
@@ -157,6 +159,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     val isSummarizing = note.id in summarizing
     var confirmResummarize by remember { mutableStateOf(false) }
     var confirmDeleteAudio by remember { mutableStateOf(false) }
+    var confirmContinueRecording by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Speaker?>(null) }
     var addingTag by remember { mutableStateOf(false) }
     var editingSummary by remember { mutableStateOf(false) }
@@ -220,6 +223,19 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     fun startDictation() = dictation.start(note.title.ifEmpty { "Note" })
     // Abgelehnt: `start` meldet dann selbst, dass das Mikrofon fehlt.
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { startDictation() }
+    // Eine gerade erstellte Notiz nimmt sofort auf (iOS: `startsRecording`). Ohne Mikrofon bleibt die Tastatur, ohne Meldung.
+    val micForNewNote = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) startDictation() }
+    var didStartRecording by rememberSaveable { mutableStateOf(false) }
+    var showExport by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (draft == null || didStartRecording) return@LaunchedEffect
+        didStartRecording = true
+        // Nach dem Fokus, den der Editor einer neuen Notiz gibt: Die Tastatur geht wieder weg.
+        delay(300)
+        editor.blur()
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startDictation()
+        else micForNewNote.launch(Manifest.permission.RECORD_AUDIO)
+    }
 
     var askTemplate by remember { mutableStateOf(false) }
 
@@ -251,7 +267,8 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Brand.navy) }
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = { share(context, note) }) { Icon(Icons.Filled.Share, "Share", tint = Brand.navy) }
+                if (note.isRecording && !note.isLink) IconButton(onClick = { showExport = true }) { Icon(Icons.Filled.FileUpload, "Export", tint = Brand.navy) }
+                else IconButton(onClick = { share(context, note) }) { Icon(Icons.Filled.Share, "Share", tint = Brand.navy) }
                 Box {
                     IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, "More", tint = Brand.navy) }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
@@ -268,6 +285,12 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
                             if (note.isLink) DropdownMenuItem(text = { Text("Load Page Again") }, enabled = stage == null, onClick = {
                                 act { coroutines.launch { db.notes().upsert(note.copy(statusRaw = ProcessingStatus.RECORDED.raw)); ProcessingService.enqueue(ProcessingService.Job.Link(note.id, false)) } }
                             })
+                            // Eine Aufnahme auf einem anderen Gerät ließe sich nicht mit dem neuen Teil verbinden.
+                            if (note.isRecording && !note.isLink) DropdownMenuItem(
+                                text = { Text("Continue Recording") },
+                                enabled = stage == null && note.status == ProcessingStatus.READY && note.pendingAudioFileName == null && (note.audioFileName == null || note.hasLocalAudio),
+                                onClick = { act { if (note.summary == null) onContinueRecording(note) else confirmContinueRecording = true } },
+                            )
                             if (note.segments.isNotEmpty()) {
                                 DropdownMenuItem(text = { Text("Copy Transcript") }, onClick = { act { copy(context, note.transcriptText()) } })
                                 DropdownMenuItem(text = { Text("Merge with…") }, enabled = stage == null && note.status == ProcessingStatus.READY, onClick = { act { showMerge = true } })
@@ -338,6 +361,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
     }
 
     // Dialoge
+    if (showExport) MeetingExportSheet(note) { showExport = false }
     renaming?.let { speaker ->
         TextPrompt("Rename Speaker", speaker.name, "Save", onDismiss = { renaming = null }) { name ->
             renaming = null
@@ -371,6 +395,13 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onClose: () -> Unit) {
         title = { Text("Replace the current summary?") }, text = { Text("Your edits to the summary are lost.") },
         confirmButton = { TextButton(onClick = { confirmResummarize = false; AppGraph.scope.launch { summarize() } }) { Text("Summarize Again", color = Brand.danger) } },
         dismissButton = { TextButton(onClick = { confirmResummarize = false }) { Text("Cancel") } },
+    )
+    if (confirmContinueRecording) AlertDialog(
+        onDismissRequest = { confirmContinueRecording = false },
+        title = { Text("Continue Recording?") },
+        text = { Text("The new part is added to the meeting. The summary is removed and can be written again.") },
+        confirmButton = { TextButton(onClick = { confirmContinueRecording = false; onContinueRecording(note) }) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = { confirmContinueRecording = false }) { Text("Cancel") } },
     )
     if (confirmDeleteAudio) AlertDialog(
         onDismissRequest = { confirmDeleteAudio = false },
@@ -524,8 +555,8 @@ private fun StatusPanel(note: Note, stage: String?) {
                 Text(note.errorMessage ?: "Transcription failed", color = Brand.danger)
                 val job = when {
                     note.isLink -> ProcessingService.Job.Link(note.id, false)
-                    note.hasLocalAudio -> ProcessingService.Job.Transcript(note.id)
                     AudioStore.exists(note.pendingAudioFileName) -> ProcessingService.Job.NoteAudio(note.id)
+                    note.hasLocalAudio -> ProcessingService.Job.Transcript(note.id)
                     else -> null
                 }
                 val coroutines = rememberCoroutineScope()

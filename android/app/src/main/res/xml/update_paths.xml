@@ -2,4 +2,6 @@
 <paths>
     <!-- Heruntergeladene App-Updates für den Paketinstaller (data/AppUpdate.kt). -->
     <cache-path name="updates" path="updates/" />
+    <!-- Exportierte Meetings zum Teilen (ui/notes/MeetingExportSheet.kt). -->
+    <cache-path name="exports" path="exports/" />
 </paths>

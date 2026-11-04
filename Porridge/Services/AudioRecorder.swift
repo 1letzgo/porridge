@@ -1,5 +1,8 @@
 import Accelerate
 import AVFoundation
+#if os(iOS)
+import UIKit
+#endif
 import Observation
 
 struct RecordingResult {
@@ -27,6 +30,8 @@ enum RecorderError: LocalizedError {
 final class AudioRecorder {
     private(set) var isRecording = false
     private(set) var isPaused = false
+    /// A call (or Siri, an alarm) has the microphone: paused until it is over.
+    private(set) var isPausedForCall = false
     private(set) var elapsed: TimeInterval = 0
     private(set) var levels: [Float] = [0]
     private(set) var inputName = ""
@@ -35,6 +40,13 @@ final class AudioRecorder {
     private(set) var isSplitStereo = false
 
     @ObservationIgnored var onInterrupted: (() -> Void)?
+    /// A meeting pauses for a call and goes on after it. Without this (dictation) a call ends the recording.
+    @ObservationIgnored var pausesForCalls = false
+    /// The recorder paused or resumed on its own.
+    @ObservationIgnored var onPauseChanged: (() -> Void)?
+    /// Whether the recording was running when the call came: one paused by hand stays paused.
+    @ObservationIgnored private var resumeAfterCall = false
+    @ObservationIgnored private var restartTask: Task<Void, Never>?
     /// Receives a mono copy of every microphone buffer (for live transcription).
     @ObservationIgnored var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
 
@@ -42,7 +54,8 @@ final class AudioRecorder {
     @ObservationIgnored private var engine: AVAudioEngine?
     @ObservationIgnored private var recordingFormat: AVAudioFormat?
     @ObservationIgnored private var writer: TapWriter?
-    @ObservationIgnored private var fileName: String?
+    /// The file being written, unreadable until the recording stops.
+    @ObservationIgnored private(set) var fileName: String?
     /// When the clock last started; nil while paused.
     @ObservationIgnored private var startDate: Date?
     /// Recorded time before the last pause.
@@ -144,7 +157,10 @@ final class AudioRecorder {
     }
 
     func resume() {
-        guard isRecording, isPaused else { return }
+        guard isRecording, isPaused, !isPausedForCall else { return }
+        // After a call that could not restart the microphone on its own.
+        guard restartEngine() else { return }
+        resumeAfterCall = false
         startDate = Date()
         isPaused = false
         writer?.isPaused = false
@@ -158,6 +174,8 @@ final class AudioRecorder {
     func stop() -> RecordingResult? {
         guard isRecording, let fileName else { return nil }
         ticker?.cancel()
+        restartTask?.cancel()
+        isPausedForCall = false
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
@@ -190,7 +208,8 @@ final class AudioRecorder {
     /// The engine stops on route or configuration changes. Keep recording when the input still has the
     /// same format (the tap stays installed); only end the recording when the microphone really changed.
     private func handleConfigurationChange() {
-        guard isRecording, let engine, let recordingFormat else { return }
+        // A call changes the route and the format; what counts is the state after it.
+        guard isRecording, !isPausedForCall, let engine, let recordingFormat else { return }
         let current = engine.inputNode.outputFormat(forBus: 0)
         guard current.sampleRate == recordingFormat.sampleRate,
               current.channelCount == recordingFormat.channelCount else {
@@ -216,10 +235,84 @@ final class AudioRecorder {
         ) { [weak self] note in
             let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
                 .flatMap(AVAudioSession.InterruptionType.init(rawValue:))
-            guard type == .began else { return }
-            MainActor.assumeIsolated { self?.onInterrupted?() }
+            MainActor.assumeIsolated {
+                if type == .began {
+                    self?.interruptionBegan()
+                } else if type == .ended {
+                    self?.restartAfterCall()
+                }
+            }
+        })
+        // The end of a call is not always reported, and iOS may refuse the microphone to an app in the background.
+        observers.append(center.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.restartAfterCall()
+            }
         })
         #endif
+    }
+
+    #if os(iOS)
+    private func interruptionBegan() {
+        guard isRecording else { return }
+        guard pausesForCalls else {
+            onInterrupted?()
+            return
+        }
+        restartTask?.cancel()
+        // A second report of the same call must not take the first one's decision back.
+        if !isPausedForCall { resumeAfterCall = !isPaused }
+        pause()
+        isPausedForCall = true
+        onPauseChanged?()
+    }
+
+    /// The microphone can take a moment to come back. If it stays away the recording stays paused and "Resume"
+    /// or the return to the app tries again; nothing recorded so far is at risk.
+    private func restartAfterCall() {
+        guard isRecording, isPausedForCall || resumeAfterCall else { return }
+        restartTask?.cancel()
+        restartTask = Task { [weak self] in
+            for _ in 0..<8 {
+                guard let self, !Task.isCancelled, self.isRecording else { return }
+                if self.restartEngine() {
+                    guard self.isRecording else { return }
+                    self.isPausedForCall = false
+                    if self.resumeAfterCall { self.resume() }
+                    self.onPauseChanged?()
+                    return
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
+            guard let self, !Task.isCancelled, self.isRecording else { return }
+            self.isPausedForCall = false
+            self.onPauseChanged?()
+        }
+    }
+    #endif
+
+    /// True when the microphone runs. A different format after a call cannot go into the same file: the recording
+    /// ends there with everything it has, and can be continued from the meeting.
+    private func restartEngine() -> Bool {
+        guard let engine, let recordingFormat else { return false }
+        if engine.isRunning { return true }
+        do {
+            #if os(iOS)
+            try AVAudioSession.sharedInstance().setActive(true)
+            #endif
+            let current = engine.inputNode.outputFormat(forBus: 0)
+            guard current.sampleRate == recordingFormat.sampleRate, current.channelCount == recordingFormat.channelCount else {
+                onInterrupted?()
+                return false
+            }
+            engine.prepare()
+            try engine.start()
+            return true
+        } catch {
+            return false
+        }
     }
 
     #if os(iOS)

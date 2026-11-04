@@ -20,7 +20,7 @@ import de.letzgo.porridge.model.clockString
 
 /**
  * Ersatz für die Live Activity (iOS: `Shared/RecordingActivity.swift`, `PorridgeWidgets`, `LiveRecording.swift`):
- * ein Vordergrunddienst mit laufender Uhr und „Stop“ in der Benachrichtigung, solange aufgenommen wird. Läuft auch,
+ * ein Vordergrunddienst mit laufender Uhr, „Stop“ und bei Meetings „Pause“ in der Benachrichtigung, solange aufgenommen wird. Läuft auch,
  * solange transkribiert oder ein Modell geladen wird, damit Android die App dabei nicht beendet.
  */
 class RecordingService : Service() {
@@ -30,6 +30,19 @@ class RecordingService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 RecordingSession.requestStop()
+                return START_NOT_STICKY
+            }
+            ACTION_TOGGLE_PAUSE -> {
+                // Nur die Benachrichtigung neu zeichnen: Der Dienst läuft schon im Vordergrund, und ein erneutes
+                // startForeground mit Mikrofon kann Android aus dem Hintergrund ablehnen.
+                if (RecordingSession.isRecording) {
+                    RecordingSession.setPaused(!RecordingSession.isPaused, updateService = false)
+                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(recording = true))
+                }
+                return START_NOT_STICKY
+            }
+            ACTION_REFRESH -> {
+                if (RecordingSession.isRecording) getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(recording = true))
                 return START_NOT_STICKY
             }
             ACTION_UPDATE, null -> Unit
@@ -71,9 +84,15 @@ class RecordingService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
         if (recording) {
             val stop = PendingIntent.getService(this, 1, Intent(this, RecordingService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-            builder.setContentTitle(RecordingSession.title.ifEmpty { "Recording" }).addAction(0, "Stop", stop)
+            builder.setContentTitle(RecordingSession.title.ifEmpty { "Recording" })
+            if (RecordingSession.isMeeting && !RecordingSession.isPausedForCall) {
+                val toggle = PendingIntent.getService(this, 2, Intent(this, RecordingService::class.java).setAction(ACTION_TOGGLE_PAUSE), PendingIntent.FLAG_IMMUTABLE)
+                builder.addAction(0, if (RecordingSession.isPaused) "Resume" else "Pause", toggle)
+            }
+            builder.addAction(0, "Stop", stop)
             if (RecordingSession.isPaused) {
-                builder.setContentText("Paused · ${RecordingSession.recorder?.elapsed?.value?.clockString.orEmpty()}").setShowWhen(false)
+                val state = if (RecordingSession.isPausedForCall) "Paused for call" else "Paused"
+                builder.setContentText("$state · ${RecordingSession.recorder?.elapsed?.value?.clockString.orEmpty()}").setShowWhen(false)
             } else {
                 builder.setContentText("Porridge is recording").setUsesChronometer(true).setWhen(RecordingSession.startedAt)
             }
@@ -93,7 +112,9 @@ class RecordingService : Service() {
         private const val CHANNEL = "recording"
         private const val NOTIFICATION_ID = 7
         const val ACTION_STOP = "de.letzgo.porridge.STOP_RECORDING"
+        private const val ACTION_TOGGLE_PAUSE = "de.letzgo.porridge.TOGGLE_PAUSE"
         private const val ACTION_UPDATE = "de.letzgo.porridge.UPDATE"
+        private const val ACTION_REFRESH = "de.letzgo.porridge.REFRESH"
         private const val EXTRA_FOREGROUND = "foreground"
 
         /** Transkription: der Dienst hält die App am Leben. */
@@ -101,6 +122,12 @@ class RecordingService : Service() {
 
         /** Modelle, die gerade herunterladen (Name → Anteil); auch dabei bleibt die App im Hintergrund am Leben. */
         val downloads = java.util.concurrent.ConcurrentHashMap<String, Float>()
+
+        /** Zeichnet die Benachrichtigung des laufenden Dienstes neu, ohne ihn erneut in den Vordergrund zu holen. */
+        fun refresh(context: Context) {
+            runCatching { context.startService(Intent(context, RecordingService::class.java).setAction(ACTION_REFRESH)) }
+                .onFailure { Log.w("RecordingService", "not refreshed: $it") }
+        }
 
         fun update(context: Context) {
             val intent = Intent(context, RecordingService::class.java).setAction(ACTION_UPDATE)

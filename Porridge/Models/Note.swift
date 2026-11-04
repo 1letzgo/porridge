@@ -93,6 +93,17 @@ final class Note {
 
     var hasLocalAudio: Bool { AudioStore.exists(audioFileName) }
 
+    /// A part recorded later waits here until it is transcribed (`ProcessingService.processContinuation`).
+    /// Notes typed during it count from the end of what is there.
+    func addRecordedPart(_ fileName: String, written: [RecordingNote]) {
+        pendingAudioFileName = fileName
+        status = .recorded
+        let start = max(duration, segments.last?.end ?? 0)
+        let typed = RecordingNote.markdown(written.map { RecordingNote(at: $0.at + start, text: $0.text) })
+        if !typed.isEmpty { text = text.isEmpty ? typed : text + "\n\n" + typed }
+        updatedAt = Date()
+    }
+
     static func defaultMeetingTitle(for date: Date) -> String {
         "Meeting · " + date.formatted(.dateTime.day().month(.abbreviated).hour().minute())
     }

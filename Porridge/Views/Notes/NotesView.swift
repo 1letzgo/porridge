@@ -67,14 +67,14 @@ struct NotesView: View {
             list
         } detail: {
             if let selection, let note = notes.first(where: { $0.id == selection }) ?? (draft?.id == selection ? draft : nil) {
-                NoteDetailView(note: note) { close(note) }
+                NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id)
                     .id(note.id)
             } else {
                 EmptyStateView(title: "No Note Selected", message: "Pick a note from the list.", systemImage: "note.text")
             }
         }
         .fullScreenCoverOrSheet(isPresented: $showRecorder) {
-            RecordingView { result, names, liveText, written in
+            RecordingView(title: appointmentTitle) { result, names, liveText, written in
                 addRecording(from: result, speakerNames: names, liveText: liveText, written: written)
             }
         }
@@ -146,6 +146,7 @@ struct NotesView: View {
         .task {
             LegacyMigration.run(in: context)
             LegacyMigration.removeDuplicates(in: context)
+            await RecordingJournal.recover(context: context, processing: processing)
             removeEmptyNotes()
             NoteStore.purgeExpired(in: context)
             LinkImport.importInbox(context: context, processing: processing)

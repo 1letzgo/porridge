@@ -65,6 +65,7 @@
 		3FDE8583E5D07C2472D0629A /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8971203514F93451723E779A /* Keychain.swift */; };
 		41AB354387CD2280E2711BBE /* NoteIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE59B16FB8350F8617863947 /* NoteIndex.swift */; };
 		42572ADF40DC2CE03400BA23 /* RollingRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE0B07929BC2A88C738323E9 /* RollingRecognizer.swift */; };
+		42EC7C7C39B39319941AB516 /* MeetingExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5582F9A53CD62754BE769F6 /* MeetingExport.swift */; };
 		43A31E8EDAA99B1248E0275F /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = FD620C050B477DF07C977B9D /* FluidAudio */; };
 		4514B9DFEEC2340B0988A27F /* NoteBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8AB217EF9CF295C18693CFA /* NoteBlocks.swift */; };
 		486BC3F19E8213085E114EC2 /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDFB2FA30B94FE642D6337FC /* NotesView.swift */; };
@@ -95,6 +96,7 @@
 		60369FE490BF33CC6F3845E7 /* SummaryTemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A0B43E6BF68BEF6D3BF395 /* SummaryTemplatesView.swift */; };
 		6095E937F8EA4C5E145018F6 /* LinkInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */; };
 		60A353545E64B9FFCCCD7F5D /* LinkInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */; };
+		60CCFB26E93D4715CFCC4858 /* MeetingExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E8A0999059F5027B73034FC /* MeetingExportSheet.swift */; };
 		6383679114584EAB9E25C603 /* AppleSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 987A111F4ACA578E340E5A7E /* AppleSpeech.swift */; };
 		6569AA53BCC35A58EF9AB20E /* TestStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD474FF11205A6CC122FBC7E /* TestStore.swift */; };
 		659062EE02C2D6EEBA34514E /* PlaudImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605D164877965A4BA545584B /* PlaudImportSheet.swift */; };
@@ -148,11 +150,13 @@
 		9F30118C94310D8B5444C267 /* NotesFeaturesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C9AA7BE3FF0CEDF2C2BDF86 /* NotesFeaturesTests.swift */; };
 		A09D17E28DD0230E04FBC0BE /* VoiceProfiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF66A6CA32B03260699EFDE /* VoiceProfiles.swift */; };
 		A0CFC442227905D1998B20B7 /* QuickActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE6FAD6923A33CEED95AFCE0 /* QuickActions.swift */; };
+		A5FF3D1F2C04F7A95360E2FF /* RecordingJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E7511785C6CC41FB53AC539 /* RecordingJournal.swift */; };
 		A7339E7104693D8D60FBE453 /* SyncMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010311FFC97C720AE3AE3A85 /* SyncMerge.swift */; };
 		A82761451E9F7DA554423BAF /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */; };
 		AAB43F4E07F1580829B4EAAD /* AudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7798D6E60F456BEF335E6F48 /* AudioStore.swift */; };
 		AB9D617CB08DDFC8417E79AC /* OverlayPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 652DD461E246B88971AA314E /* OverlayPanel.swift */; };
 		ACABC4D5CA966F82669AD960 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083A5EA9DC62D07B9150CDAB /* OnboardingView.swift */; };
+		AD8B961F517BAE61274E0C62 /* MeetingExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E8A0999059F5027B73034FC /* MeetingExportSheet.swift */; };
 		AF219F2FE352114C5280E904 /* AcknowledgementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FAC460C197FDF52B669FB24 /* AcknowledgementsView.swift */; };
 		B01020125443820618A7D679 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF96B31F1E8B578583505E98 /* Theme.swift */; };
 		B0B3CD0F6FF2F45318E89E34 /* TimelineSearchBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8577540515D71C4E5FE3504A /* TimelineSearchBar.swift */; };
@@ -163,6 +167,7 @@
 		B853384F1F895B498A9B94FF /* LinkImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB005D8452E913C0CB4DEE1D /* LinkImport.swift */; };
 		BBD6152CD6E81173947772C9 /* ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2F58296E3FB7B2AA8C6D2F /* ModelManager.swift */; };
 		BCFC2C073824AA9D986AC19A /* PlaudBLE.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C900D2E54C5D9AD70BAB41 /* PlaudBLE.swift */; };
+		BDDD05206A0D868FAEABA672 /* RecordingJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E7511785C6CC41FB53AC539 /* RecordingJournal.swift */; };
 		BED5D79B02D400BBDDFA13AB /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1871870FC6707C39D01FE52E /* Meeting.swift */; };
 		C0847486D6126A9A30E1BC6E /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 954EB304034ABFDA3E9FEF22 /* Tokenizers */; };
 		C0C41D93BDBF920CBA42AB71 /* AppleLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 236BD23C611F762C19EEB990 /* AppleLLM.swift */; };
@@ -179,6 +184,7 @@
 		CC848E098BBC5DB798C31925 /* NoteBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8AB217EF9CF295C18693CFA /* NoteBlocks.swift */; };
 		CDF4C9AAFB9D87728BA12409 /* SummaryEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2A5616AFD8592E91EE7A9D4 /* SummaryEditorSheet.swift */; };
 		D00965D8E1D5FF480691CEF9 /* PorridgeShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10833D7F907B9A5F448D31C3 /* PorridgeShortcuts.swift */; };
+		D0C4C0EBF2FB41F1E6F43CF0 /* MeetingExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9B98C438AED2F5E6E75969 /* MeetingExportTests.swift */; };
 		D1DEE11B1C583D3D4FA0E8C4 /* LocalLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108DEC7169C9E157AD66174F /* LocalLLM.swift */; };
 		D8538F472A63388E0207249B /* NoteFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 536E6D547A46DCF6768AE6C5 /* NoteFolder.swift */; };
 		D9049BB1247F9D188B44D1A2 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E56BE573144212F81BA70AC /* AppSettings.swift */; };
@@ -212,6 +218,7 @@
 		F6654516D356993C3F1E71C9 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083A5EA9DC62D07B9150CDAB /* OnboardingView.swift */; };
 		F760CDCC6A711FC977ADBAB7 /* LinkFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FAB0F466A89E3E6D592CAA /* LinkFetcher.swift */; };
 		F7A901BD8BE9D4CB443696B9 /* LinkImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB005D8452E913C0CB4DEE1D /* LinkImport.swift */; };
+		F80A7288F6DC3593D70885A7 /* MeetingExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5582F9A53CD62754BE769F6 /* MeetingExport.swift */; };
 		FA915CE27493CD8BDCB57CC1 /* MergeNotesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2856F523A997C75014865C4 /* MergeNotesSheet.swift */; };
 		FCAF1163B93D9F066722A15F /* DictationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DBACE83C4AC1FD231B7AC2F /* DictationController.swift */; };
 		FE2EF42824495C546C8435CB /* GlobalHotKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B965676D5FD4BEB12521F86 /* GlobalHotKey.swift */; };
@@ -292,12 +299,14 @@
 		33144CDDD5CE1296F1220976 /* NoteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteDetailView.swift; sourceTree = "<group>"; };
 		3B965676D5FD4BEB12521F86 /* GlobalHotKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKey.swift; sourceTree = "<group>"; };
 		3CA9C6649F3F5A8A76BBCEA0 /* PlaudLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudLoginView.swift; sourceTree = "<group>"; };
+		3E7511785C6CC41FB53AC539 /* RecordingJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingJournal.swift; sourceTree = "<group>"; };
 		454999AAF0C479491C31A576 /* HomeList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeList.swift; sourceTree = "<group>"; };
 		47A83A9237EEF93450DB302C /* NoteMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteMarkdown.swift; sourceTree = "<group>"; };
 		4B340339B5F4B0D022E9A042 /* SummaryTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryTemplate.swift; sourceTree = "<group>"; };
 		4C9AA7BE3FF0CEDF2C2BDF86 /* NotesFeaturesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesFeaturesTests.swift; sourceTree = "<group>"; };
 		4E56BE573144212F81BA70AC /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		4E639258A983029655F3B803 /* Projects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Projects.swift; sourceTree = "<group>"; };
+		4E8A0999059F5027B73034FC /* MeetingExportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportSheet.swift; sourceTree = "<group>"; };
 		50D5387B8FDB2327EE19DAAC /* PlaudAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudAccount.swift; sourceTree = "<group>"; };
 		536E6D547A46DCF6768AE6C5 /* NoteFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteFolder.swift; sourceTree = "<group>"; };
 		545E56590DAC3E1D46D55236 /* AppUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdate.swift; sourceTree = "<group>"; };
@@ -346,6 +355,7 @@
 		AF96B31F1E8B578583505E98 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		B0ED4598E551D4BB46B97957 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B2856F523A997C75014865C4 /* MergeNotesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergeNotesSheet.swift; sourceTree = "<group>"; };
+		B5582F9A53CD62754BE769F6 /* MeetingExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExport.swift; sourceTree = "<group>"; };
 		B6ABCD033E415B78A0498E44 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B7794E23DA38BED1951839EF /* LegacyMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyMigration.swift; sourceTree = "<group>"; };
 		BE0B07929BC2A88C738323E9 /* RollingRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RollingRecognizer.swift; sourceTree = "<group>"; };
@@ -361,6 +371,7 @@
 		CCDB3BA98ABE11334BB0297F /* TranscriptionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionEngine.swift; sourceTree = "<group>"; };
 		CD474FF11205A6CC122FBC7E /* TestStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestStore.swift; sourceTree = "<group>"; };
 		CDFB2FA30B94FE642D6337FC /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
+		CF9B98C438AED2F5E6E75969 /* MeetingExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportTests.swift; sourceTree = "<group>"; };
 		CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		D2A5616AFD8592E91EE7A9D4 /* SummaryEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryEditorSheet.swift; sourceTree = "<group>"; };
 		DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingActivity.swift; sourceTree = "<group>"; };
@@ -470,6 +481,7 @@
 		4DFEF292DB0D27A6CC950573 /* Notes */ = {
 			isa = PBXGroup;
 			children = (
+				4E8A0999059F5027B73034FC /* MeetingExportSheet.swift */,
 				B2856F523A997C75014865C4 /* MergeNotesSheet.swift */,
 				A8AB217EF9CF295C18693CFA /* NoteBlocks.swift */,
 				E8931C85DA151D7EA0E959CA /* NoteBodyEditor.swift */,
@@ -524,6 +536,7 @@
 			isa = PBXGroup;
 			children = (
 				DDBFEA88590BF7A95A16C45E /* HomeFilterTests.swift */,
+				CF9B98C438AED2F5E6E75969 /* MeetingExportTests.swift */,
 				A2EF8775CF439144C3EC58B2 /* NoteStoreTests.swift */,
 				800A5A3CB6D64E088C615782 /* SummaryTasksTests.swift */,
 				07AAE9F8DA020CCDB79635EF /* SummaryTemplateTests.swift */,
@@ -610,6 +623,7 @@
 				07FDF58B6FB80F0BA8223760 /* LiveRecording.swift */,
 				CC34B2F819480B429CF98E03 /* LiveTranscriber.swift */,
 				108DEC7169C9E157AD66174F /* LocalLLM.swift */,
+				B5582F9A53CD62754BE769F6 /* MeetingExport.swift */,
 				EE2F58296E3FB7B2AA8C6D2F /* ModelManager.swift */,
 				EFE58E41A12C9AE598B37969 /* NoteChunks.swift */,
 				BE59B16FB8350F8617863947 /* NoteIndex.swift */,
@@ -617,6 +631,7 @@
 				6B2572B8D2D94B28605C5CAB /* NoteStore.swift */,
 				F0C6D4089FE130492BCC55C9 /* ProcessingService.swift */,
 				4E639258A983029655F3B803 /* Projects.swift */,
+				3E7511785C6CC41FB53AC539 /* RecordingJournal.swift */,
 				BE0B07929BC2A88C738323E9 /* RollingRecognizer.swift */,
 				7D6A4C0487D0D0E8668554D5 /* SpeakerAssigner.swift */,
 				1CDB2150AC1E2D50129B73B9 /* SummaryService.swift */,
@@ -963,6 +978,8 @@
 				00877421EB497BA4AD0EF44A /* LocalLLM.swift in Sources */,
 				8D6FDA68556EC145BEC5EBC0 /* MarkdownText.swift in Sources */,
 				BED5D79B02D400BBDDFA13AB /* Meeting.swift in Sources */,
+				42EC7C7C39B39319941AB516 /* MeetingExport.swift in Sources */,
+				60CCFB26E93D4715CFCC4858 /* MeetingExportSheet.swift in Sources */,
 				57C92E9BB6FD62EC51FF26A7 /* MergeNotesSheet.swift in Sources */,
 				BBD6152CD6E81173947772C9 /* ModelManager.swift in Sources */,
 				91727816F4DBB415832A4774 /* Nextcloud.swift in Sources */,
@@ -1003,6 +1020,7 @@
 				7AC2472B59A1927703AC2465 /* QuickActions.swift in Sources */,
 				8144E2DB0C1FCE75110B4B6B /* RecordMeetingSheet.swift in Sources */,
 				9D2861EFFABAC0F25E72B4B6 /* RecordingActivity.swift in Sources */,
+				BDDD05206A0D868FAEABA672 /* RecordingJournal.swift in Sources */,
 				9AB821A5996B06FA3F60D76B /* RecordingView.swift in Sources */,
 				59F5596A81C875D183FFA518 /* RollingRecognizer.swift in Sources */,
 				15E6896507D8D184530CA9CA /* RootView.swift in Sources */,
@@ -1070,6 +1088,8 @@
 				D1DEE11B1C583D3D4FA0E8C4 /* LocalLLM.swift in Sources */,
 				138FE2C5F09E140481EDD525 /* MarkdownText.swift in Sources */,
 				7E76BA80B6ABB14ACA09AA5A /* Meeting.swift in Sources */,
+				F80A7288F6DC3593D70885A7 /* MeetingExport.swift in Sources */,
+				AD8B961F517BAE61274E0C62 /* MeetingExportSheet.swift in Sources */,
 				FA915CE27493CD8BDCB57CC1 /* MergeNotesSheet.swift in Sources */,
 				36FD98F4525C00F87F761EB3 /* ModelManager.swift in Sources */,
 				2316760D8F08477ACACBA86F /* ModifierKeyMonitor.swift in Sources */,
@@ -1111,6 +1131,7 @@
 				A0CFC442227905D1998B20B7 /* QuickActions.swift in Sources */,
 				1E8692F45F5B503127575701 /* RecordMeetingSheet.swift in Sources */,
 				48C60C370EC336B5F9465953 /* RecordingActivity.swift in Sources */,
+				A5FF3D1F2C04F7A95360E2FF /* RecordingJournal.swift in Sources */,
 				092526A9383970BF7D903A1C /* RecordingView.swift in Sources */,
 				42572ADF40DC2CE03400BA23 /* RollingRecognizer.swift in Sources */,
 				75BF0D86D0CCBF8405F2CAB4 /* RootView.swift in Sources */,
@@ -1160,6 +1181,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				86C2842E103B9BFCA4D8CFE3 /* HomeFilterTests.swift in Sources */,
+				D0C4C0EBF2FB41F1E6F43CF0 /* MeetingExportTests.swift in Sources */,
 				ED8E0E578CE44BBB0A5D99C5 /* NoteStoreTests.swift in Sources */,
 				E3CFDECDF9B065FCDE2D43DA /* SummaryTasksTests.swift in Sources */,
 				2487F1CA6330738A38A66962 /* SummaryTemplateTests.swift in Sources */,

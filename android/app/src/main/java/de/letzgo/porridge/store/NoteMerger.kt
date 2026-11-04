@@ -33,6 +33,25 @@ class NoteMerger(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
         others.forEach { store.deletePermanently(it.copy(audioFileName = null)) }
     }
 
+    /**
+     * Hängt einen später aufgenommenen Teil an [base] an. [part] ist eine Hilfsnotiz, die nie gespeichert wird; was in
+     * [base] schon steht (Namen, Korrekturen), bleibt.
+     */
+    suspend fun append(part: Note, base: Note) {
+        val ordered = listOf(base, part)
+        val oldAudio = ordered.mapNotNull { it.audioFileName }
+        var merged: String? = null
+        var channels: Int? = null
+        val (offsets, total) = if (ordered.all { it.hasLocalAudio }) {
+            val joined = withContext(Dispatchers.IO) { concatenate(oldAudio) }
+            merged = joined.fileName
+            channels = joined.channels
+            joined.offsets to joined.duration
+        } else NoteMergeLogic.offsetsWithoutAudio(ordered)
+        db.notes().upsert(NoteMergeLogic.merge(base, ordered, offsets, total, merged, channels).copy(pendingAudioFileName = null, errorMessage = part.errorMessage))
+        if (merged != null) oldAudio.forEach(AudioStore::delete)
+    }
+
     private class Joined(val fileName: String, val offsets: List<Double>, val duration: Double, val channels: Int)
 
     private fun concatenate(files: List<String>): Joined {

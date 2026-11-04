@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-/// Local, non-synced storage for recordings.
+/// Local storage for recordings. Nextcloud copies them to its folder (`NextcloudSync`); iCloud does not.
 enum AudioStore {
     static let directory: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftData
 import SwiftUI
 #if os(iOS)
@@ -18,11 +19,17 @@ struct NoteDetailView: View {
     @Bindable var note: Note
     /// Called after the note was moved to "Recently Deleted" or recovered, so the list can close it.
     var onClose: () -> Void = {}
+    /// A note that was just created records right away.
+    var startsRecording = false
 
     @Environment(\.modelContext) private var context
     @Environment(ProcessingService.self) private var processing
     @Environment(ModelManager.self) private var models
     @State private var dictation = InlineDictation()
+    @State private var didStartRecording = false
+    @State private var showExport = false
+    @State private var showContinueRecording = false
+    @State private var confirmContinueRecording = false
     /// Character offset where the current dictation starts; text before it is never changed.
     @State private var dictationStart = 0
     /// Live text of the running dictation; only shown, written to the note when the final text is ready.
@@ -126,6 +133,15 @@ struct NoteDetailView: View {
             if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
             tab = opensOnSummary || isSummarizing ? .summary : .note
         }
+        .task {
+            guard startsRecording, !didStartRecording, AppSettings.recordsNewNotes else { return }
+            didStartRecording = true
+            // Without the microphone there is only the keyboard; the question comes up once, not with every note.
+            guard AVAudioApplication.shared.recordPermission != .denied else { return }
+            // After the editor took the focus it gives a new note, so the keyboard goes away again.
+            try? await Task.sleep(for: .milliseconds(300))
+            if dictation.phase == .idle { await toggleDictation() }
+        }
         .onDisappear {
             player.stop()
             if dictation.phase == .recording {
@@ -143,6 +159,28 @@ struct NoteDetailView: View {
         .onChange(of: note.title) {
             note.updatedAt = Date()
             saveIfFilled()
+        }
+        .sheet(isPresented: $showExport) {
+            MeetingExportSheet(note: note)
+        }
+        .fullScreenCoverOrSheet(isPresented: $showContinueRecording) {
+            RecordingView(title: note.title, continues: note.id) { result, _, _, written in
+                note.addRecordedPart(result.fileName, written: written)
+                try? context.save()
+                processing.enqueue(.note(note.id))
+                tab = .transcript
+            }
+        }
+        .alert("Continue Recording?", isPresented: $confirmContinueRecording) {
+            Button("Cancel", role: .cancel) {}
+            Button("Continue") { showContinueRecording = true }
+        } message: {
+            Text("The new part is added to the meeting. The summary is removed and can be written again.")
+        }
+        .onChange(of: note.audioFileName) {
+            // The recording was replaced by the joined one.
+            player.stop()
+            if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
         }
         .sheet(isPresented: $showSummaryEditor, onDismiss: finishEditingSummary) {
             SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 }))
@@ -281,11 +319,11 @@ struct NoteDetailView: View {
                         processing.enqueue(.link(note.id, summarize: false))
                     }
                     .buttonStyle(ChunkyButtonStyle())
-                } else if note.hasLocalAudio {
-                    Button("Try Again") { processing.enqueue(.transcript(note.id)) }
-                        .buttonStyle(ChunkyButtonStyle())
                 } else if AudioStore.exists(note.pendingAudioFileName) {
                     Button("Try Again") { processing.enqueue(.note(note.id)) }
+                        .buttonStyle(ChunkyButtonStyle())
+                } else if note.hasLocalAudio {
+                    Button("Try Again") { processing.enqueue(.transcript(note.id)) }
                         .buttonStyle(ChunkyButtonStyle())
                 }
             }
@@ -380,11 +418,19 @@ struct NoteDetailView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         BrandToolbarItem(placement: .primaryAction) {
-            ShareLink(item: shareText) {
-                Label("Share", systemImage: "square.and.arrow.up")
+            if note.isRecording, !note.isLink {
+                Button { showExport = true } label: {
+                    Label("Export", systemImage: "arrow.up.doc")
+                }
+                .brandToolbarButton()
+                .accessibilityLabel("Export")
+            } else {
+                ShareLink(item: shareText) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                .brandToolbarButton()
+                .accessibilityLabel("Share")
             }
-            .brandToolbarButton()
-            .accessibilityLabel("Share")
         }
         BrandToolbarItem(placement: .primaryAction) {
             Menu {
@@ -419,6 +465,14 @@ struct NoteDetailView: View {
                         }
                         .disabled(processing.stages[note.id] != nil)
                     }
+                    if note.isRecording, !note.isLink {
+                        Button {
+                            if note.summary == nil { showContinueRecording = true } else { confirmContinueRecording = true }
+                        } label: {
+                            Label("Continue Recording", systemImage: "mic.badge.plus")
+                        }
+                        .disabled(!canContinueRecording)
+                    }
                     if !note.segments.isEmpty {
                         Button { Clipboard.copy(note.transcriptText()) } label: {
                             Label("Copy Transcript", systemImage: "doc.on.doc")
@@ -444,6 +498,12 @@ struct NoteDetailView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("More")
         }
+    }
+
+    /// A recording that is on another device could not be joined with the new part.
+    private var canContinueRecording: Bool {
+        processing.stages[note.id] == nil && note.status == .ready && note.pendingAudioFileName == nil
+            && (note.audioFileName == nil || note.hasLocalAudio)
     }
 
     private var isSummarizing: Bool { processing.summarizing.contains(note.id) }

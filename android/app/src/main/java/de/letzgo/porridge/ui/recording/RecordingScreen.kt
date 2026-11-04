@@ -135,7 +135,7 @@ fun RecordMeetingSheet(onDismiss: () -> Unit, onStart: (title: String?) -> Unit)
 /** iOS: `RecordingView` — Meeting-Aufnahme im Vollbild mit Live-Transkript. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, String) -> Unit, onCancel: () -> Unit) {
+fun RecordingScreen(title: String?, continues: String? = null, onFinish: (RecordingResult, List<String>, String) -> Unit, onCancel: () -> Unit) {
     val context = LocalContext.current
     val coroutines = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
@@ -158,7 +158,7 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
 
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         if (granted[Manifest.permission.RECORD_AUDIO] == true) {
-            runCatching { RecordingSession.start(title ?: "Meeting") }.onSuccess { started = true }.onFailure { error = it.message }
+            runCatching { RecordingSession.start(title ?: "Meeting", isMeeting = true, meetingTitle = title, continues = continues) }.onSuccess { started = true }.onFailure { error = it.message }
         } else error = "Please allow microphone access in Settings."
     }
     LaunchedEffect(Unit) {
@@ -181,6 +181,7 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
     val recorder = RecordingSession.recorder
     val live = RecordingSession.live
     val paused = recorder?.isPaused?.collectAsState()?.value == true
+    val pausedForCall = recorder?.isPausedForCall?.collectAsState()?.value == true
     // Während eine Notiz getippt wird, braucht die Tastatur den Platz.
     val writing = WindowInsets.isImeVisible
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -191,7 +192,7 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
                 if (recorder != null) Surface(shape = RoundedCornerShape(50), color = Brand.sky.copy(alpha = 0.14f)) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (paused) Icons.Filled.Pause else Icons.Filled.Mic, null, tint = Brand.navy, modifier = Modifier.size(16.dp))
-                        Text("  " + if (paused) "Paused" else if (recorder.isSplitStereo) "${recorder.inputName} · 2 channels" else recorder.inputName, style = MaterialTheme.typography.labelLarge, color = Brand.navy)
+                        Text("  " + if (pausedForCall) "Paused for Call" else if (paused) "Paused" else if (recorder.isSplitStereo) "${recorder.inputName} · 2 channels" else recorder.inputName, style = MaterialTheme.typography.labelLarge, color = Brand.navy)
                     }
                 }
             }
@@ -225,7 +226,8 @@ fun RecordingScreen(title: String?, onFinish: (RecordingResult, List<String>, St
                 Unit
             } else if (recorder != null) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    SkyFab(if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (paused) "Resume" else "Pause") { RecordingSession.setPaused(!paused) }
+                    // Nach einem Anruf geht es von selbst weiter.
+                    SkyFab(if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (paused) "Resume" else "Pause") { if (!pausedForCall) RecordingSession.setPaused(!paused) }
                     SkyFab(Icons.Filled.Stop, "Stop", Modifier.size(76.dp), container = Brand.danger) { finish() }
                 }
             } else {

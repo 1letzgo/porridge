@@ -33,6 +33,9 @@ class AudioRecorder(private val context: Context) {
     /** Das Mikrofon läuft weiter und sein Ton wird verworfen, die Datei hat also weder Lücke noch Stille. */
     private val _isPaused = MutableStateFlow(false)
     val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
+    /** Ein Anruf hat das Mikrofon: pausiert, bis er vorbei ist. Android lieferte sonst Stille in die Datei. */
+    private val _isPausedForCall = MutableStateFlow(false)
+    val isPausedForCall: StateFlow<Boolean> = _isPausedForCall.asStateFlow()
     private val _elapsed = MutableStateFlow(0.0)
     val elapsed: StateFlow<Double> = _elapsed.asStateFlow()
     /** Pegel je Kanal, 0…1 (iOS: -55…-5 dB). */
@@ -49,11 +52,19 @@ class AudioRecorder(private val context: Context) {
     var onMono16k: ((FloatArray) -> Unit)? = null
     /** Der Eingang ist weggefallen (Mikrofon abgezogen): die Aufnahme endet. */
     var onInterrupted: (() -> Unit)? = null
+    /** Ein Meeting pausiert für Anrufe und läuft danach weiter. */
+    var pausesForCalls = false
+    /** Die Aufnahme hat von selbst pausiert oder weitergemacht; kommt vom Aufnahme-Thread. */
+    var onPauseChanged: (() -> Unit)? = null
+    /** Lief die Aufnahme, als der Anruf kam? Eine von Hand pausierte bleibt pausiert. */
+    private var resumeAfterCall = false
 
     private var record: AudioRecord? = null
     private var thread: Thread? = null
     private var writer: AacWriter? = null
-    private var fileName: String? = null
+    /** Die Datei, in die gerade geschrieben wird; lesbar erst nach dem Stopp. */
+    var fileName: String? = null
+        private set
     @Volatile private var running = false
     private var device: AudioDeviceInfo? = null
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -118,6 +129,7 @@ class AudioRecorder(private val context: Context) {
             while (running) {
                 val n = recorder.read(buffer, 0, buffer.size)
                 if (n == 0) continue
+                if (pausesForCalls) followCall()
                 if (n < 0) {
                     // Fehlercode: Das Mikrofon liefert nichts mehr. Die Aufnahme endet mit dem, was da ist.
                     interrupted()
@@ -134,6 +146,24 @@ class AudioRecorder(private val context: Context) {
             // Platte voll, Encoder am Ende: ohne das risse der Fehler die ganze App und die Aufnahme mit.
             interrupted()
         }
+    }
+
+    /**
+     * Klingeln allein ändert nichts: Wird der Anruf abgelehnt, fehlt nichts. Erst das Gespräch nimmt das Mikrofon, auch bei
+     * Anrufen über andere Apps. Der Modus braucht keine Berechtigung, anders als der Telefonstatus.
+     */
+    private fun followCall() {
+        val inCall = audioManager.mode == AudioManager.MODE_IN_CALL || audioManager.mode == AudioManager.MODE_IN_COMMUNICATION
+        if (inCall == _isPausedForCall.value) return
+        if (inCall) {
+            resumeAfterCall = !_isPaused.value
+            _isPaused.value = true
+            _isPausedForCall.value = true
+        } else {
+            _isPausedForCall.value = false
+            if (resumeAfterCall) _isPaused.value = false
+        }
+        Handler(Looper.getMainLooper()).post { onPauseChanged?.invoke() }
     }
 
     private fun interrupted() {
@@ -160,13 +190,15 @@ class AudioRecorder(private val context: Context) {
     }
 
     fun setPaused(paused: Boolean) {
-        if (running) _isPaused.value = paused
+        // Nach dem Anruf geht es von selbst weiter.
+        if (running && !_isPausedForCall.value) _isPaused.value = paused
     }
 
     fun stop(): RecordingResult? {
         if (!running) return null
         running = false
         _isPaused.value = false
+        _isPausedForCall.value = false
         thread?.join(2000)
         thread = null
         runCatching { record?.stop() }

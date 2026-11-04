@@ -50,6 +50,8 @@ enum AppSettings {
     static let speakerDetectionKey = "speakerDetection"
     static let billingKey = "summaryBilling"
     static let localModelKey = "localModel"
+    /// New notes record right away; UI tests type instead.
+    static let recordsNewNotesKey = "recordsNewNotes"
     static let customTemplatesKey = "customSummaryTemplates"
     static let voiceRecognitionKey = "voiceRecognition"
     static let providerKey = "aiProvider"
@@ -82,11 +84,14 @@ enum AppSettings {
             billingKey: SummaryBilling.local.rawValue,
             localModelKey: LocalModel.defaultChoice.rawValue,
             voiceRecognitionKey: true,
+            recordsNewNotesKey: true,
             providerKey: AIProvider.openRouter.rawValue,
         ])
     }
 
     /// The names the user goes by, lowercased; empty when none is set.
+    static var recordsNewNotes: Bool { UserDefaults.standard.bool(forKey: recordsNewNotesKey) }
+
     static var myNames: [String] {
         myNames(from: UserDefaults.standard.string(forKey: myNameKey) ?? "", voice: UserDefaults.standard.string(forKey: myVoiceNameKey) ?? "")
     }

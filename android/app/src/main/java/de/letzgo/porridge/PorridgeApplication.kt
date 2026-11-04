@@ -12,7 +12,9 @@ import de.letzgo.porridge.data.SecureStore
 import de.letzgo.porridge.ml.LocalLLM
 import de.letzgo.porridge.ml.LocalModel
 import de.letzgo.porridge.ml.ModelManager
+import de.letzgo.porridge.audio.RecordingJournal
 import de.letzgo.porridge.ml.TextModels
+import kotlinx.coroutines.launch
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.sync.NextcloudSync
@@ -35,6 +37,7 @@ class PorridgeApplication : Application() {
         AppGraph.init(this)
         ProcessingService.onBusyChanged = { RecordingSession.setBusy(it) }
         NextcloudSync.init(this)
+        AppGraph.scope.launch { RecordingJournal.recover() }
         // Zurück in der App: holen, was die anderen Geräte getan haben.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) = NextcloudSync.syncSoon(0)

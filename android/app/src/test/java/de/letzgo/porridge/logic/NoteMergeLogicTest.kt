@@ -1,12 +1,35 @@
 package de.letzgo.porridge.logic
 
 import de.letzgo.porridge.model.Note
+import de.letzgo.porridge.model.RecordingNote
 import de.letzgo.porridge.model.Speaker
 import de.letzgo.porridge.model.TranscriptSegment
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class NoteMergeLogicTest {
+    @Test fun aRecordedPartJoinsAtTheEndAndWaitingFieldsAreSet() {
+        val base = Note(id = "A", text = "- 0:05 eins", createdAt = 1, duration = 60.0, summary = "alt")
+            .withSpeakers(listOf(Speaker("s1", "Anna", 0)))
+            .withSegments(listOf(TranscriptSegment(speakerId = "s1", start = 1.0, end = 2.0, text = "Hallo")))
+        val waiting = base.withRecordedPart("neu.m4a", listOf(RecordingNote(5.0, "zwei")))
+        assertEquals("neu.m4a", waiting.pendingAudioFileName)
+        assertEquals("- 0:05 eins\n- 1:05 zwei".replace("\n", "\n\n"), waiting.text)
+
+        val part = Note(id = "P", createdAt = 9, duration = 10.0)
+            .withSpeakers(listOf(Speaker("s1", "anna", 0)))
+            .withSegments(listOf(TranscriptSegment(speakerId = "s1", start = 3.0, end = 4.0, text = "Weiter")))
+        val joined = NoteMergeLogic.merge(waiting, listOf(waiting, part), listOf(0.0, 60.0), 70.0, "beide.m4a", 1)
+        assertEquals(listOf("Hallo", "Weiter"), joined.segments.map { it.text })
+        assertEquals(63.0, joined.segments[1].start, 1e-9)
+        assertEquals(1, joined.speakers.size)
+        assertEquals("Anna", joined.speakers[0].name)
+        assertEquals(70.0, joined.duration, 1e-9)
+        assertEquals(1L, joined.createdAt)
+        assertEquals(null, joined.summary)
+        assertEquals(waiting.text, joined.text)
+    }
+
     @Test fun mergesSpeakersAndShiftsSegments() {
         val a = Note(id = "A", text = "eins", createdAt = 1, duration = 10.0)
             .withSpeakers(listOf(Speaker("s1", "Anna", 0), Speaker("s2", "Speaker 2", 1)))

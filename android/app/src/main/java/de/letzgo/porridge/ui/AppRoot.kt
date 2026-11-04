@@ -35,7 +35,7 @@ import kotlinx.coroutines.withContext
 /** Bildschirme über der Liste (iOS: `NavigationSplitView` + Sheets). */
 sealed interface Screen {
     data class Detail(val id: String, val draft: Note?) : Screen
-    data class Recording(val title: String?) : Screen
+    data class Recording(val title: String?, val continues: String? = null) : Screen
     data object Settings : Screen
     data class Plaud(val projectID: String?) : Screen
 }
@@ -87,10 +87,10 @@ fun AppRoot() {
                 onSettings = { push(Screen.Settings) },
                 onPlaud = { pid -> push(Screen.Plaud(pid)) },
             )
-            is Screen.Detail -> NoteDetailScreen(top.id, top.draft) { pop() }
+            is Screen.Detail -> NoteDetailScreen(top.id, top.draft, onContinueRecording = { note -> push(Screen.Recording(note.title, note.id)) }) { pop() }
             is Screen.Settings -> SettingsScreen(onBack = { pop() })
             is Screen.Plaud -> PlaudImportScreen(top.projectID, onBack = { pop() }) { id -> stack.clear(); open(id) }
-            is Screen.Recording -> RecordingScreen(top.title, onFinish = { result, names, liveText ->
+            is Screen.Recording -> RecordingScreen(top.title, top.continues, onFinish = { result, names, liveText ->
                 coroutines.launch {
                     // Aus einem offenen Projekt aufgenommen: das Meeting gehört dazu, die Ansicht bleibt.
                     val inProject = (list.page as? ListPage.Project)?.id

@@ -2,6 +2,10 @@ import SwiftUI
 
 /// Full-screen meeting recorder with live transcript.
 struct RecordingView: View {
+    /// The appointment the meeting is named after.
+    var title: String?
+    /// The meeting this recording is added to.
+    var continues: UUID?
     var onFinish: (RecordingResult, [String], String, [RecordingNote]) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -14,6 +18,8 @@ struct RecordingView: View {
     @State private var finished = false
     @State private var notes: [RecordingNote] = []
     @State private var noteDraft = ""
+    /// Keeps the meeting if the app does not get to the end of it.
+    @State private var journal: RecordingJournal?
     @FocusState private var writingNote: Bool
 
     var body: some View {
@@ -55,14 +61,18 @@ struct RecordingView: View {
         .task { await start() }
         .onAppear {
             recorder.onInterrupted = { finish() }
+            recorder.pausesForCalls = true
+            recorder.onPauseChanged = { LiveRecording.setPaused(recorder.isPaused, elapsed: recorder.elapsed) }
         }
         .onChange(of: models.asr) { live.observeDownload(models.asr) }
+        .onChange(of: notes) { journal?.setNotes(notes) }
         .onReceive(NotificationCenter.default.publisher(for: .porridgeStopRecording)) { _ in finish() }
         .alert("Discard recording?", isPresented: $confirmDiscard) {
             Button("Cancel", role: .cancel) {}
             Button("Discard", role: .destructive) {
                 recorder.cancel()
                 live.cancel()
+                journal?.finish()
                 LiveRecording.end()
                 dismiss()
             }
@@ -90,7 +100,7 @@ struct RecordingView: View {
 
             Spacer()
 
-            Label(recorder.isPaused ? "Paused" : inputLabel, systemImage: recorder.isPaused ? "pause.fill" : recorder.isExternal ? "mic.badge.plus" : "mic")
+            Label(recorder.isPausedForCall ? "Paused for Call" : recorder.isPaused ? "Paused" : inputLabel, systemImage: recorder.isPaused ? "pause.fill" : recorder.isExternal ? "mic.badge.plus" : "mic")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.accentColor)
                 .padding(.horizontal, 14)
@@ -238,7 +248,7 @@ struct RecordingView: View {
                 .brandSurface(Circle())
         }
         .accessibilityLabel(recorder.isPaused ? "Resume recording" : "Pause recording")
-        .disabled(!recorder.isRecording)
+        .disabled(!recorder.isRecording || recorder.isPausedForCall)
     }
 
     private var stopButton: some View {
@@ -258,6 +268,8 @@ struct RecordingView: View {
     }
 
     private func togglePause() {
+        // It goes on by itself when the call ends.
+        guard !recorder.isPausedForCall else { return }
         if recorder.isPaused { recorder.resume() } else { recorder.pause() }
         LiveRecording.setPaused(recorder.isPaused, elapsed: recorder.elapsed)
     }
@@ -267,13 +279,23 @@ struct RecordingView: View {
             errorMessage = "Please allow microphone access in Settings."
             return
         }
+        // The task runs again when the presentation settles; a second start would leave the first file behind.
+        guard !recorder.isRecording, !finished else { return }
         do {
-            recorder.onBuffer = live.feed
+            let journal = RecordingJournal(title: title, continues: continues)
+            self.journal = journal
+            let feed = live.feed
+            recorder.onBuffer = { buffer in
+                feed(buffer)
+                journal.append(buffer)
+            }
             try recorder.start()
+            journal.setUnfinishedFile(recorder.fileName)
             // Keeps recording visible on the Lock Screen; recording itself continues via the audio background mode.
-            LiveRecording.start(kind: .meeting, title: "Meeting") { finish() }
+            LiveRecording.start(kind: .meeting, title: "Meeting", onTogglePause: { togglePause() }) { finish() }
             await live.start(language: AppSettings.language)
         } catch {
+            journal?.finish()
             errorMessage = error.localizedDescription
         }
     }
@@ -292,6 +314,7 @@ struct RecordingView: View {
         let unsent = noteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !unsent.isEmpty { written.append(RecordingNote(at: result.duration, text: unsent)) }
         onFinish(result, names, liveText, written)
+        journal?.finish()
         dismiss()
     }
 }

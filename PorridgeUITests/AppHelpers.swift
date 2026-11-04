@@ -4,7 +4,7 @@ extension XCTestCase {
     /// The app without onboarding and without sync, so a run stays on this simulator.
     func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off"]
+        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO"]
         app.launch()
         return app
     }

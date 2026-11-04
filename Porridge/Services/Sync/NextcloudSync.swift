@@ -331,27 +331,33 @@ final class NextcloudSync {
         guard !wanted.isEmpty || !orphans.isEmpty else { return }
         var remote = try await dav.list(dav.recordings)
         // Recordings deleted somewhere: off the server, and off this device when no note here uses them.
+        var firstError: Error?
         if !orphans.isEmpty {
             let inUse = Set(all.flatMap { [$0.audioFileName, $0.pendingAudioFileName].compactMap { $0 } + $0.audioFileNames })
-            for name in orphans where AudioStore.isPlainName(name) {
+            let result = await SyncMerge.eachFile(orphans.filter(AudioStore.isPlainName)) { name in
                 if remote.contains(name) { try await dav.delete(dav.recordings.appending(path: name)) }
                 remote.remove(name)
                 if !inUse.contains(name) { AudioStore.delete(name) }
             }
-            state.orphans = []
+            // What could not be deleted is tried again next time.
+            state.orphans = result.failed
             state.save()
+            firstError = result.firstError
         }
-        guard !wanted.isEmpty else { return }
-        if remote.isEmpty { try await dav.makeFolder(dav.recordings) }
-        for name in wanted.sorted() where AudioStore.isPlainName(name) {
-            let target = dav.recordings.appending(path: name)
-            if AudioStore.exists(name), !remote.contains(name) {
-                try await dav.upload(file: AudioStore.url(for: name), to: target)
-                remote.insert(name)
-            } else if !AudioStore.exists(name), remote.contains(name) {
-                try await dav.download(target, to: AudioStore.url(for: name))
+        if !wanted.isEmpty {
+            if remote.isEmpty { try await dav.makeFolder(dav.recordings) }
+            let result = await SyncMerge.eachFile(wanted.sorted().filter(AudioStore.isPlainName)) { name in
+                let target = dav.recordings.appending(path: name)
+                if AudioStore.exists(name), !remote.contains(name) {
+                    try await dav.upload(file: AudioStore.url(for: name), to: target)
+                    remote.insert(name)
+                } else if !AudioStore.exists(name), remote.contains(name) {
+                    try await dav.download(target, to: AudioStore.url(for: name))
+                }
             }
+            firstError = firstError ?? result.firstError
         }
+        if let firstError { throw firstError }
     }
 
     // MARK: State

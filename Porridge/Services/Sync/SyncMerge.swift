@@ -15,6 +15,27 @@ struct SyncBase: Codable, Equatable {
 /// Three-way merge of one collection (notes, folders, …) between this device and the sync file. Kept free of
 /// SwiftData so the same rules can run on Android (`SyncMerge.kt`).
 enum SyncMerge {
+    /// Works through the recordings one by one: a file that fails does not hold back the ones after it, also not
+    /// the next time. Cancelling stops the run; what was left counts as failed.
+    static func eachFile(_ names: [String], _ work: (String) async throws -> Void) async -> (failed: [String], firstError: Error?) {
+        var failed: [String] = []
+        var firstError: Error?
+        for name in names {
+            if Task.isCancelled {
+                failed.append(name)
+                firstError = firstError ?? CancellationError()
+                continue
+            }
+            do {
+                try await work(name)
+            } catch {
+                failed.append(name)
+                firstError = firstError ?? error
+            }
+        }
+        return (failed, firstError)
+    }
+
     struct Local {
         let record: SyncRecord
         let updatedAt: Int64

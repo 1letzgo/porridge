@@ -363,25 +363,31 @@ object NextcloudSync {
         if (wanted.isEmpty() && state.orphans.isEmpty()) return
         val remote = dav.list(dav.recordings).toMutableSet()
         // Aufnahmen, die irgendwo gelöscht wurden: weg vom Server, und hier, wenn keine Notiz mehr darauf zeigt.
+        var firstError: Throwable? = null
         if (state.orphans.isNotEmpty()) {
             val inUse = all.flatMap { listOfNotNull(it.audioFileName, it.pendingAudioFileName) + it.audioFileNames }.toSet()
-            for (name in state.orphans.filter(AudioStore::isPlainName)) {
+            val result = SyncMerge.eachFile(state.orphans.filter(AudioStore::isPlainName)) { name ->
                 if (name in remote) dav.delete(dav.file(dav.recordings, name))
                 remote -= name
                 if (name !in inUse) AudioStore.delete(name)
             }
-            saveState(loadState().copy(orphans = emptyList()))
+            // Was nicht gelöscht werden konnte, kommt beim nächsten Mal wieder dran.
+            saveState(loadState().copy(orphans = result.failed))
+            firstError = result.firstError
         }
-        if (wanted.isEmpty()) return
-        if (remote.isEmpty()) dav.makeFolder(dav.recordings)
-        for (name in wanted.sorted().filter(AudioStore::isPlainName)) {
-            val target = dav.file(dav.recordings, name)
-            if (AudioStore.exists(name) && name !in remote) {
-                dav.upload(AudioStore.file(name), target)
-                remote += name
-            } else if (!AudioStore.exists(name) && name in remote) {
-                dav.download(target, AudioStore.file(name))
+        if (wanted.isNotEmpty()) {
+            if (remote.isEmpty()) dav.makeFolder(dav.recordings)
+            val result = SyncMerge.eachFile(wanted.sorted().filter(AudioStore::isPlainName)) { name ->
+                val target = dav.file(dav.recordings, name)
+                if (AudioStore.exists(name) && name !in remote) {
+                    dav.upload(AudioStore.file(name), target)
+                    remote += name
+                } else if (!AudioStore.exists(name) && name in remote) {
+                    dav.download(target, AudioStore.file(name))
+                }
             }
+            firstError = firstError ?: result.firstError
         }
+        firstError?.let { throw it }
     }
 }

@@ -7,9 +7,10 @@ import Foundation
 enum LiveRecording {
     private static var activity: Activity<RecordingActivityAttributes>?
 
-    /// `onStop` runs when the user taps "Stop" in the Live Activity.
-    static func start(kind: RecordingActivityAttributes.Kind, title: String, startedAt: Date = Date(), onStop: @escaping () -> Void) {
+    /// `onStop` and `onTogglePause` run when the user taps those buttons in the Live Activity.
+    static func start(kind: RecordingActivityAttributes.Kind, title: String, startedAt: Date = Date(), onTogglePause: (() -> Void)? = nil, onStop: @escaping () -> Void) {
         RecordingCenter.stop = onStop
+        RecordingCenter.togglePause = onTogglePause
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         endActivity()
         let attributes = RecordingActivityAttributes(kind: kind, title: title)
@@ -36,6 +37,7 @@ enum LiveRecording {
 
     static func end() {
         RecordingCenter.stop = nil
+        RecordingCenter.togglePause = nil
         endActivity()
     }
 
@@ -64,7 +66,7 @@ enum LiveRecording {
         case note
     }
 
-    static func start(kind: Kind, title: String, startedAt: Date = Date(), onStop: @escaping () -> Void) {
+    static func start(kind: Kind, title: String, startedAt: Date = Date(), onTogglePause: (() -> Void)? = nil, onStop: @escaping () -> Void) {
         RecordingCenter.stop = onStop
     }
 

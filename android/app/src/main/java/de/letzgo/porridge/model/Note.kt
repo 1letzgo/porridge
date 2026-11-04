@@ -87,6 +87,19 @@ data class Note(
 
     val hasLocalAudio: Boolean get() = AudioStore.exists(audioFileName)
 
+    /**
+     * Ein später aufgenommener Teil wartet hier, bis er transkribiert ist (`ProcessingService.processContinuation`).
+     * Dabei getippte Notizen zählen ab dem Ende dessen, was schon da ist.
+     */
+    fun withRecordedPart(fileName: String, written: List<RecordingNote>): Note {
+        val start = maxOf(duration, segments.lastOrNull()?.end ?: 0.0)
+        val typed = RecordingNote.markdown(written.map { it.copy(at = it.at + start) })
+        return copy(
+            pendingAudioFileName = fileName, statusRaw = ProcessingStatus.RECORDED.raw, updatedAt = System.currentTimeMillis(),
+            text = if (typed.isEmpty()) text else if (text.isEmpty()) typed else text + "\n\n" + typed,
+        )
+    }
+
     fun transcriptText(speakers: List<Speaker> = this.speakers, timestamps: Boolean = true): String =
         segments.joinToString("\n") { segment ->
             var prefix = if (timestamps) "[${segment.start.clockString}] " else ""

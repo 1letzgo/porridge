@@ -19,8 +19,20 @@ enum NoteMerger {
 
     /// Merges `others` into `base`; `base` keeps its title and the others are deleted.
     static func merge(_ others: [Note], into base: Note, context: ModelContext) async throws {
-        let ordered = ([base] + others).sorted { $0.createdAt < $1.createdAt }
+        try await join(([base] + others).sorted { $0.createdAt < $1.createdAt }, into: base)
+        for meeting in others {
+            meeting.audioFileName = nil
+            NoteStore.deletePermanently(meeting, in: context)
+        }
+        try? context.save()
+    }
 
+    /// Adds a part recorded later to the end of `base`. `part` is a scratch note that is never stored.
+    static func append(_ part: Note, to base: Note) async throws {
+        try await join([base, part], into: base)
+    }
+
+    private static func join(_ ordered: [Note], into base: Note) async throws {
         // The recordings come first: the joined audio decides where each transcript starts.
         let oldAudio = ordered.compactMap(\.audioFileName)
         var mergedAudio: String?
@@ -98,12 +110,6 @@ enum NoteMerger {
         base.summarizedAt = nil
         base.errorMessage = nil
         base.status = .ready
-
-        for meeting in others {
-            meeting.audioFileName = nil
-            NoteStore.deletePermanently(meeting, in: context)
-        }
-        try? context.save()
     }
 
     private static func isSamePerson(_ a: Speaker, _ b: Speaker) -> Bool {

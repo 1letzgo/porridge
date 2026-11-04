@@ -72,7 +72,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
             1 -> {
                 Icon(Icons.Filled.Mic, null, tint = Brand.sky, modifier = Modifier.size(64.dp))
                 Text("Microphone", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
-                Text("Porridge needs the microphone to record. Recordings stay on this phone.", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Porridge needs the microphone to record. Recordings stay on this phone unless you turn on sync.", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             else -> {
                 Icon(Icons.Filled.Download, null, tint = Brand.sky, modifier = Modifier.size(64.dp))

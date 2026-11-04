@@ -28,10 +28,12 @@ extension Notification.Name {
     static let porridgeStopRecording = Notification.Name("de.letzgo.porridge.stopRecording")
 }
 
-/// Registered by the app while a recording runs, so "Stop" does not depend on any view still being on screen.
+/// Registered by the app while a recording runs, so the Live Activity's buttons do not depend on any view still being on screen.
 @MainActor
 enum RecordingCenter {
     static var stop: (() -> Void)?
+    /// Only meetings can pause.
+    static var togglePause: (() -> Void)?
 }
 
 #if os(iOS)
@@ -48,13 +50,33 @@ struct StopRecordingIntent: LiveActivityIntent {
             stop()
             return true
         }
-        if !handled {
-            // Nothing is recording any more (e.g. the app was restarted): don't leave a dead Stop button behind.
-            for activity in Activity<RecordingActivityAttributes>.activities {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
-        }
+        if !handled { await endLeftoverActivities() }
         return .result()
+    }
+}
+
+/// "Pause" / "Resume" button of the Live Activity. Runs inside the app process.
+struct PauseRecordingIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Pause or Resume Recording"
+    static let isDiscoverable = false
+    /// Works from the Lock Screen without unlocking the phone first.
+    static var authenticationPolicy: IntentAuthenticationPolicy { .alwaysAllowed }
+
+    func perform() async throws -> some IntentResult {
+        let handled = await MainActor.run { () -> Bool in
+            guard let togglePause = RecordingCenter.togglePause else { return false }
+            togglePause()
+            return true
+        }
+        if !handled { await endLeftoverActivities() }
+        return .result()
+    }
+}
+
+/// Nothing is recording any more (e.g. the app was restarted): don't leave dead buttons behind.
+private func endLeftoverActivities() async {
+    for activity in Activity<RecordingActivityAttributes>.activities {
+        await activity.end(nil, dismissalPolicy: .immediate)
     }
 }
 #endif

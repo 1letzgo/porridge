@@ -264,7 +264,9 @@ struct SettingsView: View {
                     Task { try? await models.ensureLocalASR() }
                 }
             }
-            Text("Recordings are transcribed on this device; audio never leaves it.")
+            Text(SyncMode.chosen == .nextcloud
+                ? "Recordings are transcribed on this device. With Nextcloud, the audio is also copied to your folder there."
+                : "Recordings are transcribed on this device; audio never leaves it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             CardDivider()

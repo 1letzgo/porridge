@@ -165,4 +165,22 @@ final class SyncMergeTests: XCTestCase {
         // Nothing set anywhere: the file stays without an entry.
         XCTAssertTrue(SyncMerge.mergeSettings(local: ["myName": ""], remote: [:], base: [:], now: 60).file.isEmpty)
     }
+
+    func testOneFailedRecordingDoesNotHoldBackTheOthers() async {
+        struct Failure: Error {}
+        var done: [String] = []
+        let result = await SyncMerge.eachFile(["a", "b", "c", "d"]) { name in
+            if name == "a" || name == "c" { throw Failure() }
+            done.append(name)
+        }
+        XCTAssertEqual(done, ["b", "d"])
+        XCTAssertEqual(result.failed, ["a", "c"])
+        XCTAssertTrue(result.firstError is Failure)
+    }
+
+    func testNoFailureReportsNothing() async {
+        let result = await SyncMerge.eachFile(["a"]) { _ in }
+        XCTAssertTrue(result.failed.isEmpty)
+        XCTAssertNil(result.firstError)
+    }
 }

@@ -43,7 +43,8 @@ struct RecordingLiveActivity: Widget {
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
                         Spacer()
-                        StopButton(isFinishing: context.state.isFinishing)
+                        PauseButton(context: context, foreground: .white)
+                        StopButton(isFinishing: context.state.isFinishing, foreground: .white)
                     }
                 }
             } compactLeading: {
@@ -71,7 +72,7 @@ private struct LockScreenView: View {
                 .frame(width: 48, height: 48)
                 .background(Circle().fill(Color.brandSky))
             VStack(alignment: .leading, spacing: 2) {
-                Text(context.state.pausedAt != nil ? "Paused" : context.attributes.kind == .meeting ? "Recording meeting" : "Dictating note")
+                Text(context.state.pausedAt != nil ? "Paused" : context.attributes.kind == .meeting ? "Recording" : "Dictating note")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.brandNavy.opacity(0.6))
                 Text(context.attributes.title)
@@ -83,20 +84,45 @@ private struct LockScreenView: View {
                     .foregroundStyle(Color.brandNavy)
             }
             Spacer()
+            PauseButton(context: context)
             StopButton(isFinishing: context.state.isFinishing)
         }
         .padding(16)
     }
 }
 
+/// Only meetings can pause; a dictated note shows no button here.
+private struct PauseButton: View {
+    let context: ActivityViewContext<RecordingActivityAttributes>
+    /// Navy on the light Lock Screen card, white on the black Dynamic Island.
+    var foreground = Color.brandNavy
+
+    private var isPaused: Bool { context.state.pausedAt != nil }
+
+    var body: some View {
+        if context.attributes.kind == .meeting {
+            Button(intent: PauseRecordingIntent()) {
+                Image(systemName: isPaused ? "play.fill" : "pause.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(foreground)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.brandSky.opacity(0.16)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isPaused ? "Resume recording" : "Pause recording")
+        }
+    }
+}
+
 private struct StopButton: View {
     let isFinishing: Bool
+    var foreground = Color.brandNavy
 
     var body: some View {
         Button(intent: StopRecordingIntent()) {
             Label(isFinishing ? "Saving" : "Stop", systemImage: isFinishing ? "hourglass" : "stop.fill")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.brandNavy)
+                .foregroundStyle(foreground)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(Capsule().fill(Color.brandSky.opacity(0.16)))

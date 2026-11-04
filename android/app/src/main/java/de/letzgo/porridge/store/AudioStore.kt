@@ -7,7 +7,7 @@ import android.net.Uri
 import java.io.File
 import java.util.UUID
 
-/** iOS: `AudioStore` — lokaler, nicht synchronisierter Speicher für Aufnahmen (`filesDir/Recordings`). */
+/** iOS: `AudioStore` — lokaler Speicher für Aufnahmen (`filesDir/Recordings`). Nextcloud kopiert sie in seinen Ordner (`NextcloudSync`). */
 object AudioStore {
     lateinit var directory: File
         private set

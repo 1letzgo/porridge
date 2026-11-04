@@ -17,6 +17,7 @@ import de.letzgo.porridge.model.Speaker
 import de.letzgo.porridge.model.SpeakerMode
 import de.letzgo.porridge.model.TranscriptSegment
 import de.letzgo.porridge.store.AudioStore
+import de.letzgo.porridge.store.NoteMerger
 import de.letzgo.porridge.store.PorridgeDatabase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -131,78 +132,107 @@ object ProcessingService {
         meeting = meeting.copy(statusRaw = ProcessingStatus.TRANSCRIBING.raw, errorMessage = null)
         save(meeting)
         try {
-            stage(id, "Preparing audio…")
-            val prepared = withContext(Dispatchers.IO) { AudioPreprocessor.prepare(AudioStore.file(fileName), meeting.speakerMode == SpeakerMode.CHANNELS) }
-            stage(id, "Loading speech model…")
-            SpeechModel.ensure()
-            stage(id, "Transcribing…")
-            val words = SpeechModel.transcribe(prepared.pcm, Prefs.language) { stage(id, "Transcribing … ${(it * 100).toInt()} %") }
-
-            var speakers = meeting.speakers
-            var diagnostics: String? = null
-            var speakerIds: List<String?> = words.map { null }
-            var mode = meeting.speakerMode
-            var samples: FloatArray? = null
-
-            val energy = prepared.channelEnergy
-            if (energy != null) {
-                speakerIds = SpeakerAssigner.byChannel(words, energy)
-                listOf(SpeakerAssigner.LEFT_CHANNEL_ID, SpeakerAssigner.RIGHT_CHANNEL_ID).forEachIndexed { index, channelID ->
-                    if (speakers.none { it.id == channelID }) speakers = speakers + Speaker(channelID, "Speaker ${index + 1}", index)
-                }
-            } else if (Prefs.speakerDetectionEnabled && words.isNotEmpty()) {
-                stage(id, "Detecting speakers…")
-                try {
-                    Diarizer.ensure()
-                    samples = prepared.floats()
-                    val segments = Diarizer.diarize(samples)
-                    val (ids, order) = SpeakerAssigner.byDiarization(words, segments)
-                    diagnostics = if (order.isEmpty()) "Speaker detection found no speech (${segments.size} segments)." else null
-                    if (order.isNotEmpty()) {
-                        speakerIds = ids
-                        speakers = order.mapIndexed { index, sid -> speakers.firstOrNull { it.id == sid } ?: Speaker(sid, "Speaker ${index + 1}", index) }
-                        mode = SpeakerMode.DIARIZED
-                    } else {
-                        speakers = emptyList()
-                        mode = SpeakerMode.NONE
-                    }
-                } catch (e: Throwable) {
-                    // Sprechererkennung ist freiwillig; das Transkript bleibt.
-                    diagnostics = "Speaker detection failed: ${e.message}"
-                    speakers = emptyList()
-                    mode = SpeakerMode.NONE
-                }
-            }
-
-            var segments = SpeakerAssigner.group(words, speakerIds)
-            // Sprecher ohne Text fallen weg (kurze Fehlerkennungen).
-            val used = segments.mapNotNull { it.speakerId }.toSet()
-            speakers = speakers.filter { it.id in used }
-            if (mode == SpeakerMode.DIARIZED && speakers.isEmpty()) {
-                mode = SpeakerMode.NONE
-                segments = segments.map { it.copy(speakerId = null) }
-            }
-            if (segments.isEmpty() && words.isNotEmpty()) {
-                segments = listOf(TranscriptSegment(start = 0.0, end = prepared.duration, text = words.joinToString(" ") { it.text }))
-            }
-            if (Prefs.voiceRecognitionEnabled && speakers.isNotEmpty()) {
-                stage(id, "Recognizing voices…")
-                try {
-                    speakers = VoiceProfiles().identify(speakers, segments, samples ?: prepared.floats())
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    // Stimmen sind freiwillig; das fertige Transkript bleibt.
-                    diagnostics = "Voice recognition failed: ${e.message}"
-                }
-            }
+            val result = recognize(id, fileName, meeting.speakerMode, meeting.speakers)
             val current = db.notes().get(id) ?: return
             save(
                 current.copy(
-                    speakerModeRaw = mode.raw, errorMessage = diagnostics, duration = prepared.duration,
+                    speakerModeRaw = result.mode.raw, errorMessage = result.diagnostics, duration = result.duration,
                     statusRaw = ProcessingStatus.READY.raw, updatedAt = System.currentTimeMillis(),
-                ).withSegments(segments).withSpeakers(speakers),
+                ).withSegments(result.segments).withSpeakers(result.speakers),
             )
+        } catch (e: Throwable) {
+            val current = db.notes().get(id) ?: return
+            save(current.copy(statusRaw = ProcessingStatus.FAILED.raw, errorMessage = e.message ?: "Transcription failed."))
+        }
+    }
+
+    private class Recognized(val segments: List<TranscriptSegment>, val speakers: List<Speaker>, val mode: SpeakerMode, val diagnostics: String?, val duration: Double)
+
+    /** Transkript und Sprecher einer Aufnahme. */
+    private suspend fun recognize(id: String, fileName: String, startMode: SpeakerMode, startSpeakers: List<Speaker>): Recognized {
+        stage(id, "Preparing audio…")
+        val prepared = withContext(Dispatchers.IO) { AudioPreprocessor.prepare(AudioStore.file(fileName), startMode == SpeakerMode.CHANNELS) }
+        stage(id, "Loading speech model…")
+        SpeechModel.ensure()
+        stage(id, "Transcribing…")
+        val words = SpeechModel.transcribe(prepared.pcm, Prefs.language) { stage(id, "Transcribing … ${(it * 100).toInt()} %") }
+
+        var speakers = startSpeakers
+        var diagnostics: String? = null
+        var speakerIds: List<String?> = words.map { null }
+        var mode = startMode
+        var samples: FloatArray? = null
+
+        val energy = prepared.channelEnergy
+        if (energy != null) {
+            speakerIds = SpeakerAssigner.byChannel(words, energy)
+            listOf(SpeakerAssigner.LEFT_CHANNEL_ID, SpeakerAssigner.RIGHT_CHANNEL_ID).forEachIndexed { index, channelID ->
+                if (speakers.none { it.id == channelID }) speakers = speakers + Speaker(channelID, "Speaker ${index + 1}", index)
+            }
+        } else if (Prefs.speakerDetectionEnabled && words.isNotEmpty()) {
+            stage(id, "Detecting speakers…")
+            try {
+                Diarizer.ensure()
+                samples = prepared.floats()
+                val segments = Diarizer.diarize(samples)
+                val (ids, order) = SpeakerAssigner.byDiarization(words, segments)
+                diagnostics = if (order.isEmpty()) "Speaker detection found no speech (${segments.size} segments)." else null
+                if (order.isNotEmpty()) {
+                    speakerIds = ids
+                    speakers = order.mapIndexed { index, sid -> speakers.firstOrNull { it.id == sid } ?: Speaker(sid, "Speaker ${index + 1}", index) }
+                    mode = SpeakerMode.DIARIZED
+                } else {
+                    speakers = emptyList()
+                    mode = SpeakerMode.NONE
+                }
+            } catch (e: Throwable) {
+                // Sprechererkennung ist freiwillig; das Transkript bleibt.
+                diagnostics = "Speaker detection failed: ${e.message}"
+                speakers = emptyList()
+                mode = SpeakerMode.NONE
+            }
+        }
+
+        var segments = SpeakerAssigner.group(words, speakerIds)
+        // Sprecher ohne Text fallen weg (kurze Fehlerkennungen).
+        val used = segments.mapNotNull { it.speakerId }.toSet()
+        speakers = speakers.filter { it.id in used }
+        if (mode == SpeakerMode.DIARIZED && speakers.isEmpty()) {
+            mode = SpeakerMode.NONE
+            segments = segments.map { it.copy(speakerId = null) }
+        }
+        if (segments.isEmpty() && words.isNotEmpty()) {
+            segments = listOf(TranscriptSegment(start = 0.0, end = prepared.duration, text = words.joinToString(" ") { it.text }))
+        }
+        if (Prefs.voiceRecognitionEnabled && speakers.isNotEmpty()) {
+            stage(id, "Recognizing voices…")
+            try {
+                speakers = VoiceProfiles().identify(speakers, segments, samples ?: prepared.floats())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Stimmen sind freiwillig; das fertige Transkript bleibt.
+                diagnostics = "Voice recognition failed: ${e.message}"
+            }
+        }
+        return Recognized(segments, speakers, mode, diagnostics, prepared.duration)
+    }
+
+    /**
+     * Ein Meeting wurde weiter aufgenommen: Der neue Teil bekommt ein eigenes Transkript und kommt dann dazu. Er wartet in
+     * `pendingAudioFileName`; ein Fehler oder Neustart verliert nichts.
+     */
+    private suspend fun processContinuation(id: String, fileName: String) {
+        val before = db.notes().get(id) ?: return
+        save(before.copy(statusRaw = ProcessingStatus.TRANSCRIBING.raw, errorMessage = null))
+        try {
+            val stereo = AudioStore.audioInfo(fileName)?.second == 2
+            val result = recognize(id, fileName, if (stereo) SpeakerMode.CHANNELS else SpeakerMode.NONE, emptyList())
+            stage(id, "Adding to the meeting…")
+            val part = Note(createdAt = System.currentTimeMillis(), audioFileName = fileName, duration = result.duration, errorMessage = result.diagnostics)
+                .withSegments(result.segments).withSpeakers(result.speakers)
+            val current = db.notes().get(id) ?: return
+            NoteMerger(db).append(part, current)
         } catch (e: Throwable) {
             val current = db.notes().get(id) ?: return
             save(current.copy(statusRaw = ProcessingStatus.FAILED.raw, errorMessage = e.message ?: "Transcription failed."))
@@ -215,6 +245,10 @@ object ProcessingService {
         val note = db.notes().get(id) ?: return
         val fileName = note.pendingAudioFileName ?: return
         if (!AudioStore.exists(fileName)) return
+        if (note.isRecording) {
+            processContinuation(id, fileName)
+            return
+        }
         save(note.copy(statusRaw = ProcessingStatus.TRANSCRIBING.raw, errorMessage = null))
         try {
             stage(id, "Preparing audio…")
