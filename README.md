@@ -31,7 +31,7 @@ Porridge records what is said in a meeting, writes it down with speaker names an
 - **Links:** Share a page to Porridge to save its text and summarize it.
 - **Projects:** Keep notes, meetings and links together, with pinned projects at the top.
 - **Search:** Search notes, transcripts, summaries and saved pages, narrowed by kind or tag.
-- **Sync:** iCloud on Apple devices, or your own Nextcloud across all platforms.
+- **Sync:** iCloud on Apple devices, or your own Nextcloud across all platforms. With Nextcloud, recordings upload on Wi-Fi and download when you ask for them. With iCloud they stay on the device that made them.
 - **Plaud import without the cloud:** Copy recordings straight from a Plaud recorder over Bluetooth, so they do not have to go through Plaud's cloud. You sign in to Plaud once in Settings to connect the recorder, then import from the plus button; the transcript and summary then come from Porridge.
 
 <p align="center">

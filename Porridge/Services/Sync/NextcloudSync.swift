@@ -89,6 +89,7 @@ final class NextcloudSync {
     }
 
     func disconnect() {
+        Task { await RecordingUploads.shared.cancelAll() }
         NextcloudAccount.remove()
         account = nil
         State.reset()
@@ -321,7 +322,27 @@ final class NextcloudSync {
         return Set(notes.flatMap(SyncRecords.audioFiles) + frozen)
     }
 
-    /// Recordings this device has go up; recordings of synced notes it lacks come down.
+    /// Loads a recording when it is asked for. Any network will do: somebody is waiting for it.
+    func fetchRecording(_ name: String) async throws {
+        guard let account, AudioStore.isPlainName(name) else { throw NextcloudError.recordingNotThere }
+        let dav = WebDAV(account: account)
+        try await dav.download(dav.recordings.appending(path: name), to: AudioStore.url(for: name))
+    }
+
+    /// A changed setting takes effect on the uploads already waiting.
+    func wifiOnlyChanged() {
+        Task {
+            await RecordingUploads.shared.cancelAll()
+            syncSoon(after: .zero)
+        }
+    }
+
+    func uploadFinished(error: String?) {
+        if let error { lastError = error }
+    }
+
+    /// Recordings this device has go up. The other way they come only when asked for (`fetchRecording`):
+    /// transcript and summary are there anyway, and not every device needs hours of audio.
     private func syncRecordings(_ dav: WebDAV, context: ModelContext) async throws {
         let all = try context.fetch(FetchDescriptor<Note>())
         let notes = all.filter { !SyncRecords.isFrozen($0) }
@@ -333,6 +354,7 @@ final class NextcloudSync {
         // Recordings deleted somewhere: off the server, and off this device when no note here uses them.
         var firstError: Error?
         if !orphans.isEmpty {
+            await RecordingUploads.shared.cancel(Set(orphans))
             let inUse = Set(all.flatMap { [$0.audioFileName, $0.pendingAudioFileName].compactMap { $0 } + $0.audioFileNames })
             let result = await SyncMerge.eachFile(orphans.filter(AudioStore.isPlainName)) { name in
                 if remote.contains(name) { try await dav.delete(dav.recordings.appending(path: name)) }
@@ -346,16 +368,12 @@ final class NextcloudSync {
         }
         if !wanted.isEmpty {
             if remote.isEmpty { try await dav.makeFolder(dav.recordings) }
-            let result = await SyncMerge.eachFile(wanted.sorted().filter(AudioStore.isPlainName)) { name in
-                let target = dav.recordings.appending(path: name)
-                if AudioStore.exists(name), !remote.contains(name) {
-                    try await dav.upload(file: AudioStore.url(for: name), to: target)
-                    remote.insert(name)
-                } else if !AudioStore.exists(name), remote.contains(name) {
-                    try await dav.download(target, to: AudioStore.url(for: name))
-                }
+            let running = await RecordingUploads.shared.running()
+            for name in wanted.sorted().filter(AudioStore.isPlainName)
+            where AudioStore.exists(name) && !remote.contains(name) && !running.contains(name) {
+                let request = dav.uploadRequest(to: dav.recordings.appending(path: name), wifiOnly: AppSettings.recordingsWiFiOnly)
+                RecordingUploads.shared.start(request, file: AudioStore.url(for: name), name: name)
             }
-            firstError = firstError ?? result.firstError
         }
         if let firstError { throw firstError }
     }

@@ -67,7 +67,7 @@ struct RecordingView: View {
         .onChange(of: models.asr) { live.observeDownload(models.asr) }
         .onChange(of: notes) { journal?.setNotes(notes) }
         .onReceive(NotificationCenter.default.publisher(for: .porridgeStopRecording)) { _ in finish() }
-        .alert("Discard recording?", isPresented: $confirmDiscard) {
+        .alert("Discard Recording?", isPresented: $confirmDiscard) {
             Button("Cancel", role: .cancel) {}
             Button("Discard", role: .destructive) {
                 recorder.cancel()
@@ -77,7 +77,7 @@ struct RecordingView: View {
                 dismiss()
             }
         }
-        .alert("Can't record", isPresented: .constant(errorMessage != nil)) {
+        .alert("Can't Record", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { dismiss() }
         } message: {
             Text(errorMessage ?? "")

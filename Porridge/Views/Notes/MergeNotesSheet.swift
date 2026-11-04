@@ -25,7 +25,7 @@ struct MergeNotesSheet: View {
 
     /// Without every recording on this device the audio cannot be joined and is dropped.
     private var losesAudio: Bool {
-        !chosen.isEmpty && !([base] + chosen).allSatisfy(\.hasLocalAudio)
+        !chosen.isEmpty && !NextcloudSync.shared.isActive && !([base] + chosen).allSatisfy(\.hasLocalAudio)
     }
 
     var body: some View {
@@ -126,6 +126,12 @@ struct MergeNotesSheet: View {
         isMerging = true
         defer { isMerging = false }
         do {
+            // With Nextcloud the recordings may still be there only: they come first, so the audio joins.
+            if NextcloudSync.shared.isActive {
+                for name in ([base] + chosen).compactMap(\.audioFileName) where !AudioStore.exists(name) {
+                    try await NextcloudSync.shared.fetchRecording(name)
+                }
+            }
             try await NoteMerger.merge(chosen, into: base, context: context)
             onMerged()
             dismiss()

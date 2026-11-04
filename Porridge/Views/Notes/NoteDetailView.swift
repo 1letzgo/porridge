@@ -28,6 +28,10 @@ struct NoteDetailView: View {
     @State private var dictation = InlineDictation()
     @State private var didStartRecording = false
     @State private var showExport = false
+    @State private var isFetchingAudio = false
+    @State private var fetchAudioError: String?
+    /// Redraws when a recording arrived: the file on disk is not observed.
+    @State private var fetchedAudio = 0
     @State private var showContinueRecording = false
     @State private var confirmContinueRecording = false
     /// Character offset where the current dictation starts; text before it is never changed.
@@ -114,6 +118,9 @@ struct NoteDetailView: View {
                 PlayerBar(player: player) { confirmDeleteAudio = true }
                     .padding(.horizontal)
                     .padding(.bottom, 8)
+            }
+            if fetchedAudio >= 0, canFetchAudio, tab != .note, !focused {
+                fetchAudioBar
             }
         }
         .toolbar { toolbar }
@@ -209,11 +216,13 @@ struct NoteDetailView: View {
         } message: {
             Text("Your edits to the summary are lost.")
         }
-        .alert("Delete recording?", isPresented: $confirmDeleteAudio) {
+        .alert("Delete Recording?", isPresented: $confirmDeleteAudio) {
             Button("Cancel", role: .cancel) {}
             Button("Delete Recording", role: .destructive, action: deleteAudio)
         } message: {
-            Text("The audio file is removed from this device. Transcript, speakers and summary stay.")
+            Text(NextcloudSync.shared.isActive
+                ? "The audio file is removed from all your devices and from Nextcloud. Transcript, speakers and summary stay."
+                : "The audio file is removed from this device. Transcript, speakers and summary stay.")
         }
         .alert("Rename Speaker", isPresented: .constant(renamingSpeaker != nil)) {
             TextField("Name", text: $renameText)
@@ -266,20 +275,18 @@ struct NoteDetailView: View {
                 .accessibilityLabel("Open \(domain)")
             }
 
-            HStack(spacing: 8) {
-                Text(note.createdAt, format: .dateTime.weekday(.wide).day().month().hour().minute())
-                if note.isRecording, note.duration > 0 {
-                    Text("·")
-                    Text(note.duration.durationText)
-                }
-                if let input = note.inputName {
-                    Text("·")
-                    Text(input).lineLimit(1)
-                }
-            }
+            Text(metaLine)
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
+    }
+
+    /// One text, so a long line wraps as a line and not column by column.
+    private var metaLine: String {
+        var parts = [note.createdAt.formatted(.dateTime.weekday(.wide).day().month().hour().minute())]
+        if note.isRecording, note.duration > 0 { parts.append(note.duration.durationText) }
+        if let input = note.inputName { parts.append(input) }
+        return parts.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -450,6 +457,7 @@ struct NoteDetailView: View {
                         Label(note.summary == nil ? "Write Summary" : "Edit Summary", systemImage: "pencil")
                     }
                     .disabled(isSummarizing)
+                    Divider()
                     if note.hasLocalAudio {
                         Button { processing.enqueue(.transcript(note.id)) } label: {
                             Label("Transcribe Again", systemImage: "waveform")
@@ -482,12 +490,12 @@ struct NoteDetailView: View {
                         }
                         .disabled(processing.stages[note.id] != nil || note.status != .ready)
                     }
+                    Divider()
                     if note.hasLocalAudio {
                         Button(role: .destructive) { confirmDeleteAudio = true } label: {
                             Label("Delete Recording", systemImage: "waveform.slash")
                         }
                     }
-                    Divider()
                     Button(role: .destructive) { NoteStore.trash(note, in: context); onClose() } label: {
                         Label("Delete", systemImage: "trash")
                     }
@@ -504,6 +512,46 @@ struct NoteDetailView: View {
     private var canContinueRecording: Bool {
         processing.stages[note.id] == nil && note.status == .ready && note.pendingAudioFileName == nil
             && (note.audioFileName == nil || note.hasLocalAudio)
+    }
+
+    /// The recording is on Nextcloud and not here yet: it comes when asked for.
+    private var canFetchAudio: Bool {
+        note.audioFileName != nil && !note.hasLocalAudio && NextcloudSync.shared.isActive
+    }
+
+    private var fetchAudioBar: some View {
+        VStack(spacing: 6) {
+            Button {
+                Task { await fetchAudio() }
+            } label: {
+                if isFetchingAudio {
+                    ProgressView().tint(Color.brandNavy)
+                } else {
+                    Label("Download Recording", systemImage: "arrow.down.circle")
+                }
+            }
+            .buttonStyle(ChunkyButtonStyle())
+            .disabled(isFetchingAudio)
+            if let fetchAudioError {
+                Text(fetchAudioError).font(.footnote).foregroundStyle(.red)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+    }
+
+    private func fetchAudio() async {
+        guard let name = note.audioFileName else { return }
+        isFetchingAudio = true
+        fetchAudioError = nil
+        defer { isFetchingAudio = false }
+        do {
+            try await NextcloudSync.shared.fetchRecording(name)
+            fetchedAudio += 1
+            player.load(AudioStore.url(for: name))
+        } catch {
+            fetchAudioError = error.localizedDescription
+        }
     }
 
     private var isSummarizing: Bool { processing.summarizing.contains(note.id) }

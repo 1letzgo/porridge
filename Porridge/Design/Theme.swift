@@ -76,7 +76,7 @@ extension View {
 /// Main button: a tinted rounded rectangle (sky wash, navy label), like a native bordered button.
 struct ChunkyButtonStyle: ButtonStyle {
     var fill: Color = .brandSky
-    var foreground: Color = .accentColor
+    var foreground: Color = .brandNavy
     var horizontalPadding: CGFloat = 24
     @Environment(\.isEnabled) private var isEnabled
 

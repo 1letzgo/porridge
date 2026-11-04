@@ -60,8 +60,8 @@ struct MeetingExportSheet: View {
             .background(Color.appBackground)
             .brandNavigationTitle("Export")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
                 }
             }
         }

@@ -575,7 +575,7 @@ struct NotesView: View {
                                         createOption("Project", systemImage: "folder.badge.plus", tint: .brandProject) { showNewProject = true }
                                     }
                                     createOption("Link", systemImage: "link", tint: .brandLink) { showAddLink = true }
-                                    createOption("Meeting", systemImage: "mic.fill", tint: .accentColor) { showCalendar = true }
+                                    createOption("Meeting", systemImage: "mic.fill", tint: .brandNavy) { showCalendar = true }
                                     createOption("Note", systemImage: "square.and.pencil", tint: .brandSky) { addNote() }
                                 }
                                 FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
@@ -1009,7 +1009,7 @@ struct NoteRow: View {
                 if note.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.brandNavy)
                         .accessibilityLabel("Pinned")
                 }
             }
@@ -1043,7 +1043,7 @@ struct NoteRow: View {
     }
 
     private var tint: Color {
-        note.isLink ? .brandLink : (note.isRecording ? .accentColor : .brandSky)
+        note.isLink ? .brandLink : (note.isRecording ? .brandNavy : .brandSky)
     }
 
     @ViewBuilder

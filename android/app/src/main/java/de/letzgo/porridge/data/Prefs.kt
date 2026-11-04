@@ -9,6 +9,7 @@ import android.content.SharedPreferences
  */
 object Keys {
     const val SPEECH_ENGINE = "speechEngine"
+    const val RECORDINGS_WIFI_ONLY = "recordingsWiFiOnly"
     const val ONBOARDING_DONE = "onboardingDone"
     const val LANGUAGE = "transcriptionLanguage"
     const val SPEAKER_DETECTION = "speakerDetection"
@@ -69,6 +70,7 @@ object Prefs {
         Keys.LANGUAGE to "auto",
         Keys.SPEECH_ENGINE to SpeechEngine.PARAKEET.raw,
         Keys.ONBOARDING_DONE to false,
+        Keys.RECORDINGS_WIFI_ONLY to true,
         Keys.SPEAKER_DETECTION to true,
         Keys.BILLING to SummaryBilling.LOCAL.raw,
         Keys.LOCAL_MODEL to "qwen3",

@@ -38,7 +38,9 @@ import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.ProcessingStatus
 import de.letzgo.porridge.model.path
 import de.letzgo.porridge.model.tree
+import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.NoteMerger
+import de.letzgo.porridge.sync.NextcloudSync
 import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.ui.Brand
 import kotlinx.coroutines.launch
@@ -96,7 +98,16 @@ fun MergeNotesSheet(base: Note, onDismiss: () -> Unit, onMerged: () -> Unit) {
                 onClick = {
                     working = true
                     coroutines.launch {
-                        runCatching { NoteMerger().merge(candidates.filter { it.id in picked }, base) }
+                        runCatching {
+                            val chosen = candidates.filter { it.id in picked }
+                            // Mit Nextcloud liegen die Aufnahmen vielleicht nur dort: Sie kommen zuerst, damit der Ton zusammenkommt.
+                            if (NextcloudSync.isActive) {
+                                for (name in (chosen + base).mapNotNull { it.audioFileName }) {
+                                    if (!AudioStore.exists(name)) NextcloudSync.fetchRecording(name)
+                                }
+                            }
+                            NoteMerger().merge(chosen, base)
+                        }
                             .onSuccess { onMerged(); onDismiss() }
                             .onFailure { error = it.message }
                         working = false

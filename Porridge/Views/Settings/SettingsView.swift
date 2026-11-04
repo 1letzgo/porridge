@@ -582,6 +582,7 @@ private struct SyncCard: View {
     @AppStorage(SyncMode.key) private var mode: SyncMode = .iCloud
     @Environment(\.openURL) private var openURL
     @State private var sync = NextcloudSync.shared
+    @AppStorage(AppSettings.recordingsWiFiOnlyKey) private var recordingsWiFiOnly = true
     @State private var server = ""
     @State private var login: Task<Void, Never>?
     @State private var loginError: String?
@@ -608,6 +609,10 @@ private struct SyncCard: View {
                 if let account = sync.account {
                     ValueRow(title: "Account", value: account.label)
                     ValueRow(title: "Status", value: status)
+                    Toggle("Upload Recordings on Wi-Fi Only", isOn: $recordingsWiFiOnly)
+                        .font(.body)
+                        .tint(Color.brandSky)
+                        .onChange(of: recordingsWiFiOnly) { sync.wifiOnlyChanged() }
                     HStack(spacing: 10) {
                         Spacer()
                         Button(sync.isSyncing ? "Syncing…" : "Sync Now") { Task { await sync.sync() } }
@@ -643,7 +648,7 @@ private struct SyncCard: View {
         switch mode {
         case .off: "Notes stay on this device."
         case .iCloud: "Notes and transcripts sync between your Apple devices. Recordings stay on the device that made them."
-        case .nextcloud: nil
+        case .nextcloud: "Notes and transcripts sync right away. Recordings upload from the device that made them and download when you ask for them."
         }
     }
 

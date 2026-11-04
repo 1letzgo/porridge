@@ -42,6 +42,8 @@ enum NextcloudError: LocalizedError {
     case conflict
     /// The sync file on the server can't be read; it stays as it is.
     case damagedFile
+    /// The device that made the recording has not uploaded it yet.
+    case recordingNotThere
 
     var errorDescription: String? {
         switch self {
@@ -49,6 +51,7 @@ enum NextcloudError: LocalizedError {
         case .http(401): "Nextcloud refused the login. Connect again."
         case let .http(code): "Nextcloud answered with error \(code)."
         case .loginTimedOut: "The login in the browser was not finished in time."
+        case .recordingNotThere: "This recording is not on Nextcloud yet. Try again once the other device has uploaded it."
         case .conflict: "The sync file changed in the meantime."
         case .damagedFile: "The sync file on Nextcloud is damaged. It was left as it is and nothing was synced."
         }
@@ -187,13 +190,18 @@ struct WebDAV {
         }
     }
 
-    func upload(file: URL, to url: URL) async throws {
-        let (_, response) = try await URLSession.shared.upload(for: request(url, method: "PUT"), fromFile: file)
-        guard (200...299).contains(status(response)) else { throw NextcloudError.http(status(response)) }
+    /// For an upload through the background session: it survives the app being suspended and, with `wifiOnly`,
+    /// waits for a network that costs nothing.
+    func uploadRequest(to url: URL, wifiOnly: Bool) -> URLRequest {
+        var request = request(url, method: "PUT")
+        request.allowsExpensiveNetworkAccess = !wifiOnly
+        request.allowsConstrainedNetworkAccess = !wifiOnly
+        return request
     }
 
     func download(_ url: URL, to file: URL) async throws {
         let (temp, response) = try await URLSession.shared.download(for: request(url, method: "GET"))
+        guard status(response) != 404 else { throw NextcloudError.recordingNotThere }
         guard status(response) == 200 else { throw NextcloudError.http(status(response)) }
         try? FileManager.default.removeItem(at: file)
         try FileManager.default.moveItem(at: temp, to: file)

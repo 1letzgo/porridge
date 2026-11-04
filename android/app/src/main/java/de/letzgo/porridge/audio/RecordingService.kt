@@ -90,6 +90,18 @@ class RecordingService : Service() {
                 builder.addAction(0, if (RecordingSession.isPaused) "Resume" else "Pause", toggle)
             }
             builder.addAction(0, "Stop", stop)
+            // Auf einem gesperrten Telefon: die Knöpfe ja, der Name des Termins nicht.
+            val lockScreen = NotificationCompat.Builder(this, CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Porridge")
+                .setContentText(if (RecordingSession.isPaused) "Paused" else "Recording")
+                .setOngoing(true)
+            if (RecordingSession.isMeeting && !RecordingSession.isPausedForCall) {
+                val toggle = PendingIntent.getService(this, 2, Intent(this, RecordingService::class.java).setAction(ACTION_TOGGLE_PAUSE), PendingIntent.FLAG_IMMUTABLE)
+                lockScreen.addAction(0, if (RecordingSession.isPaused) "Resume" else "Pause", toggle)
+            }
+            lockScreen.addAction(0, "Stop", stop)
+            builder.setPublicVersion(lockScreen.build())
             if (RecordingSession.isPaused) {
                 val state = if (RecordingSession.isPausedForCall) "Paused for call" else "Paused"
                 builder.setContentText("$state · ${RecordingSession.recorder?.elapsed?.value?.clockString.orEmpty()}").setShowWhen(false)

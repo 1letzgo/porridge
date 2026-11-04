@@ -12,10 +12,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -57,16 +59,21 @@ fun MeetingExportSheet(note: Note, onDismiss: () -> Unit) {
             ChoiceRow("Summary", summary, hasSummary) { summary = it }
             HorizontalDivider(thickness = 0.5.dp)
             ChoiceRow("Transcript", transcript, hasTranscript) { transcript = it }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (option in MeetingExport.Format.entries) {
-                    FilterChip(selected = format == option, onClick = { format = option }, label = { Text(option.title) })
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                MeetingExport.Format.entries.forEachIndexed { index, option ->
+                    SegmentedButton(
+                        selected = format == option, onClick = { format = option },
+                        shape = SegmentedButtonDefaults.itemShape(index, MeetingExport.Format.entries.size),
+                        colors = SegmentedButtonDefaults.colors(activeContainerColor = Brand.sky.copy(alpha = 0.18f), activeContentColor = Brand.navy),
+                        icon = {},
+                    ) { Text(option.title) }
                 }
             }
             if (failed) Text("The file could not be written.", color = Brand.danger, style = MaterialTheme.typography.bodySmall)
             else if (!hasSummary && !hasTranscript) Text("This meeting has no summary or transcript yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Button(
                 enabled = summary || transcript, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Brand.sky.copy(alpha = 0.2f), contentColor = Brand.navy),
+                colors = ButtonDefaults.buttonColors(containerColor = Brand.sky.copy(alpha = 0.18f), contentColor = Brand.navy),
                 onClick = {
                     coroutines.launch {
                         val export = MeetingExport.of(note, summary, transcript)

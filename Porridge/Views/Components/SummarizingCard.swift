@@ -15,11 +15,7 @@ struct SummarizingCard: View {
             Text(message)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            Button {} label: {
-                ProgressView().tint(Color.brandNavy)
-            }
-            .buttonStyle(ChunkyButtonStyle())
-            .disabled(true)
+            ProgressView().tint(Color.brandNavy)
             VStack(spacing: 2) {
                 if let status { Text(status) }
                 if let model { Text(model) }

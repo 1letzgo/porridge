@@ -38,7 +38,9 @@
 		1D8752ED4D7454780B6C0379 /* ProcessingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C6D4089FE130492BCC55C9 /* ProcessingService.swift */; };
 		1E8692F45F5B503127575701 /* RecordMeetingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A619A6A5CEB3607BF5EE1E /* RecordMeetingSheet.swift */; };
 		1F98599B6AB8467884A39EED /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 24020A51ADF48C7E0985F398 /* FluidAudio */; };
+		207887946B8010D86A8FECBF /* RecordingUploads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05CC3402D87F2F449489F80C /* RecordingUploads.swift */; };
 		211CA45B53CFCC7B382222E2 /* LinkInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD826B6A5B1FA5BADBBE472 /* LinkInbox.swift */; };
+		22F7E12CC6733C7A7B61E8F8 /* RecordingUploads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05CC3402D87F2F449489F80C /* RecordingUploads.swift */; };
 		2316760D8F08477ACACBA86F /* ModifierKeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19E1E9FC1D1AD53F0633B275 /* ModifierKeyMonitor.swift */; };
 		2337EF9768B3E546B1CA47E0 /* NoteMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */; };
 		23E846926253A0D2990F9CD8 /* AudioPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8EFBAAD626DEE8326A57573 /* AudioPlayback.swift */; };
@@ -274,6 +276,7 @@
 /* Begin PBXFileReference section */
 		0022B3D3910DC719584688E7 /* NoteListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListRow.swift; sourceTree = "<group>"; };
 		010311FFC97C720AE3AE3A85 /* SyncMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMerge.swift; sourceTree = "<group>"; };
+		05CC3402D87F2F449489F80C /* RecordingUploads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingUploads.swift; sourceTree = "<group>"; };
 		05F68F49429875E63DC4CCB6 /* CloudLLM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudLLM.swift; sourceTree = "<group>"; };
 		07AAE9F8DA020CCDB79635EF /* SummaryTemplateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryTemplateTests.swift; sourceTree = "<group>"; };
 		07FDF58B6FB80F0BA8223760 /* LiveRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRecording.swift; sourceTree = "<group>"; };
@@ -447,6 +450,7 @@
 			children = (
 				13563BB4DFFA76CB2DF27623 /* Nextcloud.swift */,
 				990B254429F49AE3C45A70F4 /* NextcloudSync.swift */,
+				05CC3402D87F2F449489F80C /* RecordingUploads.swift */,
 				010311FFC97C720AE3AE3A85 /* SyncMerge.swift */,
 				93CC5FDACE4A6D721DC26E56 /* SyncRecords.swift */,
 			);
@@ -1021,6 +1025,7 @@
 				8144E2DB0C1FCE75110B4B6B /* RecordMeetingSheet.swift in Sources */,
 				9D2861EFFABAC0F25E72B4B6 /* RecordingActivity.swift in Sources */,
 				BDDD05206A0D868FAEABA672 /* RecordingJournal.swift in Sources */,
+				22F7E12CC6733C7A7B61E8F8 /* RecordingUploads.swift in Sources */,
 				9AB821A5996B06FA3F60D76B /* RecordingView.swift in Sources */,
 				59F5596A81C875D183FFA518 /* RollingRecognizer.swift in Sources */,
 				15E6896507D8D184530CA9CA /* RootView.swift in Sources */,
@@ -1132,6 +1137,7 @@
 				1E8692F45F5B503127575701 /* RecordMeetingSheet.swift in Sources */,
 				48C60C370EC336B5F9465953 /* RecordingActivity.swift in Sources */,
 				A5FF3D1F2C04F7A95360E2FF /* RecordingJournal.swift in Sources */,
+				207887946B8010D86A8FECBF /* RecordingUploads.swift in Sources */,
 				092526A9383970BF7D903A1C /* RecordingView.swift in Sources */,
 				42572ADF40DC2CE03400BA23 /* RollingRecognizer.swift in Sources */,
 				75BF0D86D0CCBF8405F2CAB4 /* RootView.swift in Sources */,

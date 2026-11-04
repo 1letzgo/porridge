@@ -397,7 +397,7 @@ private fun SyncCard() {
     var loginError by remember { mutableStateOf<String?>(null) }
     Card(
         "Sync",
-        footer = if (mode == SyncMode.NEXTCLOUD) null else "Notes stay on this phone.",
+        footer = if (mode == SyncMode.NEXTCLOUD) "Notes and transcripts sync right away. Recordings upload from the device that made them and download when you ask for them." else "Notes stay on this phone.",
     ) {
         Picker("Sync With", SyncMode.entries.map { it to it.label }, mode) {
             mode = it
@@ -424,6 +424,15 @@ private fun SyncCard() {
                         color = if (status.error != null && !status.syncing) Brand.danger else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(2f, fill = false),
                     )
+                }
+                var wifiOnly by remember { mutableStateOf(Prefs.bool(Keys.RECORDINGS_WIFI_ONLY)) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Upload Recordings on Wi-Fi Only", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    androidx.compose.material3.Switch(wifiOnly, {
+                        wifiOnly = it
+                        Prefs.set(Keys.RECORDINGS_WIFI_ONLY, it)
+                        NextcloudSync.syncSoon(0)
+                    }, colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Brand.sky))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
                     Pill(if (status.syncing) "Syncing…" else "Sync Now", { coroutines.launch { NextcloudSync.sync() } }, enabled = !status.syncing)
@@ -487,7 +496,7 @@ private fun BackupCard() {
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) coroutines.launch { message = runCatching { Backup.import(context, uri) }.fold({ "Restored ${it.notes} notes and ${it.recordings} recordings." }, { "Restore failed: ${it.message}" }) }
     }
-    Card("Backup", footer = message ?: "Notes, voices and recordings in one file. Restoring keeps the newer version of each note.") {
+    Card("Backup", footer = message ?: "Notes, voices and the recordings on this phone in one file. Restoring keeps the newer version of each note.") {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Pill("Back Up", { exporter.launch("porridge-backup-${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.zip") })
             Pill("Restore", { importer.launch(arrayOf("application/zip", "application/octet-stream")) })

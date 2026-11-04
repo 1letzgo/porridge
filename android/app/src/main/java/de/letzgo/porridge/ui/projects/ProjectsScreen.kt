@@ -103,7 +103,7 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, onOpen: (String)
                         RowIcon(Icons.Filled.Folder, Brand.project)
                         Column(Modifier.weight(1f)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (project.isPinned) Icon(Icons.Filled.PushPin, "Pinned", tint = Color(0xFFF2994A), modifier = Modifier.size(12.dp))
+                                if (project.isPinned) Icon(Icons.Filled.PushPin, "Pinned", tint = Brand.navy, modifier = Modifier.size(12.dp))
                                 Text(project.name.ifEmpty { "Untitled Project" }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Text(

@@ -19,7 +19,7 @@ struct ProjectRow: View {
                     if project.isPinned {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.brandNavy)
                             .accessibilityLabel("Pinned")
                     }
                 }
@@ -47,7 +47,7 @@ struct ProjectRow: View {
         .cardListRow()
         .swipeActions(edge: .leading) {
             if !project.isArchived {
-                pinButton.tint(.orange)
+                pinButton.tint(.brandNavy)
             }
         }
         .swipeActions(edge: .trailing) {

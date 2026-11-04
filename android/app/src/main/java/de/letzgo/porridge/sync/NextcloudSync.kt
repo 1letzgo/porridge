@@ -72,6 +72,7 @@ object NextcloudSync {
     /** Jemand wollte einen Sync, während einer lief: Es folgt ein weiterer. */
     @Volatile private var syncAgain = false
     private lateinit var stateFile: File
+    private lateinit var connectivity: android.net.ConnectivityManager
     @Volatile private var ownWriteAt = 0L
 
     private const val FILE_NAME = "porridge-sync.json"
@@ -83,6 +84,7 @@ object NextcloudSync {
     /** Einmal beim Start: Stand laden, auf Änderungen in der Datenbank hören, ab und zu nachsehen. */
     fun init(context: Context) {
         stateFile = File(context.filesDir, "NextcloudSync/state.json")
+        connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
         _status.value = Status(account = NextcloudAccount.saved, lastSync = Prefs.long(LAST_SYNC_KEY).takeIf { it > 0 })
         PorridgeDatabase.shared.invalidationTracker.addObserver(object : InvalidationTracker.Observer(TABLES) {
             override fun onInvalidated(tables: Set<String>) {
@@ -247,6 +249,9 @@ object NextcloudSync {
         return result.base
     }
 
+    /** Ein Netz mit Volumengrenze wartet, wenn es so eingestellt ist. Hochgeladen wird dann beim nächsten Lauf im WLAN. */
+    private fun uploadsAllowed(): Boolean = !Prefs.bool(Keys.RECORDINGS_WIFI_ONLY) || !connectivity.isActiveNetworkMetered
+
     private fun loadState(): State =
         runCatching { PorridgeJson.decodeFromString(State.serializer(), stateFile.readText()) }.getOrDefault(State())
 
@@ -354,7 +359,18 @@ object NextcloudSync {
         return (inFile + frozen).toSet()
     }
 
-    /** Aufnahmen, die das Gerät hat, gehen hoch; fehlende Aufnahmen synchronisierter Notizen kommen herunter. */
+    /** Lädt eine Aufnahme, wenn sie gebraucht wird. Jedes Netz ist recht: Jemand wartet darauf. */
+    suspend fun fetchRecording(name: String) {
+        val account = _status.value.account ?: throw NextcloudException("Nextcloud is not connected.")
+        if (!AudioStore.isPlainName(name)) throw NextcloudException("This recording is not on Nextcloud yet.")
+        val dav = WebDAV(account)
+        dav.download(dav.file(dav.recordings, name), AudioStore.file(name))
+    }
+
+    /**
+     * Aufnahmen, die das Gerät hat, gehen hoch, auf Wunsch nur im WLAN. Herunter kommen sie nur auf Anfrage ([fetchRecording]):
+     * Transkript und Zusammenfassung sind ohnehin da, und nicht jedes Gerät braucht Stunden an Ton.
+     */
     private suspend fun syncRecordings(dav: WebDAV) {
         val all = PorridgeDatabase.shared.notes().all()
         val notes = all.filterNot(::isFrozen)
@@ -378,12 +394,9 @@ object NextcloudSync {
         if (wanted.isNotEmpty()) {
             if (remote.isEmpty()) dav.makeFolder(dav.recordings)
             val result = SyncMerge.eachFile(wanted.sorted().filter(AudioStore::isPlainName)) { name ->
-                val target = dav.file(dav.recordings, name)
-                if (AudioStore.exists(name) && name !in remote) {
-                    dav.upload(AudioStore.file(name), target)
+                if (AudioStore.exists(name) && name !in remote && uploadsAllowed()) {
+                    dav.upload(AudioStore.file(name), dav.file(dav.recordings, name))
                     remote += name
-                } else if (!AudioStore.exists(name) && name in remote) {
-                    dav.download(target, AudioStore.file(name))
                 }
             }
             firstError = firstError ?: result.firstError

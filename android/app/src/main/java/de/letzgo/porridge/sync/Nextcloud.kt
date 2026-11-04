@@ -182,6 +182,7 @@ class WebDAV(private val account: NextcloudAccount, private val client: OkHttpCl
 
     suspend fun download(url: HttpUrl, target: File) = withContext(Dispatchers.IO) {
         client.newCall(request(url).get().build()).execute().use { response ->
+            if (response.code == 404) throw NextcloudException("This recording is not on Nextcloud yet. Try again once the other device has uploaded it.", 404)
             if (response.code != 200) throw httpError(response.code)
             val temp = File(target.parentFile, ".${target.name}.part")
             temp.outputStream().use { response.body.byteStream().copyTo(it) }

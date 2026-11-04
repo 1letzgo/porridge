@@ -236,11 +236,11 @@ fun RecordingScreen(title: String?, continues: String? = null, onFinish: (Record
         }
     }
     if (confirmDiscard) AlertDialog(
-        onDismissRequest = { confirmDiscard = false }, title = { Text("Discard recording?") },
+        onDismissRequest = { confirmDiscard = false }, title = { Text("Discard Recording?") },
         confirmButton = { TextButton(onClick = { confirmDiscard = false; RecordingSession.cancel(); onCancel() }) { Text("Discard", color = Brand.danger) } },
         dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Cancel") } },
     )
-    error?.let { AlertDialog(onDismissRequest = { error = null; onCancel() }, title = { Text("Can't record") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { error = null; onCancel() }) { Text("OK") } }) }
+    error?.let { AlertDialog(onDismissRequest = { error = null; onCancel() }, title = { Text("Can't Record") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { error = null; onCancel() }) { Text("OK") } }) }
 }
 
 /** Die Notizen bisher als kurze Blasen, die neueste unten. */

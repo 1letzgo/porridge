@@ -115,6 +115,7 @@ import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.NoteStore
 import de.letzgo.porridge.store.PorridgeDatabase
+import de.letzgo.porridge.sync.NextcloudSync
 import de.letzgo.porridge.ui.Brand
 import de.letzgo.porridge.ui.components.LinkOrange
 import de.letzgo.porridge.ui.components.MarkdownText
@@ -160,6 +161,10 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     var confirmResummarize by remember { mutableStateOf(false) }
     var confirmDeleteAudio by remember { mutableStateOf(false) }
     var confirmContinueRecording by remember { mutableStateOf(false) }
+    var fetchingAudio by remember { mutableStateOf(false) }
+    var fetchAudioError by remember { mutableStateOf<String?>(null) }
+    /** Die Datei auf der Platte wird nicht beobachtet; das zeichnet neu, wenn eine Aufnahme angekommen ist. */
+    var fetchedAudio by remember { mutableStateOf(0) }
     var renaming by remember { mutableStateOf<Speaker?>(null) }
     var addingTag by remember { mutableStateOf(false) }
     var editingSummary by remember { mutableStateOf(false) }
@@ -196,7 +201,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
         }
     }
 
-    LaunchedEffect(note.audioFileName) {
+    LaunchedEffect(note.audioFileName, fetchedAudio) {
         note.audioFileName?.takeIf { note.hasLocalAudio }?.let { runCatching { player.load(it) } }
     }
     // Wer die Notiz während des Diktats verlässt, behält den Text: es wird beendet und gespeichert.
@@ -281,6 +286,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                                 act { requestSummary() }
                             })
                             DropdownMenuItem(text = { Text(if (note.summary == null) "Write Summary" else "Edit Summary") }, enabled = !isSummarizing, onClick = { act { tab = NoteTab.SUMMARY; editingSummary = true } })
+                            HorizontalDivider()
                             if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Transcribe Again") }, enabled = stage == null, onClick = { act { ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id)) } })
                             if (note.isLink) DropdownMenuItem(text = { Text("Load Page Again") }, enabled = stage == null, onClick = {
                                 act { coroutines.launch { db.notes().upsert(note.copy(statusRaw = ProcessingStatus.RECORDED.raw)); ProcessingService.enqueue(ProcessingService.Job.Link(note.id, false)) } }
@@ -295,8 +301,8 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                                 DropdownMenuItem(text = { Text("Copy Transcript") }, onClick = { act { copy(context, note.transcriptText()) } })
                                 DropdownMenuItem(text = { Text("Merge with…") }, enabled = stage == null && note.status == ProcessingStatus.READY, onClick = { act { showMerge = true } })
                             }
-                            if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Delete Recording", color = Brand.danger) }, onClick = { act { confirmDeleteAudio = true } })
                             HorizontalDivider()
+                            if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Delete Recording", color = Brand.danger) }, onClick = { act { confirmDeleteAudio = true } })
                             DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { act { coroutines.launch { if (stored != null) NoteStore().trash(note); onClose() } } })
                         }
                     }
@@ -334,6 +340,27 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
             }
             if (tab == NoteTab.NOTE && editor.isEditing && !note.isDeleted) NoteFormatBar(editor)
             else if (!(note.hasLocalAudio && tab != NoteTab.NOTE)) Spacer(Modifier.navigationBarsPadding())
+            // Die Aufnahme liegt noch auf Nextcloud und kommt, wenn man sie will.
+            if (fetchedAudio >= 0 && note.audioFileName != null && !note.hasLocalAudio && NextcloudSync.isActive && tab != NoteTab.NOTE && !editor.isEditing) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button(
+                        onClick = {
+                            val name = note.audioFileName ?: return@Button
+                            fetchingAudio = true
+                            fetchAudioError = null
+                            coroutines.launch {
+                                runCatching { NextcloudSync.fetchRecording(name) }
+                                    .onSuccess { fetchedAudio++ }
+                                    .onFailure { fetchAudioError = it.message }
+                                fetchingAudio = false
+                            }
+                        },
+                        enabled = !fetchingAudio, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Brand.sky.copy(alpha = 0.18f), contentColor = Brand.navy),
+                    ) { Text(if (fetchingAudio) "Downloading…" else "Download Recording") }
+                    fetchAudioError?.let { Text(it, color = Brand.danger, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
             if (note.hasLocalAudio && tab != NoteTab.NOTE && !editor.isEditing) {
                 PlayerBar(player, Modifier.padding(horizontal = 16.dp, vertical = 8.dp).navigationBarsPadding())
             }
@@ -405,7 +432,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     )
     if (confirmDeleteAudio) AlertDialog(
         onDismissRequest = { confirmDeleteAudio = false },
-        title = { Text("Delete recording?") }, text = { Text("The audio file is removed from this device. Transcript, speakers and summary stay.") },
+        title = { Text("Delete Recording?") }, text = { Text(if (NextcloudSync.isActive) "The audio file is removed from all your devices and from Nextcloud. Transcript, speakers and summary stay." else "The audio file is removed from this phone. Transcript, speakers and summary stay.") },
         confirmButton = { TextButton(onClick = { confirmDeleteAudio = false; player.stop(); AudioStore.delete(note.audioFileName); update { it.copy(audioFileName = null) } }) { Text("Delete Recording", color = Brand.danger) } },
         dismissButton = { TextButton(onClick = { confirmDeleteAudio = false }) { Text("Cancel") } },
     )
@@ -506,14 +533,16 @@ private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
             if (note.isRecording && note.duration > 0) add(note.duration.durationText)
             note.inputName?.let { add(it) }
         }
-        Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        // Darf umbrechen: Auf eine Zeile begrenzt fiel der Mikrofonname weg und ein einzelnes „·“ blieb stehen.
+        Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TagRow(note: Note, onAdd: () -> Unit, onProject: (String) -> Unit, onRemove: (String) -> Unit) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Antippbare Chips sind wegen der Mindestgröße fürs Tippen höher als ihre Fläche: Mittig liegen alle auf einer Linie.
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         // Projekte vor den Tags.
         ProjectPills(note.projectIDs, onProject)
         for (tag in note.tags) {
@@ -573,7 +602,7 @@ private fun StatusPanel(note: Note, stage: String?) {
 
 @Composable
 private fun SpeakerChips(speakers: List<Speaker>, onRename: (Speaker) -> Unit) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         for (speaker in speakers) {
             Surface(onClick = { onRename(speaker) }, shape = RoundedCornerShape(50), color = speakerColor(speaker.colorIndex).copy(alpha = 0.18f)) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {

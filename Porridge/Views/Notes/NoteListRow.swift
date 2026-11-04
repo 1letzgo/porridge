@@ -20,7 +20,7 @@ struct NoteListRow: View {
                     .tint(.brandSky)
             } else if !note.isArchived {
                 Button { togglePin() } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
-                    .tint(.orange)
+                    .tint(.brandNavy)
             }
         }
         .swipeActions(edge: .trailing) {

@@ -82,4 +82,13 @@ class WebDAVTest {
         assertEquals("https://example.com/nc", NextcloudLogin.normalize("https://example.com/nc/index.php"))
         assertNull(NextcloudLogin.normalize(""))
     }
+
+    @Test fun aRecordingNotYetOnTheServerSaysSo() = runTest {
+        val dav = dav()
+        server.enqueue(MockResponse.Builder().code(404).build())
+        val target = java.io.File.createTempFile("recording", ".m4a").apply { delete() }
+        val failure = runCatching { dav.download(dav.file(dav.recordings, "x.m4a"), target) }.exceptionOrNull()
+        assertEquals(404, (failure as NextcloudException).code)
+        assertEquals(false, target.exists())
+    }
 }
