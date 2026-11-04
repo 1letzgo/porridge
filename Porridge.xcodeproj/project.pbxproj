@@ -214,6 +214,7 @@
 		E53D3E365FE85257EF1B74A0 /* NoteMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */; };
 		E635DB886AFFBC93E39CF02C /* ProjectsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3F9193C0210E4B773AA7B2 /* ProjectsPane.swift */; };
 		E6AB44344775FD2E3AE87BFE /* LiveTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC34B2F819480B429CF98E03 /* LiveTranscriber.swift */; };
+		E7930D2DFA603FB179DDA498 /* OpusOggDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74EAA32100EEC6B64A63D98 /* OpusOggDecoderTests.swift */; };
 		E8627E20B8F2D15E59D7A4C6 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 891664E182A92898397DE9A2 /* Tokenizers */; };
 		E9FE0E016AFDC457C315FB07 /* ProjectPills.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35BE11751AA4852709A2028 /* ProjectPills.swift */; };
 		EBDC4F7260BCB5488F6713FD /* PlaudProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 899112051F381E37B77B95FC /* PlaudProtocol.swift */; };
@@ -380,6 +381,7 @@
 		BE59B16FB8350F8617863947 /* NoteIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteIndex.swift; sourceTree = "<group>"; };
 		BE6FAD6923A33CEED95AFCE0 /* QuickActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActions.swift; sourceTree = "<group>"; };
 		C65F0237052007B3FEEEBEB9 /* Transcript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcript.swift; sourceTree = "<group>"; };
+		C74EAA32100EEC6B64A63D98 /* OpusOggDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpusOggDecoderTests.swift; sourceTree = "<group>"; };
 		C8A969612AE20E4060E62676 /* PlaudLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudLog.swift; sourceTree = "<group>"; };
 		C8EFBAAD626DEE8326A57573 /* AudioPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayback.swift; sourceTree = "<group>"; };
 		CA34303F4D0BAC2C94BD8F69 /* PorridgeShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = PorridgeShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -562,6 +564,7 @@
 				DDBFEA88590BF7A95A16C45E /* HomeFilterTests.swift */,
 				CF9B98C438AED2F5E6E75969 /* MeetingExportTests.swift */,
 				A2EF8775CF439144C3EC58B2 /* NoteStoreTests.swift */,
+				C74EAA32100EEC6B64A63D98 /* OpusOggDecoderTests.swift */,
 				86F8230059161CD646421829 /* SummaryModelTests.swift */,
 				800A5A3CB6D64E088C615782 /* SummaryTasksTests.swift */,
 				07AAE9F8DA020CCDB79635EF /* SummaryTemplateTests.swift */,
@@ -1220,6 +1223,7 @@
 				86C2842E103B9BFCA4D8CFE3 /* HomeFilterTests.swift in Sources */,
 				D0C4C0EBF2FB41F1E6F43CF0 /* MeetingExportTests.swift in Sources */,
 				ED8E0E578CE44BBB0A5D99C5 /* NoteStoreTests.swift in Sources */,
+				E7930D2DFA603FB179DDA498 /* OpusOggDecoderTests.swift in Sources */,
 				4BE1D9ED3A6FF0F1DF22A5A9 /* SummaryModelTests.swift in Sources */,
 				E3CFDECDF9B065FCDE2D43DA /* SummaryTasksTests.swift in Sources */,
 				2487F1CA6330738A38A66962 /* SummaryTemplateTests.swift in Sources */,
