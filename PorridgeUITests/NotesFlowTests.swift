@@ -69,4 +69,47 @@ final class NotesFlowTests: XCTestCase {
         let reopened = app.textFields.matching(NSPredicate(format: "value == %@", name)).firstMatch
         XCTAssertTrue(reopened.waitForExistence(timeout: 10), "note did not open from the search")
     }
+
+    /// The filter is the system menu now; its button says what is chosen.
+    func testFilterMenuNarrowsTheList() throws {
+        let app = launchApp()
+        let filter = app.buttons["HomeFilterButton"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 30))
+        filter.tap()
+        let notes = app.buttons["Notes"]
+        XCTAssertTrue(notes.waitForExistence(timeout: 5), "filter menu did not open")
+        notes.tap()
+        XCTAssertTrue(app.buttons["Filter: Notes"].waitForExistence(timeout: 5))
+    }
+
+    /// VoiceOver sees what this test sees: a row of the list has to be something to press.
+    func testNoteRowIsAButtonForAssistiveTechnologies() throws {
+        let app = launchApp()
+        let title = unique("Row")
+        app.create("Note")
+        let field = app.titleField
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        field.typeText(title)
+        app.buttons["Back"].firstMatch.tap()
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "row is not a button:\n\(app.debugDescription)")
+        row.tap()
+        XCTAssertTrue(app.textFields.matching(NSPredicate(format: "value == %@", title)).firstMatch.waitForExistence(timeout: 10), "row did not open the note")
+    }
+
+    /// The largest text size: a picture of the list to look at, and the buttons still there.
+    func testLargestTextKeepsTheBottomButtons() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        XCTAssertTrue(app.buttons["HomeFilterButton"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["Create"].isHittable)
+        app.buttons["Create"].tap()
+        sleep(1)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "largest-text-plus-menu"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
 }

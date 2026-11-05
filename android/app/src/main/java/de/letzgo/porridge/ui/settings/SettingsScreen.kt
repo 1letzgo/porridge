@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.settings
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -126,7 +128,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         onCancel = { showPlaudLogin = false },
     )
     BackHandler { onBack() }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         ChromeBar("Settings", Icons.Filled.Settings, onBack = onBack) {}
         Column(Modifier.fillMaxSize().verticalScroll(pageScroll).padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(22.dp)) {
             YouCard()
@@ -156,14 +158,14 @@ private fun Card(title: String, footer: String? = null, content: @Composable Col
 
 @Composable
 private fun Pill(label: String, onClick: () -> Unit, enabled: Boolean = true, destructive: Boolean = false) =
-    Button(onClick = onClick, enabled = enabled, colors = ButtonDefaults.buttonColors(containerColor = (if (destructive) Brand.danger else Brand.sky).copy(alpha = 0.18f), contentColor = if (destructive) Brand.danger else Brand.navy), shape = RoundedCornerShape(50)) { Text(label) }
+    Button(onClick = onClick, enabled = enabled, colors = ButtonDefaults.buttonColors(containerColor = (if (destructive) Brand.danger else Brand.sky).copy(alpha = 0.18f), contentColor = if (destructive) Brand.dangerText else Brand.navy), shape = RoundedCornerShape(50)) { Text(label) }
 
 @Composable
 private fun ToggleRow(label: String, key: String) {
     var on by remember { mutableStateOf(Prefs.bool(key)) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().toggleable(value = on, role = Role.Switch) { on = it; Prefs.set(key, it) }, verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-        Switch(checked = on, onCheckedChange = { on = it; Prefs.set(key, it) }, colors = SwitchDefaults.colors(checkedTrackColor = Brand.sky))
+        Switch(checked = on, onCheckedChange = null, colors = SwitchDefaults.colors(checkedTrackColor = Brand.sky))
     }
 }
 
@@ -197,7 +199,7 @@ private fun VoicesCard(onOpen: () -> Unit) {
     Card("Voices") {
         ToggleRow("Recognize Voices", Keys.VOICE_RECOGNITION)
         HorizontalDivider()
-        Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Known Voices", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
             Text("${profiles.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -215,7 +217,7 @@ private fun VoicesScreen(onBack: () -> Unit) {
     // Die eigene Stimme oben.
     var myVoice by remember { mutableStateOf(Me.voiceID) }
     BackHandler { onBack() }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         ChromeBar("Known Voices", Icons.Filled.Groups, onBack = onBack) {}
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (profiles.isNotEmpty()) Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 1.dp) {
@@ -235,7 +237,7 @@ private fun VoicesScreen(onBack: () -> Unit) {
                                 )
                             }
                             TextButton(onClick = { renaming = profile }) { Text("Rename") }
-                            IconButton(onClick = { forgetting = profile }) { Icon(Icons.Outlined.Delete, "Forget Voice", tint = Brand.danger) }
+                            IconButton(onClick = { forgetting = profile }) { Icon(Icons.Outlined.Delete, "Forget Voice", tint = Brand.dangerText) }
                         }
                     }
                 }
@@ -249,8 +251,8 @@ private fun VoicesScreen(onBack: () -> Unit) {
     renaming?.let { p -> TextPrompt("Rename Voice", p.name, "Save", { renaming = null }) { name -> renaming = null; coroutines.launch { VoiceProfiles().rename(p, name) } } }
     forgetting?.let { p ->
         AlertDialog(
-            onDismissRequest = { forgetting = null }, title = { Text("Forget this voice?") }, text = { Text("Names already given in meetings stay.") },
-            confirmButton = { TextButton(onClick = { forgetting = null; coroutines.launch { VoiceProfiles().delete(p) } }) { Text("Forget Voice", color = Brand.danger) } },
+            onDismissRequest = { forgetting = null }, title = { Text("Forget Voice?") }, text = { Text("Names already given in meetings stay.") },
+            confirmButton = { TextButton(onClick = { forgetting = null; coroutines.launch { VoiceProfiles().delete(p) } }) { Text("Forget Voice", color = Brand.dangerText) } },
             dismissButton = { TextButton(onClick = { forgetting = null }) { Text("Cancel") } },
         )
     }
@@ -280,7 +282,7 @@ private fun ModelRow(pack: ModelPack, subtitle: String, unload: () -> Unit) {
             )
             when (val s = state) {
                 is ModelState.Downloading -> LinearProgressIndicator(progress = { s.fraction }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = Brand.sky)
-                is ModelState.Failed -> Text(s.message, style = MaterialTheme.typography.labelSmall, color = Brand.danger)
+                is ModelState.Failed -> Text(s.message, style = MaterialTheme.typography.labelSmall, color = Brand.dangerText)
                 else -> Unit
             }
         }
@@ -288,20 +290,20 @@ private fun ModelRow(pack: ModelPack, subtitle: String, unload: () -> Unit) {
             ModelState.NotInstalled, is ModelState.Failed -> Pill("Download", { ModelManager.startDownload(pack) })
             is ModelState.Downloading, ModelState.Loading -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Brand.sky)
             ModelState.Installed, ModelState.Ready -> {
-                Icon(Icons.Filled.CheckCircle, "Installed", tint = Brand.sky)
-                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Outlined.Delete, "Delete", tint = Brand.danger) }
+                Icon(Icons.Filled.CheckCircle, "Installed", tint = Brand.skyText)
+                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Outlined.Delete, "Delete", tint = Brand.dangerText) }
             }
         }
     }
     if (confirmCancel && downloading) AlertDialog(
-        onDismissRequest = { confirmCancel = false }, title = { Text("Cancel download of ${pack.displayName}?") },
+        onDismissRequest = { confirmCancel = false }, title = { Text("Cancel Download of ${pack.displayName}?") },
         text = { Text("What has been downloaded so far will be deleted.") },
-        confirmButton = { TextButton(onClick = { confirmCancel = false; ModelManager.cancelDownload(pack) }) { Text("Cancel Download", color = Brand.danger) } },
+        confirmButton = { TextButton(onClick = { confirmCancel = false; ModelManager.cancelDownload(pack) }) { Text("Cancel Download", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { confirmCancel = false }) { Text("Keep Downloading") } },
     )
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false }, title = { Text("Delete ${pack.displayName}?") }, text = { Text("You can download it again at any time.") },
-        confirmButton = { TextButton(onClick = { confirmDelete = false; ModelManager.delete(pack, unload) }) { Text("Delete", color = Brand.danger) } },
+        confirmButton = { TextButton(onClick = { confirmDelete = false; ModelManager.delete(pack, unload) }) { Text("Delete", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
     )
 }
@@ -363,14 +365,21 @@ private fun SummaryCard() {
             }
         }
         for (model in external) {
+            var confirmRemove by remember(model) { mutableStateOf(false) }
+            if (confirmRemove) AlertDialog(
+                onDismissRequest = { confirmRemove = false }, title = { Text("Remove ${model.name}?") },
+                text = { Text("You can add it again at any time.") },
+                confirmButton = { TextButton(onClick = { confirmRemove = false; SummaryModel.remove(model); refresh() }) { Text("Remove", color = Brand.dangerText) } },
+                dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
+            )
             HorizontalDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(model.name, fontWeight = FontWeight.SemiBold)
                     Text(model.place, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(Icons.Filled.CheckCircle, "Added", tint = Brand.sky)
-                IconButton(onClick = { SummaryModel.remove(model); refresh() }) { Icon(Icons.Outlined.Delete, "Remove", tint = Brand.danger) }
+                Icon(Icons.Filled.CheckCircle, "Added", tint = Brand.skyText)
+                IconButton(onClick = { confirmRemove = true }) { Icon(Icons.Outlined.Delete, "Remove", tint = Brand.dangerText) }
             }
         }
         HorizontalDivider()
@@ -397,13 +406,13 @@ private fun AddModelSheet(onDismiss: () -> Unit) {
                 AddCloudModel(chosen, onBack = { provider = null }, onAdded = onDismiss)
             } else {
                 Text("Add Model", style = MaterialTheme.typography.titleLarge)
-                Text("On This Device", style = MaterialTheme.typography.labelLarge, color = Brand.sky)
+                Text("On This Device", style = MaterialTheme.typography.labelLarge, color = Brand.skyText)
                 val recommended = LocalModel.recommended(context)
                 val open = LocalModel.entries.filter { ModelManager.state(it.pack).collectAsState().value.let { s -> s != ModelState.Installed && s != ModelState.Ready } }
                 if (open.isEmpty()) Text("All on-device models are added.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 for (m in open) ModelRow(m.pack, if (m == recommended) "Recommended for this device" else "On this device") { coroutines.launch { LocalLLM.of(m).unload() } }
                 HorizontalDivider()
-                Text("Cloud Service", style = MaterialTheme.typography.labelLarge, color = Brand.sky)
+                Text("Cloud Service", style = MaterialTheme.typography.labelLarge, color = Brand.skyText)
                 for (option in AIProvider.entries) {
                     Row(Modifier.fillMaxWidth().clickable { provider = option }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(option.label, Modifier.weight(1f))
@@ -440,14 +449,14 @@ private fun AddCloudModel(provider: AIProvider, onBack: () -> Unit, onAdded: () 
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Brand.navy) }
         Text(provider.label, style = MaterialTheme.typography.titleLarge)
     }
-    if (provider == AIProvider.CUSTOM) OutlinedTextField(baseURL, { baseURL = it }, label = { Text("Server address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    if (provider == AIProvider.CUSTOM) OutlinedTextField(baseURL, { baseURL = it }, label = { Text("Server Address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(
         key, { key = it }, label = { Text(if (provider.requiresKey) "${provider.label} API Key" else "API Key (optional)") },
         singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
     )
     if (models.isNotEmpty()) Picker("Model", models.let { list -> if (list.none { it.first == model } && model.isNotEmpty()) list + (model to model) else list }, model) { model = it }
     OutlinedTextField(model, { model = it }, label = { Text("Model ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    loadError?.let { Text(it, color = Brand.danger, style = MaterialTheme.typography.bodySmall) }
+    loadError?.let { Text(it, color = Brand.dangerText, style = MaterialTheme.typography.bodySmall) }
     Button(
         enabled = model.isNotBlank() && (if (provider == AIProvider.CUSTOM) baseURL.isNotBlank() else key.isNotBlank()),
         onClick = {
@@ -467,6 +476,15 @@ private fun AddCloudModel(provider: AIProvider, onBack: () -> Unit, onAdded: () 
 private fun CustomTemplatesDialog(onDismiss: () -> Unit) {
     var templates by remember { mutableStateOf(SummaryTemplate.custom) }
     var editing by remember { mutableStateOf<SummaryTemplate?>(null) }
+    var deleting by remember { mutableStateOf<SummaryTemplate?>(null) }
+    deleting?.let { template ->
+        AlertDialog(
+            onDismissRequest = { deleting = null }, title = { Text("Delete ${template.name}?") },
+            text = { Text("This cannot be undone.") },
+            confirmButton = { TextButton(onClick = { deleting = null; templates = templates - template; SummaryTemplate.custom = templates }) { Text("Delete", color = Brand.dangerText) } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+        )
+    }
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text("Custom Templates") },
         text = {
@@ -474,7 +492,7 @@ private fun CustomTemplatesDialog(onDismiss: () -> Unit) {
                 if (templates.isEmpty()) Text("Your own templates tell the summary what to look at, for example \u201cNote every price that is mentioned\u201d.")
                 for (template in templates) Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { editing = template }, Modifier.weight(1f)) { Text(template.name) }
-                    IconButton(onClick = { templates = templates - template; SummaryTemplate.custom = templates }) { Icon(Icons.Outlined.Delete, "Delete", tint = Brand.danger) }
+                    IconButton(onClick = { deleting = template }) { Icon(Icons.Outlined.Delete, "Delete", tint = Brand.dangerText) }
                 }
             }
         },
@@ -540,7 +558,7 @@ private fun SyncCard() {
                             status.lastSync != null -> "Synced " + android.text.format.DateUtils.getRelativeTimeSpanString(status.lastSync!!)
                             else -> "Not synced yet"
                         },
-                        color = if (status.error != null && !status.syncing) Brand.danger else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (status.error != null && !status.syncing) Brand.dangerText else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(2f, fill = false),
                     )
                 }
@@ -587,7 +605,7 @@ private fun SyncCard() {
                         Pill("Cancel", { login?.cancel(); login = null })
                     }
                 }
-                loginError?.let { Text(it, color = Brand.danger, style = MaterialTheme.typography.bodySmall) }
+                loginError?.let { Text(it, color = Brand.dangerText, style = MaterialTheme.typography.bodySmall) }
             }
         }
     }

@@ -13,7 +13,7 @@ struct OverlayPanel<Content: View, Actions: View>: View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
                 Image(systemName: systemImage)
-                    .foregroundStyle(tint)
+                    .foregroundStyle(tint.readable)
                 Text(title)
                     .font(.headline)
                 Spacer()
@@ -24,7 +24,7 @@ struct OverlayPanel<Content: View, Actions: View>: View {
                 .accessibilityLabel("Close")
             }
             .font(.body.weight(.semibold))
-            .foregroundStyle(tint)
+            .foregroundStyle(tint.readable)
             .buttonStyle(.plain)
             .padding(.leading, 16)
             .padding(.trailing, 8)

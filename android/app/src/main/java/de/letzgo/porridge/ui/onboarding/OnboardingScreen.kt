@@ -70,17 +70,17 @@ fun OnboardingScreen(onDone: () -> Unit) {
                 Text("Record meetings and notes, transcribe and summarize them – on your phone.", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             1 -> {
-                Icon(Icons.Filled.Mic, null, tint = Brand.sky, modifier = Modifier.size(64.dp))
+                Icon(Icons.Filled.Mic, null, tint = Brand.skyText, modifier = Modifier.size(64.dp))
                 Text("Microphone", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
                 Text("Porridge needs the microphone to record. Recordings stay on this phone unless you turn on sync.", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             else -> {
-                Icon(Icons.Filled.Download, null, tint = Brand.sky, modifier = Modifier.size(64.dp))
+                Icon(Icons.Filled.Download, null, tint = Brand.skyText, modifier = Modifier.size(64.dp))
                 Text("Speech Model", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
                 Text("Parakeet v3 recognizes 25 European languages on your phone. It is downloaded once (${SpeechModel.pack.sizeText}); Wi-Fi is recommended.", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 when (val s = asr) {
                     is ModelState.Downloading -> LinearProgressIndicator(progress = { s.fraction }, modifier = Modifier.fillMaxWidth(), color = Brand.sky)
-                    is ModelState.Failed -> Text(s.message, color = Brand.danger)
+                    is ModelState.Failed -> Text(s.message, color = Brand.dangerText)
                     else -> Unit
                 }
             }
@@ -96,7 +96,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
                 }
             },
             enabled = !(step == 2 && asr is ModelState.Downloading),
-            modifier = Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = Brand.sky),
+            modifier = Modifier.fillMaxWidth().height(52.dp), colors = Brand.mainButton(),
         ) { Text(when (step) { 0 -> "Continue"; 1 -> "Allow Microphone"; else -> if (ready) "Start" else "Download" }) }
         if (step == 2 && !ready) TextButton(onClick = ::finish) { Text("Later") }
     }

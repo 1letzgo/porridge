@@ -73,7 +73,7 @@ fun AcknowledgementsScreen(onBack: () -> Unit) {
     BackHandler { onBack() }
     val context = LocalContext.current
     val list = remember { Acknowledgements.load(context) }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         ChromeBar("Acknowledgements", Icons.Filled.Favorite, onBack = onBack) {}
         LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
@@ -120,7 +120,7 @@ private fun EntryCard(entry: Acknowledgements.Entry, text: String) {
             AnimatedVisibility(open) {
                 Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     HorizontalDivider()
-                    Text(entry.url, style = MaterialTheme.typography.labelSmall, color = Brand.sky, maxLines = 1, modifier = Modifier.clickable { runCatching { uri.openUri(entry.url) } })
+                    Text(entry.url, style = MaterialTheme.typography.labelSmall, color = Brand.skyText, maxLines = 1, modifier = Modifier.clickable { runCatching { uri.openUri(entry.url) } })
                     SelectionContainer {
                         Text(text, fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }

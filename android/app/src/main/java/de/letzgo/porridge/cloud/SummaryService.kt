@@ -63,7 +63,7 @@ object SummaryService {
             while (material.length > SummaryLogic.SINGLE_PASS_LIMIT) {
                 val parts = SummaryLogic.partPrompts(material, request.header)
                 val notes = parts.mapIndexed { index, part ->
-                    progress("Reading part ${index + 1} of ${parts.size} …")
+                    progress("Reading part ${index + 1} of ${parts.size}…")
                     model.generate(SummaryLogic.notesPrompt(request.language, request.noun, request.focus), part, 700)
                 }
                 material = notes.joinToString("\n\n")

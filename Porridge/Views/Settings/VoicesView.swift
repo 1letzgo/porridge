@@ -98,7 +98,7 @@ struct VoicesView: View {
                 renaming = nil
             }
         }
-        .alert("Forget this voice?", isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } })) {
+        .alert("Forget Voice?", isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } })) {
             Button("Cancel", role: .cancel) { forgetting = nil }
             Button("Forget Voice", role: .destructive) {
                 if let forgetting { VoiceProfiles.delete(forgetting, context: context) }
@@ -123,7 +123,7 @@ struct VoicesView: View {
                 withAnimation(.snappy) { AppSettings.setMyVoice(isMe ? nil : voice) }
             } label: {
                 Image(systemName: isMe ? "person.crop.circle.fill" : "person.crop.circle")
-                    .foregroundStyle(isMe ? Color.brandTask : Color.accentColor)
+                    .foregroundStyle(isMe ? Color.brandTaskText : Color.accentColor)
             }
             .accessibilityLabel(isMe ? "Not Me" : "This Is Me")
             Button {
@@ -136,7 +136,7 @@ struct VoicesView: View {
             Button {
                 forgetting = voice
             } label: {
-                Image(systemName: "trash").foregroundStyle(.red)
+                Image(systemName: "trash").foregroundStyle(Color.brandDangerText)
             }
             .accessibilityLabel("Forget Voice")
         }

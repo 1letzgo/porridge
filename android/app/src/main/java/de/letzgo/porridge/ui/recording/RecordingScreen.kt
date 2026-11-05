@@ -113,9 +113,9 @@ fun RecordMeetingSheet(onDismiss: () -> Unit, onStart: (title: String?) -> Unit)
                 }
             }
             if (!asked) {
-                TextButton(onClick = { asked = true; permission.launch(Manifest.permission.READ_CALENDAR) }) { Text("Show today's appointments") }
+                TextButton(onClick = { asked = true; permission.launch(Manifest.permission.READ_CALENDAR) }) { Text("Show Today's Appointments") }
             } else if (appointments.isNotEmpty()) {
-                Text("Today", style = MaterialTheme.typography.labelLarge, color = Brand.sky, modifier = Modifier.padding(top = 12.dp))
+                Text("Today", style = MaterialTheme.typography.labelLarge, color = Brand.skyText, modifier = Modifier.padding(top = 12.dp))
                 HorizontalDivider(thickness = 0.5.dp)
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault())
                 for (a in appointments) {
@@ -237,7 +237,7 @@ fun RecordingScreen(title: String?, continues: String? = null, onFinish: (Record
     }
     if (confirmDiscard) AlertDialog(
         onDismissRequest = { confirmDiscard = false }, title = { Text("Discard Recording?") },
-        confirmButton = { TextButton(onClick = { confirmDiscard = false; RecordingSession.cancel(); onCancel() }) { Text("Discard", color = Brand.danger) } },
+        confirmButton = { TextButton(onClick = { confirmDiscard = false; RecordingSession.cancel(); onCancel() }) { Text("Discard", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Cancel") } },
     )
     error?.let { AlertDialog(onDismissRequest = { error = null; onCancel() }, title = { Text("Can't Record") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { error = null; onCancel() }) { Text("OK") } }) }
@@ -264,7 +264,7 @@ private fun NoteList(writing: Boolean) {
                     Text(note.text, style = MaterialTheme.typography.bodyMedium)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { menu = false; notes.remove(note) })
+                    DropdownMenuItem(text = { Text("Delete", color = Brand.dangerText) }, onClick = { menu = false; notes.remove(note) })
                 }
             }
         }

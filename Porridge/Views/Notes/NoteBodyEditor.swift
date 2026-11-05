@@ -100,7 +100,7 @@ struct NoteKeyboardBar: View {
         .padding(.horizontal, 22)
         .frame(height: 52)
         .modifier(BarBackground())
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity)))
     }
 }
 

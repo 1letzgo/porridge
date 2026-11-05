@@ -237,7 +237,7 @@ final class PlaudImporter {
                 PlaudLog.log("connect attempt \(attempt) failed: \(error)")
                 let retryable = (error as? PlaudBLEError)?.isRetryable ?? false
                 guard retryable, attempt < attempts else { throw error }
-                status = "Connection failed. Retrying \(attempt + 1) of \(attempts) …"
+                status = "Connection failed. Retrying \(attempt + 1) of \(attempts)…"
                 try await Task.sleep(nanoseconds: UInt64(attempt) * 1_500_000_000)
             }
         }

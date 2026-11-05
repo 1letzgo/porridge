@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.components
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -50,12 +52,12 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier, onToggleTask: 
                     Text(inline(block.text), style = MaterialTheme.typography.bodyLarge)
                 }
                 is NoteBlock.Kind.Checklist -> Row(
-                    Modifier.padding(start = indent).let { if (onToggleTask != null) it.clickable { onToggleTask(index) } else it },
+                    Modifier.padding(start = indent).let { if (onToggleTask != null) it.toggleable(value = kind.checked, role = Role.Checkbox) { onToggleTask(index) } else it },
                     verticalAlignment = Alignment.Top,
                 ) {
                     Icon(
-                        if (kind.checked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, contentDescription = if (kind.checked) "Done" else "Open",
-                        tint = Brand.task,
+                        if (kind.checked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, contentDescription = if (onToggleTask != null) null else if (kind.checked) "Done" else "Not Done",
+                        tint = Brand.taskText,
                         modifier = Modifier.padding(top = 2.dp, end = 8.dp).size(20.dp),
                     )
                     Text(

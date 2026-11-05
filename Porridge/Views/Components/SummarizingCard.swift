@@ -10,7 +10,7 @@ struct SummarizingCard: View {
         VStack(spacing: 16) {
             Image(systemName: "sparkles")
                 .font(.system(size: 40))
-                .foregroundStyle(Color.brandSky)
+                .foregroundStyle(Color.brandSkyText)
                 .symbolEffect(.pulse)
             Text(message)
                 .multilineTextAlignment(.center)

@@ -93,7 +93,7 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, showsDivider: Bo
         swipe, enableDismissFromEndToStart = false,
         backgroundContent = {
             Box(Modifier.fillMaxSize().background(if (archived) Brand.sky else Brand.navy).padding(horizontal = 24.dp), contentAlignment = Alignment.CenterStart) {
-                Icon(if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null, tint = Color.White)
+                Icon(if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null, tint = if (archived) Brand.onFill else Brand.onFill(Brand.navy))
             }
         },
     ) {
@@ -120,16 +120,16 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, showsDivider: Bo
                 if (!archived) DropdownMenuItem(text = { Text(if (project.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { Projects.togglePin(project) } })
                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renaming = true })
                 DropdownMenuItem(text = { Text(if (archived) "Unarchive" else "Archive") }, onClick = { menu = false; toggleArchive() })
-                DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { menu = false; deleting = true })
+                DropdownMenuItem(text = { Text("Delete", color = Brand.dangerText) }, onClick = { menu = false; deleting = true })
             }
         }
     }
     if (renaming) TextPrompt("Rename Project", project.name, "Save", onDismiss = { renaming = false }) { name -> renaming = false; coroutines.launch { Projects.rename(project, name) } }
     if (deleting) AlertDialog(
         onDismissRequest = { deleting = false },
-        title = { Text("Delete project “${project.name}”?") },
+        title = { Text("Delete Project “${project.name}”?") },
         text = { Text("Its notes, meetings and links stay; they are only no longer in this project.") },
-        confirmButton = { TextButton(onClick = { deleting = false; coroutines.launch { Projects.delete(project) } }) { Text("Delete", color = Brand.danger) } },
+        confirmButton = { TextButton(onClick = { deleting = false; coroutines.launch { Projects.delete(project) } }) { Text("Delete", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel") } },
     )
 }

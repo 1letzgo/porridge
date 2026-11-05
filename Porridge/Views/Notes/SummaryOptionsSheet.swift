@@ -33,7 +33,7 @@ struct SummaryOptionsSheet: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Template")
                             .font(.subheadline.weight(.bold))
-                            .foregroundStyle(Color.brandSky)
+                            .foregroundStyle(Color.brandSkyText)
                             .padding(.top, 8)
                             .padding(.bottom, 6)
                         Rectangle().fill(Look.hairline).frame(height: 0.5)

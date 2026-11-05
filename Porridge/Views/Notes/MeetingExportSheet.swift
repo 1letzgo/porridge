@@ -36,7 +36,7 @@ struct MeetingExportSheet: View {
                 TabSwitcher(selection: $format, options: MeetingExport.Format.allCases.map { (value: $0, title: $0.title) })
 
                 if failed {
-                    Text("The file could not be written.").font(.footnote).foregroundStyle(.red)
+                    Text("The file could not be written.").font(.footnote).foregroundStyle(Color.brandDangerText)
                 } else if !hasSummary, !hasTranscript {
                     Text("This meeting has no summary or transcript yet.").font(.footnote).foregroundStyle(.secondary)
                 }

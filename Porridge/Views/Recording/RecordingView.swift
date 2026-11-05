@@ -21,6 +21,7 @@ struct RecordingView: View {
     /// Keeps the meeting if the app does not get to the end of it.
     @State private var journal: RecordingJournal?
     @FocusState private var writingNote: Bool
+    @ScaledMetric(relativeTo: .largeTitle) private var clockScale: CGFloat = 1
 
     var body: some View {
         ZStack {
@@ -30,8 +31,10 @@ struct RecordingView: View {
                 header
 
                 Text(recorder.elapsed.clockString)
-                    .font(.system(size: writingNote ? 28 : 60, weight: .bold))
+                    .font(.system(size: (writingNote ? 28 : 60) * clockScale, weight: .bold))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                     .foregroundStyle(recorder.isPaused ? .secondary : .primary)
                     .contentTransition(.numericText())
 
@@ -169,7 +172,7 @@ struct RecordingView: View {
             Button(action: addNote) {
                 Image(systemName: "arrow.up")
                     .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.brandOnFill)
                     .frame(width: 44, height: 44)
                     .background(Color.brandSky, in: Circle())
             }
@@ -225,7 +228,8 @@ struct RecordingView: View {
         if recorder.isSplitStereo {
             return "Each microphone is assigned to one speaker. You can rename them now or later."
         }
-        if recorder.isExternal {
+        // Other external microphones, AirPods among them, have no such switch.
+        if recorder.isExternal, recorder.inputName.localizedCaseInsensitiveContains("DJI") {
             return "Tip: switch your DJI receiver to stereo to separate speakers per microphone."
         }
         return nil
@@ -247,7 +251,7 @@ struct RecordingView: View {
                 .frame(width: 64, height: 64)
                 .brandSurface(Circle())
         }
-        .accessibilityLabel(recorder.isPaused ? "Resume recording" : "Pause recording")
+        .accessibilityLabel(recorder.isPaused ? "Resume Recording" : "Pause Recording")
         .disabled(!recorder.isRecording || recorder.isPausedForCall)
     }
 
@@ -263,7 +267,7 @@ struct RecordingView: View {
             }
             .frame(width: 84, height: 84)
         }
-        .accessibilityLabel("Stop recording")
+        .accessibilityLabel("Stop Recording")
         .disabled(!recorder.isRecording)
     }
 
@@ -350,7 +354,7 @@ struct LiveTranscriptCard: View {
                 .foregroundStyle(.secondary)
         case .downloading(let progress):
             VStack(alignment: .leading, spacing: 8) {
-                Text("Downloading speech model (one time) …")
+                Text("Downloading speech model (one time)…")
                     .foregroundStyle(.secondary)
                 ProgressView(value: progress)
                     .tint(Color.brandSky)

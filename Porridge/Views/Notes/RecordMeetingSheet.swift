@@ -116,7 +116,7 @@ struct RecordMeetingSheet: View {
                 Spacer(minLength: 8)
                 Image(systemName: "mic.fill")
                     .font(.title3)
-                    .foregroundStyle(Color.brandSky)
+                    .foregroundStyle(Color.brandSkyText)
             }
             .chunkyCard()
         }

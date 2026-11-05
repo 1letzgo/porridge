@@ -6,22 +6,24 @@ The look follows Things 3: quiet white pages, big bold titles, thin lines, and c
 
 | Color | Value | Used for |
 | --- | --- | --- |
-| Sky | `#24B4E9` | The plus button, selection, toggles, the mic button, notes and their date headers |
-| Navy | `#1F3667`, dark `#B0C4EC` | Titles of notes, icons on bars and buttons, meetings, Archive, pins |
-| Green | `#29BD80` | Check boxes in summaries |
-| Violet | `#7C5CD6` | Projects |
-| Orange | `#FA8F24` | Saved links |
-| Red | System red | Recently Deleted, everything that deletes, and recording: the stop button and the mic while it runs |
+| Sky | `#24B4E9`, text `#0B79A8` | The plus button, selection, toggles, the mic button, notes and their date headers |
+| Navy | `#1F3667`, dark `#B0C4EC` | Titles of notes, icons on bars and buttons, symbols on sky, orange and green, meetings, Archive, pins |
+| Green | `#29BD80`, text `#0F8A5A` | Check boxes in summaries |
+| Violet | `#7C5CD6`, dark `#9B82E8` | Projects |
+| Orange | `#FA8F24`, text `#B55D00` | Saved links |
+| Red | System red, text `#D93025`, dark `#FF6B60` | Recently Deleted, everything that deletes, and recording: the stop button and the mic while it runs |
 
 Speakers have their own sequence of colors (`speakerColors`), starting with sky and orange. It says who is talking and nothing about the kind of thing.
 
 Every kind of thing keeps its color everywhere: in the list icon, its section header and its page.
 
+Sky, orange and green are for surfaces. As text or a symbol on a white page they use the darker "text" value, which reaches 4.5:1 (green 3:1, used only bold). Symbols on a full fill of them are navy, never white. In dark mode the bright values are the readable ones. The Apple platforms also have a variant for Increase Contrast.
+
 ## Layout
 
 - **Pages** are white (near black in dark mode) with hairlines as separators. Note pages scroll as a whole, head included, on iPhone and Android. The Mac keeps the head of a note in place.
 - **Section headers** are small and bold in the color of their kind, with a line below. Archive and Recently Deleted are tappable headers with a chevron at the bottom of the home list.
-- **Bottom bar:** filter and search as white round buttons with navy icons, the blue plus on the right. An active filter fills its button with the color of the kind.
+- **Bottom bar:** filter and search as white round buttons with navy icons, the blue plus on the right. An active filter fills its button with the color of the kind. On iOS the filter opens the system menu.
 - **Plus menu:** imports on top (Import Audio, Import Plaud once signed in), a line, then what can be created, each in the color of its kind.
 - **Live Activity and notification:** the running meeting with its clock, pause and stop. Navy on the light Lock Screen card, white on the black Dynamic Island.
 - **Home list:** at most 25 elements and 5 unpinned projects; "More" unfolds the rest in place.

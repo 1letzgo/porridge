@@ -125,7 +125,7 @@ fun NoteBodyEditor(
     val editorColors = NoteEditText.Colors(
         text = colors.onSurface.toArgb(), secondary = colors.onSurfaceVariant.toArgb(),
         heading = Brand.navy.toArgb(),
-        accent = Brand.sky.toArgb(), tag = Brand.sky.toArgb(),
+        accent = Brand.skyText.toArgb(), onAccent = MaterialTheme.colorScheme.onPrimary.toArgb(), tag = Brand.skyText.toArgb(),
     )
     var isEmpty by remember { mutableStateOf(text.isEmpty()) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current

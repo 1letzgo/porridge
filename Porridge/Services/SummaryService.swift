@@ -69,7 +69,7 @@ enum SummaryService {
     }
 
     /// Summarizes a note into `note.summary`: its transcript (a recording) and its own text together.
-    /// `progress` receives short status texts ("Reading part 2 of 5 …") while the work is running.
+    /// `progress` receives short status texts ("Reading part 2 of 5…") while the work is running.
     /// A template only shapes the summary of a recording; notes and links keep their own short format.
     static func summarize(_ note: Note, template: SummaryTemplate = .general, model: SummaryModel? = nil, progress: @escaping (String) -> Void = { _ in }) async throws {
         // Without timestamps: the model does not need them, and they would take up a good part of its room.
@@ -179,7 +179,7 @@ enum SummaryService {
             let parts = partPrompts(of: material, header: header, size: partSize(local))
             var notes: [String] = []
             for (index, part) in parts.enumerated() {
-                progress("Reading part \(index + 1) of \(parts.count) …")
+                progress("Reading part \(index + 1) of \(parts.count)…")
                 notes.append(try await LocalLLM.shared.generate(
                     model: local,
                     system: notesPrompt(language, noun: noun, focus: focus),

@@ -97,7 +97,7 @@ fun PlaudImportScreen(projectID: String?, onBack: () -> Unit, onOpen: (String) -
             when {
                 !signedIn -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
                     EmptyState("Plaud Recorder", "Sign in to Plaud once. After that the recordings come straight from the recorder over Bluetooth.", Icons.Filled.GraphicEq)
-                    Button(onClick = { showLogin = true }, colors = ButtonDefaults.buttonColors(containerColor = Brand.sky), modifier = Modifier.padding(horizontal = 40.dp).fillMaxWidth()) { Text("Sign In to Plaud") }
+                    Button(onClick = { showLogin = true }, colors = Brand.mainButton(), modifier = Modifier.padding(horizontal = 40.dp).fillMaxWidth()) { Text("Sign In to Plaud") }
                 }
                 recordings.isEmpty() -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(24.dp)) {
                     if (working) {
@@ -106,7 +106,7 @@ fun PlaudImportScreen(projectID: String?, onBack: () -> Unit, onOpen: (String) -
                         Text("Wake the recorder with its button. Close the Plaud app if it is open.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                     } else {
                         EmptyState(if (status.isEmpty()) "No Recorder Found" else "Nothing to Import", status.ifEmpty { "Wake the recorder with its button and try again." }, Icons.Filled.GraphicEq)
-                        Button(onClick = ::refresh, colors = ButtonDefaults.buttonColors(containerColor = Brand.sky)) { Text("Try Again") }
+                        Button(onClick = ::refresh, colors = Brand.mainButton()) { Text("Try Again") }
                     }
                 }
                 else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -120,7 +120,7 @@ fun PlaudImportScreen(projectID: String?, onBack: () -> Unit, onOpen: (String) -
                                 }
                                 when {
                                     importing == rec.sessionId -> OutlinedButton(onClick = { importer.cancelImport() }) { Text("Stop") }
-                                    rec.imported -> Icon(Icons.Filled.CheckCircle, "Imported", tint = Brand.sky)
+                                    rec.imported -> Icon(Icons.Filled.CheckCircle, "Imported", tint = Brand.skyText)
                                     else -> OutlinedButton(enabled = importing == null, onClick = {
                                         coroutines.launch { importer.importRecording(rec)?.let { lastImported = PlaudImporter.addNote(it, projectID).id } }
                                     }) { Text("Import") }
@@ -134,10 +134,10 @@ fun PlaudImportScreen(projectID: String?, onBack: () -> Unit, onOpen: (String) -
         if (status.isNotEmpty() && importing != null) Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
         if (newOnes.isNotEmpty()) Button(
             onClick = { coroutines.launch { for (rec in newOnes) { val audio = importer.importRecording(rec) ?: break; lastImported = PlaudImporter.addNote(audio, projectID).id } } },
-            enabled = importing == null, colors = ButtonDefaults.buttonColors(containerColor = Brand.sky),
+            enabled = importing == null, colors = Brand.mainButton(),
             modifier = Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(),
         ) { Text(if (newOnes.size == 1) "Import 1 Recording" else "Import ${newOnes.size} Recordings") }
         lastImported?.let { id -> if (importing == null) TextButton(onClick = { onOpen(id) }, modifier = Modifier.align(Alignment.CenterHorizontally).navigationBarsPadding()) { Text("Open Imported Note") } }
     }
-    error?.let { AlertDialog(onDismissRequest = { importer.errorMessage.value = null }, title = { Text("Plaud") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { importer.errorMessage.value = null }) { Text("OK") } }) }
+    error?.let { AlertDialog(onDismissRequest = { importer.errorMessage.value = null }, title = { Text("Plaud Import Failed") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { importer.errorMessage.value = null }) { Text("OK") } }) }
 }

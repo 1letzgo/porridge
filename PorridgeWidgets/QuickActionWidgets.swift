@@ -65,8 +65,8 @@ private struct QuickActionsView: View {
     var body: some View {
         let layout = family == .systemMedium ? AnyLayout(HStackLayout(spacing: 10)) : AnyLayout(VStackLayout(spacing: 10))
         layout {
-            ActionTile(intent: StartMeetingIntent(), title: "Meeting", systemImage: "mic.fill", tint: .widgetMeeting)
-            ActionTile(intent: NewNoteIntent(), title: "Note", systemImage: "square.and.pencil", tint: .widgetNote)
+            ActionTile(intent: StartMeetingIntent(), title: "Meeting", systemImage: "mic.fill", tint: .widgetMeeting, foreground: .white)
+            ActionTile(intent: NewNoteIntent(), title: "Note", systemImage: "square.and.pencil", tint: .widgetNote, foreground: .widgetMeeting)
         }
         .containerBackground(for: .widget) { Color(.systemBackground) }
     }
@@ -77,18 +77,19 @@ private struct ActionTile<Intent: AppIntent>: View {
     let title: String
     let systemImage: String
     let tint: Color
+    let foreground: Color
 
     var body: some View {
         Button(intent: intent) {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.headline.weight(.bold))
                 Text(title)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.callout.weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(foreground)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(tint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
@@ -97,7 +98,7 @@ private struct ActionTile<Intent: AppIntent>: View {
 }
 
 private extension Color {
-    /// The colors of the Meetings and Notes tabs in the app.
+    /// The colors of meetings and notes in the app.
     static let widgetMeeting = Color(red: 0x1F / 255, green: 0x36 / 255, blue: 0x67 / 255)
     static let widgetNote = Color(red: 0x24 / 255, green: 0xB4 / 255, blue: 0xE9 / 255)
 }

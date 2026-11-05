@@ -59,10 +59,7 @@ struct PorridgeMacApp: App {
         .modelContainer(container)
         .defaultSize(width: 1100, height: 720)
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("New Note") { NotificationCenter.default.post(name: .newNote, object: nil) }
-                    .keyboardShortcut("n")
-            }
+            PorridgeCommands()
             CommandGroup(after: .appInfo) {
                 if AppUpdate.isEnabled {
                     Button("Check for Updates…") {
@@ -89,6 +86,66 @@ struct PorridgeMacApp: App {
     }
 }
 
+/// Every command of the toolbars in the menu bar too. What does not apply right now is dimmed, not hidden.
+private struct PorridgeCommands: Commands {
+    @FocusedValue(\.libraryActions) private var library
+    @FocusedValue(\.noteActions) private var note
+    @FocusedValue(\.homeFilter) private var filter
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Note") { NotificationCenter.default.post(name: .newNote, object: nil) }
+                .keyboardShortcut("n")
+            Button("Record Meeting") { library?.recordMeeting() }
+                .keyboardShortcut("r")
+                .disabled(library?.canCreate != true)
+            Button("Add Link…") { library?.addLink() }
+                .keyboardShortcut("l")
+                .disabled(library?.canCreate != true)
+            Button("New Project…") { library?.newProject?() }
+                .disabled(library?.newProject == nil)
+            Divider()
+            Button("Import Audio…") { library?.importAudio() }
+                .disabled(library?.canCreate != true)
+            Button("Import Plaud…") { library?.importPlaud() }
+                .disabled(library?.canCreate != true || library?.plaudSignedIn != true)
+        }
+        CommandGroup(after: .toolbar) {
+            Button("Search") { library?.search() }
+                .keyboardShortcut("f")
+                .disabled(library == nil)
+            if let filter {
+                Picker("Filter", selection: filter) {
+                    ForEach(HomeFilter.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+            } else {
+                Menu("Filter") {}.disabled(true)
+            }
+        }
+        CommandMenu("Note") {
+            Button(note?.isPinned == true ? "Unpin" : "Pin") { note?.togglePin() }
+                .disabled(note == nil || note?.isDeleted == true)
+            Divider()
+            Button(note?.hasSummary == true ? "Summarize Again" : "Summarize") { note?.summarize() }
+                .disabled(note?.canSummarize != true || note?.isDeleted == true)
+            Button(note?.hasSummary == true ? "Edit Summary" : "Write Summary") { note?.editSummary() }
+                .disabled(note?.canEditSummary != true || note?.isDeleted == true)
+            Divider()
+            Button("Transcribe Again") { note?.transcribeAgain() }
+                .disabled(note?.canTranscribe != true || note?.isDeleted == true)
+            Button("Copy Transcript") { note?.copyTranscript() }
+                .disabled(note?.hasTranscript != true)
+            Divider()
+            if note?.isDeleted == true {
+                Button("Recover") { note?.recover() }
+            } else {
+                Button("Delete") { note?.delete() }
+                    .disabled(note == nil)
+            }
+        }
+    }
+}
+
 /// Tells about a newer version once it is found; "Skip" keeps quiet until the version after it.
 private struct UpdateAlert: ViewModifier {
     let update: AppUpdate
@@ -97,7 +154,7 @@ private struct UpdateAlert: ViewModifier {
 
     func body(content: Content) -> some View {
         content.alert(
-            "Porridge \(update.available?.version ?? "") is available",
+            "Porridge \(update.available?.version ?? "") Available",
             isPresented: .init(
                 get: { update.available.map { $0.tag != closedTag } ?? false },
                 set: { if !$0 { closedTag = update.available?.tag } }

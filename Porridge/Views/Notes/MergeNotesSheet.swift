@@ -69,7 +69,7 @@ struct MergeNotesSheet: View {
             HStack(spacing: 14) {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
-                    .foregroundStyle(selected ? Color.brandSky : Color.brandNavy.opacity(0.35))
+                    .foregroundStyle(selected ? Color.brandSkyText : Color.brandNavy.opacity(0.35))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(meeting.displayTitle)
                         .font(.headline)

@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.notes
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
@@ -69,7 +71,7 @@ fun MeetingExportSheet(note: Note, onDismiss: () -> Unit) {
                     ) { Text(option.title) }
                 }
             }
-            if (failed) Text("The file could not be written.", color = Brand.danger, style = MaterialTheme.typography.bodySmall)
+            if (failed) Text("The file could not be written.", color = Brand.dangerText, style = MaterialTheme.typography.bodySmall)
             else if (!hasSummary && !hasTranscript) Text("This meeting has no summary or transcript yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Button(
                 enabled = summary || transcript, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
@@ -89,9 +91,9 @@ fun MeetingExportSheet(note: Note, onDismiss: () -> Unit) {
 
 @Composable
 private fun ChoiceRow(title: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange), verticalAlignment = Alignment.CenterVertically) {
         Text(title, Modifier.weight(1f))
-        Switch(checked, onChange, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = Brand.sky))
+        Switch(checked, null, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = Brand.sky))
     }
 }
 

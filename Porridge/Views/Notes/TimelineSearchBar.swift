@@ -171,7 +171,7 @@ struct SearchPane<Results: View>: View {
         } label: {
             Text(option.title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isOn ? .white : Color.brandNavy)
+                .foregroundStyle(isOn ? Color.brandOnNavy : Color.brandNavy)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(isOn ? Color.brandNavy : Color.brandSky.opacity(0.18), in: Capsule())
@@ -231,7 +231,7 @@ struct SearchPane<Results: View>: View {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Clear text")
+                .accessibilityLabel("Clear Text")
             }
         }
         .padding(.horizontal, 14)

@@ -68,7 +68,7 @@ private struct LockScreenView: View {
         HStack(spacing: 14) {
             Image(systemName: context.state.pausedAt == nil ? "mic.fill" : "pause.fill")
                 .font(.title2.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.brandNavy)
                 .frame(width: 48, height: 48)
                 .background(Circle().fill(Color.brandSky))
             VStack(alignment: .leading, spacing: 2) {
@@ -109,7 +109,7 @@ private struct PauseButton: View {
                     .background(Circle().fill(Color.brandSky.opacity(0.16)))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isPaused ? "Resume recording" : "Pause recording")
+            .accessibilityLabel(isPaused ? "Resume Recording" : "Pause Recording")
         }
     }
 }

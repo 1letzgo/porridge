@@ -1,5 +1,6 @@
 package de.letzgo.porridge.ui.notes
 
+import androidx.compose.material3.ModalBottomSheet
 import de.letzgo.porridge.ui.components.ChromeBar
 import androidx.compose.material.icons.filled.GraphicEq
 import de.letzgo.porridge.ui.components.EmptyState
@@ -136,7 +137,7 @@ private enum class NoteTab(val title: String) { NOTE("Note"), TRANSCRIPT("Transc
  * iOS: `NoteDetailView` (Views/Notes/NoteDetailView.swift). Eine neue Notiz ([draft]) liegt nur im Speicher, bis sie
  * Inhalt hat; dann wird sie gespeichert.
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -> Unit = {}, onClose: () -> Unit) {
     val context = LocalContext.current
@@ -162,6 +163,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     val isSummarizing = note.id in summarizing
     var confirmResummarize by remember { mutableStateOf(false) }
     var confirmDeleteAudio by remember { mutableStateOf(false) }
+    var confirmDeleteSummary by remember { mutableStateOf(false) }
     var confirmContinueRecording by remember { mutableStateOf(false) }
     var fetchingAudio by remember { mutableStateOf(false) }
     var fetchAudioError by remember { mutableStateOf<String?>(null) }
@@ -307,8 +309,8 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                                 DropdownMenuItem(text = { Text("Merge with…") }, enabled = stage == null && note.status == ProcessingStatus.READY, onClick = { act { showMerge = true } })
                             }
                             HorizontalDivider()
-                            if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Delete Recording", color = Brand.danger) }, onClick = { act { confirmDeleteAudio = true } })
-                            DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { act { coroutines.launch { if (stored != null) NoteStore().trash(note); onClose() } } })
+                            if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Delete Recording", color = Brand.dangerText) }, onClick = { act { confirmDeleteAudio = true } })
+                            DropdownMenuItem(text = { Text("Delete", color = Brand.dangerText) }, onClick = { act { coroutines.launch { if (stored != null) NoteStore().trash(note); onClose() } } })
                         }
                     }
                 }
@@ -316,7 +318,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
             Column(Modifier.weight(1f).verticalScroll(pageScroll).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Header(note, onNext = { tab = NoteTab.NOTE; editor.focusStart() }) { title -> update { it.copy(title = title, titleIsCustom = true) } }
                 if (note.isDeleted) Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("In Recently Deleted", color = Brand.danger, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Text("In Recently Deleted", color = Brand.dangerText, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                     TextButton(onClick = { coroutines.launch { NoteStore().restore(note); onClose() } }) { Text("Recover") }
                 }
                 else TagRow(
@@ -331,7 +333,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                         NoteTab.SUMMARY -> SummaryTab(note, isSummarizing, stage, onSummarize = { requestSummary() },
                             onEdit = { editingSummary = true }, onInsert = { update { n -> n.copy(text = if (n.text.isEmpty()) n.summary.orEmpty() else n.text + "\n\n" + n.summary) } },
                             onCopy = { copy(context, note.summary.orEmpty()) },
-                            onDelete = { coroutines.launch { db.notes().upsert(note.copy(summary = null, summaryModel = null, summarizedAt = null)) } },
+                            onDelete = { confirmDeleteSummary = true },
                             onToggleTask = { line -> coroutines.launch { toggleSummaryTask(note, line) } })
                         NoteTab.TRANSCRIPT -> TranscriptTab(note, player) { segment, speaker -> update { n -> n.withSegments(n.segments.map { if (it.id == segment.id) it.copy(speakerId = speaker.id) else it }) } }
                         NoteTab.ARTICLE -> ArticleTab(note, stage.takeUnless { isSummarizing }, context)
@@ -363,7 +365,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                         enabled = !fetchingAudio, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Brand.sky.copy(alpha = 0.18f), contentColor = Brand.navy),
                     ) { Text(if (fetchingAudio) "Downloading…" else "Download Recording") }
-                    fetchAudioError?.let { Text(it, color = Brand.danger, style = MaterialTheme.typography.bodySmall) }
+                    fetchAudioError?.let { Text(it, color = Brand.dangerText, style = MaterialTheme.typography.bodySmall) }
                 }
             }
             if (note.hasLocalAudio && tab != NoteTab.NOTE && !editor.isEditing) {
@@ -416,11 +418,14 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
         var chosen by remember { mutableStateOf(de.letzgo.porridge.cloud.SummaryModel.current) }
         var open by remember { mutableStateOf(false) }
         val options = de.letzgo.porridge.cloud.SummaryModel.run { if (current in available) available else listOf(current) + available }
-        AlertDialog(
-            onDismissRequest = { askTemplate = false }, title = { Text(if (note.summary == null) "Summarize" else "Summarize Again") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Model", style = MaterialTheme.typography.labelLarge, color = Brand.sky)
+        ModalBottomSheet(onDismissRequest = { askTemplate = false }) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp).navigationBarsPadding().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { askTemplate = false }) { Text("Cancel") }
+                        Text(if (note.summary == null) "Summarize" else "Summarize Again", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                        Spacer(Modifier.width(72.dp))
+                    }
+                    Text("Model", style = MaterialTheme.typography.labelLarge, color = Brand.skyText)
                     Box {
                         TextButton(onClick = { open = true }) { Text(chosen.menuTitle, color = Brand.navy) }
                         DropdownMenu(open, onDismissRequest = { open = false }) {
@@ -429,19 +434,16 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                     }
                     (chosen as? de.letzgo.porridge.cloud.SummaryModel.Cloud)?.let { Text("The transcript goes to ${if (it.provider == de.letzgo.porridge.cloud.AIProvider.CUSTOM) "your server" else it.provider.label}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     HorizontalDivider()
-                    Text("Template", style = MaterialTheme.typography.labelLarge, color = Brand.sky, modifier = Modifier.padding(top = 8.dp))
+                    Text("Template", style = MaterialTheme.typography.labelLarge, color = Brand.skyText, modifier = Modifier.padding(top = 8.dp))
                     for (option in SummaryTemplate.all) TextButton(onClick = { askTemplate = false; AppGraph.scope.launch { summarize(option, chosen) } }) { Text(option.name, color = Brand.navy) }
                     if (note.summary != null) Text("This replaces the current summary; your edits to it are lost.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { askTemplate = false }) { Text("Cancel", color = Brand.danger) } },
-        )
+            }
+        }
     }
     if (confirmResummarize) AlertDialog(
         onDismissRequest = { confirmResummarize = false },
-        title = { Text("Replace the current summary?") }, text = { Text("Your edits to the summary are lost.") },
-        confirmButton = { TextButton(onClick = { confirmResummarize = false; AppGraph.scope.launch { summarize() } }) { Text("Summarize Again", color = Brand.danger) } },
+        title = { Text("Replace Summary?") }, text = { Text("Your edits to the summary are lost.") },
+        confirmButton = { TextButton(onClick = { confirmResummarize = false; AppGraph.scope.launch { summarize() } }) { Text("Summarize Again", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { confirmResummarize = false }) { Text("Cancel") } },
     )
     if (confirmContinueRecording) AlertDialog(
@@ -451,15 +453,21 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
         confirmButton = { TextButton(onClick = { confirmContinueRecording = false; onContinueRecording(note) }) { Text("Continue") } },
         dismissButton = { TextButton(onClick = { confirmContinueRecording = false }) { Text("Cancel") } },
     )
+    if (confirmDeleteSummary) AlertDialog(
+        onDismissRequest = { confirmDeleteSummary = false },
+        title = { Text("Delete Summary?") }, text = { Text("Your edits and check marks in it are lost. You can write a new one at any time.") },
+        confirmButton = { TextButton(onClick = { confirmDeleteSummary = false; coroutines.launch { db.notes().upsert(note.copy(summary = null, summaryModel = null, summarizedAt = null)) } }) { Text("Delete Summary", color = Brand.dangerText) } },
+        dismissButton = { TextButton(onClick = { confirmDeleteSummary = false }) { Text("Cancel") } },
+    )
     if (confirmDeleteAudio) AlertDialog(
         onDismissRequest = { confirmDeleteAudio = false },
         title = { Text("Delete Recording?") }, text = { Text(if (NextcloudSync.isActive) "The audio file is removed from all your devices and from Nextcloud. Transcript, speakers and summary stay." else "The audio file is removed from this phone. Transcript, speakers and summary stay.") },
-        confirmButton = { TextButton(onClick = { confirmDeleteAudio = false; player.stop(); AudioStore.delete(note.audioFileName); update { it.copy(audioFileName = null) } }) { Text("Delete Recording", color = Brand.danger) } },
+        confirmButton = { TextButton(onClick = { confirmDeleteAudio = false; player.stop(); AudioStore.delete(note.audioFileName); update { it.copy(audioFileName = null) } }) { Text("Delete Recording", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { confirmDeleteAudio = false }) { Text("Cancel") } },
     )
     summaryErrors[note.id]?.let { AlertDialog(onDismissRequest = { ProcessingService.clearSummaryError(note.id) }, title = { Text("Summary Failed") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { ProcessingService.clearSummaryError(note.id) }) { Text("OK") } }) }
     val dictationError by dictation.error.collectAsState()
-    dictationError?.let { AlertDialog(onDismissRequest = { dictation.dismissError() }, title = { Text("Dictation") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { dictation.dismissError() }) { Text("OK") } }) }
+    dictationError?.let { AlertDialog(onDismissRequest = { dictation.dismissError() }, title = { Text("Can't Dictate") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { dictation.dismissError() }) { Text("OK") } }) }
     if (editingSummary) SummaryEditorSheet(note.summary.orEmpty(), onDismiss = { editingSummary = false }) { text ->
         editingSummary = false
         coroutines.launch {
@@ -520,7 +528,7 @@ private suspend fun finishDictation(dictation: InlineDictation, start: Int, upda
     done()
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
     val context = LocalContext.current
@@ -544,9 +552,9 @@ private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
         }
         note.domain?.let { domain ->
             Row(Modifier.combinedClickable(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(note.url))) }), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Link, null, tint = LinkOrange, modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.Link, null, tint = Brand.linkText, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(domain, color = LinkOrange, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                Text(domain, color = Brand.linkText, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
             }
         }
         val parts = buildList {
@@ -559,7 +567,7 @@ private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun TagRow(note: Note, onAdd: () -> Unit, onProject: (String) -> Unit, onRemove: (String) -> Unit) {
     // Antippbare Chips sind wegen der Mindestgröße fürs Tippen höher als ihre Fläche: Mittig liegen alle auf einer Linie.
@@ -571,7 +579,7 @@ private fun TagRow(note: Note, onAdd: () -> Unit, onProject: (String) -> Unit, o
             Surface(shape = RoundedCornerShape(50), color = Brand.sky.copy(alpha = 0.18f)) {
                 Row(Modifier.padding(start = 12.dp, end = if (removable) 4.dp else 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("#$tag", style = MaterialTheme.typography.labelLarge, color = Brand.navy)
-                    if (removable) Icon(Icons.Filled.Close, "Remove Tag", tint = Brand.navy, modifier = Modifier.padding(start = 4.dp).size(16.dp).clip(CircleShape).combinedClickable(onClick = { onRemove(tag) }))
+                    if (removable) Icon(Icons.Filled.Close, "Remove Tag", tint = Brand.navy, modifier = Modifier.size(24.dp).clip(CircleShape).combinedClickable(onClick = { onRemove(tag) }))
                 }
             }
         }
@@ -597,12 +605,12 @@ private fun StatusPanel(note: Note, stage: String?) {
         note.status == ProcessingStatus.READY && note.isRecording && note.errorMessage != null && note.speakerMode == SpeakerMode.NONE -> Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(note.errorMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (note.hasLocalAudio) Button(onClick = { ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id)) }, colors = ButtonDefaults.buttonColors(containerColor = Brand.sky)) { Text("Detect Speakers Again") }
+                if (note.hasLocalAudio) Button(onClick = { ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id)) }, colors = Brand.mainButton()) { Text("Detect Speakers Again") }
             }
         }
         note.status == ProcessingStatus.FAILED -> Surface(shape = RoundedCornerShape(14.dp), color = Brand.danger.copy(alpha = 0.1f)) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(note.errorMessage ?: "Transcription failed", color = Brand.danger)
+                Text(note.errorMessage ?: "Transcription failed", color = Brand.dangerText)
                 val job = when {
                     note.isLink -> ProcessingService.Job.Link(note.id, false)
                     AudioStore.exists(note.pendingAudioFileName) -> ProcessingService.Job.NoteAudio(note.id)
@@ -615,7 +623,7 @@ private fun StatusPanel(note: Note, stage: String?) {
                         if (note.isLink) PorridgeDatabase.shared.notes().upsert(note.copy(statusRaw = ProcessingStatus.RECORDED.raw))
                         ProcessingService.enqueue(job)
                     }
-                }, colors = ButtonDefaults.buttonColors(containerColor = Brand.sky)) { Text("Try Again") }
+                }, colors = Brand.mainButton()) { Text("Try Again") }
             }
         }
     }
@@ -682,25 +690,25 @@ private fun SummaryTab(
                             DropdownMenuItem(text = { Text("Copy") }, onClick = { menu = false; onCopy() })
                             DropdownMenuItem(text = { Text("Summarize Again") }, onClick = { menu = false; onSummarize() })
                             HorizontalDivider()
-                            DropdownMenuItem(text = { Text("Delete Summary", color = Brand.danger) }, onClick = { menu = false; onDelete() })
+                            DropdownMenuItem(text = { Text("Delete Summary", color = Brand.dangerText) }, onClick = { menu = false; onDelete() })
                         }
                     }
                 }
                 note.summaryModel?.let { Text("Created with $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                Button(onClick = onSummarize, enabled = canSummarize(note), colors = ButtonDefaults.buttonColors(containerColor = Brand.sky), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onSummarize, enabled = canSummarize(note), colors = Brand.mainButton(), modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.AutoAwesome, null); Text("  Summarize Again")
                 }
             }
             else -> Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Icon(Icons.Filled.AutoAwesome, null, tint = Brand.sky, modifier = Modifier.size(40.dp))
+                Icon(Icons.Filled.AutoAwesome, null, tint = Brand.skyText, modifier = Modifier.size(40.dp))
                 Text(message, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = onSummarize, enabled = canSummarize(note), colors = ButtonDefaults.buttonColors(containerColor = Brand.sky)) { Icon(Icons.Filled.AutoAwesome, null); Text("  Summarize") }
+                Button(onClick = onSummarize, enabled = canSummarize(note), colors = Brand.mainButton()) { Icon(Icons.Filled.AutoAwesome, null); Text("  Summarize") }
             }
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun TranscriptTab(note: Note, player: AudioPlayback, onAssign: (TranscriptSegment, Speaker) -> Unit) {
     val segments = note.segments
@@ -720,12 +728,12 @@ private fun TranscriptTab(note: Note, player: AudioPlayback, onAssign: (Transcri
             Box {
                 Column(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (active) Brand.sky.copy(alpha = 0.1f) else Color.Transparent)
-                        .combinedClickable(onClick = { if (note.hasLocalAudio) { player.seek(segment.start); player.play() } }, onLongClick = { menu = true }).padding(6.dp),
+                        .combinedClickable(onClickLabel = if (note.hasLocalAudio) "Play from Here" else null, onLongClickLabel = "More", onClick = { if (note.hasLocalAudio) { player.seek(segment.start); player.play() } }, onLongClick = { menu = true }).padding(6.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (speaker != null) {
                             Box(Modifier.size(8.dp).clip(CircleShape).background(speakerColor(speaker.colorIndex)))
-                            Text("  ${speaker.name}", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = speakerColor(speaker.colorIndex))
+                            Text("  ${speaker.name}", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold), color = Brand.navy)
                             if (Me.isMe(speaker)) { Spacer(Modifier.width(6.dp)); MeBadge() }
                             Spacer(Modifier.width(8.dp))
                         }
@@ -755,7 +763,7 @@ private fun ArticleTab(note: Note, stage: String?, context: Context) {
             (stage != null || text == null) && note.status != ProcessingStatus.FAILED -> Text("The text of the page appears here once it is loaded.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             note.status != ProcessingStatus.FAILED -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("There is no readable text on this page.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                note.url?.let { url -> Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }, colors = ButtonDefaults.buttonColors(containerColor = Brand.sky)) { Text("Open in Browser") } }
+                note.url?.let { url -> Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }, colors = Brand.mainButton()) { Text("Open in Browser") } }
             }
         }
     }
@@ -773,8 +781,8 @@ private fun DictationPreview(text: String, start: Int, live: String, polishing: 
     val lead = if (trimmed.isNotEmpty() && before.isNotEmpty() && !before.last().isWhitespace()) " " else ""
     val annotated = androidx.compose.ui.text.buildAnnotatedString {
         append(before)
-        pushStyle(androidx.compose.ui.text.SpanStyle(color = Brand.sky)); append(lead + trimmed); pop()
-        pushStyle(androidx.compose.ui.text.SpanStyle(color = if (on) Brand.sky else Color.Transparent, fontWeight = FontWeight.Bold)); append("|"); pop()
+        pushStyle(androidx.compose.ui.text.SpanStyle(color = Brand.skyText)); append(lead + trimmed); pop()
+        pushStyle(androidx.compose.ui.text.SpanStyle(color = if (on) Brand.skyText else Color.Transparent, fontWeight = FontWeight.Bold)); append("|"); pop()
         append(after)
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp)) {
@@ -818,7 +826,7 @@ fun TextPrompt(title: String, initial: String, confirm: String, onDismiss: () ->
 @Composable
 fun MeBadge() {
     Text(
-        "Me", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color.White,
+        "Me", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Brand.onFill,
         modifier = Modifier.clip(RoundedCornerShape(50)).background(Brand.task).padding(horizontal = 6.dp, vertical = 1.dp),
     )
 }

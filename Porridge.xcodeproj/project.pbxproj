@@ -137,6 +137,7 @@
 		83ABAF8ABE90DBAB85FF10BD /* SummaryOptionsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B315FCB41C68D104FA191701 /* SummaryOptionsSheet.swift */; };
 		83F0571CA39F7435A5074397 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 7EA54B61F54496C3702CB4ED /* HuggingFace */; };
 		8595D00FE8DD1E7469896BD2 /* PlaudAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6596637851981CC10AC1038D /* PlaudAPI.swift */; };
+		85E6B23E43152A25B309EAA0 /* BrandContrastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B2A18F9D126F4EDB31CE827 /* BrandContrastTests.swift */; };
 		861B45A7070D11F6513926F4 /* Projects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E639258A983029655F3B803 /* Projects.swift */; };
 		86C2842E103B9BFCA4D8CFE3 /* HomeFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBFEA88590BF7A95A16C45E /* HomeFilterTests.swift */; };
 		8B2A6EB4962B9468AA35CD81 /* CalendarAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2291E7D9FBD16F3E4B079817 /* CalendarAccess.swift */; };
@@ -312,6 +313,7 @@
 		32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineDictation.swift; sourceTree = "<group>"; };
 		32A619A6A5CEB3607BF5EE1E /* RecordMeetingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordMeetingSheet.swift; sourceTree = "<group>"; };
 		33144CDDD5CE1296F1220976 /* NoteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteDetailView.swift; sourceTree = "<group>"; };
+		3B2A18F9D126F4EDB31CE827 /* BrandContrastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandContrastTests.swift; sourceTree = "<group>"; };
 		3B965676D5FD4BEB12521F86 /* GlobalHotKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotKey.swift; sourceTree = "<group>"; };
 		3CA9C6649F3F5A8A76BBCEA0 /* PlaudLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudLoginView.swift; sourceTree = "<group>"; };
 		3E7511785C6CC41FB53AC539 /* RecordingJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingJournal.swift; sourceTree = "<group>"; };
@@ -561,6 +563,7 @@
 			isa = PBXGroup;
 			children = (
 				D4FD2A9BECD26688E68FAFE9 /* AppSettingsTests.swift */,
+				3B2A18F9D126F4EDB31CE827 /* BrandContrastTests.swift */,
 				DDBFEA88590BF7A95A16C45E /* HomeFilterTests.swift */,
 				CF9B98C438AED2F5E6E75969 /* MeetingExportTests.swift */,
 				A2EF8775CF439144C3EC58B2 /* NoteStoreTests.swift */,
@@ -1220,6 +1223,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				600822F0515992B3C1067DE5 /* AppSettingsTests.swift in Sources */,
+				85E6B23E43152A25B309EAA0 /* BrandContrastTests.swift in Sources */,
 				86C2842E103B9BFCA4D8CFE3 /* HomeFilterTests.swift in Sources */,
 				D0C4C0EBF2FB41F1E6F43CF0 /* MeetingExportTests.swift in Sources */,
 				ED8E0E578CE44BBB0A5D99C5 /* NoteStoreTests.swift in Sources */,

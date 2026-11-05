@@ -502,7 +502,7 @@ private struct SyncCard: View {
                     }
                     .buttonStyle(PillButtonStyle())
                     if let loginError {
-                        Text(loginError).font(.subheadline).foregroundStyle(.red)
+                        Text(loginError).font(.subheadline).foregroundStyle(Color.brandDangerText)
                     }
                 }
             }
@@ -652,7 +652,7 @@ struct ModelRow: View {
                 if case .failed(let message) = state {
                     Text(message)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color.brandDangerText)
                         .lineLimit(3)
                 }
             }
@@ -664,10 +664,10 @@ struct ModelRow: View {
                 // Downloaded; the model is loaded into memory when it is first used.
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(Color.brandSky)
+                    .foregroundStyle(Color.brandSkyText)
                 if let onDelete {
                     Button(action: onDelete) {
-                        Image(systemName: "trash").foregroundStyle(.red)
+                        Image(systemName: "trash").foregroundStyle(Color.brandDangerText)
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("Delete")
@@ -679,7 +679,7 @@ struct ModelRow: View {
             case .loading:
                 ProgressView()
             case .failed:
-                Button("Retry", action: action).buttonStyle(PillButtonStyle(fill: Color.brandAlert))
+                Button("Retry", action: action).buttonStyle(PillButtonStyle(fill: Color.red))
             }
         }
         .contentShape(Rectangle())
@@ -688,7 +688,7 @@ struct ModelRow: View {
             including: canCancel ? .all : .subviews
         )
         .accessibilityAction(named: "Cancel Download") { if canCancel { confirmCancel = true } }
-        .alert("Cancel download of \(title)?", isPresented: $confirmCancel) {
+        .alert("Cancel Download of \(title)?", isPresented: $confirmCancel) {
             Button("Keep Downloading", role: .cancel) {}
             Button("Cancel Download", role: .destructive) {
                 // It may have finished while the question was open: then there is nothing to stop, and the model stays.
@@ -710,7 +710,7 @@ struct PillButtonStyle: ButtonStyle {
         let destructive = configuration.role == .destructive
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(destructive ? Color.red : Color.brandNavy)
+            .foregroundStyle(destructive ? Color.brandDangerText : Color.brandNavy)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background((destructive ? Color.red : fill).opacity(pressed ? 0.3 : 0.18), in: Capsule())
@@ -753,7 +753,7 @@ extension SettingsView {
             if DictationController.shared.shortcutUnavailable, dictationEnabled {
                 Text("Another app already uses this shortcut. Choose a different one.")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.brandDangerText)
             } else if DictationController.shared.shortcutNeedsAccessibility, dictationEnabled {
                 Text("A modifier key on its own needs the Accessibility permission (below).")
                     .font(.caption)
@@ -822,7 +822,7 @@ private struct PermissionRow: View {
             if granted {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(Color.brandSky)
+                    .foregroundStyle(Color.brandSkyText)
             } else {
                 Button("Allow", action: action).buttonStyle(PillButtonStyle())
             }

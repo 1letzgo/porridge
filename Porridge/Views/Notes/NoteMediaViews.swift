@@ -39,7 +39,7 @@ struct MeBadge: View {
     var body: some View {
         Text("Me")
             .font(.caption2.weight(.bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.brandOnFill)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Color.brandTask, in: Capsule())
@@ -71,7 +71,7 @@ struct PlayerBar: View {
                 .foregroundStyle(.secondary)
             if let onDelete {
                 Button(action: onDelete) {
-                    Image(systemName: "trash").foregroundStyle(.red)
+                    Image(systemName: "trash").foregroundStyle(Color.brandDangerText)
                 }
                 .accessibilityLabel("Delete Recording")
             }

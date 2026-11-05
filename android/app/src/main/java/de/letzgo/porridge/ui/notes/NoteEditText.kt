@@ -33,7 +33,7 @@ import de.letzgo.porridge.model.NoteText
 class NoteEditText(context: Context, private val colors: Colors, private val onMarkdown: (String) -> Unit) :
     // Der Plattform-Stil des Felds: das App-Theme ist kein AppCompat-Theme, ohne ihn wäre das Feld per Tipp nicht fokussierbar.
     AppCompatEditText(context, null, android.R.attr.editTextStyle) {
-    data class Colors(val text: Int, val secondary: Int, val heading: Int, val accent: Int, val tag: Int)
+    data class Colors(val text: Int, val secondary: Int, val heading: Int, val accent: Int, val onAccent: Int, val tag: Int)
 
     /** Die Zeile der Marke im Feld, in Pixeln, wenn sich die Marke im fokussierten Feld bewegt. */
     var onCaretLine: ((top: Int, bottom: Int) -> Unit)? = null
@@ -224,7 +224,7 @@ class NoteEditText(context: Context, private val colors: Colors, private val onM
                 paint.style = Paint.Style.FILL
                 paint.color = colors.accent
                 canvas.drawCircle(cx, cy, r - 1, paint)
-                paint.color = android.graphics.Color.WHITE
+                paint.color = colors.onAccent
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = size / 9f
                 paint.strokeCap = Paint.Cap.ROUND

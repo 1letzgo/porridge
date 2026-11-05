@@ -34,7 +34,7 @@ class SummaryServiceTest {
         assertTrue(model.calls.last().second.contains("Notes on the meeting, in order:"))
         assertEquals("SYSTEM", model.calls.last().first)
         assertEquals("note ${model.calls.size}", result)
-        assertTrue(steps.contains("Reading part 1 of 3 …"))
+        assertTrue(steps.contains("Reading part 1 of 3…"))
         assertEquals(0, model.uses)
     }
 }

@@ -48,6 +48,7 @@ struct NoteDetailView: View {
     @State private var renamingSpeaker: Speaker?
     @State private var renameText = ""
     @State private var confirmDeleteAudio = false
+    @State private var confirmDeleteSummary = false
     @State private var showMerge = false
     @State private var showSummaryEditor = false
     @State private var addingTag = false
@@ -126,6 +127,24 @@ struct NoteDetailView: View {
             }
         }
         .toolbar { toolbar }
+        #if os(macOS)
+        .focusedSceneValue(\.noteActions, NoteActions(
+            isDeleted: note.isDeleted,
+            isPinned: note.isPinned,
+            hasSummary: note.summary != nil,
+            canSummarize: !isSummarizing && canSummarize,
+            canEditSummary: !isSummarizing,
+            canTranscribe: note.hasLocalAudio && processing.stages[note.id] == nil,
+            hasTranscript: !note.segments.isEmpty,
+            togglePin: { note.isPinned.toggle(); try? context.save() },
+            summarize: { requestSummary() },
+            editSummary: { startEditingSummary() },
+            transcribeAgain: { processing.enqueue(.transcript(note.id)) },
+            copyTranscript: { Clipboard.copy(note.transcriptText()) },
+            delete: { NoteStore.trash(note, in: context); onClose() },
+            recover: { restore() }
+        ))
+        #endif
         #if os(iOS)
         .safeAreaInset(edge: .top, spacing: 0) {
             if let onBack {
@@ -221,11 +240,17 @@ struct NoteDetailView: View {
                 summarize(template: template, model: model)
             }
         }
-        .alert("Replace the current summary?", isPresented: $confirmResummarize) {
+        .alert("Replace Summary?", isPresented: $confirmResummarize) {
             Button("Cancel", role: .cancel) {}
             Button("Summarize Again", role: .destructive) { summarize() }
         } message: {
             Text("Your edits to the summary are lost.")
+        }
+        .alert("Delete Summary?", isPresented: $confirmDeleteSummary) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete Summary", role: .destructive, action: deleteSummary)
+        } message: {
+            Text("Your edits and check marks in it are lost. You can write a new one at any time.")
         }
         .alert("Delete Recording?", isPresented: $confirmDeleteAudio) {
             Button("Cancel", role: .cancel) {}
@@ -250,7 +275,7 @@ struct NoteDetailView: View {
         } message: {
             Text(summaryError ?? "")
         }
-        .alert("Dictation", isPresented: .constant(dictation.errorMessage != nil && dictation.phase == .idle)) {
+        .alert("Can't Dictate", isPresented: .constant(dictation.errorMessage != nil && dictation.phase == .idle)) {
             Button("OK") { dictation.dismissError() }
         } message: {
             Text(dictation.errorMessage ?? "")
@@ -281,7 +306,7 @@ struct NoteDetailView: View {
                         Image(systemName: "arrow.up.right").font(.caption2.weight(.bold))
                     }
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.brandLink)
+                    .foregroundStyle(Color.brandLinkText)
                 }
                 .accessibilityLabel("Open \(domain)")
             }
@@ -330,7 +355,7 @@ struct NoteDetailView: View {
         } else if note.status == .failed {
             VStack(alignment: .leading, spacing: 12) {
                 Label(note.errorMessage ?? "Transcription failed", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.brandDangerText)
                 if note.isLink {
                     Button("Try Again") {
                         note.status = .recorded
@@ -451,12 +476,14 @@ struct NoteDetailView: View {
             }
             .brandToolbarButton()
             .accessibilityLabel("Export")
+            .help("Export")
         } else {
             ShareLink(item: shareText) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
             .brandToolbarButton()
             .accessibilityLabel("Share")
+            .help("Share")
         }
     }
 
@@ -525,6 +552,7 @@ struct NoteDetailView: View {
             BrandMenuLabel(title: "More", systemImage: "ellipsis")
         }
         .accessibilityLabel("More")
+        .help("More")
     }
 
     /// A recording that is on another device could not be joined with the new part.
@@ -552,7 +580,7 @@ struct NoteDetailView: View {
             .buttonStyle(ChunkyButtonStyle())
             .disabled(isFetchingAudio)
             if let fetchAudioError {
-                Text(fetchAudioError).font(.footnote).foregroundStyle(.red)
+                Text(fetchAudioError).font(.footnote).foregroundStyle(Color.brandDangerText)
             }
         }
         .padding(.horizontal)
@@ -628,6 +656,9 @@ struct NoteDetailView: View {
                             isActive: player.isPlaying && player.currentTime >= segment.start && player.currentTime < segment.end
                         )
                         .contentShape(Rectangle())
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(note.hasLocalAudio ? .isButton : [])
+                        .accessibilityHint(note.hasLocalAudio ? "Plays the recording from here." : "")
                         .onTapGesture {
                             guard note.hasLocalAudio else { return }
                             player.seek(to: segment.start)
@@ -700,7 +731,7 @@ struct NoteDetailView: View {
                                     Button { copySummary() } label: { Label("Copy", systemImage: "doc.on.doc") }
                                     Button { requestSummary() } label: { Label("Summarize Again", systemImage: "sparkles") }
                                     Divider()
-                                    Button(role: .destructive) { deleteSummary() } label: { Label("Delete Summary", systemImage: "trash") }
+                                    Button(role: .destructive) { confirmDeleteSummary = true } label: { Label("Delete Summary", systemImage: "trash") }
                                 } label: {
                                     Image(systemName: "ellipsis")
                                         .font(.headline)
@@ -731,7 +762,7 @@ struct NoteDetailView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 40))
-                        .foregroundStyle(Color.brandSky)
+                        .foregroundStyle(Color.brandSkyText)
                     Text(summarizeMessage)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
@@ -925,7 +956,7 @@ struct NoteDetailView: View {
             Button("Recover") { restore() }
                 .buttonStyle(.bordered)
         }
-        .foregroundStyle(.red)
+        .foregroundStyle(Color.brandDangerText)
     }
 
     private func restore() {
@@ -949,22 +980,22 @@ private struct DictationButton: View {
                     .foregroundStyle(Color.brandNavy)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(Color.white, in: Capsule())
+                    .background(Color.appBackground, in: Capsule())
                     .overlay(Capsule().strokeBorder(Look.hairline, lineWidth: Look.thinOutline))
                     .shadow(color: Color.brandNavy.opacity(0.12), radius: 8, y: 3)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(Motion.slide(.move(edge: .trailing).combined(with: .opacity)))
             }
             ZStack {
                 if dictation.phase == .recording {
                     Circle()
                         .fill(Color.red.opacity(0.25))
                         .frame(width: 64, height: 64)
-                        .scaleEffect(1 + CGFloat(dictation.recorder.levels.max() ?? 0) * 0.6)
+                        .scaleEffect(Motion.isReduced ? 1 : 1 + CGFloat(dictation.recorder.levels.max() ?? 0) * 0.6)
                         .animation(.linear(duration: 0.1), value: dictation.recorder.levels.max() ?? 0)
                 }
                 FloatingActionButton(
                     systemImage: icon, label: label,
-                    fill: dictation.phase == .recording ? Color.brandAlert : .brandSky,
+                    fill: dictation.phase == .recording ? Color.red : .brandSky,
                     action: action
                 )
                 if dictation.phase == .polishing {

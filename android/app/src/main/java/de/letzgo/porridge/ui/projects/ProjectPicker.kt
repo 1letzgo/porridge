@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.projects
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -75,7 +77,7 @@ fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit) {
                 Icon(Icons.Filled.Folder, null, tint = Brand.project, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
                 Text(project.name, style = MaterialTheme.typography.labelLarge, color = Brand.project)
-                Icon(Icons.Filled.Close, "Remove from Project", tint = Brand.project, modifier = Modifier.padding(start = 4.dp).size(16.dp).clip(CircleShape).combinedClickable(onClick = { onToggle(project.id) }))
+                Icon(Icons.Filled.Close, "Remove from Project", tint = Brand.project, modifier = Modifier.size(24.dp).clip(CircleShape).combinedClickable(onClick = { onToggle(project.id) }))
             }
         }
     }
@@ -128,11 +130,11 @@ fun ProjectChooser(assigned: List<String>, onToggle: (String) -> Unit, onDismiss
                 for (project in sorted) {
                     if (project.archivedAt != null && project.id !in assigned) continue
                     Row(
-                        Modifier.fillMaxWidth().clickable { onToggle(project.id) }.padding(vertical = 4.dp),
+                        Modifier.fillMaxWidth().toggleable(value = project.id in assigned, role = Role.Checkbox) { onToggle(project.id) }.padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(
-                            checked = project.id in assigned, onCheckedChange = { onToggle(project.id) },
+                            checked = project.id in assigned, onCheckedChange = null,
                             colors = CheckboxDefaults.colors(checkedColor = Brand.project),
                         )
                         Text(project.name)

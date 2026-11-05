@@ -42,7 +42,7 @@ struct PlaudImportSheet: View {
                     Task { await importer.refresh() }
                 }
             }
-            .alert("Plaud", isPresented: .constant(importer.errorMessage != nil)) {
+            .alert("Plaud Import Failed", isPresented: .constant(importer.errorMessage != nil)) {
                 Button("OK") { importer.errorMessage = nil }
             } message: {
                 Text(importer.errorMessage ?? "")
@@ -142,7 +142,7 @@ struct PlaudImportSheet: View {
             } else if recording.imported {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title2)
-                    .foregroundStyle(Color.brandSky)
+                    .foregroundStyle(Color.brandSkyText)
                     .accessibilityLabel("Imported")
             } else {
                 Button("Import") { Task { await importOne(recording) } }

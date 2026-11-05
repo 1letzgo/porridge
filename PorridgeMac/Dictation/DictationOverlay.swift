@@ -57,7 +57,7 @@ private struct DictationOverlayView: View {
             case .recording:
                 Image(systemName: "mic.fill")
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(Color.brandSky)
+                    .foregroundStyle(Color.brandSkyText)
                     .symbolEffect(.pulse)
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Listening…").font(.subheadline.weight(.bold))
@@ -66,7 +66,7 @@ private struct DictationOverlayView: View {
                 Spacer(minLength: 0)
                 Text(controller.recorder.elapsed.clockString)
                     .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(Color.brandSky)
+                    .foregroundStyle(Color.brandSkyText)
             case .transcribing:
                 ProgressView().controlSize(.small).tint(Color.brandSky)
                 Text("Writing it down…").font(.subheadline.weight(.bold))
@@ -74,7 +74,7 @@ private struct DictationOverlayView: View {
             case .message(let text):
                 Image(systemName: "info.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(Color.brandSky)
+                    .foregroundStyle(Color.brandSkyText)
                 Text(text).font(.footnote.weight(.semibold)).lineLimit(3)
                 Spacer(minLength: 0)
             case .idle:

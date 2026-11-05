@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.components
 
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,16 +44,16 @@ fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, onBack
         Modifier.fillMaxWidth().statusBarsPadding().padding(start = if (onBack != null) 4.dp else 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = if (tint == Brand.sky) Brand.navy else tint) }
+        if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = if (tint == Brand.sky) Brand.navy else Brand.readable(tint)) }
         if (icon != null) {
             Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(tint), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(icon, contentDescription = null, tint = Brand.onFill(tint), modifier = Modifier.size(20.dp))
             }
             Spacer(Modifier.width(10.dp))
         }
         Text(
             title, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).semantics { heading() },
         )
         Spacer(Modifier.width(8.dp))
         actions()
@@ -71,7 +73,7 @@ sealed interface ListPage {
 fun SectionHeader(title: String, count: Int? = null, modifier: Modifier = Modifier, color: Color = Brand.sky, trailing: @Composable () -> Unit = {}) {
     Column(modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.labelLarge, color = color)
+            Text(title, style = MaterialTheme.typography.labelLarge, color = Brand.readable(color), modifier = Modifier.semantics { heading() })
             if (count != null) Text("  $count", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
             trailing()
@@ -85,7 +87,7 @@ fun SectionHeader(title: String, count: Int? = null, modifier: Modifier = Modifi
 @Composable
 fun EmptyState(title: String, message: String, icon: ImageVector, modifier: Modifier = Modifier, action: @Composable () -> Unit = {}) {
     Column(modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Icon(icon, contentDescription = null, tint = Brand.sky, modifier = Modifier.size(44.dp))
+        Icon(icon, contentDescription = null, tint = Brand.skyText, modifier = Modifier.size(44.dp))
         Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), textAlign = TextAlign.Center)
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         action()
@@ -96,13 +98,13 @@ fun EmptyState(title: String, message: String, icon: ImageVector, modifier: Modi
 @Composable
 fun RowIcon(icon: ImageVector, tint: Color) {
     Box(Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(tint.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = null, tint = Brand.readable(tint), modifier = Modifier.size(16.dp))
     }
 }
 
 /** iOS: `FloatingActionButton` — runder Sky-Knopf mit weichem Schatten. */
 @Composable
-fun SkyFab(icon: ImageVector, label: String, modifier: Modifier = Modifier, container: Color = Brand.sky, content: Color = Color.White, onClick: () -> Unit) {
+fun SkyFab(icon: ImageVector, label: String, modifier: Modifier = Modifier, container: Color = Brand.sky, content: Color = Brand.onFill(container), onClick: () -> Unit) {
     // Material tönt einen Knopf in der Flächenfarbe je nach Höhe in der Primärfarbe; weiß soll weiß bleiben.
     MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(surfaceTint = container)) {
         FloatingActionButton(onClick = onClick, shape = CircleShape, containerColor = container, contentColor = content, modifier = modifier.size(60.dp)) {
@@ -112,8 +114,8 @@ fun SkyFab(icon: ImageVector, label: String, modifier: Modifier = Modifier, cont
 }
 
 /** Speaker-Farben (iOS: `Color.speaker(_:)`). */
-val speakerColors = listOf(Color(0xFF24B4E9), Color(0xFFF2994A), Color(0xFF6FCF97), Color(0xFFBB6BD9), Color(0xFFEB5757), Color(0xFFF2C94C), Color(0xFF2D9CDB), Color(0xFF9B51E0))
+val speakerColors = listOf(Color(0xFF24B4E9), Color(0xFFF58C33), Color(0xFF5CB85C), Color(0xFF9E6BDB), Color(0xFFED618C), Color(0xFF33A8A8))
 fun speakerColor(index: Int) = speakerColors[((index % speakerColors.size) + speakerColors.size) % speakerColors.size]
 
 /** Farbe gespeicherter Links (iOS: `brandLink`). */
-val LinkOrange = Color(0xFFFA8F24)
+val LinkOrange = Brand.link

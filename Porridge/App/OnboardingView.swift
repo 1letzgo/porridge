@@ -38,7 +38,7 @@ struct OnboardingView: View {
             }
             .frame(maxWidth: 520, maxHeight: .infinity)
             .padding(.horizontal, 24)
-            .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+            .transition(Motion.slide(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading))))
             .id(step)
 
             Button(action: next) {
@@ -47,8 +47,15 @@ struct OnboardingView: View {
             .buttonStyle(ChunkyButtonStyle())
             .disabled(isDownloading)
             .padding(.horizontal, 24)
-            .padding(.bottom, 24)
+            .padding(.bottom, canSkipModel ? 8 : 24)
             .frame(maxWidth: 520)
+
+            // Never stuck here without a connection: the model can also come later, and a running download goes on.
+            if canSkipModel {
+                Button("Later") { step = lastStep }
+                    .frame(minHeight: 44)
+                    .padding(.bottom, 12)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.appGroupedBackground)
@@ -72,8 +79,12 @@ struct OnboardingView: View {
             if let micGranted {
                 Label(micGranted ? "Access granted" : "Access denied – you can change this in Settings.",
                       systemImage: micGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(micGranted ? Color.brandSky : .orange)
+                    .foregroundStyle(micGranted ? Color.brandSkyText : .brandLinkText)
                     .font(.headline)
+                if !micGranted {
+                    Button("Open Settings", action: openMicrophoneSettings)
+                        .buttonStyle(PillButtonStyle())
+                }
             }
         }
     }
@@ -109,7 +120,7 @@ struct OnboardingView: View {
             Spacer(minLength: 20)
             Image(systemName: icon)
                 .font(.system(size: 64))
-                .foregroundStyle(Color.brandSky)
+                .foregroundStyle(Color.brandSkyText)
             Text(title)
                 .font(.largeTitle.weight(.bold))
                 .foregroundStyle(.primary)
@@ -135,7 +146,7 @@ struct OnboardingView: View {
                 }
                 Spacer()
                 Image(systemName: engine == option ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(engine == option ? Color.brandSky : .secondary)
+                    .foregroundStyle(engine == option ? Color.brandSkyText : .secondary)
                     .font(.title3)
             }
             .padding(14)
@@ -154,17 +165,31 @@ struct OnboardingView: View {
         case .downloading(let progress):
             VStack(spacing: 6) {
                 ProgressView(value: progress)
-                Text("Downloading … \(Int(progress * 100)) %").font(.caption).foregroundStyle(.secondary)
+                Text("Downloading… \(Int(progress * 100)) %").font(.caption).foregroundStyle(.secondary)
             }
         case .loading:
             HStack { ProgressView(); Text("Preparing…").font(.caption).foregroundStyle(.secondary) }
         case .ready, .installed:
-            Label("Model is on your device", systemImage: "checkmark.circle.fill").foregroundStyle(Color.brandSky)
+            Label("Model is on your device", systemImage: "checkmark.circle.fill").foregroundStyle(Color.brandSkyText)
         case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).font(.footnote)
+            Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Color.brandDangerText).font(.footnote)
         case .notInstalled:
             EmptyView()
         }
+    }
+
+    private var canSkipModel: Bool {
+        step == 2 && models.asr != .ready && models.asr != .installed
+    }
+
+    private func openMicrophoneSettings() {
+        #if os(iOS)
+        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+        #else
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
     }
 
     private var buttonTitle: String {
@@ -176,7 +201,7 @@ struct OnboardingView: View {
             else if case .failed = models.asr { "Try Again" }
             else if models.asr == .ready || models.asr == .installed { "Continue" }
             else { "Download & Continue" }
-        default: "Start Recording"
+        default: "Done"
         }
     }
 
@@ -203,7 +228,8 @@ struct OnboardingView: View {
         do {
             try await models.ensureASR()
             if speakerDetection { try? await models.ensureDiarizer() }
-            step += 1
+            // "Later" may have gone on already.
+            if step == 2 { step = lastStep }
         } catch {
             // The error is shown in the status area; the button turns into "Try Again".
         }

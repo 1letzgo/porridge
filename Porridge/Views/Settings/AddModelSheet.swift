@@ -133,7 +133,7 @@ private struct AddCloudModelView: View {
                         .plainFieldStyle()
                         .brandField()
                     if let loadError {
-                        Text(loadError).font(.footnote).foregroundStyle(.red)
+                        Text(loadError).font(.footnote).foregroundStyle(Color.brandDangerText)
                     }
                 }
                 Button("Add Model", action: add)

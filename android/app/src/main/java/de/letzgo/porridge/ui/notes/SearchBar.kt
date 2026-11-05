@@ -38,7 +38,7 @@ fun SearchBar(
         OutlinedTextField(
             value = text, onValueChange = onText, singleLine = true, placeholder = { Text("Search") },
             leadingIcon = { Icon(Icons.Filled.Search, null) },
-            trailingIcon = { if (text.isNotEmpty()) IconButton(onClick = { onText("") }) { Icon(Icons.Filled.Close, "Clear text") } },
+            trailingIcon = { if (text.isNotEmpty()) IconButton(onClick = { onText("") }) { Icon(Icons.Filled.Close, "Clear Text") } },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         )
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

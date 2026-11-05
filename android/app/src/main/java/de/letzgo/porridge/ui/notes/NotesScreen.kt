@@ -1,5 +1,8 @@
 package de.letzgo.porridge.ui.notes
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.activity.compose.BackHandler
@@ -248,7 +251,7 @@ fun NotesScreen(
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
             ChromeBar(title, icon, tint = tint, onBack = if (page == ListPage.Home) null else ({ goBack() })) {
-                if (page == ListPage.Trash && trash.isNotEmpty()) IconButton(onClick = { confirmEmptyTrash = true }) { Icon(Icons.Outlined.Delete, "Delete All", tint = Brand.danger) }
+                if (page == ListPage.Trash && trash.isNotEmpty()) IconButton(onClick = { confirmEmptyTrash = true }) { Icon(Icons.Outlined.Delete, "Delete All", tint = Brand.dangerText) }
                 if (page == ListPage.Home) IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings", tint = Brand.navy) }
             }
             val listModifier = Modifier.weight(1f)
@@ -302,9 +305,9 @@ fun NotesScreen(
     }
     if (confirmEmptyTrash) AlertDialog(
         onDismissRequest = { confirmEmptyTrash = false },
-        title = { Text("Delete all notes in Recently Deleted?") },
+        title = { Text("Delete All in Recently Deleted?") },
         text = { Text("This cannot be undone.") },
-        confirmButton = { TextButton(onClick = { confirmEmptyTrash = false; coroutines.launch { notes.filter { it.isDeleted }.forEach { NoteStore().deletePermanently(it) } } }) { Text("Delete All", color = Brand.danger) } },
+        confirmButton = { TextButton(onClick = { confirmEmptyTrash = false; coroutines.launch { notes.filter { it.isDeleted }.forEach { NoteStore().deletePermanently(it) } } }) { Text("Delete All", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { confirmEmptyTrash = false }) { Text("Cancel") } },
     )
 }
@@ -353,7 +356,7 @@ private fun HomeList(
             }
         }
         if (pinned.isNotEmpty()) {
-            item(key = "h-pinned") { SectionHeader("Pinned") }
+            item(key = "h-pinned") { SectionHeader("Pinned", color = Brand.navy) }
             noteRows(pinned.take(limits.pinned), stages, onOpen)
         }
         dateGroups(rest.take(limits.notes), stages, onOpen)
@@ -469,7 +472,7 @@ private fun MoreRow(hidden: Int, expanded: Boolean, color: Color, onToggle: () -
         Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(if (expanded) "Less" else "More", style = MaterialTheme.typography.labelLarge, color = color)
+        Text(if (expanded) "Less" else "More", style = MaterialTheme.typography.labelLarge, color = Brand.readable(color))
         if (!expanded) Text("$hidden", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, tint = color, modifier = Modifier.size(18.dp))
     }
@@ -526,8 +529,8 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
     var choosing by remember { mutableStateOf(false) }
     if (confirmDeleteNow) AlertDialog(
         onDismissRequest = { confirmDeleteNow = false },
-        title = { Text("Delete this note now?") }, text = { Text("This cannot be undone.") },
-        confirmButton = { TextButton(onClick = { confirmDeleteNow = false; coroutines.launch { store.deletePermanently(note) } }) { Text("Delete Now", color = Brand.danger) } },
+        title = { Text("Delete Note Now?") }, text = { Text("This cannot be undone.") },
+        confirmButton = { TextButton(onClick = { confirmDeleteNow = false; coroutines.launch { store.deletePermanently(note) } }) { Text("Delete Now", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { confirmDeleteNow = false }) { Text("Cancel") } },
     )
     if (choosing) ProjectChooser(note.projectIDs, onToggle = { id -> coroutines.launch { Projects.toggle(note, id) } }, onDismiss = { choosing = false })
@@ -540,7 +543,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
                 Modifier.fillMaxSize().background(if (toStart) Brand.danger else if (note.isDeleted || archived) Brand.sky else Brand.navy).padding(horizontal = 24.dp),
                 contentAlignment = if (toStart) Alignment.CenterEnd else Alignment.CenterStart,
             ) {
-                Icon(if (toStart) Icons.Outlined.Delete else if (note.isDeleted) Icons.Outlined.Undo else if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null, tint = Color.White)
+                Icon(if (toStart) Icons.Outlined.Delete else if (note.isDeleted) Icons.Outlined.Undo else if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null, tint = if (!toStart && (note.isDeleted || archived)) Brand.onFill else Color.White)
             }
         },
     ) {
@@ -549,13 +552,13 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (note.isDeleted) {
                     DropdownMenuItem(text = { Text("Recover") }, onClick = { menu = false; coroutines.launch { store.restore(note) } })
-                    DropdownMenuItem(text = { Text("Delete Now", color = Brand.danger) }, onClick = { menu = false; confirmDeleteNow = true })
+                    DropdownMenuItem(text = { Text("Delete Now", color = Brand.dangerText) }, onClick = { menu = false; confirmDeleteNow = true })
                 } else {
                     if (!archived) DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { PorridgeDatabase.shared.notes().upsert(note.copy(isPinned = !note.isPinned)) } })
                     DropdownMenuItem(text = { Text(if (archived) "Unarchive" else "Archive") }, onClick = { menu = false; coroutines.launch { if (archived) store.unarchive(note) else store.archive(note) } })
                     DropdownMenuItem(text = { Text("Projects…") }, onClick = { menu = false; choosing = true })
                     if (projectID != null) DropdownMenuItem(text = { Text("Remove from Project") }, onClick = { menu = false; coroutines.launch { Projects.toggle(note, projectID) } })
-                    DropdownMenuItem(text = { Text("Delete", color = Brand.danger) }, onClick = { menu = false; coroutines.launch { store.trash(note) } })
+                    DropdownMenuItem(text = { Text("Delete", color = Brand.dangerText) }, onClick = { menu = false; coroutines.launch { store.trash(note) } })
                 }
             }
         }
@@ -663,9 +666,9 @@ private fun CreateMenu(
                 if (filter != null && !cardOpen) {
                     val isAll = filter == HomeListLogic.HomeFilter.ALL
                     SkyFab(
-                        if (filterOpen) Icons.Filled.Close else filterIcon(filter), if (isAll) "Filter" else "Filter: ${filter.title}",
+                        if (filterOpen) Icons.Filled.Close else filterIcon(filter), if (filterOpen) "Close Filter" else if (isAll) "Filter" else "Filter: ${filter.title}",
                         container = if (isAll) MaterialTheme.colorScheme.surfaceContainerHigh else filterTint(filter),
-                        content = if (isAll) Brand.navy else Color.White,
+                        content = if (isAll) Brand.navy else Brand.onFill(filterTint(filter)),
                     ) { onOpen(false); filterOpen = !filterOpen }
                 }
                 SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
@@ -708,14 +711,14 @@ private suspend fun importAudio(context: android.content.Context, uri: android.n
 
 @Composable
 private fun CreateOption(title: String, icon: ImageVector, tint: Color, chosen: Boolean = false, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = CircleShape, shadowElevation = 6.dp, color = MaterialTheme.colorScheme.surface) {
-        Row(Modifier.height(48.dp).padding(start = 16.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+    Surface(onClick = onClick, modifier = Modifier.semantics { selected = chosen }, shape = CircleShape, shadowElevation = 6.dp, color = MaterialTheme.colorScheme.surface) {
+        Row(Modifier.heightIn(min = 48.dp).padding(start = 16.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = Brand.readable(tint), modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(10.dp))
             Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
             if (chosen) {
                 Spacer(Modifier.width(10.dp))
-                Icon(Icons.Filled.Check, "Selected", tint = tint, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.Check, null, tint = Brand.readable(tint), modifier = Modifier.size(18.dp))
             }
         }
     }

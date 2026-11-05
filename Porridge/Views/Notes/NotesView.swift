@@ -35,7 +35,6 @@ struct NotesView: View {
     /// What the long list is narrowed to, chosen with the button beside the search.
     @State private var homeFilter = HomeFilter.all
     /// The filter button is unfolded into its options.
-    @State private var showFilter = false
     /// The search lies over whatever is shown, opened from its button.
     @State private var showSearch = false
     /// While the keyboard is up, the search card reaches down to it (the buttons below step aside).
@@ -205,11 +204,24 @@ struct NotesView: View {
         .onAppear { runQuickAction() }
         #endif
         #if os(macOS)
+        #if os(macOS)
+        .focusedSceneValue(\.libraryActions, LibraryActions(
+            canCreate: page != .archive && page != .trash,
+            plaudSignedIn: plaudSignedIn,
+            recordMeeting: { showCalendar = true },
+            addLink: { showAddLink = true },
+            newProject: page == .home ? { showNewProject = true } : nil,
+            importAudio: { showAudioImporter = true },
+            importPlaud: { showPlaud = true },
+            search: { showSearch.toggle() }
+        ))
+        .focusedSceneValue(\.homeFilter, page == .home ? $homeFilter : nil)
+        #endif
         .onReceive(NotificationCenter.default.publisher(for: .newNote)) { _ in
             addNote()
         }
         #endif
-        .confirmationDialog("Delete all notes in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
+        .confirmationDialog("Delete All in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
             Button("Delete All", role: .destructive) {
                 if let selection, notes.first(where: { $0.id == selection })?.isDeleted == true { self.selection = nil }
                 notes.filter(\.isDeleted).forEach { NoteStore.deletePermanently($0, in: context) }
@@ -218,7 +230,7 @@ struct NotesView: View {
             Text("This cannot be undone.")
         }
         .confirmationDialog(
-            "Delete this note now?",
+            "Delete Note Now?",
             isPresented: Binding(get: { deletingNow != nil }, set: { if !$0 { deletingNow = nil } }),
             titleVisibility: .visible
         ) {
@@ -366,7 +378,7 @@ struct NotesView: View {
                     let shown = pinned.prefix(limits.pinned)
                     ForEach(shown) { note in row(note, isLast: note.id == shown.last?.id) }
                 } header: {
-                    ListHeader(title: "Pinned", tint: .brandSky, isFirst: folders.isEmpty)
+                    ListHeader(title: "Pinned", tint: .brandNavy, isFirst: folders.isEmpty)
                 }
             }
             dateSections(grouped, isFirst: folders.isEmpty && pinned.isEmpty)
@@ -535,7 +547,7 @@ struct NotesView: View {
                 Spacer(minLength: 0)
             }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(tint)
+            .foregroundStyle(tint.readable)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -566,12 +578,13 @@ struct NotesView: View {
     /// the imports, link, meeting and note (and project on the long list). Bottom left the filter and the search.
     private var createMenu: some View {
         ZStack(alignment: .bottom) {
-            if showCreate || showFilter || showSearch {
+            if showCreate || showSearch {
                 // Tapping anywhere else folds the menu or the card again.
                 Color.black.opacity(showSearch ? 0.18 : 0.08)
                     .ignoresSafeArea()
-                    .onTapGesture { withAnimation(.snappy) { showCreate = false; showFilter = false; showSearch = false } }
+                    .onTapGesture { withAnimation(.snappy) { showCreate = false; showSearch = false } }
                     .transition(.opacity)
+                    .accessibilityHidden(true)
             }
             VStack(spacing: 14) {
                 #if os(iOS)
@@ -579,29 +592,21 @@ struct NotesView: View {
                     overlayCard { searchPanel }
                 }
                 #endif
-                if showFilter {
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(HomeFilter.allCases, id: \.self) { option in
-                            createOption(option.title, systemImage: option.systemImage, tint: option.tint, isChosen: homeFilter == option) {
-                                withAnimation(.snappy) { homeFilter = option }
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
                 if !(showSearch && keyboardShown), !page.isSettings {
                     HStack(alignment: .bottom, spacing: 12) {
                         if !showSearch, page == .home {
-                            FloatingActionButton(
-                                systemImage: showFilter ? "xmark" : homeFilter.systemImage, label: filterLabel,
-                                fill: homeFilter == .all ? .appBackground : homeFilter.tint,
-                                foreground: homeFilter == .all ? .brandNavy : .white
-                            ) {
-                                withAnimation(.snappy) {
-                                    showCreate = false
-                                    showFilter.toggle()
-                                }
+                            Menu {
+                                homeFilterPicker
+                            } label: {
+                                Image(systemName: homeFilter.systemImage)
+                                    .font(.title2.weight(.semibold))
+                                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                                    .foregroundStyle(homeFilter == .all ? Color.brandNavy : homeFilter.tint.onFill)
+                                    .frame(width: 58, height: 58)
+                                    .floatingCircle(fill: homeFilter == .all ? .appBackground : homeFilter.tint)
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(filterLabel)
                             .accessibilityIdentifier("HomeFilterButton")
                         }
                         FloatingActionButton(
@@ -610,7 +615,6 @@ struct NotesView: View {
                         ) {
                             withAnimation(.snappy) {
                                 showCreate = false
-                                showFilter = false
                                 showSearch.toggle()
                             }
                         }
@@ -634,7 +638,6 @@ struct NotesView: View {
                                 }
                                 FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
                                     withAnimation(.snappy) {
-                                        showFilter = false
                                         // Signed in on another device, or the sign-in ran out.
                                         plaudSignedIn = PlaudAccount.isSignedIn
                                         showCreate.toggle()
@@ -650,6 +653,12 @@ struct NotesView: View {
             }
             .padding(.horizontal, 22)
             .padding(.bottom, showSearch && keyboardShown ? 8 : 16)
+            // While something is unfolded, VoiceOver stays in it and the escape gesture folds it.
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(showCreate || showSearch ? .isModal : [])
+            .accessibilityAction(.escape) {
+                withAnimation(.snappy) { showCreate = false; showSearch = false }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         #if os(iOS)
@@ -689,40 +698,36 @@ struct NotesView: View {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
             .padding(.top, 8)
-            .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomLeading)))
+            .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomLeading))))
     }
 
     /// One unfolded option: a single white pill, icon on the left in the color of its kind, then the text.
-    private func createOption(_ title: LocalizedStringKey, systemImage: String, tint: Color, isChosen: Bool = false, action: @escaping () -> Void) -> some View {
+    private func createOption(_ title: LocalizedStringKey, systemImage: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button {
-            withAnimation(.snappy) { showCreate = false; showFilter = false }
+            withAnimation(.snappy) { showCreate = false }
             action()
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 22)
+                    .foregroundStyle(tint.readable)
+                    .frame(minWidth: 22)
                 Text(title)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
-                if isChosen {
-                    Image(systemName: "checkmark")
-                        .font(.footnote.weight(.bold))
-                        .foregroundStyle(tint)
-                        .accessibilityLabel("Selected")
-                }
             }
             .fixedSize()
+            // Beyond this the longest option no longer fits the width of the phone.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility3)
             .padding(.leading, 16)
             .padding(.trailing, 20)
-            .frame(height: 48)
+            .frame(minHeight: 48)
             .background(Color.appBackground, in: Capsule())
             .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity)))
     }
 
     /// The actions of the list, shown as plain icons at the right of the custom bar (iOS).
@@ -759,6 +764,7 @@ struct NotesView: View {
                 Label("Search", systemImage: "magnifyingglass")
             }
             .accessibilityLabel("Search")
+            .help("Search")
             .popover(isPresented: $showSearch, arrowEdge: .bottom) {
                 searchPanel
                     .frame(width: 480, height: 620)
@@ -773,6 +779,7 @@ struct NotesView: View {
                 }
                 .foregroundStyle(homeFilter == .all ? Color.primary : homeFilter.tint)
                 .accessibilityLabel(filterLabel)
+                .help(filterLabel)
             }
         }
         ToolbarItem(placement: .primaryAction) {
@@ -780,6 +787,7 @@ struct NotesView: View {
                 Label("Settings", systemImage: "gearshape")
             }
             .accessibilityLabel("Settings")
+            .help("Settings")
         }
     }
 
@@ -803,11 +811,8 @@ struct NotesView: View {
                     }
                     Divider()
                     Button { addNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
-                        .keyboardShortcut("n")
                     Button { showCalendar = true } label: { Label("Record Meeting", systemImage: "mic.fill") }
-                        .keyboardShortcut("r")
                     Button { showAddLink = true } label: { Label("Add Link", systemImage: "link") }
-                        .keyboardShortcut("l")
                     if page == .home {
                         Button { showNewProject = true } label: { Label("New Project", systemImage: "folder.badge.plus") }
                     }
@@ -815,6 +820,7 @@ struct NotesView: View {
                     Label("New", systemImage: "plus")
                 }
                 .accessibilityLabel("New")
+                .help("New")
             }
         }
     }
@@ -1068,11 +1074,14 @@ struct NoteRow: View {
     let note: Note
     let stage: String?
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         // Plain notes are sky blue, recorded meetings navy, saved links orange.
         HStack(alignment: .top, spacing: 12) {
             VStack(spacing: 12) {
                 ThingsRowIcon(systemImage: icon, tint: tint)
+                    .accessibilityLabel(note.isLink ? "Link" : note.isRecording ? "Meeting" : "Note")
                 if note.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.caption2)
@@ -1085,7 +1094,7 @@ struct NoteRow: View {
                 Text(note.displayTitle)
                     .font(.body)
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                 if !note.preview.isEmpty {
                     Text(note.preview)
                         .font(.subheadline)
@@ -1117,7 +1126,7 @@ struct NoteRow: View {
     private func footer(compact: Bool) -> some View {
         if let deletedAt = note.deletedAt {
             Text(daysLeft(deletedAt))
-                .foregroundStyle(.red.opacity(0.8))
+                .foregroundStyle(Color.brandDangerText)
         } else {
             if note.isArchived {
                 Image(systemName: "archivebox")
@@ -1167,13 +1176,15 @@ private struct ListTitle: View {
     let title: String
     let systemImage: String
     var tint: Color = .brandSky
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 22
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 22, height: 22)
+                .font(.caption2.weight(.bold))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .foregroundStyle(tint.onFill)
+                .frame(width: min(size, 32), height: min(size, 32))
                 .background(tint, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             Text(title)
                 .font(.headline.weight(.bold))
@@ -1186,6 +1197,42 @@ private struct ListTitle: View {
 }
 
 #if os(macOS)
+/// What the menu bar can do with the list.
+struct LibraryActions {
+    let canCreate: Bool
+    let plaudSignedIn: Bool
+    let recordMeeting: () -> Void
+    let addLink: () -> Void
+    let newProject: (() -> Void)?
+    let importAudio: () -> Void
+    let importPlaud: () -> Void
+    let search: () -> Void
+}
+
+/// What the menu bar can do with the open note.
+struct NoteActions {
+    let isDeleted: Bool
+    let isPinned: Bool
+    let hasSummary: Bool
+    let canSummarize: Bool
+    let canEditSummary: Bool
+    let canTranscribe: Bool
+    let hasTranscript: Bool
+    let togglePin: () -> Void
+    let summarize: () -> Void
+    let editSummary: () -> Void
+    let transcribeAgain: () -> Void
+    let copyTranscript: () -> Void
+    let delete: () -> Void
+    let recover: () -> Void
+}
+
+extension FocusedValues {
+    @Entry var libraryActions: LibraryActions?
+    @Entry var noteActions: NoteActions?
+    @Entry var homeFilter: Binding<HomeFilter>?
+}
+
 extension Notification.Name {
     /// File → New Note (⌘N) in the menu bar.
     static let newNote = Notification.Name("PorridgeNewNote")

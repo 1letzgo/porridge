@@ -1,5 +1,8 @@
 package de.letzgo.porridge.ui.notes
 
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -56,8 +59,8 @@ fun SummaryEditorSheet(initial: String, onDismiss: () -> Unit, onSave: (String) 
     ModalBottomSheet(onDismissRequest = { onSave(text) }) {
         Column(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Summary", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text("Cancel") }
+                Text("Summary", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                 TextButton(onClick = { onSave(text) }) { Text("Done") }
             }
             OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp, max = 520.dp))
@@ -83,7 +86,7 @@ fun MergeNotesSheet(base: Note, onDismiss: () -> Unit, onMerged: () -> Unit) {
             LazyColumn(Modifier.heightIn(max = 400.dp)) {
                 items(candidates, key = { it.id }) { note ->
                     val on = note.id in picked
-                    Row(Modifier.fillMaxWidth().clickable { picked = if (on) picked - note.id else picked + note.id }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().toggleable(value = on, role = Role.Checkbox) { picked = if (on) picked - note.id else picked + note.id }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (on) Icons.Filled.CheckCircle else Icons.Outlined.Circle, null, tint = if (on) Brand.sky else MaterialTheme.colorScheme.onSurfaceVariant)
                         Column(Modifier.padding(start = 12.dp)) {
                             Text(note.displayTitle, maxLines = 1)
@@ -92,9 +95,9 @@ fun MergeNotesSheet(base: Note, onDismiss: () -> Unit, onMerged: () -> Unit) {
                     }
                 }
             }
-            error?.let { Text(it, color = Brand.danger) }
+            error?.let { Text(it, color = Brand.dangerText) }
             Button(
-                enabled = picked.isNotEmpty() && !working, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Brand.sky),
+                enabled = picked.isNotEmpty() && !working, modifier = Modifier.fillMaxWidth(), colors = Brand.mainButton(),
                 onClick = {
                     working = true
                     coroutines.launch {
@@ -113,7 +116,7 @@ fun MergeNotesSheet(base: Note, onDismiss: () -> Unit, onMerged: () -> Unit) {
                         working = false
                     }
                 },
-            ) { if (working) CircularProgressIndicator(Modifier.padding(2.dp), color = androidx.compose.ui.graphics.Color.White, strokeWidth = 2.dp) else Text("Merge ${picked.size} into this note") }
+            ) { if (working) CircularProgressIndicator(Modifier.padding(2.dp), color = Brand.navy, strokeWidth = 2.dp) else Text("Merge ${picked.size} into This Note") }
         }
     }
 }

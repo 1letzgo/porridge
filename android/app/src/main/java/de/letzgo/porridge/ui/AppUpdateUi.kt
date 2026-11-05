@@ -62,7 +62,7 @@ fun AppUpdateDialog(release: AppUpdate.Release, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = { if (!downloading) onDismiss() },
-        title = { Text("Porridge ${release.version} is available") },
+        title = { Text("Porridge ${release.version} Available") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (release.notes.isNotEmpty()) Text(release.notes, style = MaterialTheme.typography.bodyMedium)

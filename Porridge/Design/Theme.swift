@@ -9,13 +9,38 @@ extension Color {
     static let brandSky = Color("BrandSky")
     static let brandNavy = Color("BrandNavy")
     /// Saved links.
-    static let brandLink = Color(red: 0.98, green: 0.56, blue: 0.14)
+    static let brandLink = Color("BrandLink")
     /// Projects: violet.
-    static let brandProject = Color(red: 0.49, green: 0.36, blue: 0.84)
+    static let brandProject = Color("BrandProject")
     /// Check boxes in summaries: a fresh green next to the sky blue.
-    static let brandTask = Color(red: 0.16, green: 0.74, blue: 0.50)
-    /// Recording and failed downloads on a tinted pill.
-    static let brandAlert = Color(red: 1, green: 0.42, blue: 0.42)
+    static let brandTask = Color("BrandTask")
+
+    // Sky, orange and green are too light for text and symbols on a white page: these are their readable forms.
+    static let brandSkyText = Color("BrandSkyText")
+    static let brandLinkText = Color("BrandLinkText")
+    static let brandTaskText = Color("BrandTaskText")
+    static let brandDangerText = Color("BrandDangerText")
+
+    /// Symbols and text on a full fill of sky, orange or green.
+    static let brandOnFill = Color("BrandOnFill")
+    /// Symbols and text on a full fill of navy or the accent color, which turn light in dark mode.
+    static let brandOnNavy = Color("BrandOnNavy")
+
+    /// This color as text or a symbol on the page.
+    var readable: Color {
+        if self == .brandSky { return .brandSkyText }
+        if self == .brandLink { return .brandLinkText }
+        if self == .brandTask { return .brandTaskText }
+        if self == .red { return .brandDangerText }
+        return self
+    }
+
+    /// What goes on top of a full fill of this color.
+    var onFill: Color {
+        if self == .brandSky || self == .brandLink || self == .brandTask { return .brandOnFill }
+        if self == .brandNavy || self == .accentColor { return .brandOnNavy }
+        return .white
+    }
 
     // System surfaces, the same idea on iOS and macOS.
     #if canImport(UIKit)
@@ -42,8 +67,8 @@ extension Color {
     }
 }
 
-/// The app's look, after Things 3: white pages, hairline separators, cards that float on a soft shadow,
-/// sky blue only for what you can act on (the plus button, selection, toggles).
+/// The app's look, after Things 3: white pages, hairline separators, cards that float on a soft shadow.
+/// `DESIGN.md` says what each color stands for.
 enum Look {
     static let cardRadius: CGFloat = 14
     static let buttonRadius: CGFloat = 12
@@ -175,7 +200,7 @@ extension View {
     /// Round icon button background (player): sky circle with a white glyph.
     func chunkyCircle(size: CGFloat) -> some View {
         self
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.brandOnFill)
             .frame(width: size, height: size)
             .background(Color.brandSky, in: Circle())
             .shadow(color: Color.brandSky.opacity(0.35), radius: 6, y: 3)
@@ -189,12 +214,14 @@ struct ThingsRowIcon: View {
 
     let systemImage: String
     var tint: Color = .brandSky
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 22
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(tint)
-            .frame(width: 22, height: 22)
+            .font(.caption2.weight(.bold))
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            .foregroundStyle(tint.readable)
+            .frame(width: min(size, 32), height: min(size, 32))
             .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(tint.opacity(0.55), lineWidth: 1.5))
     }
@@ -224,7 +251,7 @@ struct ListHeader: View {
                 }
             }
             .font(.subheadline.weight(.bold))
-            .foregroundStyle(tint)
+            .foregroundStyle(tint.readable)
             Rectangle().fill(Look.hairline).frame(height: 0.5)
         }
         .padding(.top, isFirst ? 0 : 4)
@@ -270,6 +297,9 @@ struct ListRowLink<Content: View>: View {
             NavigationLink(value: value) { EmptyView() }.opacity(0)
             content
         }
+        // For VoiceOver one thing to press, not a symbol, two texts and a nameless button.
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
         .cardListRow()
     }
 }
@@ -285,8 +315,11 @@ struct ChromeBar<Actions: View>: View {
     var onBack: (() -> Void)?
     @ViewBuilder var actions: Actions
 
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 30
+    @ScaledMetric(relativeTo: .body) private var squareSize: CGFloat = 34
+
     /// The pills take the screen's color too; the sky screens keep the accent color for contrast.
-    private var buttonTint: Color? { tint == .brandSky ? nil : tint }
+    private var buttonTint: Color? { tint == .brandSky ? nil : tint.readable }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -294,19 +327,21 @@ struct ChromeBar<Actions: View>: View {
                 Button(action: onBack) {
                     Label("Back", systemImage: "chevron.left")
                         .labelStyle(.iconOnly)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.body.weight(.semibold))
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .foregroundStyle(buttonTint ?? .accentColor)
                 }
                 .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
             }
             HStack(spacing: 10) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
+                    .font(.body.weight(.bold))
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                    .foregroundStyle(tint.onFill)
+                    .frame(width: min(squareSize, 44), height: min(squareSize, 44))
                     .background(tint, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                 Text(title)
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.system(size: titleSize, weight: .bold))
                     .tracking(-0.5)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -321,7 +356,8 @@ struct ChromeBar<Actions: View>: View {
                 actions
             }
             .labelStyle(.iconOnly)
-            .font(.system(size: 17, weight: .medium))
+            .font(.body.weight(.medium))
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .foregroundStyle(buttonTint ?? .accentColor)
             .tint(buttonTint ?? .accentColor)
             .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
@@ -346,8 +382,8 @@ struct ChromePillButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(fill == nil ? AnyShapeStyle(tint ?? .accentColor) : AnyShapeStyle(.white))
-            .frame(width: 44, height: 36)
+            .foregroundStyle(fill.map { AnyShapeStyle($0.onFill) } ?? AnyShapeStyle(tint ?? .accentColor))
+            .frame(minWidth: 44, minHeight: 36)
             .background(
                 fill.map { $0.opacity(configuration.isPressed ? 0.8 : 1) } ?? (tint ?? .brandSky).opacity(configuration.isPressed ? 0.26 : 0.14),
                 in: Capsule()
@@ -368,7 +404,7 @@ struct TabSwitcher<Value: Hashable>: View {
     var body: some View {
         #if os(macOS)
         // The Mac has its own control for this: a segmented picker.
-        Picker("", selection: $selection) {
+        Picker("View", selection: $selection) {
             ForEach(options, id: \.value) { option in
                 Text(option.title).tag(option.value)
             }
@@ -395,7 +431,7 @@ struct TabSwitcher<Value: Hashable>: View {
         } label: {
             Text(label)
                 .font(.subheadline.weight(selected ? .semibold : .regular))
-                .foregroundStyle(selected ? color ?? Color.accentColor : Color.secondary)
+                .foregroundStyle(selected ? color?.readable ?? Color.accentColor : Color.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 7)
                 .background(selected ? (color ?? Color.brandSky).opacity(0.14) : .clear, in: Capsule())
@@ -412,18 +448,30 @@ struct FloatingActionButton: View {
     let systemImage: String
     let label: String
     var fill: Color = .brandSky
-    var foreground: Color = .white
+    /// Nil: what suits the fill.
+    var foreground: Color?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.title2.weight(.semibold))
-                .foregroundStyle(foreground)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .foregroundStyle(foreground ?? fill.onFill)
                 .frame(width: 58, height: 58)
         }
         .buttonStyle(FloatingActionButtonStyle(fill: fill))
         .accessibilityLabel(label)
+    }
+}
+
+extension View {
+    /// The round shape of the floating buttons.
+    func floatingCircle(fill: Color, pressed: Bool = false) -> some View {
+        self
+            .background(fill, in: Circle())
+            .overlay(Circle().strokeBorder(Look.hairline, lineWidth: 0.5))
+            .shadow(color: (fill == .brandSky ? fill : Color.black).opacity(pressed ? 0.12 : 0.22), radius: pressed ? 4 : 10, y: pressed ? 2 : 5)
     }
 }
 
@@ -433,9 +481,7 @@ private struct FloatingActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
         configuration.label
-            .background(fill, in: Circle())
-            .overlay(Circle().strokeBorder(Look.hairline, lineWidth: 0.5))
-            .shadow(color: (fill == .brandSky ? fill : Color.black).opacity(pressed ? 0.12 : 0.22), radius: pressed ? 4 : 10, y: pressed ? 2 : 5)
+            .floatingCircle(fill: fill, pressed: pressed)
             .scaleEffect(pressed ? 0.94 : 1)
             .animation(.snappy(duration: 0.12), value: pressed)
     }
@@ -454,7 +500,7 @@ struct StatusBadge: View {
             Text(text)
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(color)
+        .foregroundStyle(color.readable)
     }
 }
 
@@ -514,6 +560,21 @@ struct BrandToolbarItem<Content: View>: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItem(placement: placement) { content }
+    }
+}
+
+/// The system setting Reduce Motion: what slides elsewhere only fades in then.
+enum Motion {
+    static var isReduced: Bool {
+        #if canImport(UIKit)
+        UIAccessibility.isReduceMotionEnabled
+        #else
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #endif
+    }
+
+    static func slide(_ transition: AnyTransition) -> AnyTransition {
+        isReduced ? .opacity : transition
     }
 }
 
@@ -609,7 +670,7 @@ extension View {
                     .modifier(BarBackground())
                     .padding(.trailing, 12)
                     .padding(.bottom, 6)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity)))
             }
         }
         #else
@@ -631,7 +692,7 @@ extension View {
 struct BarBackground: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, macOS 26.0, *) {
-            content.glassEffect(.clear, in: Capsule())
+            content.glassEffect(.regular, in: Capsule())
         } else {
             content.background(.ultraThinMaterial, in: Capsule())
         }

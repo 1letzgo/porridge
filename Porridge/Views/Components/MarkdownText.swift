@@ -50,7 +50,7 @@ struct MarkdownText: View {
                 .padding(.top, 8)
         case .bullet(let text):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("•").foregroundStyle(Color.brandSky).fontWeight(.semibold)
+                Text("•").foregroundStyle(Color.brandSkyText).fontWeight(.semibold)
                 Text(inline(text))
             }
         case .task(let text, let done, let line):
@@ -58,18 +58,23 @@ struct MarkdownText: View {
                 if let onToggleTask {
                     Button { onToggleTask(line) } label: {
                         Image(systemName: done ? "checkmark.square.fill" : "square")
-                            .foregroundStyle(Color.brandTask)
-                            .contentShape(Rectangle())
+                            .foregroundStyle(Color.brandTaskText)
+                            // 44 pt to tap without pushing the lines apart.
+                            .contentShape(Rectangle().inset(by: -12))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(done ? "Done" : "Open")
+                    .accessibilityLabel(Text(inline(text)))
+                    .accessibilityValue(done ? "Done" : "Not Done")
+                    .accessibilityAddTraits(.isToggle)
                 } else {
                     Image(systemName: done ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(Color.brandTask)
+                        .foregroundStyle(Color.brandTaskText)
+                        .accessibilityLabel(done ? "Done" : "Not Done")
                 }
                 Text(inline(text))
                     .strikethrough(done, color: .secondary)
                     .foregroundStyle(done ? .secondary : .primary)
+                    .accessibilityHidden(onToggleTask != nil)
             }
         case .paragraph(let text):
             Text(inline(text))
