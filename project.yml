@@ -23,7 +23,7 @@ settings:
   base:
     DEVELOPMENT_TEAM: 699G2QY959
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: 1.1.2
+    MARKETING_VERSION: 1.1.3
     CURRENT_PROJECT_VERSION: 1
     # TestFlight (iPhone, iPad, Mac) stays on its own version. For a new iOS build only raise the number below, above the last upload.
     TESTFLIGHT_MARKETING_VERSION: "1.0"
