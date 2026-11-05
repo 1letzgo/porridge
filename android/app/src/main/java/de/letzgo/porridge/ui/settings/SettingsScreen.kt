@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.settings
 
+import de.letzgo.porridge.ui.components.pageTransition
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.toggleable
 import androidx.activity.compose.BackHandler
@@ -116,10 +118,20 @@ import java.util.UUID
 fun SettingsScreen(onBack: () -> Unit) {
     // Hier, damit die Seite nach einem Unterbildschirm an derselben Stelle steht.
     val pageScroll = rememberScrollState()
-    var showAcknowledgements by remember { mutableStateOf(false) }
-    if (showAcknowledgements) return AcknowledgementsScreen { showAcknowledgements = false }
-    var showVoices by remember { mutableStateOf(false) }
-    if (showVoices) return VoicesScreen { showVoices = false }
+    var subpage by remember { mutableStateOf(SettingsSubpage.NONE) }
+    AnimatedContent(subpage, transitionSpec = { pageTransition(forward = targetState != SettingsSubpage.NONE) }, label = "settings") { shown ->
+        when (shown) {
+            SettingsSubpage.ACKNOWLEDGEMENTS -> AcknowledgementsScreen { subpage = SettingsSubpage.NONE }
+            SettingsSubpage.VOICES -> VoicesScreen { subpage = SettingsSubpage.NONE }
+            SettingsSubpage.NONE -> SettingsPage(pageScroll, onBack, onVoices = { subpage = SettingsSubpage.VOICES }, onAcknowledgements = { subpage = SettingsSubpage.ACKNOWLEDGEMENTS })
+        }
+    }
+}
+
+private enum class SettingsSubpage { NONE, VOICES, ACKNOWLEDGEMENTS }
+
+@Composable
+private fun SettingsPage(pageScroll: androidx.compose.foundation.ScrollState, onBack: () -> Unit, onVoices: () -> Unit, onAcknowledgements: () -> Unit) {
     val context = LocalContext.current
     var plaudSignedIn by remember { mutableStateOf(PlaudAccount.load().userToken != null) }
     var showPlaudLogin by remember { mutableStateOf(false) }
@@ -133,14 +145,14 @@ fun SettingsScreen(onBack: () -> Unit) {
         Column(Modifier.fillMaxSize().verticalScroll(pageScroll).padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(22.dp)) {
             YouCard()
             TranscriptionCard()
-            VoicesCard(onOpen = { showVoices = true })
+            VoicesCard(onOpen = onVoices)
             ModelsCard()
             SummaryCard()
             PlaudCard(plaudSignedIn, onSignIn = { showPlaudLogin = true }, onSignOut = { PlaudAccount.clear(); plaudSignedIn = false })
             SyncCard()
             BackupCard()
             AboutCard()
-            Card("Acknowledgements") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Open Source Licenses", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", { showAcknowledgements = true }) } }
+            Card("Acknowledgements") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Open Source Licenses", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", { onAcknowledgements() }) } }
         }
     }
 }

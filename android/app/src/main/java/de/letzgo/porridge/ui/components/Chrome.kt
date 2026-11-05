@@ -1,5 +1,14 @@
 package de.letzgo.porridge.ui.components
 
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.ContentTransform
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
@@ -100,6 +109,17 @@ fun RowIcon(icon: ImageVector, tint: Color) {
     Box(Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(tint.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
         Icon(icon, contentDescription = null, tint = Brand.readable(tint), modifier = Modifier.size(16.dp))
     }
+}
+
+/** Der Seitenwechsel: die neue Seite kommt von der Seite und liegt über der alten, zurück umgekehrt (iOS: `NavigationStack`). */
+fun pageTransition(forward: Boolean): ContentTransform {
+    val spec = tween<IntOffset>(280, easing = FastOutSlowInEasing)
+    val fade = tween<Float>(280)
+    return if (forward) {
+        (slideInHorizontally(spec) { it } + fadeIn(fade, 0.9f)) togetherWith (slideOutHorizontally(spec) { -it / 4 } + fadeOut(fade, 0.8f))
+    } else {
+        (slideInHorizontally(spec) { -it / 4 } + fadeIn(fade, 0.8f)) togetherWith (slideOutHorizontally(spec) { it } + fadeOut(fade, 0.9f))
+    }.apply { targetContentZIndex = if (forward) 1f else 0f }
 }
 
 /** iOS: `FloatingActionButton` — runder Sky-Knopf mit weichem Schatten. */

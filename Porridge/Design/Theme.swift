@@ -176,22 +176,6 @@ extension View {
         #endif
     }
 
-    /// A swipe from the left edge goes back, as on a pushed page (iOS). Nil: nowhere to go back to.
-    func swipeBack(_ action: (() -> Void)?) -> some View {
-        #if os(iOS)
-        simultaneousGesture(
-            DragGesture(minimumDistance: 20)
-                .onEnded { drag in
-                    guard let action, drag.startLocation.x < 40, drag.translation.width > 80,
-                          abs(drag.translation.height) < drag.translation.width else { return }
-                    withAnimation(.snappy) { action() }
-                }
-        )
-        #else
-        self
-        #endif
-    }
-
     /// Small capsule label (speaker chips): a wash of the color.
     func chunkyPill(fill: Color) -> some View {
         background(fill.opacity(0.18), in: Capsule())
@@ -393,18 +377,13 @@ struct ChromePillButtonStyle: ButtonStyle {
     }
 }
 
-/// Options as quiet text tabs sharing the full width; the selected one sits on a light sky pill.
-/// The switcher of the start page (Timeline / Search) and of the note views.
+/// Options sharing the full width: the system's segmented control.
 struct TabSwitcher<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
-    /// Color of a selected tab; nil keeps the accent color.
-    var tint: (Value) -> Color? = { _ in nil }
 
     var body: some View {
-        #if os(macOS)
-        // The Mac has its own control for this: a segmented picker.
-        Picker("View", selection: $selection) {
+        Picker("View", selection: $selection.animation(.snappy)) {
             ForEach(options, id: \.value) { option in
                 Text(option.title).tag(option.value)
             }
@@ -412,35 +391,7 @@ struct TabSwitcher<Value: Hashable>: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .frame(maxWidth: .infinity)
-        #else
-        HStack(spacing: 4) {
-            ForEach(options, id: \.value) { option in
-                tab(option.value, option.title)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        #endif
     }
-
-    #if os(iOS)
-    private func tab(_ value: Value, _ label: String) -> some View {
-        let selected = selection == value
-        let color = tint(value)
-        return Button {
-            withAnimation(.snappy) { selection = value }
-        } label: {
-            Text(label)
-                .font(.subheadline.weight(selected ? .semibold : .regular))
-                .foregroundStyle(selected ? color?.readable ?? Color.accentColor : Color.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .background(selected ? (color ?? Color.brandSky).opacity(0.14) : .clear, in: Capsule())
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-    #endif
 }
 
 /// Round floating action button (the "Magic Plus" of Things): sky fill, white glyph, soft colored shadow.
@@ -576,14 +527,6 @@ enum Motion {
     static func slide(_ transition: AnyTransition) -> AnyTransition {
         isReduced ? .opacity : transition
     }
-}
-
-/// Changes the screen at once: pages replace each other in place, without sliding in.
-@MainActor
-func withoutAnimation(_ change: () -> Void) {
-    var transaction = Transaction()
-    transaction.disablesAnimations = true
-    withTransaction(transaction, change)
 }
 
 // MARK: - Platform differences

@@ -1,5 +1,7 @@
 package de.letzgo.porridge.ui.notes
 
+import de.letzgo.porridge.ui.components.pageTransition
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -229,42 +231,48 @@ fun NotesScreen(
 
     val trash = remember(notes) { notes.filter { it.isDeleted }.sortedByDescending { it.deletedAt } }
 
-    val title = when (page) {
-        ListPage.Home -> "Porridge"
-        is ListPage.Project -> openProject?.name?.ifEmpty { "Untitled Project" }.orEmpty()
-        ListPage.Archive -> "Archive"
-        ListPage.Trash -> "Recently Deleted"
-    }
-    val icon: ImageVector = when (page) {
-        ListPage.Home -> Icons.Filled.Inbox
-        is ListPage.Project -> Icons.Filled.Folder
-        ListPage.Archive -> Icons.Filled.Archive
-        ListPage.Trash -> Icons.Filled.Delete
-    }
-    val tint = when (page) {
-        ListPage.Home -> Brand.sky
-        is ListPage.Project -> Brand.project
-        ListPage.Archive -> Brand.navy
-        ListPage.Trash -> Brand.danger
-    }
-
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(Modifier.fillMaxSize()) {
-            ChromeBar(title, icon, tint = tint, onBack = if (page == ListPage.Home) null else ({ goBack() })) {
-                if (page == ListPage.Trash && trash.isNotEmpty()) IconButton(onClick = { confirmEmptyTrash = true }) { Icon(Icons.Outlined.Delete, "Delete All", tint = Brand.dangerText) }
-                if (page == ListPage.Home) IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings", tint = Brand.navy) }
+        AnimatedContent(
+            page,
+            transitionSpec = { pageTransition(forward = !(targetState == ListPage.Home || (initialState is ListPage.Project && targetState == ListPage.Archive))) },
+            label = "page",
+        ) { shown ->
+            val shownProject = (shown as? ListPage.Project)?.let { p -> folders.firstOrNull { it.id == p.id } }
+            val title = when (shown) {
+                ListPage.Home -> "Porridge"
+                is ListPage.Project -> shownProject?.name?.ifEmpty { "Untitled Project" }.orEmpty()
+                ListPage.Archive -> "Archive"
+                ListPage.Trash -> "Recently Deleted"
+            }
+            val icon: ImageVector = when (shown) {
+                ListPage.Home -> Icons.Filled.Inbox
+                is ListPage.Project -> Icons.Filled.Folder
+                ListPage.Archive -> Icons.Filled.Archive
+                ListPage.Trash -> Icons.Filled.Delete
+            }
+            val tint = when (shown) {
+                ListPage.Home -> Brand.sky
+                is ListPage.Project -> Brand.project
+                ListPage.Archive -> Brand.navy
+                ListPage.Trash -> Brand.danger
+            }
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            ChromeBar(title, icon, tint = tint, onBack = if (shown == ListPage.Home) null else ({ goBack() })) {
+                if (shown == ListPage.Trash && trash.isNotEmpty()) IconButton(onClick = { confirmEmptyTrash = true }) { Icon(Icons.Outlined.Delete, "Delete All", tint = Brand.dangerText) }
+                if (shown == ListPage.Home) IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings", tint = Brand.navy) }
             }
             val listModifier = Modifier.weight(1f)
-            val scroll = list.scroll(page)
+            val scroll = list.scroll(shown)
             when {
                 !loaded -> Spacer(listModifier)
-                page == ListPage.Home -> HomeList(list, notes, folders, stages, onOpen, scroll, listModifier)
-                page is ListPage.Project ->
-                    if (openProject == null) Spacer(listModifier)
-                    else ProjectDetail(openProject, notes, stages, onOpen, scroll, listModifier)
-                page == ListPage.Archive -> ArchiveList(notes, folders, stages, onOpen, { list.page = ListPage.Project(it) }, scroll, listModifier)
+                shown == ListPage.Home -> HomeList(list, notes, folders, stages, onOpen, scroll, listModifier)
+                shown is ListPage.Project ->
+                    if (shownProject == null) Spacer(listModifier)
+                    else ProjectDetail(shownProject, notes, stages, onOpen, scroll, listModifier)
+                shown == ListPage.Archive -> ArchiveList(notes, folders, stages, onOpen, { list.page = ListPage.Project(it) }, scroll, listModifier)
                 else -> TrashList(trash, stages, onOpen, scroll, listModifier)
             }
+        }
         }
         // Derselbe Plus-Knopf auf jeder Seite, unten links die Suche (iOS: `createMenu`). In einem offenen Projekt
         // kommt alles Neue ins Projekt; die Liste bleibt, wo sie ist, das Neue öffnet sich darüber.
@@ -635,14 +643,13 @@ private fun CreateMenu(
 ) {
     val cardOpen = showSearch
     var filterOpen by remember { mutableStateOf(false) }
-    BackHandler(enabled = open || filterOpen) { onOpen(false); filterOpen = false }
+    BackHandler(enabled = open) { onOpen(false) }
     // Andere Seite oder offene Karte: die Arten klappen wieder ein.
     if (filter == null || cardOpen) filterOpen = false
     Box(Modifier.fillMaxSize()) {
-        if (open || filterOpen || cardOpen) Box(
+        if (open || cardOpen) Box(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (cardOpen) 0.18f else 0.08f)).combinedClickableNoRipple {
                 onOpen(false)
-                filterOpen = false
                 if (showSearch) onSearch(false)
             },
         )
@@ -654,22 +661,26 @@ private fun CreateMenu(
                 }
             }
             if (!cardOpen) Spacer(Modifier.weight(1f))
-            if (filter != null) AnimatedVisibility(filterOpen) {
-                Column(Modifier.padding(start = 6.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    for (option in HomeListLogic.HomeFilter.entries) {
-                        CreateOption(option.title, filterIcon(option), filterTint(option), chosen = option == filter) { filterOpen = false; onFilter(option) }
-                    }
-                }
-            }
             // Mit Tastatur reicht die Karte bis an sie heran; der Knopf tritt so lange zur Seite. Bei offener Karte bleibt nur ihr Knopf.
             if (!(cardOpen && WindowInsets.isImeVisible)) Row(Modifier.padding(start = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (filter != null && !cardOpen) {
                     val isAll = filter == HomeListLogic.HomeFilter.ALL
-                    SkyFab(
-                        if (filterOpen) Icons.Filled.Close else filterIcon(filter), if (filterOpen) "Close Filter" else if (isAll) "Filter" else "Filter: ${filter.title}",
-                        container = if (isAll) MaterialTheme.colorScheme.surfaceContainerHigh else filterTint(filter),
-                        content = if (isAll) Brand.navy else Brand.onFill(filterTint(filter)),
-                    ) { onOpen(false); filterOpen = !filterOpen }
+                    Box {
+                        SkyFab(
+                            filterIcon(filter), if (isAll) "Filter" else "Filter: ${filter.title}",
+                            container = if (isAll) MaterialTheme.colorScheme.surfaceContainerHigh else filterTint(filter),
+                            content = if (isAll) Brand.navy else Brand.onFill(filterTint(filter)),
+                        ) { onOpen(false); filterOpen = true }
+                        DropdownMenu(filterOpen, onDismissRequest = { filterOpen = false }) {
+                            for (option in HomeListLogic.HomeFilter.entries) DropdownMenuItem(
+                                text = { Text(option.title) },
+                                onClick = { filterOpen = false; onFilter(option) },
+                                modifier = Modifier.semantics { selected = option == filter },
+                                leadingIcon = { Icon(filterIcon(option), null, tint = Brand.readable(filterTint(option))) },
+                                trailingIcon = if (option == filter) ({ Icon(Icons.Filled.Check, null) }) else null,
+                            )
+                        }
+                    }
                 }
                 SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
             }
@@ -710,16 +721,12 @@ private suspend fun importAudio(context: android.content.Context, uri: android.n
 }
 
 @Composable
-private fun CreateOption(title: String, icon: ImageVector, tint: Color, chosen: Boolean = false, onClick: () -> Unit) {
-    Surface(onClick = onClick, modifier = Modifier.semantics { selected = chosen }, shape = CircleShape, shadowElevation = 6.dp, color = MaterialTheme.colorScheme.surface) {
+private fun CreateOption(title: String, icon: ImageVector, tint: Color, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = CircleShape, shadowElevation = 6.dp, color = MaterialTheme.colorScheme.surface) {
         Row(Modifier.heightIn(min = 48.dp).padding(start = 16.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = Brand.readable(tint), modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(10.dp))
             Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
-            if (chosen) {
-                Spacer(Modifier.width(10.dp))
-                Icon(Icons.Filled.Check, null, tint = Brand.readable(tint), modifier = Modifier.size(18.dp))
-            }
         }
     }
 }

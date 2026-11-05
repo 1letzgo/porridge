@@ -5,6 +5,7 @@ struct SummaryTemplatesView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var templates = SummaryTemplate.custom
     @State private var editing: SummaryTemplate?
+    @State private var deleting: SummaryTemplate?
 
     var body: some View {
         NavigationStack {
@@ -24,9 +25,20 @@ struct SummaryTemplatesView: View {
                     }
                 }
                 .onDelete { offsets in
-                    templates.remove(atOffsets: offsets)
+                    deleting = offsets.first.map { templates[$0] }
+                }
+            }
+            .alert(
+                "Delete \(deleting?.name ?? "Template")?",
+                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })
+            ) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    templates.removeAll { $0.id == deleting?.id }
                     SummaryTemplate.custom = templates
                 }
+            } message: {
+                Text("This cannot be undone.")
             }
             .navigationTitle("Custom Templates")
             .toolbar {

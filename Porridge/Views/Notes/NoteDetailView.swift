@@ -157,7 +157,6 @@ struct NoteDetailView: View {
             }
         }
         .toolbar(onBack == nil ? .automatic : .hidden, for: .navigationBar)
-        .swipeBack(onBack)
         #endif
         .overlay(alignment: .bottomTrailing) {
             if tab == .note, processing.stages[note.id] == nil, !note.isDeleted {
@@ -215,7 +214,7 @@ struct NoteDetailView: View {
         }
         .alert("Continue Recording?", isPresented: $confirmContinueRecording) {
             Button("Cancel", role: .cancel) {}
-            Button("Continue") { withoutAnimation { showContinueRecording = true } }
+            Button("Continue") { showContinueRecording = true }
         } message: {
             Text("The new part is added to the meeting. The summary is removed and can be written again.")
         }
@@ -523,7 +522,7 @@ struct NoteDetailView: View {
                 }
                 if note.isRecording, !note.isLink {
                     Button {
-                        if note.summary == nil { withoutAnimation { showContinueRecording = true } } else { confirmContinueRecording = true }
+                        if note.summary == nil { showContinueRecording = true } else { confirmContinueRecording = true }
                     } label: {
                         Label("Continue Recording", systemImage: "mic.badge.plus")
                     }
@@ -729,7 +728,6 @@ struct NoteDetailView: View {
                                     Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
                                     Button { insertSummary() } label: { Label("Insert into Note", systemImage: "text.insert") }
                                     Button { copySummary() } label: { Label("Copy", systemImage: "doc.on.doc") }
-                                    Button { requestSummary() } label: { Label("Summarize Again", systemImage: "sparkles") }
                                     Divider()
                                     Button(role: .destructive) { confirmDeleteSummary = true } label: { Label("Delete Summary", systemImage: "trash") }
                                 } label: {

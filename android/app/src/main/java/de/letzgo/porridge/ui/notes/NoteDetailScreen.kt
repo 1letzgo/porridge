@@ -688,7 +688,6 @@ private fun SummaryTab(
                             DropdownMenuItem(text = { Text("Edit Summary") }, onClick = { menu = false; onEdit() })
                             DropdownMenuItem(text = { Text("Insert into Note") }, onClick = { menu = false; onInsert() })
                             DropdownMenuItem(text = { Text("Copy") }, onClick = { menu = false; onCopy() })
-                            DropdownMenuItem(text = { Text("Summarize Again") }, onClick = { menu = false; onSummarize() })
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text("Delete Summary", color = Brand.dangerText) }, onClick = { menu = false; onDelete() })
                         }

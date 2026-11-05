@@ -1,9 +1,7 @@
 package de.letzgo.porridge.ui
 
+import de.letzgo.porridge.ui.components.pageTransition
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,8 +56,10 @@ fun AppRoot() {
     val list = remember { ListState() }
     var showCalendar by remember { mutableStateOf(false) }
     val coroutines = rememberCoroutineScope()
-    fun push(screen: Screen) = stack.add(screen)
-    fun pop() { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
+    /** Richtung des nächsten Seitenwechsels. */
+    var forward by remember { mutableStateOf(true) }
+    fun push(screen: Screen) { forward = true; stack.add(screen) }
+    fun pop() { forward = false; if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
     /** Öffnet eine Notiz; die Liste dahinter bleibt, wo sie ist. */
     fun open(id: String) {
         stack.removeAll { it is Screen.Detail }
@@ -77,8 +77,7 @@ fun AppRoot() {
         open(LinkImport.add(address).id)
     }
 
-    // Seiten wechseln wie ein Projekt: sofort, ohne Blende.
-    AnimatedContent(stack.lastOrNull(), transitionSpec = { EnterTransition.None togetherWith ExitTransition.None }, label = "screen") { top ->
+    AnimatedContent(stack.lastOrNull(), transitionSpec = { pageTransition(forward) }, label = "screen") { top ->
         when (top) {
             null -> NotesScreen(
                 list = list,

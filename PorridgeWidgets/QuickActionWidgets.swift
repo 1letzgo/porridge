@@ -78,20 +78,25 @@ private struct ActionTile<Intent: AppIntent>: View {
     let systemImage: String
     let tint: Color
     let foreground: Color
+    /// Tinted and clear Home Screens take the color away: the tile stays a tile, the system tints its symbol.
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    private var isFullColor: Bool { renderingMode == .fullColor }
 
     var body: some View {
         Button(intent: intent) {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
                     .font(.headline.weight(.bold))
+                    .widgetAccentable()
                 Text(title)
                     .font(.callout.weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            .foregroundStyle(foreground)
+            .foregroundStyle(isFullColor ? foreground : Color.primary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(tint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(isFullColor ? tint : Color.primary.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }

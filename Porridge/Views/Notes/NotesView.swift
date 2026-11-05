@@ -15,8 +15,10 @@ struct NotesView: View {
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
 
     @State private var selection: UUID?
-    /// The note's page on the stack (phone). Follows `selection`, so that one place opens it without animation.
-    @State private var notePath: [UUID] = []
+    #if os(iOS)
+    /// The pages on the stack: those of the list column, and on a phone the open note on top.
+    @State private var path: [ListRoute] = []
+    #endif
     /// A new note that is not saved yet; it is stored when it gets its first content.
     @State private var draft: Note?
     /// Which column is shown on a narrow screen. Set from code so a new note opens reliably.
@@ -42,8 +44,6 @@ struct NotesView: View {
     @State private var confirmEmptyTrash = false
     @State private var showRecorder = false
     @State private var showCalendar = false
-    /// Where the back pill of the settings page returns to (iOS; the Mac uses `openSettings`).
-    @State private var pageBeforeSettings = ListPage.home
     /// Dialog for a link typed or pasted by hand.
     @State private var showAddLink = false
     /// The plus button is unfolded into its options.
@@ -71,7 +71,11 @@ struct NotesView: View {
 
     private var splitView: some View {
         NavigationSplitView(preferredCompactColumn: $column) {
+            #if os(iOS)
+            pageStack
+            #else
             list
+            #endif
         } detail: {
             if let note = selectedNote {
                 NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id)
@@ -82,26 +86,71 @@ struct NotesView: View {
         }
     }
 
-    /// On a phone a note replaces the list at once, like a project does, instead of sliding in. It still is a
-    /// real page of the stack: the system covers the list, keeps its scroll position and handles accessibility.
-    @ViewBuilder
-    private var columns: some View {
-        #if os(iOS)
-        if sizeClass == .compact {
-            NavigationStack(path: $notePath) {
-                list
-                    .navigationDestination(for: UUID.self) { _ in
-                        if let note = selectedNote {
+    #if os(iOS)
+    /// Every page is a real page of the system's stack: it slides in, the swipe from the edge follows the finger,
+    /// and what lies below keeps its scroll position. The floating buttons stay in place above the pages.
+    private var pageStack: some View {
+        NavigationStack(path: $path) {
+            listColumn(.home)
+                .navigationDestination(for: ListRoute.self) { route in
+                    switch route {
+                    case .page(let shown):
+                        listColumn(shown)
+                    case .note(let id):
+                        // By its id: the note stays on the page while the page slides away.
+                        if let note = notes.first(where: { $0.id == id }) ?? (draft?.id == id ? draft : nil) {
                             NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id, onBack: { selection = nil })
                                 .id(note.id)
                         }
                     }
+                }
+        }
+        .overlay {
+            if sizeClass != .compact || selection == nil {
+                createMenu
             }
-            .onAppear { notePath = selection.map { [$0] } ?? [] }
-            .onChange(of: selection) { withoutAnimation { notePath = selection.map { [$0] } ?? [] } }
-            .onChange(of: notePath) { if notePath.isEmpty { selection = nil } }
+        }
+    }
+
+    /// The open note is on the stack only on a phone; elsewhere it has the detail column.
+    private func syncNoteRoute() {
+        var routes = path.filter(\.isPage)
+        if sizeClass == .compact, let selection { routes.append(.note(selection)) }
+        if routes != path { path = routes }
+    }
+
+    /// `page` changed in code: go back to it if it is on the stack, otherwise it opens on top.
+    private func syncPageRoutes() {
+        let pages = path.compactMap(\.page)
+        guard page != (pages.last ?? .home) else { return }
+        if page == .home {
+            path.removeAll()
+        } else if let index = path.firstIndex(of: .page(page)) {
+            path = Array(path[...index])
         } else {
-            splitView
+            path = pages.map(ListRoute.page) + [.page(page)]
+        }
+    }
+    #endif
+
+    @ViewBuilder
+    private var columns: some View {
+        #if os(iOS)
+        Group {
+            if sizeClass == .compact {
+                pageStack
+            } else {
+                splitView
+            }
+        }
+        .onAppear(perform: syncNoteRoute)
+        .onChange(of: selection) { syncNoteRoute() }
+        .onChange(of: sizeClass) { syncNoteRoute() }
+        .onChange(of: page) { syncPageRoutes() }
+        .onChange(of: path) {
+            page = path.compactMap(\.page).last ?? .home
+            // Swiped back from the note.
+            if sizeClass == .compact, selection != nil, path.last?.isPage != false { selection = nil }
         }
         #else
         splitView
@@ -110,6 +159,23 @@ struct NotesView: View {
 
     var body: some View {
         columns
+        .onChange(of: showSearch) { _, open in
+            if !open {
+                search = ""
+                tagTokens = []
+                searchKind = nil
+            }
+        }
+        .onChange(of: selection) {
+            // Leaving an empty new note leaves nothing behind, once its page has slid away.
+            Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                if let draft, draft.id != selection, draft.modelContext == nil { self.draft = nil }
+            }
+        }
+        .onChange(of: notes.map(\.id)) {
+            if let draft, draft.modelContext != nil { self.draft = nil }
+        }
         .fullScreenCoverOrSheet(isPresented: $showRecorder) {
             RecordingView(title: appointmentTitle) { result, names, liveText, written in
                 addRecording(from: result, speakerNames: names, liveText: liveText, written: written)
@@ -249,30 +315,29 @@ struct NotesView: View {
     // MARK: - List
 
     private var list: some View {
+        listColumn(page)
+    }
+
+    private func listColumn(_ shown: ListPage) -> some View {
         VStack(spacing: 0) {
             #if os(iOS)
-            ChromeBar(title: listTitle, systemImage: listIcon, tint: listTint, onBack: barBack) {
-                listActions
+            ChromeBar(title: listTitle(shown), systemImage: listIcon(shown), tint: listTint(shown), onBack: barBack(shown)) {
+                listActions(shown)
             }
             .padding(.bottom, Look.headerGap)
             #else
             // The list's name at the top of the sidebar, as in Things; the actions sit in the window's toolbar.
-            ListTitle(title: listTitle, systemImage: listIcon, tint: listTint)
+            ListTitle(title: listTitle(shown), systemImage: listIcon(shown), tint: listTint(shown))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
                 .padding(.bottom, Look.headerGap)
             #endif
 
-            pageContent
-                .swipeBack(barBack)
+            pageContent(shown)
         }
         .background(Color.appBackground)
-        #if os(iOS)
-        // Over the whole list column, bar included, so the dimming while it is open covers all of it.
-        .overlay { createMenu }
-        #endif
-        .navigationTitle(listTitle)
+        .navigationTitle(listTitle(shown))
         #if os(iOS)
         // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
         .toolbar(.hidden, for: .navigationBar)
@@ -282,29 +347,15 @@ struct NotesView: View {
             listToolbar
         }
         #endif
-        .onChange(of: showSearch) { _, open in
-            if !open {
-                search = ""
-                tagTokens = []
-                searchKind = nil
-            }
-        }
-        .onChange(of: selection) {
-            // Leaving an empty new note leaves nothing behind.
-            if let draft, draft.id != selection, draft.modelContext == nil { self.draft = nil }
-        }
-        .onChange(of: notes.map(\.id)) {
-            if let draft, draft.modelContext != nil { self.draft = nil }
-        }
     }
 
     @ViewBuilder
-    private var pageContent: some View {
-        switch page {
+    private func pageContent(_ shown: ListPage) -> some View {
+        switch shown {
         case .home:
             home
         case .project:
-            if let project = openProject {
+            if let project = project(on: shown) {
                 ProjectPage(
                     project: project, notes: notes, selection: $selection, onRemove: { remove($0) }
                 )
@@ -317,20 +368,13 @@ struct NotesView: View {
             archive
         case .trash:
             trash
-        case .settings, .voices, .acknowledgements:
-            // Settings stays underneath its subpages so it keeps its scroll position.
-            ZStack {
-                SettingsView(isEmbedded: true)
-                    .opacity(page == .settings ? 1 : 0)
-                    .allowsHitTesting(page == .settings)
-                    .accessibilityHidden(page != .settings)
-                if page == .voices {
-                    VoicesView()
-                } else if page == .acknowledgements {
-                    AcknowledgementsView()
-                }
-            }
-            .environment(\.openListPage, { page = $0 })
+        case .settings:
+            SettingsView(isEmbedded: true)
+                .environment(\.openListPage, { page = $0 })
+        case .voices:
+            VoicesView()
+        case .acknowledgements:
+            AcknowledgementsView()
         }
     }
 
@@ -732,15 +776,14 @@ struct NotesView: View {
 
     /// The actions of the list, shown as plain icons at the right of the custom bar (iOS).
     @ViewBuilder
-    private var listActions: some View {
-        if page == .trash, notes.contains(where: \.isDeleted) {
+    private func listActions(_ shown: ListPage) -> some View {
+        if shown == .trash, notes.contains(where: \.isDeleted) {
             Button(role: .destructive) { confirmEmptyTrash = true } label: {
                 Label("Delete All", systemImage: "trash")
             }
         }
-        if !page.isSettings {
+        if !shown.isSettings {
             Button {
-                pageBeforeSettings = page
                 page = .settings
             } label: {
                 Label("Settings", systemImage: "gearshape")
@@ -750,7 +793,7 @@ struct NotesView: View {
 
     @ToolbarContentBuilder
     private var listToolbar: some ToolbarContent {
-        if let barBack {
+        if let barBack = barBack(page) {
             ToolbarItem(placement: .navigation) {
                 Button(action: barBack) {
                     Label("Back", systemImage: "chevron.left")
@@ -829,14 +872,18 @@ struct NotesView: View {
 
     /// The project shown, if any (it may have been deleted on another device).
     private var openProject: NoteFolder? {
-        guard case .project(let id) = page else { return nil }
+        project(on: page)
+    }
+
+    private func project(on shown: ListPage) -> NoteFolder? {
+        guard case .project(let id) = shown else { return nil }
         return projects.first { $0.id == id }
     }
 
-    private var listTitle: String {
-        switch page {
+    private func listTitle(_ shown: ListPage) -> String {
+        switch shown {
         case .home: "Porridge"
-        case .project: openProject?.name ?? "Porridge"
+        case .project: project(on: shown)?.name ?? "Porridge"
         case .archive: "Archive"
         case .trash: "Recently Deleted"
         case .settings: "Settings"
@@ -846,9 +893,9 @@ struct NotesView: View {
     }
 
     /// Color of the square in front of the title.
-    private var listTint: Color {
-        switch page {
-        case .project: openProject == nil ? .brandSky : .brandProject
+    private func listTint(_ shown: ListPage) -> Color {
+        switch shown {
+        case .project: project(on: shown) == nil ? .brandSky : .brandProject
         case .archive: .brandNavy
         case .trash: .red
         default: .brandSky
@@ -856,21 +903,22 @@ struct NotesView: View {
     }
 
     /// The back pill of the bar: from a page to the long list, from an archived project to the archive.
-    private var barBack: (() -> Void)? {
-        switch page {
-        case .home: nil
-        case .project: { page = openProject?.isArchived == true ? .archive : .home }
-        case .archive, .trash: { page = .home }
-        case .settings: { page = pageBeforeSettings }
-        case .voices, .acknowledgements: { page = .settings }
-        }
+    private func barBack(_ shown: ListPage) -> (() -> Void)? {
+        guard shown != .home else { return nil }
+        #if os(iOS)
+        return { if !path.isEmpty { path.removeLast() } }
+        #else
+        // An archived project was opened from the archive.
+        if case .project = shown, openProject?.isArchived == true { return { page = .archive } }
+        return { page = .home }
+        #endif
     }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
-    private var listIcon: String {
-        switch page {
+    private func listIcon(_ shown: ListPage) -> String {
+        switch shown {
         case .home: "tray.full.fill"
-        case .project: openProject == nil ? "tray.full.fill" : "folder.fill"
+        case .project: project(on: shown) == nil ? "tray.full.fill" : "folder.fill"
         case .archive: "archivebox.fill"
         case .trash: "trash.fill"
         case .settings: "gearshape.fill"
@@ -1002,7 +1050,7 @@ struct NotesView: View {
         appointmentTitle = title
         Task {
             try? await Task.sleep(for: .milliseconds(450))
-            withoutAnimation { showRecorder = true }
+            showRecorder = true
         }
     }
 
@@ -1236,6 +1284,20 @@ extension FocusedValues {
 extension Notification.Name {
     /// File → New Note (⌘N) in the menu bar.
     static let newNote = Notification.Name("PorridgeNewNote")
+}
+#endif
+
+#if os(iOS)
+/// A page on the stack.
+enum ListRoute: Hashable {
+    case page(ListPage)
+    case note(UUID)
+
+    var page: ListPage? {
+        if case .page(let page) = self { page } else { nil }
+    }
+
+    var isPage: Bool { page != nil }
 }
 #endif
 

@@ -22,8 +22,9 @@ Sky, orange and green are for surfaces. As text or a symbol on a white page they
 ## Layout
 
 - **Pages** are white (near black in dark mode) with hairlines as separators. Note pages scroll as a whole, head included, on iPhone and Android. The Mac keeps the head of a note in place.
+- **Moving between pages:** on iPhone, iPad and Android pages slide in and out as the system does it, and going back follows the finger where the platform offers that. The Mac sidebar changes in place.
 - **Section headers** are small and bold in the color of their kind, with a line below. Archive and Recently Deleted are tappable headers with a chevron at the bottom of the home list.
-- **Bottom bar:** filter and search as white round buttons with navy icons, the blue plus on the right. An active filter fills its button with the color of the kind. On iOS the filter opens the system menu.
+- **Bottom bar:** filter and search as white round buttons with navy icons, the blue plus on the right. An active filter fills its button with the color of the kind. The filter opens the system menu.
 - **Plus menu:** imports on top (Import Audio, Import Plaud once signed in), a line, then what can be created, each in the color of its kind.
 - **Live Activity and notification:** the running meeting with its clock, pause and stop. Navy on the light Lock Screen card, white on the black Dynamic Island.
 - **Home list:** at most 25 elements and 5 unpinned projects; "More" unfolds the rest in place.

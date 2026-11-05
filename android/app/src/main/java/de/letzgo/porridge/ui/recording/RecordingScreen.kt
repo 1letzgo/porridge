@@ -214,7 +214,7 @@ fun RecordingScreen(title: String?, continues: String? = null, onFinish: (Record
             if (recorder != null && !finished) {
                 val elapsed by recorder.elapsed.collectAsState()
                 NoteList(writing)
-                NoteField(noteDraft, { noteDraft = it }) {
+                NoteField(noteDraft, { noteDraft = it }, onStop = if (writing && recorder != null && !finished) ({ finish() }) else null) {
                     RecordingSession.notes += RecordingNote(elapsed, noteDraft.trim())
                     noteDraft = ""
                 }
@@ -273,7 +273,7 @@ private fun NoteList(writing: Boolean) {
 
 /** Das Eingabefeld für Notizen. */
 @Composable
-private fun NoteField(text: String, onText: (String) -> Unit, onAdd: () -> Unit) {
+private fun NoteField(text: String, onText: (String) -> Unit, onStop: (() -> Unit)? = null, onAdd: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         OutlinedTextField(
             text, onText, Modifier.weight(1f), placeholder = { Text("Add a note…") }, singleLine = true, shape = RoundedCornerShape(12.dp),
@@ -281,6 +281,8 @@ private fun NoteField(text: String, onText: (String) -> Unit, onAdd: () -> Unit)
             keyboardActions = KeyboardActions(onSend = { if (text.isNotBlank()) onAdd() }),
         )
         IconButton(enabled = text.isNotBlank(), onClick = onAdd) { Icon(Icons.AutoMirrored.Filled.Send, "Add Note", tint = if (text.isNotBlank()) Brand.sky else MaterialTheme.colorScheme.onSurfaceVariant) }
+        // Der große Knopf macht der Tastatur Platz; stoppen lässt sich trotzdem (iOS: `noteField`).
+        if (onStop != null) IconButton(onClick = onStop) { Icon(Icons.Filled.Stop, "Stop", tint = Brand.dangerText) }
     }
 }
 

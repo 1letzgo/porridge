@@ -77,11 +77,11 @@ struct RecordingView: View {
                 live.cancel()
                 journal?.finish()
                 LiveRecording.end()
-                withoutAnimation { dismiss() }
+                dismiss()
             }
         }
         .alert("Can't Record", isPresented: .constant(errorMessage != nil)) {
-            Button("OK") { withoutAnimation { dismiss() } }
+            Button("OK") { dismiss() }
         } message: {
             Text(errorMessage ?? "")
         }
@@ -179,6 +179,20 @@ struct RecordingView: View {
             .buttonStyle(.plain)
             .disabled(noteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel("Add Note")
+
+            // The big button makes room for the keyboard; the recording can still be stopped.
+            if writingNote {
+                Button(action: finish) {
+                    Image(systemName: "stop.fill")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(Color.brandDangerText)
+                        .frame(width: 44, height: 44)
+                        .background(Color.red.opacity(0.14), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!recorder.isRecording)
+                .accessibilityLabel("Stop Recording")
+            }
         }
     }
 
@@ -319,7 +333,7 @@ struct RecordingView: View {
         if !unsent.isEmpty { written.append(RecordingNote(at: result.duration, text: unsent)) }
         onFinish(result, names, liveText, written)
         journal?.finish()
-        withoutAnimation { dismiss() }
+        dismiss()
     }
 }
 

@@ -122,7 +122,7 @@ private fun EntryCard(entry: Acknowledgements.Entry, text: String) {
                     HorizontalDivider()
                     Text(entry.url, style = MaterialTheme.typography.labelSmall, color = Brand.skyText, maxLines = 1, modifier = Modifier.clickable { runCatching { uri.openUri(entry.url) } })
                     SelectionContainer {
-                        Text(text, fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
