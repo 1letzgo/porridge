@@ -126,10 +126,10 @@ private struct PorridgeCommands: Commands {
             Button(note?.isPinned == true ? "Unpin" : "Pin") { note?.togglePin() }
                 .disabled(note == nil || note?.isDeleted == true)
             Divider()
-            Button(note?.hasSummary == true ? "Summarize Again" : "Summarize") { note?.summarize() }
+            Button(note?.hasSummary == true ? "Summarize Again with AI…" : "Summarize with AI…") { note?.summarize() }
                 .disabled(note?.canSummarize != true || note?.isDeleted == true)
-            Button(note?.hasSummary == true ? "Edit Summary" : "Write Summary") { note?.editSummary() }
-                .disabled(note?.canEditSummary != true || note?.isDeleted == true)
+            Button("Edit Summary") { note?.editSummary() }
+                .disabled(note?.hasSummary != true || note?.canEditSummary != true || note?.isDeleted == true)
             Divider()
             Button("Transcribe Again") { note?.transcribeAgain() }
                 .disabled(note?.canTranscribe != true || note?.isDeleted == true)

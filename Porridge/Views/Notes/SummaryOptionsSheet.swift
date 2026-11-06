@@ -3,6 +3,10 @@ import SwiftUI
 /// What a meeting is summarized with: the model, for this one summary, and the template. Tapping a template starts.
 struct SummaryOptionsSheet: View {
     let replacesSummary: Bool
+    /// Templates shape only a meeting summary; a note or a link starts with the model alone.
+    var showsTemplates = true
+    /// What goes to a cloud model, for the hint: "transcript", "note" or "page".
+    var material = "transcript"
     let onStart: (SummaryTemplate, SummaryModel) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -17,7 +21,7 @@ struct SummaryOptionsSheet: View {
 
     private var hint: String? {
         switch model {
-        case .cloud(let provider, _): "The transcript goes to \(provider == .custom ? "your server" : provider.label)."
+        case .cloud(let provider, _): "The \(material) goes to \(provider == .custom ? "your server" : provider.label)."
         case .local(let local): model.isOnHand ? nil : "The model downloads first (\(local.sizeText))."
         }
     }
@@ -30,6 +34,16 @@ struct SummaryOptionsSheet: View {
                     if let hint {
                         Text(hint).font(.footnote).foregroundStyle(.secondary)
                     }
+                    if !showsTemplates {
+                        Button {
+                            dismiss()
+                            onStart(.general, model)
+                        } label: {
+                            Label(replacesSummary ? "Summarize Again" : "Summarize", systemImage: "sparkles")
+                        }
+                        .buttonStyle(ChunkyButtonStyle())
+                        .padding(.top, 8)
+                    } else {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Template")
                             .font(.subheadline.weight(.bold))
@@ -52,6 +66,7 @@ struct SummaryOptionsSheet: View {
                             .buttonStyle(.plain)
                             Rectangle().fill(Look.hairline).frame(height: 0.5)
                         }
+                    }
                     }
                     if replacesSummary {
                         Text("This replaces the current summary; your edits to it are lost.")

@@ -42,7 +42,6 @@ struct NoteDetailView: View {
     @State private var liveText = ""
     @State private var editor = NoteEditorController()
     @State private var tab = NoteTab.note
-    @State private var confirmResummarize = false
     @State private var showSummaryOptions = false
     @State private var player = AudioPlayback()
     @State private var renamingSpeaker: Speaker?
@@ -235,15 +234,13 @@ struct NoteDetailView: View {
             }
         }
         .sheet(isPresented: $showSummaryOptions) {
-            SummaryOptionsSheet(replacesSummary: note.summary != nil) { template, model in
+            SummaryOptionsSheet(
+                replacesSummary: note.summary != nil,
+                showsTemplates: !note.segments.isEmpty,
+                material: !note.segments.isEmpty ? "transcript" : note.isLink ? "page" : "note"
+            ) { template, model in
                 summarize(template: template, model: model)
             }
-        }
-        .alert("Replace Summary?", isPresented: $confirmResummarize) {
-            Button("Cancel", role: .cancel) {}
-            Button("Summarize Again", role: .destructive) { summarize() }
-        } message: {
-            Text("Your edits to the summary are lost.")
         }
         .alert("Delete Summary?", isPresented: $confirmDeleteSummary) {
             Button("Cancel", role: .cancel) {}
@@ -497,13 +494,13 @@ struct NoteDetailView: View {
                 Button {
                     requestSummary()
                 } label: {
-                    Label(note.summary == nil ? "Summarize" : "Summarize Again", systemImage: "sparkles")
+                    Label(note.summary == nil ? "Summarize with AI…" : "Summarize Again with AI…", systemImage: "sparkles")
                 }
                 .disabled(isSummarizing || !canSummarize)
-                Button { startEditingSummary() } label: {
-                    Label(note.summary == nil ? "Write Summary" : "Edit Summary", systemImage: "pencil")
+                if note.summary != nil {
+                    Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
+                        .disabled(isSummarizing)
                 }
-                .disabled(isSummarizing)
                 Divider()
                 if note.hasLocalAudio {
                     Button { processing.enqueue(.transcript(note.id)) } label: {
@@ -746,15 +743,6 @@ struct NoteDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    if !note.isDeleted {
-                        Button {
-                            requestSummary()
-                        } label: {
-                            Label("Summarize Again", systemImage: "sparkles")
-                        }
-                        .buttonStyle(ChunkyButtonStyle())
-                        .disabled(!canSummarize)
-                    }
                 }
             } else {
                 VStack(spacing: 16) {
@@ -780,16 +768,10 @@ struct NoteDetailView: View {
         }
     }
 
-    /// A recording asks for the model and the template, in the same place that warns about replacing a summary;
-    /// a note or a link has nothing to choose.
+    /// Every kind asks for the model first, in the same place that warns about replacing a summary;
+    /// a recording also picks its template there.
     private func requestSummary() {
-        if !note.segments.isEmpty {
-            showSummaryOptions = true
-        } else if note.summary == nil {
-            summarize()
-        } else {
-            confirmResummarize = true
-        }
+        showSummaryOptions = true
     }
 
     private var summarizeMessage: String {

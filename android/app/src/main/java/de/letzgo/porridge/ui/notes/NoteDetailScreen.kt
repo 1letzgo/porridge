@@ -161,7 +161,6 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     val summarizing by ProcessingService.summarizing.collectAsState()
     val summaryErrors by ProcessingService.summaryErrors.collectAsState()
     val isSummarizing = note.id in summarizing
-    var confirmResummarize by remember { mutableStateOf(false) }
     var confirmDeleteAudio by remember { mutableStateOf(false) }
     var confirmDeleteSummary by remember { mutableStateOf(false) }
     var confirmContinueRecording by remember { mutableStateOf(false) }
@@ -257,14 +256,8 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
         ProcessingService.enqueue(ProcessingService.Job.Summary(note.id, template, model))
     }
 
-    // Eine Aufnahme fragt nach Modell und Vorlage, in demselben Fenster, die vor dem Ersetzen warnt; Notiz und Link haben nichts zu wählen.
-    fun requestSummary() {
-        when {
-            note.segments.isNotEmpty() -> askTemplate = true
-            note.summary == null -> AppGraph.scope.launch { summarize() }
-            else -> confirmResummarize = true
-        }
-    }
+    // Jede Art fragt zuerst nach dem Modell, in demselben Blatt, das vor dem Ersetzen warnt; eine Aufnahme wählt dort auch die Vorlage (iOS: `requestSummary`).
+    fun requestSummary() { askTemplate = true }
 
     // Die ganze Seite scrollt, der Kopf mit; das Diktat bleibt an ihrem Ende.
     val pageScroll = rememberScrollState()
@@ -289,10 +282,10 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                             DropdownMenuItem(text = { Text("Recover") }, onClick = { act { coroutines.launch { NoteStore().restore(note); onClose() } } })
                         } else {
                             DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { act { update { it.copy(isPinned = !it.isPinned) } } })
-                            DropdownMenuItem(text = { Text(if (note.summary == null) "Summarize" else "Summarize Again") }, enabled = stage == null && canSummarize(note), onClick = {
+                            DropdownMenuItem(text = { Text(if (note.summary == null) "Summarize with AI…" else "Summarize Again with AI…") }, enabled = stage == null && canSummarize(note), onClick = {
                                 act { requestSummary() }
                             })
-                            DropdownMenuItem(text = { Text(if (note.summary == null) "Write Summary" else "Edit Summary") }, enabled = !isSummarizing, onClick = { act { tab = NoteTab.SUMMARY; editingSummary = true } })
+                            if (note.summary != null) DropdownMenuItem(text = { Text("Edit Summary") }, enabled = !isSummarizing, onClick = { act { tab = NoteTab.SUMMARY; editingSummary = true } })
                             HorizontalDivider()
                             if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Transcribe Again") }, enabled = stage == null, onClick = { act { ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id)) } })
                             if (note.isLink) DropdownMenuItem(text = { Text("Load Page Again") }, enabled = stage == null, onClick = {
@@ -432,20 +425,21 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                             for (option in options) DropdownMenuItem(text = { Text(option.menuTitle) }, onClick = { chosen = option; open = false })
                         }
                     }
-                    (chosen as? de.letzgo.porridge.cloud.SummaryModel.Cloud)?.let { Text("The transcript goes to ${if (it.provider == de.letzgo.porridge.cloud.AIProvider.CUSTOM) "your server" else it.provider.label}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    HorizontalDivider()
-                    Text("Template", style = MaterialTheme.typography.labelLarge, color = Brand.skyText, modifier = Modifier.padding(top = 8.dp))
-                    for (option in SummaryTemplate.all) TextButton(onClick = { askTemplate = false; AppGraph.scope.launch { summarize(option, chosen) } }) { Text(option.name, color = Brand.navy) }
+                    (chosen as? de.letzgo.porridge.cloud.SummaryModel.Cloud)?.let { Text("The ${if (note.segments.isNotEmpty()) "transcript" else if (note.isLink) "page" else "note"} goes to ${if (it.provider == de.letzgo.porridge.cloud.AIProvider.CUSTOM) "your server" else it.provider.label}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (note.segments.isNotEmpty()) {
+                        HorizontalDivider()
+                        Text("Template", style = MaterialTheme.typography.labelLarge, color = Brand.skyText, modifier = Modifier.padding(top = 8.dp))
+                        for (option in SummaryTemplate.all) TextButton(onClick = { askTemplate = false; AppGraph.scope.launch { summarize(option, chosen) } }) { Text(option.name, color = Brand.navy) }
+                    } else {
+                        // Vorlagen gelten nur für Meetings; Notiz und Link starten mit dem Modell allein.
+                        Button(onClick = { askTemplate = false; AppGraph.scope.launch { summarize(SummaryTemplate.GENERAL, chosen) } }, colors = Brand.mainButton(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                            Icon(Icons.Filled.AutoAwesome, null); Text(if (note.summary == null) "  Summarize" else "  Summarize Again")
+                        }
+                    }
                     if (note.summary != null) Text("This replaces the current summary; your edits to it are lost.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
-    if (confirmResummarize) AlertDialog(
-        onDismissRequest = { confirmResummarize = false },
-        title = { Text("Replace Summary?") }, text = { Text("Your edits to the summary are lost.") },
-        confirmButton = { TextButton(onClick = { confirmResummarize = false; AppGraph.scope.launch { summarize() } }) { Text("Summarize Again", color = Brand.dangerText) } },
-        dismissButton = { TextButton(onClick = { confirmResummarize = false }) { Text("Cancel") } },
-    )
     if (confirmContinueRecording) AlertDialog(
         onDismissRequest = { confirmContinueRecording = false },
         title = { Text("Continue Recording?") },
@@ -694,9 +688,6 @@ private fun SummaryTab(
                     }
                 }
                 note.summaryModel?.let { Text("Created with $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                Button(onClick = onSummarize, enabled = canSummarize(note), colors = Brand.mainButton(), modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Filled.AutoAwesome, null); Text("  Summarize Again")
-                }
             }
             else -> Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Icon(Icons.Filled.AutoAwesome, null, tint = Brand.skyText, modifier = Modifier.size(40.dp))
