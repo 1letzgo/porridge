@@ -19,10 +19,26 @@ final class ProcessingService {
         /// The summary somebody asked for, in the note or with its template.
         /// `model` is nil for the default.
         case summary(UUID, SummaryTemplate, SummaryModel?)
+        /// A plain note whose own text is rewritten by AI (`SummaryService.enhance`).
+        case enhance(UUID, SummaryModel?)
+        /// A note with attachments: read the text in its images and PDFs, then summarize it.
+        case attachment(UUID)
 
         var id: UUID {
             switch self {
-            case .transcript(let id), .note(let id), .link(let id, _), .summary(let id, _, _): id
+            case .transcript(let id), .note(let id), .link(let id, _), .summary(let id, _, _), .enhance(let id, _), .attachment(let id): id
+            }
+        }
+
+        /// What is done, without the options: two of a kind for one note are the same work.
+        var kind: Int {
+            switch self {
+            case .transcript: 0
+            case .note: 1
+            case .link: 2
+            case .summary: 3
+            case .enhance: 4
+            case .attachment: 5
             }
         }
     }
@@ -35,10 +51,22 @@ final class ProcessingService {
     private(set) var summaryModels: [UUID: SummaryModel] = [:]
     /// Why a summary failed, until the note has shown it (its screen may have been closed by then).
     private(set) var summaryErrors: [UUID: String] = [:]
+    /// Notes whose text is waiting to be enhanced or being enhanced.
+    private(set) var enhancing: Set<UUID> = []
+    /// Why enhancing failed, until the note has shown it.
+    private(set) var enhanceErrors: [UUID: String] = [:]
+    /// The text before the last enhance, while this app runs: undo applies only while the enhanced text is unchanged.
+    private(set) var enhanceUndo: [UUID: EnhanceUndo] = [:]
+
+    struct EnhanceUndo: Equatable {
+        let original: String
+        let enhanced: String
+    }
 
     @ObservationIgnored private let container: ModelContainer
     @ObservationIgnored private var queue: [Job] = []
     @ObservationIgnored private var isRunning = false
+    @ObservationIgnored private var running: Job?
 
     init(container: ModelContainer) {
         self.container = container
@@ -47,18 +75,38 @@ final class ProcessingService {
     private var context: ModelContext { container.mainContext }
 
     func enqueue(_ job: Job) {
-        guard !queue.contains(job), stages[job.id] == nil else { return }
+        // The same kind of work for the same note is asked for once; another kind waits its turn.
+        guard !queue.contains(where: { $0.id == job.id && $0.kind == job.kind }), running.map({ $0.id == job.id && $0.kind == job.kind }) != true else { return }
         queue.append(job)
-        stages[job.id] = "Waiting…"
+        if stages[job.id] == nil { stages[job.id] = "Waiting…" }
         if case .summary(_, _, let model) = job {
             summarizing.insert(job.id)
             summaryModels[job.id] = model
         }
+        if case .enhance = job { enhancing.insert(job.id) }
         runIfNeeded()
     }
 
     func clearSummaryError(_ id: UUID) {
         summaryErrors[id] = nil
+    }
+
+    func clearEnhanceError(_ id: UUID) {
+        enhanceErrors[id] = nil
+    }
+
+    /// Whether the note still shows the text of its last enhance, so undo can bring back the original.
+    func canUndoEnhance(_ note: Note) -> Bool {
+        enhanceUndo[note.id]?.enhanced == note.text
+    }
+
+    /// Puts back the text from before the last enhance.
+    func undoEnhance(_ note: Note) {
+        guard let undo = enhanceUndo[note.id], undo.enhanced == note.text else { return }
+        note.text = undo.original
+        note.updatedAt = Date()
+        enhanceUndo[note.id] = nil
+        save()
     }
 
     /// Picks up recordings that were interrupted (app killed while transcribing).
@@ -67,8 +115,40 @@ final class ProcessingService {
         for note in notes where [.recorded, .transcribing].contains(note.status) && note.hasLocalAudio && note.pendingAudioFileName == nil {
             enqueue(.transcript(note.id))
         }
+        // Nothing left to work on (the file is gone): such a note would wait forever and never sync.
+        var released = false
+        for note in notes where !note.isLink && note.attachmentsData == nil {
+            let pendingLost = note.pendingAudioFileName != nil && !AudioStore.exists(note.pendingAudioFileName)
+            let stuck = [.recorded, .transcribing].contains(note.status) && !note.hasLocalAudio && !AudioStore.exists(note.pendingAudioFileName)
+            guard pendingLost || stuck else { continue }
+            if pendingLost { note.pendingAudioFileName = nil }
+            if note.segments.isEmpty, note.text.isEmpty, note.audioFileName == nil {
+                note.status = .failed
+                note.errorMessage = ASRPipelineError.missingAudio.localizedDescription
+            } else {
+                note.status = .ready
+            }
+            released = true
+        }
+        if released { save() }
         for note in notes where AudioStore.exists(note.pendingAudioFileName) {
             enqueue(.note(note.id))
+        }
+        // Once: files an earlier version could not read (Word, OpenDocument, rich text) are read again, so the search
+        // and the chat find what is in them.
+        if !UserDefaults.standard.bool(forKey: "documentsReadAgain") {
+            UserDefaults.standard.set(true, forKey: "documentsReadAgain")
+            var forgotten = false
+            for note in notes where note.attachmentsData != nil && !note.isDeleted && !note.isRecording && note.pageText == "" {
+                note.pageText = nil
+                forgotten = true
+            }
+            if forgotten { save() }
+        }
+        // Attachments whose text was not read yet (the app was closed before it got to them).
+        for note in notes where note.attachmentsData != nil && !note.isDeleted && !note.isRecording
+            && (note.pageText == nil || note.status == .recorded) {
+            enqueue(.attachment(note.id))
         }
         // Links without a summary get one in the background, when a model is ready for it (see `processLink`).
         for note in notes where note.isLink && !note.isDeleted && note.summary == nil && note.status != .failed
@@ -83,17 +163,26 @@ final class ProcessingService {
         Task {
             while !queue.isEmpty {
                 let job = queue.removeFirst()
+                running = job
                 await withBackgroundTime {
                     switch job {
                     case .transcript(let id): await processTranscript(id)
                     case .note(let id): await processNote(id)
                     case .link(let id, let summarize): await processLink(id, summarize: summarize)
                     case .summary(let id, let template, let model): await processSummary(id, template: template, model: model)
+                    case .enhance(let id, let model): await processEnhance(id, model: model)
+                    case .attachment(let id): await processAttachments(id)
                     }
                 }
-                stages[job.id] = nil
-                summarizing.remove(job.id)
-                summaryModels[job.id] = nil
+                running = nil
+                // Another job for this note may still wait: its marks stay.
+                let waiting = queue.filter { $0.id == job.id }
+                stages[job.id] = waiting.isEmpty ? nil : "Waiting…"
+                if !waiting.contains(where: { $0.kind == 3 }) {
+                    summarizing.remove(job.id)
+                    summaryModels[job.id] = nil
+                }
+                if !waiting.contains(where: { $0.kind == 4 }) { enhancing.remove(job.id) }
             }
             isRunning = false
         }
@@ -115,7 +204,10 @@ final class ProcessingService {
 
         do {
             try await transcribe(meeting, fileName: fileName, stageID: id)
+            // A new transcript is a change: without this an older copy from another device would win over it.
+            meeting.updatedAt = Date()
         } catch {
+            guard exists(id) else { return }
             meeting.status = .failed
             meeting.errorMessage = error.localizedDescription
         }
@@ -136,8 +228,10 @@ final class ProcessingService {
         try await ModelManager.shared.ensureASR()
         stages[id] = "Transcribing…"
         let output = try await TranscriptionEngine.shared.transcribe(prepared.monoURL, language: AppSettings.language)
+        try stillThere(meeting, id)
 
         var speakers = meeting.speakers
+        var mode = meeting.speakerMode
         var diagnostics: String?
         var speakerIds: [String?] = output.words.map { _ in nil }
 
@@ -162,18 +256,20 @@ final class ProcessingService {
                         speakers.first(where: { $0.id == sid })
                             ?? Speaker(id: sid, name: "Speaker \(index + 1)", colorIndex: index)
                     }
-                    meeting.speakerMode = .diarized
+                    mode = .diarized
                 } else {
                     speakers = []
-                    meeting.speakerMode = .none
+                    mode = .none
                 }
             } catch {
                 // Speaker detection is optional; keep the plain transcript.
                 diagnostics = "Speaker detection failed: \(error.localizedDescription)"
                 speakers = []
-                meeting.speakerMode = .none
+                mode = .none
             }
         }
+        try stillThere(meeting, id)
+        meeting.speakerMode = mode
 
         meeting.segments = SpeakerAssigner.group(output.words, speakerIds: speakerIds)
         // Drop speakers that ended up without any text (e.g. brief false detections).
@@ -190,8 +286,10 @@ final class ProcessingService {
         }
         if AppSettings.voiceRecognitionEnabled, !meeting.speakers.isEmpty {
             stages[id] = "Recognizing voices…"
-            meeting.speakers = await VoiceProfiles.identify(
+            let identified = await VoiceProfiles.identify(
                 meeting.speakers, segments: meeting.segments, audio: prepared.monoURL, context: context)
+            try stillThere(meeting, id)
+            meeting.speakers = identified
         }
         meeting.duration = prepared.duration
         meeting.status = .ready
@@ -210,12 +308,14 @@ final class ProcessingService {
             part.audioFileName = fileName
             part.speakerMode = AudioStore.audioInfo(for: fileName)?.channels == 2 ? .channels : .none
             try await transcribe(part, fileName: fileName, stageID: id)
+            guard exists(id) else { return }
             stages[id] = "Adding to the meeting…"
             try await NoteMerger.append(part, to: meeting)
             meeting.pendingAudioFileName = nil
             meeting.errorMessage = part.errorMessage
             meeting.updatedAt = Date()
         } catch {
+            guard exists(id) else { return }
             meeting.status = .failed
             meeting.errorMessage = error.localizedDescription
         }
@@ -248,6 +348,7 @@ final class ProcessingService {
             try await ModelManager.shared.ensureASR()
             stages[id] = "Transcribing…"
             let output = try await TranscriptionEngine.shared.transcribe(prepared.monoURL, language: AppSettings.language)
+            guard exists(id) else { return }
 
             let text = Paragraphs.format(output.text.trimmingCharacters(in: .whitespacesAndNewlines))
             if !text.isEmpty {
@@ -258,6 +359,7 @@ final class ProcessingService {
             note.updatedAt = Date()
             note.status = .ready
         } catch {
+            guard exists(id) else { return }
             note.status = .failed
             note.errorMessage = error.localizedDescription
         }
@@ -274,6 +376,7 @@ final class ProcessingService {
             stages[id] = "Loading page…"
             do {
                 let page = try await LinkFetcher.fetch(address)
+                guard exists(id) else { return }
                 note.pageText = page.text
                 if let title = page.title, note.title.isEmpty || note.title == address || note.title == note.domain {
                     note.title = title
@@ -281,6 +384,7 @@ final class ProcessingService {
                 note.status = .ready
                 note.errorMessage = nil
             } catch {
+                guard exists(id) else { return }
                 note.status = .failed
                 note.errorMessage = error.localizedDescription
                 save()
@@ -296,6 +400,46 @@ final class ProcessingService {
         }
     }
 
+    // MARK: - Attachments
+
+    /// Reads the text of the note's images, PDFs and text files into `pageText` and summarizes it, like a saved page.
+    private func processAttachments(_ id: UUID) async {
+        guard let note = fetchNote(id) else { return }
+        stages[id] = "Reading text…"
+        let text = await readAttachments(of: note)
+        guard exists(id) else { return }
+        note.status = .ready
+        note.errorMessage = nil
+        note.updatedAt = Date()
+        save()
+
+        if note.summary == nil, !note.isDeleted, !text.isEmpty, SummaryService.canRunWithoutAsking {
+            stages[id] = "Summarizing…"
+            try? await SummaryService.summarize(note) { [weak self] status in self?.stages[id] = status }
+            save()
+        }
+    }
+
+    /// Reads the text of the note's files into `pageText` and returns it. A file that is only on another device is
+    /// fetched first; while one is missing and nothing was read, the note counts as not looked at yet (`pageText`
+    /// stays nil), so the text is read once the file is here.
+    @discardableResult
+    private func readAttachments(of note: Note) async -> String {
+        let id = note.id
+        let attachments = note.attachments
+        if NextcloudSync.shared.isActive {
+            for attachment in attachments where !AttachmentStore.exists(attachment) {
+                try? await NextcloudSync.shared.fetchRecording(attachment.fileName)
+            }
+        }
+        let present = attachments.filter(AttachmentStore.exists)
+        let text = await AttachmentText.read(present.map { (url: AttachmentStore.url(for: $0), attachment: $0) })
+        guard exists(id) else { return text }
+        // "" = looked at, nothing to read (a photo without text).
+        if !text.isEmpty || present.count == attachments.count { note.pageText = text }
+        return text
+    }
+
     // MARK: - Summaries
 
     private func processSummary(_ id: UUID, template: SummaryTemplate, model: SummaryModel?) async {
@@ -308,6 +452,13 @@ final class ProcessingService {
         #endif
         var succeeded = false
         do {
+            // An image or a file is summarized from what was read out of it: read now when that has not happened yet
+            // (the file came from another device, or reading was cut short).
+            if note.attachmentsData != nil, !note.isRecording, (note.pageText ?? "").isEmpty {
+                stages[id] = "Reading text…"
+                await readAttachments(of: note)
+                save()
+            }
             try await SummaryService.summarize(note, template: template, model: model) { [weak self] status in
                 self?.stages[id] = status
                 #if os(iOS)
@@ -316,12 +467,29 @@ final class ProcessingService {
             }
             succeeded = true
             save()
+        } catch is CancellationError {
+            // The note is gone; nobody is left to tell.
         } catch {
             summaryErrors[id] = error.localizedDescription
         }
         #if os(iOS)
         if #available(iOS 26, *) { (continued as? ContinuedSummaryTask)?.end(success: succeeded) }
         #endif
+    }
+
+    private func processEnhance(_ id: UUID, model: SummaryModel?) async {
+        guard let note = fetchNote(id) else { return }
+        do {
+            let original = try await SummaryService.enhance(note, model: model) { [weak self] status in
+                self?.stages[id] = status
+            }
+            enhanceUndo[id] = EnhanceUndo(original: original, enhanced: note.text)
+            save()
+        } catch is CancellationError {
+            // The note is gone; nobody is left to tell.
+        } catch {
+            enhanceErrors[id] = error.localizedDescription
+        }
     }
 
     // MARK: - Helpers
@@ -334,6 +502,14 @@ final class ProcessingService {
 
     private func save() {
         try? context.save()
+    }
+
+    /// A note deleted for good meanwhile (trash emptied, removed by sync) must not be written to any more.
+    private func exists(_ id: UUID) -> Bool { fetchNote(id) != nil }
+
+    /// `note` may be a scratch note that was never stored (a part recorded later); then `id` is its meeting.
+    private func stillThere(_ note: Note, _ id: UUID) throws {
+        if note.id == id, !exists(id) { throw CancellationError() }
     }
 
     #if canImport(UIKit)

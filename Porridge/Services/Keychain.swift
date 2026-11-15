@@ -43,15 +43,21 @@ enum Keychain {
     }
 
     static func set(_ value: String?, for account: String) {
-        for store in Store.allCases {
-            SecItemDelete(store.attributes(account) as CFDictionary)
+        guard let value, !value.isEmpty else {
+            for store in Store.allCases { SecItemDelete(store.attributes(account) as CFDictionary) }
+            return
         }
-        guard let value, !value.isEmpty else { return }
+        let data = Data(value.utf8)
+        // The old secret is only replaced, never deleted first: a failed write would leave nothing.
+        for store in Store.allCases {
+            let status = SecItemUpdate(store.attributes(account) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+            if status == errSecSuccess { return }
+        }
         for store in Store.allCases {
             var item = store.attributes(account)
             if store == .synced { item[kSecAttrSynchronizable as String] = true }
             item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            item[kSecValueData as String] = Data(value.utf8)
+            item[kSecValueData as String] = data
             if SecItemAdd(item as CFDictionary, nil) == errSecSuccess { return }
         }
     }

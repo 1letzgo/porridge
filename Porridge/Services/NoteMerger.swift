@@ -21,7 +21,15 @@ enum NoteMerger {
     static func merge(_ others: [Note], into base: Note, context: ModelContext) async throws {
         try await join(([base] + others).sorted { $0.createdAt < $1.createdAt }, into: base)
         for meeting in others {
+            // Recordings a note carries from an earlier merge move to `base`; deleting the note must not take them along.
+            base.audioFileNames += meeting.audioFileNames.filter { !base.audioFileNames.contains($0) }
+            meeting.audioFileNames = []
             meeting.audioFileName = nil
+            // Its attachments move along as well.
+            if !meeting.attachments.isEmpty {
+                base.attachments += meeting.attachments
+                meeting.attachments = []
+            }
             NoteStore.deletePermanently(meeting, in: context)
         }
         try? context.save()

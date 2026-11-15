@@ -56,13 +56,12 @@ package installer.
 | `data/AppUpdate.kt`, `ui/AppUpdateUi.kt` | `PorridgeMac/Update/AppUpdate.swift` (+ APK install like stede) |
 | `data/Net.kt`, `data/Json.kt` | `URLSession.shared`, `JSONDecoder` |
 | `model/Note.kt`, `model/NoteText.kt` | `Models/Note.swift` (`Note`, `NoteText`) |
-| `model/NoteFolder.kt` | `Models/NoteFolder.swift` (`NoteFolder`, `NoteScope`, `tree`, `path`, `subtreeIDs`) |
+| `model/NoteFolder.kt` | `Models/NoteFolder.swift` (`NoteFolder`, the buckets; `path`) |
+| `model/Attachment.kt` | `Models/Attachment.swift` (`Attachment`, `NoteSource`) |
 | `model/VoiceProfile.kt` | `Models/VoiceProfile.swift`, `VoiceMath` |
-| `model/ActionItem.kt` | `Models/ActionItem.swift` |
 | `model/Transcript.kt` | `Models/Transcript.swift` |
 | `store/PorridgeDatabase.kt`, `store/Daos.kt` | `App/AppContainer.swift` (SwiftData container); Room schemas in `app/schemas/` |
 | `store/NoteStore.kt`, `store/AudioStore.kt`, `store/NoteMerger.kt` | `Services/NoteStore.swift`, `AudioStore.swift`, `NoteMerger.swift` |
-| `store/ActionItemStore.kt`, `logic/ActionItemsLogic.kt` | `Services/ActionItems.swift` |
 | `logic/NoteChunks.kt`, `index/NoteIndex.kt` | `Services/NoteChunks.swift`, `NoteIndex.swift` |
 | `logic/SpeakerAssigner.kt`, `logic/Paragraphs.kt`, `logic/SummaryLogic.kt`, `logic/NoteMergeLogic.kt`, `logic/VoiceProfileLogic.kt`, `logic/LanguageDetect.kt` | the matching `Services/*.swift` (pure parts) |
 | `logic/editor/` (`NoteBlock`, `NoteMarkdown`, `NoteEditorEngine`, `EditorBuffer`) | `Views/Notes/NoteBlocks.swift`, `NoteMarkdown.swift`, `NoteTextCoordinator` in `NoteTextView.swift` |
@@ -73,11 +72,14 @@ package installer.
 | `audio/` (`AudioRecorder`, `AudioPreprocessor`, `LiveTranscriber`, `RecordingService`, `InlineDictation`) | `Services/AudioRecorder.swift`, `AudioPreprocessor.swift`, `LiveTranscriber.swift`, `InlineDictation.swift`; the foreground service replaces the Live Activity |
 | `processing/ProcessingService.kt` | `Services/ProcessingService.swift` |
 | `plaud/` | `Services/Plaud/*.swift` (BLE with a serial GATT queue, own ChaCha20-Poly1305 for API 26) |
+| `data/ShareImport.kt`, `data/AttachmentText.kt` | `Services/ShareImport.swift`, `AttachmentStore.swift`, `AttachmentText.swift`, share extension `PorridgeShare` |
+| `logic/InboxLogic.kt`, `logic/HomeListLogic.kt`, `logic/ProjectsLogic.kt` | `Services/Inbox.swift`, `HomeList.swift`, `Projects.swift` |
+| `model/Chat.kt`, `logic/ChatLogic.kt`, `cloud/ChatService.kt`, `ui/chat/ChatScreen.kt` | `Models/Chat.swift`, `Services/ChunkRanking.swift`, `ChatService.swift`, `Views/Chat/ChatView.swift` (Android ranks by words only, without the sentence vectors of `TextEmbedder`) |
+| `data/DocumentText.kt` | `Services/DocumentText.swift` |
 | `data/Backup.kt` | (Android only) backup and restore as a zip instead of CloudKit |
 | `ui/Theme.kt`, `ui/components/` | `Design/` (brand colors, "Things 3" direction, `ChromeBar`, `TabSwitcher`) |
 | `ui/AppRoot.kt` | `App/RootView.swift` (screen stack) |
 | `ui/notes/` | `Views/Notes/` (`NotesView`, `NoteDetailView`, `NoteBodyEditor`, `NoteTextView`, sheets) |
-| `ui/tasks/` | `Views/Tasks/TasksPane.swift`, `TaskDetailView.swift` |
 | `ui/recording/`, `ui/settings/`, `ui/onboarding/`, `ui/plaud/` | the matching `Views/*` |
 
 ## Port status

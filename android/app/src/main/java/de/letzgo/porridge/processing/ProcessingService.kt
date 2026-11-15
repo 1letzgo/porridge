@@ -1,6 +1,7 @@
 package de.letzgo.porridge.processing
 
 import de.letzgo.porridge.audio.AudioPreprocessor
+import de.letzgo.porridge.audio.PreparedAudio
 import de.letzgo.porridge.cloud.SummaryModel
 import de.letzgo.porridge.cloud.SummaryService
 import de.letzgo.porridge.data.LinkFetcher
@@ -43,12 +44,18 @@ object ProcessingService {
         data class Link(override val id: String, val summarize: Boolean) : Job
         /** Die Zusammenfassung, um die jemand gebeten hat. */
         data class Summary(override val id: String, val template: SummaryTemplate, val model: SummaryModel? = null) : Job
+        /** Der eigene Text einer einfachen Notiz wird von KI umgeschrieben (`SummaryService.enhance`). */
+        data class Enhance(override val id: String, val model: SummaryModel? = null) : Job
+        /** Eine Notiz mit Anhängen: den Text ihrer Bilder und PDFs lesen, dann zusammenfassen. */
+        data class Attachment(override val id: String) : Job
     }
 
     private val db get() = PorridgeDatabase.shared
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val queue = ArrayDeque<Job>()
     private var running = false
+    /** Die Arbeit, die gerade läuft. */
+    private var current: Job? = null
 
     /** Lesbarer Fortschritt je Notiz-ID. */
     private val _stages = MutableStateFlow<Map<String, String>>(emptyMap())
@@ -67,19 +74,43 @@ object ProcessingService {
 
     fun clearSummaryError(id: String) = _summaryErrors.update { it - id }
 
+    /** Notizen, deren Text auf das Verbessern wartet oder gerade verbessert wird. */
+    private val _enhancing = MutableStateFlow<Set<String>>(emptySet())
+    val enhancing: StateFlow<Set<String>> = _enhancing.asStateFlow()
+    private val _enhanceErrors = MutableStateFlow<Map<String, String>>(emptyMap())
+    val enhanceErrors: StateFlow<Map<String, String>> = _enhanceErrors.asStateFlow()
+    fun clearEnhanceError(id: String) = _enhanceErrors.update { it - id }
+
+    /** Text vor und nach dem letzten Verbessern, solange die App läuft: Rückgängig nur, solange der neue Text unverändert ist. */
+    data class EnhanceUndo(val original: String, val enhanced: String)
+    private val _enhanceUndo = MutableStateFlow<Map<String, EnhanceUndo>>(emptyMap())
+    val enhanceUndo: StateFlow<Map<String, EnhanceUndo>> = _enhanceUndo.asStateFlow()
+
+    /** Holt den Text von vor dem letzten Verbessern zurück. */
+    suspend fun undoEnhance(id: String) {
+        val undo = _enhanceUndo.value[id] ?: return
+        val current = db.notes().get(id) ?: return
+        if (current.text != undo.enhanced) return
+        save(current.copy(text = undo.original, updatedAt = System.currentTimeMillis()))
+        _enhanceUndo.update { it - id }
+    }
+
     /** Wird gerufen, solange Arbeit ansteht (der Vordergrunddienst hält die App wach). */
     var onBusyChanged: (Boolean) -> Unit = {}
 
     private fun stage(id: String, text: String?) = _stages.update { if (text == null) it - id else it + (id to text) }
 
     @Synchronized fun enqueue(job: Job) {
-        if (queue.contains(job) || _stages.value.containsKey(job.id)) return
+        // iOS: `enqueue` — dieselbe Art Arbeit für dieselbe Notiz nur einmal; eine andere Art wartet, bis sie dran ist.
+        fun same(other: Job?) = other != null && other.id == job.id && other::class == job::class
+        if (queue.any { same(it) } || same(current)) return
         queue.addLast(job)
-        stage(job.id, "Waiting…")
+        if (!_stages.value.containsKey(job.id)) stage(job.id, "Waiting…")
         if (job is Job.Summary) {
             _summarizing.update { it + job.id }
             job.model?.let { model -> _summaryModels.update { it + (job.id to model) } }
         }
+        if (job is Job.Enhance) _enhancing.update { it + job.id }
         if (!running) {
             running = true
             onBusyChanged(true)
@@ -94,6 +125,26 @@ object ProcessingService {
             if ((note.status == ProcessingStatus.RECORDED || note.status == ProcessingStatus.TRANSCRIBING) && note.hasLocalAudio && note.pendingAudioFileName == null) enqueue(Job.Transcript(note.id))
         }
         for (note in notes) if (AudioStore.exists(note.pendingAudioFileName)) enqueue(Job.NoteAudio(note.id))
+        // Anhänge, deren Text noch nicht gelesen ist (die App wurde vorher geschlossen).
+        for (note in notes) {
+            if (note.attachmentsData != null && !note.isDeleted && !note.isRecording && (note.pageText == null || note.status == ProcessingStatus.RECORDED)) enqueue(Job.Attachment(note.id))
+        }
+        // iOS: `resumePending` — nichts mehr zu tun (die Datei ist weg): So eine Notiz wartete für immer und käme nie in den Abgleich.
+        for (note in notes) {
+            if (note.isLink || note.attachmentsData != null) continue
+            val pendingLost = note.pendingAudioFileName != null && !AudioStore.exists(note.pendingAudioFileName)
+            val stuck = (note.status == ProcessingStatus.RECORDED || note.status == ProcessingStatus.TRANSCRIBING) && !note.hasLocalAudio && !AudioStore.exists(note.pendingAudioFileName)
+            if (!pendingLost && !stuck) continue
+            val current = db.notes().get(note.id) ?: continue
+            val empty = current.segments.isEmpty() && current.text.isEmpty() && current.audioFileName == null
+            save(
+                current.copy(
+                    pendingAudioFileName = if (pendingLost) null else current.pendingAudioFileName,
+                    statusRaw = (if (empty) ProcessingStatus.FAILED else ProcessingStatus.READY).raw,
+                    errorMessage = if (empty) "The recording is not available on this device." else current.errorMessage,
+                ),
+            )
+        }
         // Links ohne Zusammenfassung bekommen eine im Hintergrund, wenn ein Modell dafür bereit ist.
         for (note in notes) {
             if (note.isLink && !note.isDeleted && note.summary == null && note.status != ProcessingStatus.FAILED && (note.pageText == null || note.pageText.isNotEmpty())) {
@@ -104,18 +155,28 @@ object ProcessingService {
 
     private suspend fun run() {
         while (true) {
-            val job = synchronized(this) { queue.removeFirstOrNull() ?: run { running = false; null } } ?: break
+            val job = synchronized(this) { (queue.removeFirstOrNull() ?: run { running = false; null }).also { current = it } } ?: break
             runCatching {
                 when (job) {
                     is Job.Transcript -> processTranscript(job.id)
                     is Job.NoteAudio -> processNote(job.id)
                     is Job.Link -> processLink(job.id, job.summarize)
                     is Job.Summary -> processSummary(job.id, job.template, job.model)
+                    is Job.Enhance -> processEnhance(job.id, job.model)
+                    is Job.Attachment -> processAttachments(job.id)
                 }
             }
-            stage(job.id, null)
-            _summarizing.update { it - job.id }
-            _summaryModels.update { it - job.id }
+            synchronized(this) {
+                current = null
+                // Auf diese Notiz kann noch andere Arbeit warten: Ihre Zeichen bleiben.
+                val waiting = queue.filter { it.id == job.id }
+                stage(job.id, if (waiting.isEmpty()) null else "Waiting…")
+                if (waiting.none { it is Job.Summary }) {
+                    _summarizing.update { it - job.id }
+                    _summaryModels.update { it - job.id }
+                }
+                if (waiting.none { it is Job.Enhance }) _enhancing.update { it - job.id }
+            }
         }
         onBusyChanged(false)
     }
@@ -127,6 +188,34 @@ object ProcessingService {
         val current = db.notes().get(before.id) ?: return
         val updated = SummaryLogic.carryOver(summarized, before, current)
         save(updated)
+    }
+
+    /** iOS: `processAttachments` — liest den Text der Bilder, PDFs und Textdateien in `pageText` und fasst ihn zusammen. */
+    private suspend fun processAttachments(id: String) {
+        val note = db.notes().get(id) ?: return
+        stage(id, "Reading text…")
+        val text = readAttachments(note)
+        val read = de.letzgo.porridge.store.NoteStore(db).update(id) { it.copy(statusRaw = ProcessingStatus.READY.raw, errorMessage = null) } ?: return
+        if (read.summary == null && !read.isDeleted && text.isNotEmpty() && SummaryService.canRunWithoutAsking) {
+            stage(id, "Summarizing…")
+            runCatching { SummaryService.summarize(read) { stage(id, it) } }.onSuccess { saveSummary(read, it) }
+        }
+    }
+
+    /**
+     * iOS: `readAttachments` — liest den Text der Dateien in `pageText` und gibt ihn zurück. Eine Datei, die nur auf einem
+     * anderen Gerät liegt, wird vorher geholt; fehlt eine und wurde nichts gelesen, gilt die Notiz als noch nicht
+     * angesehen (`pageText` bleibt null), damit der Text gelesen wird, sobald die Datei da ist.
+     */
+    private suspend fun readAttachments(note: Note): String {
+        for (attachment in note.attachments) if (!AudioStore.exists(attachment.fileName)) {
+            runCatching { de.letzgo.porridge.sync.NextcloudSync.fetchRecording(attachment.fileName) }
+        }
+        val present = note.attachments.filter { AudioStore.exists(it.fileName) }
+        val text = de.letzgo.porridge.data.AttachmentText.read(present.map { AudioStore.file(it.fileName) to it })
+        // "" = angesehen, nichts zu lesen (ein Foto ohne Text).
+        if (text.isNotEmpty() || present.size == note.attachments.size) de.letzgo.porridge.store.NoteStore(db).update(note.id, touch = false) { it.copy(pageText = text) }
+        return text
     }
 
     // Aufnahmen mit Transkript
@@ -149,6 +238,8 @@ object ProcessingService {
                     statusRaw = ProcessingStatus.READY.raw, updatedAt = System.currentTimeMillis(),
                 ).withSegments(result.segments).withSpeakers(result.speakers),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             val current = db.notes().get(id) ?: return
             save(current.copy(statusRaw = ProcessingStatus.FAILED.raw, errorMessage = e.message ?: "Transcription failed."))
@@ -161,10 +252,18 @@ object ProcessingService {
     private suspend fun recognize(id: String, fileName: String, startMode: SpeakerMode, startSpeakers: List<Speaker>): Recognized {
         stage(id, "Preparing audio…")
         val prepared = withContext(Dispatchers.IO) { AudioPreprocessor.prepare(AudioStore.file(fileName), startMode == SpeakerMode.CHANNELS) }
+        return try {
+            recognize(id, prepared, startMode, startSpeakers)
+        } finally {
+            prepared.close()
+        }
+    }
+
+    private suspend fun recognize(id: String, prepared: PreparedAudio, startMode: SpeakerMode, startSpeakers: List<Speaker>): Recognized {
         stage(id, "Loading speech model…")
         SpeechModel.ensure()
         stage(id, "Transcribing…")
-        val words = SpeechModel.transcribe(prepared.pcm, Prefs.language) { stage(id, "Transcribing … ${(it * 100).toInt()} %") }
+        val words = SpeechModel.transcribe(prepared, Prefs.language) { stage(id, "Transcribing … ${(it * 100).toInt()} %") }
 
         var speakers = startSpeakers
         var diagnostics: String? = null
@@ -182,7 +281,12 @@ object ProcessingService {
             stage(id, "Detecting speakers…")
             try {
                 Diarizer.ensure()
-                samples = prepared.floats()
+                // Am Stück im Speicher, weil die Diarisierung es so will; reicht er nicht, bleibt das Transkript ohne Sprecher.
+                samples = try {
+                    prepared.floats()
+                } catch (e: OutOfMemoryError) {
+                    throw IllegalStateException("the recording is too long for this device")
+                }
                 val segments = Diarizer.diarize(samples)
                 val (ids, order) = SpeakerAssigner.byDiarization(words, segments)
                 diagnostics = if (order.isEmpty()) "Speaker detection found no speech (${segments.size} segments)." else null
@@ -242,6 +346,8 @@ object ProcessingService {
                 .withSegments(result.segments).withSpeakers(result.speakers)
             val current = db.notes().get(id) ?: return
             NoteMerger(db).append(part, current)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             val current = db.notes().get(id) ?: return
             save(current.copy(statusRaw = ProcessingStatus.FAILED.raw, errorMessage = e.message ?: "Transcription failed."))
@@ -262,10 +368,14 @@ object ProcessingService {
         try {
             stage(id, "Preparing audio…")
             val prepared = withContext(Dispatchers.IO) { AudioPreprocessor.prepare(AudioStore.file(fileName), false) }
-            stage(id, "Loading speech model…")
-            SpeechModel.ensure()
-            stage(id, "Transcribing…")
-            val words = SpeechModel.transcribe(prepared.pcm, Prefs.language)
+            val words = try {
+                stage(id, "Loading speech model…")
+                SpeechModel.ensure()
+                stage(id, "Transcribing…")
+                SpeechModel.transcribe(prepared, Prefs.language)
+            } finally {
+                prepared.close()
+            }
             val text = Paragraphs.format(words.joinToString(" ") { it.text }.trim())
             val current = db.notes().get(id) ?: return
             save(
@@ -277,6 +387,8 @@ object ProcessingService {
                     statusRaw = ProcessingStatus.READY.raw,
                 ),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             val current = db.notes().get(id) ?: return
             save(current.copy(statusRaw = ProcessingStatus.FAILED.raw, errorMessage = e.message))
@@ -311,11 +423,35 @@ object ProcessingService {
         }
     }
 
+    /** iOS: `processEnhance` — schreibt den Text einer einfachen Notiz um; der alte Text bleibt für Rückgängig. */
+    private suspend fun processEnhance(id: String, model: SummaryModel?) {
+        val note = db.notes().get(id) ?: return
+        stage(id, "Enhancing note…")
+        try {
+            val raw = SummaryService.enhance(note.text, model) { stage(id, it) }
+            val current = db.notes().get(id) ?: return
+            val enhanced = SummaryLogic.applyEnhance(current, note.text, raw)
+            save(enhanced)
+            _enhanceUndo.update { it + (id to EnhanceUndo(note.text, enhanced.text)) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            _enhanceErrors.update { it + (id to (e.message ?: "The note could not be enhanced.")) }
+        }
+    }
+
     /** Fasst eine Notiz auf Wunsch zusammen (Knopf in der Notiz). */
     private suspend fun processSummary(id: String, template: SummaryTemplate, model: SummaryModel?) {
-        val note = db.notes().get(id) ?: return
-        stage(id, "Summarizing…")
+        var note = db.notes().get(id) ?: return
         try {
+            // Ein Bild oder eine Datei wird aus dem zusammengefasst, was daraus gelesen wurde: jetzt lesen, wenn das noch
+            // nicht geschehen ist (die Datei kam von einem anderen Gerät, oder das Lesen wurde abgebrochen).
+            if (note.attachmentsData != null && !note.isRecording && note.pageText.isNullOrEmpty()) {
+                stage(id, "Reading text…")
+                readAttachments(note)
+                note = db.notes().get(id) ?: return
+            }
+            stage(id, "Summarizing…")
             saveSummary(note, SummaryService.summarize(note, template, model) { stage(id, it) })
         } catch (e: CancellationException) {
             throw e

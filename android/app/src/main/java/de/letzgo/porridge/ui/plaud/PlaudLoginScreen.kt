@@ -86,6 +86,11 @@ fun PlaudLoginScreen(onToken: (String, String?) -> Unit, onCancel: () -> Unit) {
             container.addView(main, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             main.loadUrl("https://web.plaud.ai/")
             container
+        }, onRelease = { container ->
+            // Ein WebView lebt weiter (Seite, Timer, Speicher), bis er zerstört wird; auch die Popups.
+            val views = (0 until container.childCount).map { container.getChildAt(it) }
+            container.removeAllViews()
+            views.filterIsInstance<WebView>().forEach { it.stopLoading(); it.destroy() }
         })
     }
 }

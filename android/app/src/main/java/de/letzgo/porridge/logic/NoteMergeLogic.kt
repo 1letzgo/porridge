@@ -94,7 +94,13 @@ object NoteMergeLogic {
             statusRaw = ProcessingStatus.READY.raw,
         ).withSegments(segments).withSpeakers(speakers).let { merged ->
             // Ohne gemeinsame Datei bleiben die Aufnahmen bei der Notiz: Ohne Verweis gingen sie hier und auf dem Server verloren.
-            if (mergedAudio != null) merged else merged.copy(audioFileNames = merged.audioFileNames + ordered.mapNotNull { it.audioFileName })
+            // Was die anderen Notizen aus einem früheren Zusammenführen mitbringen, zieht ebenfalls um.
+            val carried = ordered.filter { it.id != base.id }.flatMap { it.audioFileNames }
+            val single = if (mergedAudio != null) emptyList() else ordered.mapNotNull { it.audioFileName }
+            // Auch ihre Anhänge ziehen um.
+            val attachments = ordered.filter { it.id != base.id }.flatMap { it.attachments }
+            merged.copy(audioFileNames = (merged.audioFileNames + carried + single).distinct())
+                .let { if (attachments.isEmpty()) it else it.withAttachments(it.attachments + attachments) }
         }
     }
 

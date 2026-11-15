@@ -109,7 +109,7 @@ enum SyncMerge {
                 case (false, false): takeRemote = true
                 case (true, false): takeRemote = false
                 case (false, true): takeRemote = true
-                case (true, true): takeRemote = int64(r["updatedAt"]) > l.updatedAt
+                case (true, true): takeRemote = int64(r["updatedAt"] ?? r["createdAt"]) > l.updatedAt
                 }
                 if takeRemote {
                     result.merged[id] = r

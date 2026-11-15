@@ -168,7 +168,7 @@ object RecordingSession {
             ProcessingService.enqueue(ProcessingService.Job.NoteAudio(updated.id))
             return updated
         }
-        var note = Note(
+        var note = Note(sourceRaw = de.letzgo.porridge.model.NoteSource.MEETING.raw,
             title = title ?: Note.defaultMeetingTitle(System.currentTimeMillis()), titleIsCustom = title != null,
             statusRaw = ProcessingStatus.RECORDED.raw, audioFileName = result.fileName, duration = result.duration,
             channelCount = result.channelCount, inputName = result.inputName,
@@ -180,7 +180,7 @@ object RecordingSession {
         }
         // Bis das Transkript mit Sprechern fertig ist, steht der Live-Text da.
         if (liveText.isNotEmpty()) note = note.withSegments(listOf(TranscriptSegment(start = 0.0, end = result.duration, text = liveText)))
-        if (projectID != null) note = note.copy(projectIDs = listOf(projectID))
+        if (projectID != null && projectID !in note.projectIDs) note = note.copy(projectIDs = note.projectIDs + projectID)
         note = note.copy(text = RecordingNote.markdown(notes))
         notes.clear()
         PorridgeDatabase.shared.notes().upsert(note)

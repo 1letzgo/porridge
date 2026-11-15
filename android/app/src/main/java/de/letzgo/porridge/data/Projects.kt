@@ -38,8 +38,12 @@ object Projects {
     /** Ordnet die Notiz dem Projekt zu oder nimmt sie heraus (auf dem frischen Stand der Datenbank). */
     suspend fun toggle(note: Note, projectID: String) {
         val current = db.notes().get(note.id) ?: note
-        db.notes().upsert(current.copy(projectIDs = ProjectsLogic.toggled(current.projectIDs, projectID), updatedAt = System.currentTimeMillis()))
+        val ids = ProjectsLogic.toggled(current.projectIDs, projectID)
+        // Von Hand in einen Bucket gelegt: aus dem Eingang, was auch immer vorgeschlagen war.
+        val filed = if (projectID in ids) current.copy(filedAt = current.filedAt ?: System.currentTimeMillis(), suggestedProjectIDs = emptyList()) else current
+        db.notes().upsert(filed.copy(projectIDs = ids, updatedAt = System.currentTimeMillis()))
     }
+
 
     /** Einmalig beim Start: Notizen in Ordnern gehören danach zum gleichnamigen Projekt. */
     suspend fun migrateFolders() {

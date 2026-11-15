@@ -5,9 +5,27 @@ import Foundation
 /// shows at the next sync as a file on the server, and one that failed is started again there.
 final class RecordingUploads: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     static let shared = RecordingUploads()
+    static let sessionIdentifier = "de.letzgo.porridge.recordings"
+
+    private let lock = NSLock()
+    private var completion: (() -> Void)?
+
+    /// Set by the app delegate when iOS wakes the app for finished uploads; making the session lets its events arrive.
+    var backgroundCompletion: (() -> Void)? {
+        get { lock.withLock { completion } }
+        set { lock.withLock { completion = newValue }; _ = session }
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        let handler = lock.withLock {
+            defer { completion = nil }
+            return completion
+        }
+        DispatchQueue.main.async { handler?() }
+    }
 
     private lazy var session: URLSession = {
-        let configuration = URLSessionConfiguration.background(withIdentifier: "de.letzgo.porridge.recordings")
+        let configuration = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
         configuration.isDiscretionary = false
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }()

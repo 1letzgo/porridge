@@ -28,6 +28,10 @@ export JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/C
 export ANDROID_HOME=${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}
 
 VERSION=$(sed -n 's/^ *MARKETING_VERSION: *\([^ ]*\).*/\1/p' project.yml | head -1)
+if [[ -z "$VERSION" ]]; then
+  echo "MARKETING_VERSION is missing in project.yml" >&2
+  exit 1
+fi
 CODE=$(git rev-list --count HEAD)
 TAG="android-v$VERSION"
 ASSET="Porridge-android-$VERSION.apk"

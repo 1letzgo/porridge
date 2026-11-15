@@ -5,10 +5,12 @@ import de.letzgo.porridge.model.NoteFolder
 
 /** iOS: `ProjectsLogic` — wer zu einem Projekt gehört: Notizen, Meetings und Links über ihre `projectIDs`. */
 object ProjectsLogic {
-    enum class Kind(val title: String) { MEETING("Meetings"), NOTE("Notes"), LINK("Links") }
+    enum class Kind(val title: String) { MEETING("Meetings"), NOTE("Notes"), LINK("Links"), IMAGE("Images"), FILE("Files") }
 
     fun kind(note: Note): Kind = when {
         note.isLink -> Kind.LINK
+        note.isImage -> Kind.IMAGE
+        note.isFile -> Kind.FILE
         note.isRecording -> Kind.MEETING
         else -> Kind.NOTE
     }

@@ -108,7 +108,21 @@ class AudioRecorder(private val context: Context) {
         inputName = device?.productName?.toString()?.takeIf { it.isNotBlank() } ?: if (external != null) "External Microphone" else "Microphone"
 
         val name = AudioStore.newFileName()
-        val aac = AacWriter(AudioStore.file(name), sampleRate, channelCount)
+        val aac = try {
+            AacWriter(AudioStore.file(name), sampleRate, channelCount)
+        } catch (e: Throwable) {
+            recorder.release()
+            AudioStore.delete(name)
+            throw e
+        }
+        recorder.startRecording()
+        // Ohne Fehler, aber auch ohne Ton: Ein Mikrofon, das eine andere App hält, liefert sonst eine Aufnahme aus Stille.
+        if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+            recorder.release()
+            aac.close()
+            AudioStore.delete(name)
+            error("The microphone is in use by another app.")
+        }
         record = recorder
         writer = aac
         fileName = name
@@ -116,7 +130,6 @@ class AudioRecorder(private val context: Context) {
         _isRecording.value = true
         _elapsed.value = 0.0
         audioManager.registerAudioDeviceCallback(deviceCallback, Handler(Looper.getMainLooper()))
-        recorder.startRecording()
         // Ein Gerät, das trotz Stereo-Anfrage nur Mono liefert, meldet das erst hier.
         thread = Thread({ loop(recorder, aac, sampleRate) }, "porridge-recorder").apply { priority = Thread.MAX_PRIORITY; start() }
     }

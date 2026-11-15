@@ -13,15 +13,16 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -44,11 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -69,7 +66,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import de.letzgo.porridge.logic.SummaryTemplate
 import de.letzgo.porridge.BuildConfig
-import de.letzgo.porridge.PorridgeApplication
 import de.letzgo.porridge.cloud.AIProvider
 import de.letzgo.porridge.cloud.CloudLLM
 import de.letzgo.porridge.cloud.SummaryModel
@@ -83,7 +79,6 @@ import de.letzgo.porridge.sync.NextcloudSync
 import de.letzgo.porridge.sync.SyncMode
 import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.Prefs
-import de.letzgo.porridge.data.SummaryBilling
 import de.letzgo.porridge.data.transcriptionLanguages
 import de.letzgo.porridge.ml.Diarizer
 import de.letzgo.porridge.ml.LocalLLM
@@ -99,10 +94,6 @@ import de.letzgo.porridge.ui.components.ChromeBar
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Settings
 import de.letzgo.porridge.ui.plaud.PlaudLoginScreen
-import de.letzgo.porridge.store.AudioStore
-import de.letzgo.porridge.model.Note
-import de.letzgo.porridge.model.ProcessingStatus
-import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.store.PorridgeDatabase
 import de.letzgo.porridge.ui.AppUpdateDialog
 import de.letzgo.porridge.ui.Brand
@@ -114,6 +105,9 @@ import java.util.Locale
 import java.util.UUID
 
 /** iOS: `SettingsView` (Views/Settings/SettingsView.swift) — Karten wie auf iOS; statt iCloud eine Sicherung. */
+/** iOS: `SettingsArea` — die Bereiche, in die die Einstellungen geteilt sind. */
+private enum class SettingsArea(val title: String) { GENERAL("General"), RECORDING("Recording"), AI("AI"), SYNC("Sync"), ABOUT("About") }
+
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     // Hier, damit die Seite nach einem Unterbildschirm an derselben Stelle steht.
@@ -142,17 +136,36 @@ private fun SettingsPage(pageScroll: androidx.compose.foundation.ScrollState, on
     BackHandler { onBack() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()) {
         ChromeBar("Settings", Icons.Filled.Settings, onBack = onBack) {}
+        // iOS: `SettingsArea` — die Bereiche der Einstellungen als Pillen, wie die Arten in einem Bucket: Es zeigt sich je einer.
+        var area by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(SettingsArea.GENERAL) }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (option in SettingsArea.entries) FilterChip(
+                selected = area == option, onClick = { area = option }, label = { Text(option.title) },
+                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Brand.navy, selectedLabelColor = Brand.onFill(Brand.navy)),
+            )
+        }
         Column(Modifier.fillMaxSize().verticalScroll(pageScroll).padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-            YouCard()
-            TranscriptionCard()
-            VoicesCard(onOpen = onVoices)
-            ModelsCard()
-            SummaryCard()
-            PlaudCard(plaudSignedIn, onSignIn = { showPlaudLogin = true }, onSignOut = { PlaudAccount.clear(); plaudSignedIn = false })
-            SyncCard()
-            BackupCard()
-            AboutCard()
-            Card("Acknowledgements") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Open Source Licenses", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", { onAcknowledgements() }) } }
+            if (area == SettingsArea.GENERAL) YouCard()
+            if (area == SettingsArea.RECORDING) {
+                TranscriptionCard()
+                VoicesCard(onOpen = onVoices)
+                ModelsCard()
+            }
+            if (area == SettingsArea.AI) SummaryCard()
+            if (area == SettingsArea.GENERAL) PlaudCard(plaudSignedIn, onSignIn = { showPlaudLogin = true }, onSignOut = {
+                PlaudAccount.clear()
+                // iOS: `PlaudLoginView.clearSession` — sonst fände „Sign In“ das Cookie der letzten Anmeldung sofort
+                // wieder und meldete im selben Konto an. Im WebView der App meldet sich nur Plaud an.
+                android.webkit.CookieManager.getInstance().apply { removeAllCookies(null); flush() }
+                android.webkit.WebStorage.getInstance().deleteAllData()
+                plaudSignedIn = false
+            })
+            if (area == SettingsArea.SYNC) {
+                SyncCard()
+                BackupCard()
+            }
+            if (area == SettingsArea.ABOUT) AboutCard()
+            if (area == SettingsArea.ABOUT) Card("Acknowledgements") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Open Source Licenses", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", { onAcknowledgements() }) } }
         }
     }
 }
@@ -300,10 +313,11 @@ private fun ModelRow(pack: ModelPack, subtitle: String, unload: () -> Unit) {
         }
         when (state) {
             ModelState.NotInstalled, is ModelState.Failed -> Pill("Download", { ModelManager.startDownload(pack) })
-            is ModelState.Downloading, ModelState.Loading -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Brand.sky)
-            ModelState.Installed, ModelState.Ready -> {
+            is ModelState.Downloading -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Brand.sky)
+            // Auf dem Gerät. Ob es schon im Speicher ist (lädt, bereit), zeigt die Zeile nicht; beim Laden wird nicht gelöscht.
+            ModelState.Installed, ModelState.Ready, ModelState.Loading -> {
                 Icon(Icons.Filled.CheckCircle, "Installed", tint = Brand.skyText)
-                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Outlined.Delete, "Delete", tint = Brand.dangerText) }
+                if (state != ModelState.Loading) IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Outlined.Delete, "Delete", tint = Brand.dangerText) }
             }
         }
     }
@@ -352,11 +366,6 @@ private fun SummaryCard() {
     }
     LaunchedEffect(states) { refresh() }
     Card("AI Summary") {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Custom Templates", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-            Pill("Edit", { editTemplates = true })
-        }
-        HorizontalDivider()
         val available = SummaryModel.available
         if (available.isEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -368,6 +377,11 @@ private fun SummaryCard() {
                 default = it
                 SummaryModel.current = it
             }
+        }
+        HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Custom Templates", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+            Pill("Edit", { editTemplates = true })
         }
         LocalModel.entries.forEachIndexed { index, m ->
             // Noch nicht Geladenes steht im Hinzufügen-Fenster.

@@ -1,6 +1,7 @@
 // Ported from roopen219/plaude-archiver (MIT License, https://github.com/roopen219/plaude-archiver).
 package de.letzgo.porridge.plaud
 
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import de.letzgo.porridge.data.Net
 import de.letzgo.porridge.data.PorridgeJson
 import kotlinx.coroutines.Dispatchers
@@ -48,7 +49,12 @@ data class PlaudAPI(var userToken: String, var host: String) {
                 val json = decode(response.headers, response.body.string(), path)
                 val status = json.int("status") ?: json.int("code")
                 val api = (json["data"] as? JsonObject)?.get("domains")?.let { it as? JsonObject }?.get("api")?.jsonPrimitive?.contentOrNull
-                if (status == -302 && api != null) { current = api; return@repeat }
+                if (status == -302 && api != null) {
+                    // Die nächste Anfrage trägt das Login-Token: nur an Plaud selbst, nie dorthin, wohin eine Antwort zeigt.
+                    if (!isPlaudHost(api)) throw PlaudAPIException.Message("unexpected API host: $api")
+                    current = api
+                    return@repeat
+                }
                 if (status == 401 || status == 403) throw PlaudAPIException.Unauthorized()
                 return@withContext Reply(json, current, response.headers, response.request.url.toString())
             }
@@ -92,6 +98,12 @@ data class PlaudAPI(var userToken: String, var host: String) {
     }
 
     companion object {
+        /** iOS: `PlaudAPI.isPlaudHost` — „https://api-euc1.plaud.ai“: https, und plaud.ai oder eine Subdomain davon. */
+        fun isPlaudHost(address: String): Boolean {
+            val url = address.toHttpUrlOrNull() ?: return false
+            return url.isHttps && (url.host == "plaud.ai" || url.host.endsWith(".plaud.ai"))
+        }
+
         /** Region aus dem JWT-Claim `region`, z. B. aws:ap-southeast-1 → api-apse1.plaud.ai. */
         fun hostFromToken(token: String): String {
             val region = claims(token)?.get("region")?.jsonPrimitive?.contentOrNull ?: return "https://api.plaud.ai"

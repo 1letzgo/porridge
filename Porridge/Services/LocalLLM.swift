@@ -162,6 +162,12 @@ actor LocalLLM {
     private func load(_ model: LocalModel, progress: (@Sendable (Double) -> Void)?) async throws -> ModelContainer {
         if let container, loadedModel == model { return container }
         if let loading, loadingModel == model { return try await loading.value }
+        if let loading {
+            // Another model is on its way into memory: two at once are more than a phone has. Wait for it, then
+            // look again (it is unloaded below).
+            _ = try? await loading.value
+            return try await load(model, progress: progress)
+        }
         // Only one model at a time in memory.
         if loadedModel != model { unload() }
 

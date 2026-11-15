@@ -112,8 +112,8 @@ object AppUpdate {
         if (!isEnabled(context)) return null
         val now = System.currentTimeMillis()
         if (now - Prefs.long(Keys.UPDATE_LAST_CHECK) < CHECK_INTERVAL_MS) return null
-        val release = runCatching { newer() }.getOrNull()
-        Prefs.set(Keys.UPDATE_LAST_CHECK, now)
+        // Nur eine Prüfung, die geklappt hat, zählt: Ohne Netz beim Start wäre sonst sechs Stunden Ruhe.
+        val release = runCatching { newer() }.onSuccess { Prefs.set(Keys.UPDATE_LAST_CHECK, now) }.getOrNull()
         return release?.takeIf { it.tag != Prefs.string(Keys.UPDATE_SKIPPED_TAG) }
     }
 

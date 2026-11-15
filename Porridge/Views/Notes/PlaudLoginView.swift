@@ -40,6 +40,18 @@ struct PlaudLoginView: View {
         #endif
     }
 
+    /// Signing out: without this the cookies of the last sign-in are still there, and the next "Sign In" would
+    /// find them at once and sign in to the same account again.
+    @MainActor
+    static func clearSession() async {
+        let store = WKWebsiteDataStore.default()
+        let records = await store.dataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
+        await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), for: records.filter { $0.displayName.lowercased().contains("plaud") })
+        for cookie in await store.httpCookieStore.allCookies() where cookie.domain.lowercased().contains("plaud") {
+            await store.httpCookieStore.deleteCookie(cookie)
+        }
+    }
+
     /// The `pld_ut` cookie, unless it is a JWT that has already expired (a stale cookie from an
     /// earlier sign-in; the site renews it through `pld_urt` once the page has loaded).
     static func validUserToken(in cookies: [HTTPCookie]) -> String? {

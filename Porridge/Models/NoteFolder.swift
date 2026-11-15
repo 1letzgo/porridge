@@ -27,26 +27,6 @@ final class NoteFolder {
 }
 
 extension Array where Element == NoteFolder {
-    /// Folders depth first (siblings by name) with their nesting level.
-    var tree: [(folder: NoteFolder, depth: Int)] {
-        let byParent = Dictionary(grouping: self, by: \.parentID)
-        let ids = Set(map(\.id))
-        var result: [(NoteFolder, Int)] = []
-        func walk(_ parent: UUID?, _ depth: Int) {
-            for folder in (byParent[parent] ?? []).sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
-                result.append((folder, depth))
-                walk(folder.id, depth + 1)
-            }
-        }
-        walk(nil, 0)
-        // Folders whose parent is gone (e.g. deleted on another device) show up at the top level.
-        for orphan in self where orphan.parentID != nil && !ids.contains(orphan.parentID!) && !result.contains(where: { $0.0.id == orphan.id }) {
-            result.append((orphan, 0))
-            walk(orphan.id, 1)
-        }
-        return result
-    }
-
     /// "Parent › Child" for a folder.
     func path(of folder: NoteFolder) -> String {
         var names = [folder.name]
@@ -58,18 +38,5 @@ extension Array where Element == NoteFolder {
             guardCount += 1
         }
         return names.joined(separator: " › ")
-    }
-
-    /// The folder and everything below it.
-    func subtreeIDs(of id: UUID) -> Set<UUID> {
-        var ids: Set<UUID> = [id]
-        var added = true
-        while added {
-            added = false
-            for folder in self where !ids.contains(folder.id) {
-                if let parent = folder.parentID, ids.contains(parent) { ids.insert(folder.id); added = true }
-            }
-        }
-        return ids
     }
 }

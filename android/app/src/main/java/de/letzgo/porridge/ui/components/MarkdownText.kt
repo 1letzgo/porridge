@@ -2,7 +2,6 @@ package de.letzgo.porridge.ui.components
 
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row

@@ -6,13 +6,18 @@ import Carbon.HIToolbox
 /// keyboard (the Accessibility permission, which pasting needs anyway, or Input Monitoring).
 final class ModifierKeyMonitor {
     var onPress: (() -> Void)?
+    /// The key came up without another key in between.
     var onRelease: (() -> Void)?
+    /// Another key was pressed while it was held: the key is being used for typing (right ⌥ and L for "@"),
+    /// not as the shortcut. No `onRelease` follows.
+    var onCancel: (() -> Void)?
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var keyCode: Int64 = 0
     private var mask: CGEventFlags = []
     private var isDown = false
+    private var usedForTyping = false
 
     /// The device-specific flag of a modifier key: the left and right keys have their own bits, so the
     /// right Option key can be told from the left one even when both are down.
@@ -48,7 +53,7 @@ final class ModifierKeyMonitor {
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .listenOnly,
-            eventsOfInterest: CGEventMask(1 << CGEventType.flagsChanged.rawValue),
+            eventsOfInterest: CGEventMask(1 << CGEventType.flagsChanged.rawValue) | CGEventMask(1 << CGEventType.keyDown.rawValue),
             callback: { _, type, event, info in
                 if let info {
                     Unmanaged<ModifierKeyMonitor>.fromOpaque(info).takeUnretainedValue().handle(type: type, event: event)
@@ -72,6 +77,7 @@ final class ModifierKeyMonitor {
         tap = nil
         source = nil
         isDown = false
+        usedForTyping = false
     }
 
     private func handle(type: CGEventType, event: CGEvent) {
@@ -80,13 +86,21 @@ final class ModifierKeyMonitor {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return
         }
+        if type == .keyDown {
+            guard isDown, !usedForTyping else { return }
+            usedForTyping = true
+            DispatchQueue.main.async { [weak self] in self?.onCancel?() }
+            return
+        }
         guard type == .flagsChanged, event.getIntegerValueField(.keyboardEventKeycode) == keyCode else { return }
         let down = event.flags.contains(mask)
         guard down != isDown else { return }
         isDown = down
+        let typed = usedForTyping
+        if down { usedForTyping = false }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            if down { self.onPress?() } else { self.onRelease?() }
+            if down { self.onPress?() } else if !typed { self.onRelease?() }
         }
     }
 }

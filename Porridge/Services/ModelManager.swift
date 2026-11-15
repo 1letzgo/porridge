@@ -28,12 +28,15 @@ final class ModelManager {
     }
 
     private(set) var asr: State
+    /// Parakeet while Apple Speech is the default: on the device for later, shown in the settings' model list.
+    private(set) var spareParakeet: State
     private(set) var diarizer: State
     /// On-device summary models.
     private(set) var llm: [LocalModel: State]
 
     private init() {
         asr = AppSettings.speechEngine == .parakeet && TranscriptionEngine.asrInstalled ? .installed : .notInstalled
+        spareParakeet = TranscriptionEngine.asrInstalled ? .installed : .notInstalled
         diarizer = TranscriptionEngine.diarizerInstalled ? .installed : .notInstalled
         llm = Dictionary(uniqueKeysWithValues: LocalModel.allCases.map { ($0, $0.isInstalled ? State.installed : .notInstalled) })
         Task { await refreshASR() }
@@ -41,6 +44,7 @@ final class ModelManager {
 
     /// Re-reads the state of the selected speech engine (after switching engine or language).
     func refreshASR() async {
+        if !spareParakeet.isBusy { spareParakeet = TranscriptionEngine.asrInstalled ? .installed : .notInstalled }
         if asr.isBusy { return }
         switch AppSettings.speechEngine {
         case .parakeet:
@@ -59,13 +63,15 @@ final class ModelManager {
     func ensureLocalASR() async throws {
         if AppSettings.speechEngine == .apple { return try await ensureAppleSpeech() }
         if asr == .ready { return }
-        asr = TranscriptionEngine.asrInstalled ? .loading : .downloading(0)
+        // A model that is on the device is only loaded into memory: that is no download, whatever progress it reports.
+        let isInstalled = TranscriptionEngine.asrInstalled
+        asr = isInstalled ? .loading : .downloading(0)
         do {
             _ = try await TranscriptionEngine.shared.loadASR { progress in
                 Task { @MainActor in
                     let manager = ModelManager.shared
                     guard manager.asr != .ready else { return }
-                    manager.asr = progress.fractionCompleted < 1
+                    manager.asr = progress.fractionCompleted < 1 && !isInstalled
                         ? .downloading(progress.fractionCompleted)
                         : .loading
                 }
@@ -74,6 +80,23 @@ final class ModelManager {
         } catch {
             asr = Self.isCancellation(error) ? .notInstalled : .failed(error.localizedDescription)
             throw error
+        }
+    }
+
+    /// Fetches Parakeet without making it the default (the default's own download is `ensureLocalASR`).
+    func downloadSpareParakeet() async {
+        if spareParakeet.isBusy || TranscriptionEngine.asrInstalled { return }
+        spareParakeet = .downloading(0)
+        do {
+            _ = try await TranscriptionEngine.shared.loadASR { progress in
+                Task { @MainActor in
+                    let manager = ModelManager.shared
+                    if case .downloading = manager.spareParakeet { manager.spareParakeet = .downloading(progress.fractionCompleted) }
+                }
+            }
+            spareParakeet = .installed
+        } catch {
+            spareParakeet = Self.isCancellation(error) ? .notInstalled : .failed(error.localizedDescription)
         }
     }
 
@@ -121,7 +144,9 @@ final class ModelManager {
             guard model.isInstalled else { throw AppleLLMError.unavailable }
             return
         }
-        llm[model] = model.isInstalled ? .loading : .downloading(0)
+        // As with the speech model: loading what is on the device is no download.
+        let isInstalled = model.isInstalled
+        llm[model] = isInstalled ? .loading : .downloading(0)
         do {
             #if os(iOS)
             if !model.isInstalled {
@@ -134,7 +159,7 @@ final class ModelManager {
                 Task { @MainActor in
                     let manager = ModelManager.shared
                     guard manager.llmState(model) != .ready else { return }
-                    manager.llm[model] = fraction < 1 ? .downloading(fraction) : .loading
+                    manager.llm[model] = fraction < 1 && !isInstalled ? .downloading(fraction) : .loading
                     onProgress?(fraction)
                 }
             }
@@ -242,6 +267,7 @@ final class ModelManager {
     /// Deletes the downloaded Parakeet model (the system's Apple Speech cannot be deleted here).
     func deleteASR() async {
         await TranscriptionEngine.shared.deleteASR()
+        spareParakeet = .notInstalled
         await refreshASR()
         if AppSettings.speechEngine == .parakeet { asr = .notInstalled }
     }
@@ -263,10 +289,6 @@ final class ModelManager {
         }
     }
 
-    func prepareAll() async {
-        try? await ensureASR()
-        try? await ensureDiarizer()
-    }
 }
 
 #if os(iOS)

@@ -14,7 +14,12 @@ class SummaryException(message: String) : Exception(message) {
         val missingModel get() = SummaryException("Please choose a model in Settings.")
         val emptyTranscript get() = SummaryException("The transcript is empty.")
         val emptyNote get() = SummaryException("The note is empty.")
+        /** Ein Bild oder eine Datei, aus der sich nichts lesen ließ. */
+        fun emptyFile(isImage: Boolean) = SummaryException(if (isImage) "No text could be read from this image." else "No text could be read from this file.")
+        val tooLongToEnhance get() = SummaryException("The note is too long for this model. Choose a larger model or a cloud model.")
+        val noteChanged get() = SummaryException("The note was changed while it was being enhanced, so your text was kept.")
         val emptyResponse get() = SummaryException("The model returned no response.")
+        val truncated get() = SummaryException("The model stopped before the note was finished, so your text was kept. Try a model with a longer output.")
     }
 }
 
@@ -71,22 +76,32 @@ object SummaryLogic {
     }
 
     /** Wirft [SummaryException], wenn nichts zum Zusammenfassen da ist. */
-    fun request(note: Note, transcriptionLanguage: String, myName: String? = null, template: SummaryTemplate = SummaryTemplate.GENERAL): Request {
+    fun request(
+        note: Note, transcriptionLanguage: String, myName: String? = null, template: SummaryTemplate = SummaryTemplate.GENERAL,
+        /** Die Buckets, aus denen das Modell einen vorschlagen darf (`InboxLogic.candidates`). */
+        buckets: List<de.letzgo.porridge.model.NoteFolder> = emptyList(),
+    ): Request {
         // Ohne Zeitstempel: Das Modell braucht sie nicht, und sie nähmen ihm einen guten Teil seines Platzes.
         val transcript = note.transcriptText(timestamps = false)
         val title = note.title.trim()
         val own = ((if (note.titleIsCustom && title.isNotEmpty()) "$title\n\n" else "") + note.text).trim()
         val hasTranscript = transcript.isNotBlank()
         val page = note.pageText.orEmpty().trim()
-        val hasArticle = note.isLink && page.isNotEmpty()
-        if (!hasTranscript && !hasArticle && own.isEmpty()) throw if (note.isRecording) SummaryException.emptyTranscript else SummaryException.emptyNote
+        // Eine Seite, oder der aus geteilten Dateien gelesene Text.
+        val hasArticle = (note.isLink || note.attachmentsData != null) && page.isNotEmpty()
+        if (!hasTranscript && !hasArticle && own.isEmpty()) throw when {
+            // Ein Bild oder eine Datei hat keinen Notiztext: Es zählt, was daraus gelesen wurde.
+            note.isStored -> SummaryException.emptyFile(note.isImage)
+            note.isRecording -> SummaryException.emptyTranscript
+            else -> SummaryException.emptyNote
+        }
 
         val notesSuffix = if (own.isEmpty()) "" else "\n\nNotes the user wrote down:\n$own"
         val titlePrefix = if (title.isEmpty()) "" else "$title\n\n"
         val material = when {
             hasTranscript -> transcript + notesSuffix
             // Der Anfang eines Artikels sagt, worum es geht; mehr macht das Modell nur langsam.
-            hasArticle -> titlePrefix + page.take(MAX_ARTICLE_LENGTH) + notesSuffix
+            hasArticle -> titlePrefix + page.take(MAX_ARTICLE_LENGTH) + (note.text.trim().takeIf { it.isNotEmpty() }?.let { "\n\nNotes the user wrote down:\n$it" } ?: "")
             else -> titlePrefix + note.text
         }
         val language = SummaryLanguage.detect(material, transcriptionLanguage)
@@ -94,7 +109,7 @@ object SummaryLogic {
         val header = if (hasTranscript) meetingHeader(note, date, myName) else "Date: $date" + (note.url?.let { "\nSource: $it" } ?: "")
         return Request(
             header = header, material = material, language = language,
-            system = if (hasTranscript) systemPrompt(language, template) else notePrompt(language, note.isLink),
+            system = (if (hasTranscript) systemPrompt(language, template) else notePrompt(language, note.isSaved, isDocument = !note.isLink)) + InboxLogic.promptLine(buckets),
             noun = if (hasTranscript) "meeting" else "note", hasTranscript = hasTranscript,
             focus = if (hasTranscript) template.focus else "",
         )
@@ -160,9 +175,10 @@ object SummaryLogic {
     """.trimIndent() + if (focus.isEmpty()) "" else "\n$focus"
 
     /** Eine gespeicherte Seite wird nur zusammengefasst: eine Seite gibt nie Aufgaben (`isLink`). */
-    fun notePrompt(language: SummaryLanguage, isLink: Boolean = false): String {
+    fun notePrompt(language: SummaryLanguage, isLink: Boolean = false, isDocument: Boolean = false): String {
+        val what = if (isDocument) "something the user saved: a document, a screenshot or a text shared from another app. Text read from images may contain recognition mistakes" else "a web page the user saved"
         val intro = if (isLink) {
-            "You summarize a web page the user saved. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.\nOnly use what is on the page. Do not write tasks or to-dos: a page is read, not worked on."
+            "You summarize $what. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.\nOnly use what is on the page. Do not write tasks or to-dos: a page is read, not worked on."
         } else {
             "You summarize a personal note. The note is written in ${language.name}. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.\nThe note may come from dictation and contain recognition mistakes; silently fix obvious ones. Only use what is in the note."
         }
@@ -205,6 +221,50 @@ object SummaryLogic {
         return lines.joinToString("\n").trim() to tags
     }
 
+    /** iOS: `SummaryService.enhancePrompt` — schreibt eine einfache Notiz um, statt sie zusammenzufassen. */
+    fun enhancePrompt(language: SummaryLanguage) = """
+        You improve a personal note. The note is written in ${language.name}. Write the improved note in ${language.name} only, even though these instructions are in English.
+        - Fix spelling, grammar and punctuation, and silently fix obvious dictation mistakes.
+        - Keep the meaning, every fact, name, number and date, and the author's voice. Do not summarize, leave nothing out and add nothing new.
+        - Give it structure: short paragraphs, "- " lists for enumerations, and "## " headings only when the note covers several topics.
+        - Write every concrete task (something the author has to do) as its own line "- [ ] <task>". Keep existing "- [ ]" and "- [x]" lines.
+        - Use only these marks: "## ", "- ", "1. ", "- [ ] ", "- [x] ", "**bold**". No introduction, no comment, no code block.
+
+        After the note, as the very last line:
+        TAGS: <3 to 5 short keywords in ${language.name}, separated by commas, without # signs>
+    """.trimIndent()
+
+    /** Manche Modelle packen die Antwort trotz Bitte in ```. */
+    fun withoutCodeFence(text: String): String {
+        val lines = text.trim().split("\n").toMutableList()
+        if (lines.firstOrNull()?.startsWith("```") == true) lines.removeAt(0)
+        if (lines.lastOrNull()?.trim() == "```") lines.removeAt(lines.size - 1)
+        return lines.joinToString("\n")
+    }
+
+    /**
+     * iOS: `SummaryService.enhance` — legt den verbesserten Text auf den aktuellen Stand der Notiz. Wurde inzwischen
+     * getippt ([original] passt nicht mehr), gewinnt der eigene Text: `noteChanged`.
+     */
+    fun applyEnhance(current: Note, original: String, raw: String, now: Long = System.currentTimeMillis()): Note {
+        val (body, tags) = splitTags(withoutCodeFence(raw))
+        val enhanced = withListMarks(body).trim()
+        if (enhanced.isEmpty()) throw SummaryException.emptyResponse
+        // Das Ergebnis ersetzt die Notiz: Eines, das mittendrin endet, kostete den Rest.
+        if (isCutShort(enhanced, original.trim())) throw SummaryException.truncated
+        if (current.text != original) throw SummaryException.noteChanged
+        return current.copy(text = enhanced, labels = if (current.labels.isEmpty()) tags else current.labels, updatedAt = now)
+    }
+
+    /** iOS: `SummaryService.enhanceTokenLimit` — Platz für die ganze Notiz samt Zeichen; ein Token sind etwa drei Zeichen. */
+    fun enhanceTokenLimit(text: String): Int = minOf(8_000, text.length / 2 + 600)
+
+    /**
+     * iOS: `SummaryService.isCutShort` — eine verbesserte Notiz behält jede Angabe und ist etwa so lang wie die Notiz.
+     * Viel kürzer: Dem Modell ging der Platz aus, oder es hat zusammengefasst. Kurze Notizen bleiben außen vor.
+     */
+    fun isCutShort(enhanced: String, original: String): Boolean = original.length >= 400 && enhanced.length * 2 < original.length
+
     /** Nimmt „TITLE: …“ von der ersten Zeile. */
     fun splitTitle(text: String): Pair<String?, String> {
         val lines = text.trim().split("\n").toMutableList()
@@ -230,11 +290,17 @@ object SummaryLogic {
         labels = if (current.labels.isEmpty()) summarized.labels else current.labels,
         summaryModel = summarized.summaryModel,
         summarizedAt = summarized.summarizedAt,
+        // Nur ein Vorschlag, und nur solange die Notiz noch im Eingang liegt.
+        suggestedProjectIDs = if (current.isInInbox && summarized.suggestedProjectIDs.isNotEmpty()) summarized.suggestedProjectIDs else current.suggestedProjectIDs,
         updatedAt = now,
     )
 
-    fun apply(note: Note, raw: String, model: String, hasTranscript: Boolean, now: Long = System.currentTimeMillis()): Note {
-        var updated = note
+    fun apply(
+        note: Note, answer: String, model: String, hasTranscript: Boolean, now: Long = System.currentTimeMillis(),
+        buckets: List<de.letzgo.porridge.model.NoteFolder> = emptyList(),
+    ): Note {
+        val (raw, bucket) = InboxLogic.splitProject(answer, buckets)
+        var updated = if (bucket != null && note.isInInbox) note.copy(suggestedProjectIDs = listOf(bucket.id)) else note
         val body = if (hasTranscript) {
             val (newTitle, text) = splitTitle(raw)
             if (newTitle != null && !note.titleIsCustom) updated = updated.copy(title = newTitle)

@@ -21,8 +21,22 @@ extension XCUIApplication {
     /// The body of the open note: one native text view.
     var bodyEditor: XCUIElement { textViews.matching(NSPredicate(format: "label != 'Title'")).firstMatch }
 
+    /// Presses a button of the alert that is up. With the on-screen keyboard the alert is still moving when it is
+    /// first pressed, and the press can miss: it is pressed again while the alert stays.
+    func confirmAlert(_ button: String) {
+        let alert = alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), "alert missing")
+        for _ in 0..<3 where alert.exists {
+            alert.buttons[button].tap()
+            if alert.waitForNonExistence(timeout: 3) { return }
+        }
+        XCTAssertFalse(alert.exists, "alert did not close")
+    }
+
     /// One of the options behind the plus at the bottom right.
     func create(_ option: String) {
+        // An alert that is still going away has a "Create" of its own.
+        _ = alerts.firstMatch.waitForNonExistence(timeout: 5)
         let plus = buttons["Create"]
         XCTAssertTrue(plus.waitForExistence(timeout: 30), "plus button missing")
         plus.tap()
@@ -83,14 +97,13 @@ extension XCUIApplication {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
     }
 
-    /// A row of the search card. The full-width list stays in the hierarchy behind the card and even counts as
-    /// hittable there, so the card's list is told apart by its inset.
+    /// A row of the search page. The list the search was opened from can stay in the hierarchy behind the page, so
+    /// the row that can be pressed is the one.
     func searchResult(_ title: String, timeout: TimeInterval = 10) -> XCUIElement? {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            for list in collectionViews.allElementsBoundByIndex where list.frame.minX > 0 {
-                let row = list.staticTexts[title]
-                if row.exists { return row }
+            for row in staticTexts.matching(identifier: title).allElementsBoundByIndex where row.exists && row.isHittable {
+                return row
             }
             usleep(200_000)
         } while Date() < deadline

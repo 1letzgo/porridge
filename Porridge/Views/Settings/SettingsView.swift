@@ -7,6 +7,21 @@ import AppKit
 import Carbon.HIToolbox
 #endif
 
+/// The areas the settings are split into; one shows at a time, chosen with the pills on top.
+enum SettingsArea: String, CaseIterable {
+    case general, recording, ai, sync, about
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .general: "General"
+        case .recording: "Recording"
+        case .ai: "AI"
+        case .sync: "Sync"
+        case .about: "About"
+        }
+    }
+}
+
 struct SettingsView: View {
     @Environment(ModelManager.self) private var models
     @Environment(\.modelContext) private var context
@@ -19,6 +34,8 @@ struct SettingsView: View {
     @AppStorage(AppSettings.recordsNewNotesKey) private var recordsNewNotes = false
     @AppStorage(AppSettings.voiceRecognitionKey) private var voiceRecognition = true
     @State private var showTemplates = false
+    /// The area of the settings that shows; kept while the app runs, so coming back from a subpage finds it again.
+    @SceneStorage("settingsArea") private var area = SettingsArea.general
     @AppStorage(AppSettings.myNameKey) private var myName = ""
 
 
@@ -39,6 +56,7 @@ struct SettingsView: View {
     #endif
     @State private var modelError: String?
     @State private var showPlaudLogin = false
+    @State private var modelToRemove: SummaryModel?
     @State private var plaudSignedIn = PlaudAccount.isSignedIn
 
     /// A downloaded model that can be deleted.
@@ -94,10 +112,21 @@ struct SettingsView: View {
 
     private var page: some View {
         VStack(spacing: 0) {
+            // The areas of the settings as pills, like the kinds in a bucket: one area shows at a time.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(SettingsArea.allCases, id: \.self) { areaPill($0) }
+                }
+                .padding(.horizontal, 20)
+            }
+            .padding(.top, settingsTopPadding)
+            .padding(.bottom, Look.headerGap)
+            .frame(maxWidth: 700)
+            .frame(maxWidth: .infinity)
             ScrollView {
                 VStack(spacing: 32) { cards }
                     .padding(.horizontal, 20)
-                    .padding(.top, settingsTopPadding)
+                    .padding(.top, 8)
                     .padding(.bottom, 32)
                     .frame(maxWidth: 700)
                     .frame(maxWidth: .infinity)
@@ -165,24 +194,46 @@ struct SettingsView: View {
             refreshSummaryModels()
         }
         .onChange(of: models.asr) { reportFailure(in: [models.asr]) }
+        .onChange(of: models.spareParakeet) { reportFailure(in: [models.spareParakeet]) }
         .onChange(of: models.diarizer) { reportFailure(in: [models.diarizer]) }
         .onChange(of: language) { Task { await models.refreshASR() } }
         .onChange(of: engine) { Task { await models.refreshASR() } }
     }
 
-    /// Order: what happens to a recording (transcription, speakers, summary), then imports, sync and about. Transcription always runs on the device.
+    /// The cards of the chosen area. Transcription always runs on the device.
     @ViewBuilder
     private var cards: some View {
-        #if os(macOS)
-        dictationCard
-        #endif
-        youCard
-        transcriptionCard
-        speakersCard
-        summaryCard
-        plaudCard
-        SyncCard()
-        aboutCard
+        switch area {
+        case .general:
+            youCard
+            plaudCard
+            #if os(macOS)
+            dictationCard
+            #endif
+        case .recording:
+            transcriptionCard
+            speakersCard
+        case .ai:
+            summaryCard
+        case .sync:
+            SyncCard()
+        case .about:
+            aboutCard
+        }
+    }
+
+    private func areaPill(_ option: SettingsArea) -> some View {
+        let isOn = area == option
+        return Button { withAnimation(.snappy) { area = option } } label: {
+            Text(option.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isOn ? Color.brandOnNavy : .primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isOn ? Color.brandNavy : Color.brandNavy.opacity(0.1), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
 
@@ -202,23 +253,35 @@ struct SettingsView: View {
 
     private var transcriptionCard: some View {
         SettingsCard(title: "Transcription") {
+            // Built like the AI card: the default on top, then the models on this device.
             if SpeechEngine.available.count > 1 {
-                TabSwitcher(selection: $engine, options: SpeechEngine.available.map { (value: $0, title: $0.shortLabel) })
-                    .padding(.bottom, 2)
+                MenuRow(
+                    title: "Default Model",
+                    selection: $engine,
+                    options: SpeechEngine.available.map { (value: $0, title: $0.shortLabel) }
+                )
+            } else {
+                ValueRow(title: "Default Model", value: engine.shortLabel)
             }
+            CardDivider()
 
-            switch AppSettings.speechEngine {
-            case .apple:
-                ModelRow(title: "Apple Speech", subtitle: "Built into the system · language pack only", state: models.asr) {
-                    Task { try? await models.ensureLocalASR() }
-                }
-            case .parakeet:
+            if SpeechEngine.available.contains(.apple) {
+                // Not the default: the system has it, its language pack loads once it is chosen.
                 ModelRow(
-                    title: "Parakeet TDT v3", subtitle: "Most accurate · 25 languages · approx. 480 MB",
-                    state: models.asr, onDelete: { pendingDeletion = .speech },
-                    onCancel: { Task { await models.deleteASR() } }
+                    title: "Apple Speech", subtitle: "On this device · built into the system",
+                    state: engine == .apple ? models.asr : .installed
                 ) {
                     Task { try? await models.ensureLocalASR() }
+                }
+            }
+            ModelRow(
+                title: "Parakeet TDT v3", subtitle: "On this device · 25 languages · approx. 480 MB",
+                state: engine == .parakeet ? models.asr : models.spareParakeet,
+                onDelete: { pendingDeletion = .speech },
+                onCancel: { Task { await models.deleteASR() } }
+            ) {
+                Task {
+                    if engine == .parakeet { try? await models.ensureLocalASR() } else { await models.downloadSpareParakeet() }
                 }
             }
             CardDivider()
@@ -268,6 +331,7 @@ struct SettingsView: View {
                 Button(plaudSignedIn ? "Sign Out" : "Sign In", role: plaudSignedIn ? .destructive : nil) {
                     if plaudSignedIn {
                         PlaudAccount.clear()
+                        Task { await PlaudLoginView.clearSession() }
                         plaudChanged()
                     } else {
                         showPlaudLogin = true
@@ -285,13 +349,6 @@ struct SettingsView: View {
 
     private var summaryCard: some View {
         SettingsCard(title: "AI Summary") {
-            HStack {
-                Text("Custom Templates").font(.body)
-                Spacer(minLength: 12)
-                Button("Edit") { showTemplates = true }.buttonStyle(PillButtonStyle())
-            }
-            CardDivider()
-
             if SummaryModel.available.isEmpty {
                 ValueRow(title: "Default Model", value: "None added")
             } else {
@@ -303,6 +360,13 @@ struct SettingsView: View {
                     }),
                     options: SummaryModel.available.map { (value: $0, title: $0.name) }
                 )
+            }
+            CardDivider()
+
+            HStack {
+                Text("Custom Templates").font(.body)
+                Spacer(minLength: 12)
+                Button("Edit") { showTemplates = true }.buttonStyle(PillButtonStyle())
             }
             CardDivider()
 
@@ -326,11 +390,20 @@ struct SettingsView: View {
             ForEach(externalModels) { model in
                 ModelRow(
                     title: model.name, subtitle: model.place, state: .installed,
-                    onDelete: {
+                    onDelete: { modelToRemove = model }
+                ) {}
+                .confirmationDialog(
+                    "Remove \(model.name)?",
+                    isPresented: .init(get: { modelToRemove?.id == model.id }, set: { if !$0 { modelToRemove = nil } }),
+                    titleVisibility: .visible
+                ) {
+                    Button("Remove", role: .destructive) {
                         SummaryModel.remove(model)
                         refreshSummaryModels()
                     }
-                ) {}
+                } message: {
+                    Text("You can add it again at any time.")
+                }
             }
             CardDivider()
             HStack {
@@ -444,6 +517,7 @@ struct SettingsView: View {
 /// Where the notes go: iCloud between Apple devices, a Nextcloud for every platform, or nowhere. Switching
 /// takes effect at the next launch.
 private struct SyncCard: View {
+    @State private var confirmDisconnect = false
     @AppStorage(SyncMode.key) private var mode: SyncMode = .iCloud
     @Environment(\.openURL) private var openURL
     @State private var sync = NextcloudSync.shared
@@ -482,7 +556,12 @@ private struct SyncCard: View {
                         Spacer()
                         Button(sync.isSyncing ? "Syncing…" : "Sync Now") { Task { await sync.sync() } }
                             .disabled(sync.isSyncing || SyncMode.active != .nextcloud)
-                        Button("Disconnect", role: .destructive) { sync.disconnect() }
+                        Button("Disconnect", role: .destructive) { confirmDisconnect = true }
+                            .confirmationDialog("Disconnect from Nextcloud?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
+                                Button("Disconnect", role: .destructive) { sync.disconnect() }
+                            } message: {
+                                Text("Your notes stay on this device and on the server. They are no longer kept in sync.")
+                            }
                     }
                     .buttonStyle(PillButtonStyle())
                 } else {
@@ -660,12 +739,13 @@ struct ModelRow: View {
             switch state {
             case .notInstalled:
                 Button("Download", action: action).buttonStyle(PillButtonStyle())
-            case .installed, .ready:
-                // Downloaded; the model is loaded into memory when it is first used.
+            case .installed, .ready, .loading:
+                // On the device. Whether it is in memory yet (loading, ready) is nothing to show here; it is not
+                // deleted while it loads.
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title3)
                     .foregroundStyle(Color.brandSkyText)
-                if let onDelete {
+                if let onDelete, state != .loading {
                     Button(action: onDelete) {
                         Image(systemName: "trash").foregroundStyle(Color.brandDangerText)
                     }
@@ -676,8 +756,6 @@ struct ModelRow: View {
                 ProgressView(value: progress)
                     .tint(Color.brandSky)
                     .frame(width: 80)
-            case .loading:
-                ProgressView()
             case .failed:
                 Button("Retry", action: action).buttonStyle(PillButtonStyle(fill: Color.red))
             }
@@ -854,6 +932,8 @@ private struct ShortcutRecorderButton: View {
 
     private func start() {
         recording = true
+        // The current shortcut is pressed here to choose it again, not to dictate.
+        DictationController.shared.suspendShortcut()
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
             let keyCode = Int(event.keyCode)
             guard let label = DictationSettings.modifierKeyLabels[keyCode],
@@ -870,7 +950,8 @@ private struct ShortcutRecorderButton: View {
             }
             let modifiers = DictationSettings.carbonModifiers(event.modifierFlags.intersection(.deviceIndependentFlagsMask))
             // Plain typing keys would stop working everywhere: ask for a modifier (function keys may stand alone).
-            guard modifiers != 0 || DictationSettings.isFunctionKey(Int(event.keyCode)) else {
+            // Shift alone is no modifier for this: ⇧A is the capital letter.
+            guard modifiers & ~UInt32(shiftKey) != 0 || DictationSettings.isFunctionKey(Int(event.keyCode)) else {
                 NSSound.beep()
                 return nil
             }
@@ -885,10 +966,11 @@ private struct ShortcutRecorderButton: View {
         defaults.set(modifiers, forKey: DictationSettings.modifiersKey)
         defaults.set(label, forKey: DictationSettings.keyLabelKey)
         stop()
-        DictationController.shared.reloadShortcut()
     }
 
     private func stop() {
+        // Back on, with the old shortcut or the new one.
+        if recording { DictationController.shared.reloadShortcut() }
         recording = false
         if let monitor { NSEvent.removeMonitor(monitor) }
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }

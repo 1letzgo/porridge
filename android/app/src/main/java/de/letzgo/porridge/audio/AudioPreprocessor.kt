@@ -1,12 +1,37 @@
 package de.letzgo.porridge.audio
 
 import de.letzgo.porridge.logic.ChannelEnergy
+import java.io.BufferedOutputStream
+import java.io.Closeable
 import java.io.File
+import java.io.RandomAccessFile
+import java.nio.ByteOrder
+import java.nio.ShortBuffer
+import java.nio.channels.FileChannel
 
-/** iOS: `PreparedAudio` — die 16-kHz-Mono-Spur für Erkennung und Diarisierung, als 16-Bit-Samples im Speicher. */
-class PreparedAudio(val pcm: ShortArray, val duration: Double, val channelEnergy: ChannelEnergy?) {
-    /** Alle Samples als Float (für die Diarisierung). */
-    fun floats(): FloatArray = FloatArray(pcm.size) { pcm[it] / 32768f }
+/**
+ * iOS: `PreparedAudio` — die 16-kHz-Mono-Spur für Erkennung und Diarisierung. Wie auf iOS (`monoURL`) liegt sie in einer
+ * Datei und nicht im Speicher der App: Zwei Stunden sind 230 MB, mehr als Android einer App an Speicher gibt. Wer sie
+ * hat, schließt sie ([close] löscht die Datei).
+ */
+class PreparedAudio internal constructor(private val file: File, val size: Int, val duration: Double, val channelEnergy: ChannelEnergy?) : Closeable {
+    private val access = RandomAccessFile(file, "r")
+    private val samples: ShortBuffer =
+        if (size == 0) ShortBuffer.allocate(0)
+        else access.channel.map(FileChannel.MapMode.READ_ONLY, 0, size * 2L).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+
+    operator fun get(index: Int): Float = samples.get(index) / 32768f
+
+    /** Ein Abschnitt als Float, für das Sprachmodell. */
+    fun slice(from: Int, to: Int): FloatArray = FloatArray(to - from) { samples.get(from + it) / 32768f }
+
+    /** Alle Samples als Float (die Diarisierung will sie am Stück). */
+    fun floats(): FloatArray = slice(0, size)
+
+    override fun close() {
+        runCatching { access.close() }
+        file.delete()
+    }
 }
 
 /** iOS: `AudioPreprocessor` — liest die Aufnahme einmal: Mono-Mix auf 16 kHz und, bei getrenntem Stereo, die Energie beider Kanäle. */
@@ -17,7 +42,9 @@ object AudioPreprocessor {
     fun prepare(source: File, measureChannels: Boolean): PreparedAudio {
         var resampler: Resampler? = null
         var sampleRate = 0
-        var out = ShortArray(TARGET_RATE * 60)
+        // Reste eines beendeten Prozesses; eine laufende Vorbereitung ist nie so alt.
+        File(System.getProperty("java.io.tmpdir") ?: ".").listFiles { f -> f.name.startsWith(TEMP_PREFIX) && System.currentTimeMillis() - f.lastModified() > 24 * 3_600_000L }?.forEach { it.delete() }
+        val file = File.createTempFile(TEMP_PREFIX, ".pcm")
         var outCount = 0
         var totalFrames = 0L
         val left = FloatList()
@@ -28,6 +55,8 @@ object AudioPreprocessor {
         var frameLength = 1
         var measure = false
 
+        try {
+        BufferedOutputStream(file.outputStream(), 64 * 1024).use { out ->
         AudioDecoder.decode(source, onInfo = { info ->
             if (resampler == null || info.sampleRate != sampleRate) {
                 sampleRate = info.sampleRate
@@ -55,19 +84,32 @@ object AudioPreprocessor {
                 }
             }
             val resampled = resampler!!.process(mono)
-            if (outCount + resampled.size > out.size) out = out.copyOf(maxOf(out.size * 2, outCount + resampled.size))
-            for (s in resampled) out[outCount++] = (s.coerceIn(-1f, 1f) * 32767f).toInt().toShort()
+            val bytes = ByteArray(resampled.size * 2)
+            for ((i, s) in resampled.withIndex()) {
+                val value = (s.coerceIn(-1f, 1f) * 32767f).toInt()
+                bytes[i * 2] = value.toByte()
+                bytes[i * 2 + 1] = (value shr 8).toByte()
+            }
+            out.write(bytes)
+            outCount += resampled.size
+        }
         }
         if (measure && accCount > 0) {
             left.add(accLeft / accCount); right.add(accRight / accCount)
         }
         if (sampleRate == 0) error("This audio format is not supported.")
         return PreparedAudio(
-            pcm = out.copyOf(outCount),
+            file, outCount,
             duration = totalFrames.toDouble() / sampleRate,
             channelEnergy = if (measure) ChannelEnergy(frameLength.toDouble() / sampleRate, left.toArray(), right.toArray()) else null,
         )
+        } catch (e: Throwable) {
+            file.delete()
+            throw e
+        }
     }
+
+    private const val TEMP_PREFIX = "porridge-prepared-"
 }
 
 /** Wachsende Float-Liste ohne Boxing. */

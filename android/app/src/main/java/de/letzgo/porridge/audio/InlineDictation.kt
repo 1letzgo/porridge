@@ -50,7 +50,7 @@ class InlineDictation {
         if (fileName != null) {
             runCatching {
                 val prepared = withContext(Dispatchers.IO) { AudioPreprocessor.prepare(AudioStore.file(fileName), false) }
-                SpeechModel.transcribe(prepared.pcm, Prefs.language).joinToString(" ") { it.text }.trim()
+                prepared.use { SpeechModel.transcribe(it, Prefs.language) }.joinToString(" ") { it.text }.trim()
             }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { text = it }
         }
         _phase.value = Phase.IDLE

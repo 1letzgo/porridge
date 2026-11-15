@@ -1,13 +1,17 @@
 import SwiftData
 import SwiftUI
 
-/// iOS wakes the app here when model downloads ended while it was not running.
+/// iOS wakes the app here when model downloads or uploads of recordings ended while it was not running.
 final class PorridgeAppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
         completionHandler: @escaping () -> Void
     ) {
-        ModelBackgroundDownloads.shared.backgroundCompletion = completionHandler
+        // Each session tells iOS itself when it is done with its events; the wrong one would never call back.
+        switch identifier {
+        case RecordingUploads.sessionIdentifier: RecordingUploads.shared.backgroundCompletion = completionHandler
+        default: ModelBackgroundDownloads.shared.backgroundCompletion = completionHandler
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 package de.letzgo.porridge.data
 
+import java.io.File
 import android.content.Context
 import android.net.Uri
 import de.letzgo.porridge.model.Note
@@ -39,7 +40,7 @@ object Backup {
                 zip.putNextEntry(ZipEntry("porridge.json"))
                 zip.write(PorridgeJson.encodeToString(Contents.serializer(), contents).toByteArray())
                 zip.closeEntry()
-                val files = notes.flatMap { listOfNotNull(it.audioFileName, it.pendingAudioFileName) + it.audioFileNames }.toSet()
+                val files = notes.flatMap { it.storedFileNames }.toSet()
                 for (name in files) {
                     val file = AudioStore.file(name)
                     if (!file.exists()) continue
@@ -68,7 +69,16 @@ object Backup {
                             // Nur einfache Dateinamen (kein Pfad aus dem Archiv).
                             if (name.isNotEmpty() && '/' !in name && !name.startsWith(".")) {
                                 val file = AudioStore.file(name)
-                                if (!file.exists()) { file.outputStream().use { zip.copyTo(it) }; recordings++ }
+                                if (!file.exists()) {
+                                    // Erst daneben: Bricht das Entpacken ab, bleibt keine halbe Aufnahme, die als ganze gilt.
+                                    val temp = File(file.parentFile, ".${file.name}.part")
+                                    try {
+                                        temp.outputStream().use { zip.copyTo(it) }
+                                        if (temp.renameTo(file)) recordings++
+                                    } finally {
+                                        temp.delete()
+                                    }
+                                }
                             }
                         }
                     }

@@ -27,6 +27,9 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/Theme.Porridge"
         android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:largeHeap="true"
         android:supportsRtl="true">
         <activity
@@ -39,11 +42,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Links teilen (iOS: Share-Extension): die Seite wird als Notiz gespeichert. -->
+            <!-- Teilen (iOS: Share-Extension): Links, Text, Bilder, PDFs, Dateien und Audio landen als Notizen im Eingang. -->
             <intent-filter android:label="Save to Porridge">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="application/*" />
+            </intent-filter>
+            <intent-filter android:label="Save to Porridge">
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/*" />
             </intent-filter>
         </activity>
 

@@ -194,20 +194,35 @@ extension View {
 /// Rounded square in front of a list row (the place of the checkbox in Things): its color says what the entry is.
 struct ThingsRowIcon: View {
     /// Where the separator starts: row padding + icon + spacing.
-    static let inset: CGFloat = 22 + 12
+    static let inset: CGFloat = 44 + 12
 
     let systemImage: String
     var tint: Color = .brandSky
-    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 22
+    /// A pinned entry wears a pin on the icon's border, top right.
+    var isPinned = false
+    /// As high as the two lines of a row: title and what is under it.
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 44
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.caption2.weight(.bold))
+            .font(.body.weight(.semibold))
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .foregroundStyle(tint.readable)
-            .frame(width: min(size, 32), height: min(size, 32))
-            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(tint.opacity(0.55), lineWidth: 1.5))
+            .frame(width: min(size, 56), height: min(size, 56))
+            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(tint.opacity(0.55), lineWidth: 1.5))
+            .overlay(alignment: .topTrailing) {
+                if isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color.brandOnNavy)
+                        .frame(width: 18, height: 18)
+                        .background(Color.brandNavy, in: Circle())
+                        .overlay(Circle().strokeBorder(Color.appBackground, lineWidth: 1.5))
+                        .offset(x: 6, y: -6)
+                        .accessibilityLabel("Pinned")
+                }
+            }
     }
 }
 
@@ -585,21 +600,6 @@ extension View {
 // MARK: - Keyboard
 
 extension View {
-    /// A "Done" button above the keyboard. `action` takes the focus away from the field (`focused = false`),
-    /// which is what closes the keyboard.
-    func keyboardDoneButton(_ action: @escaping () -> Void) -> some View {
-        #if os(iOS)
-        toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done", action: action)
-                    .fontWeight(.semibold)
-            }
-        }
-        #else
-        self
-        #endif
-    }
 
     /// A "Done" pill in glass above the keyboard, at the right. Content scrolls underneath it. (iOS)
     func keyboardDoneBar(isShown: Bool, action: @escaping () -> Void) -> some View {
@@ -621,14 +621,6 @@ extension View {
         #endif
     }
 
-    /// Dragging a scroll view closes the keyboard (iOS).
-    func dismissKeyboardOnScroll() -> some View {
-        #if os(iOS)
-        scrollDismissesKeyboard(.interactively)
-        #else
-        self
-        #endif
-    }
 }
 
 /// Capsule of glass for the bars above the keyboard.
@@ -658,3 +650,33 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     }
 }
 #endif
+
+/// Unfolds in place what a list leaves out.
+struct MoreRow: View {
+    let hidden: Int
+    let isExpanded: Bool
+    let tint: Color
+    var toggle: () -> Void
+
+    var body: some View {
+        Button {
+            withAnimation(.snappy, toggle)
+        } label: {
+            HStack(spacing: 4) {
+                Text(isExpanded ? "Less" : "More")
+                if !isExpanded {
+                    Text("\(hidden)").foregroundStyle(.secondary)
+                }
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.bold))
+                Spacer(minLength: 0)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(tint.readable)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .cardListRow()
+        .listRowSeparator(.hidden, edges: .bottom)
+    }
+}

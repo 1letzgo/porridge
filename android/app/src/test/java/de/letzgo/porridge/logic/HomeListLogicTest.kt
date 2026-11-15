@@ -15,44 +15,25 @@ class HomeListLogicTest {
     private val archived = NoteFolder(id = "ARCHIVED", name = "Archived", archivedAt = 5)
     private val folders = listOf(active, archived)
 
-    @Test fun homeFilterKeepsOnlyItsKind() {
-        val notes = listOf(Note(id = "plain"), Note(id = "meeting", audioFileName = "a.m4a"), Note(id = "link", url = "https://example.com"))
-        fun shown(filter: HomeListLogic.HomeFilter) = notes.filter(filter::matches).map { it.id }
-        assertEquals(listOf("plain", "meeting", "link"), shown(HomeListLogic.HomeFilter.ALL))
-        assertEquals(listOf("meeting"), shown(HomeListLogic.HomeFilter.MEETINGS))
-        assertEquals(listOf("plain"), shown(HomeListLogic.HomeFilter.NOTES))
-        assertEquals(listOf("link"), shown(HomeListLogic.HomeFilter.LINKS))
-        assertEquals(emptyList<String>(), shown(HomeListLogic.HomeFilter.PROJECTS))
-    }
-
-    @Test fun homeFilterShowsProjectsOnlyWhereItSays() {
-        val shown = HomeListLogic.HomeFilter.entries.filter { it.showsProjects }
-        assertEquals(listOf(HomeListLogic.HomeFilter.ALL, HomeListLogic.HomeFilter.PROJECTS), shown)
-    }
-
-    @Test fun homeNotesHideDeletedArchivedAndThoseInProjects() {
+    @Test fun everyEntryHasOneKind() {
         val notes = listOf(
-            Note(id = "plain", updatedAt = 1),
-            Note(id = "meeting", audioFileName = "a.m4a", updatedAt = 3),
-            Note(id = "link", url = "https://example.com", updatedAt = 2),
-            Note(id = "deleted", deletedAt = 1),
-            Note(id = "archived", archivedAt = 1),
-            Note(id = "inProject", projectIDs = listOf("ACTIVE")),
-            Note(id = "inArchivedOnly", projectIDs = listOf("ARCHIVED")),
+            Note(id = "plain"), Note(id = "meeting", audioFileName = "a.m4a"), Note(id = "link", url = "https://example.com"),
+            Note(id = "file", sourceRaw = "share", attachmentsData = """[{"id":"A","fileName":"a.pdf","name":"Invoice.pdf","kindRaw":"pdf"}]"""),
+            Note(id = "image", sourceRaw = "share", attachmentsData = """[{"id":"B","fileName":"b.png","name":"Screenshot.png","kindRaw":"image"}]"""),
+            // Eine Notiz mit angehängter Datei bleibt eine Notiz.
+            Note(id = "attached", sourceRaw = "note", attachmentsData = "[]"),
         )
-        assertEquals(listOf("meeting", "link", "plain"), HomeListLogic.homeNotes(notes, folders).map { it.id })
+        fun shown(kind: ProjectsLogic.Kind) = notes.filter { ProjectsLogic.kind(it) == kind }.map { it.id }
+        assertEquals(listOf("meeting"), shown(ProjectsLogic.Kind.MEETING))
+        assertEquals(listOf("plain", "attached"), shown(ProjectsLogic.Kind.NOTE))
+        assertEquals(listOf("link"), shown(ProjectsLogic.Kind.LINK))
+        assertEquals(listOf("file"), shown(ProjectsLogic.Kind.FILE))
+        assertEquals(listOf("image"), shown(ProjectsLogic.Kind.IMAGE))
     }
 
-    @Test fun staleProjectIDsDoNotHide() {
-        val note = Note(id = "N", projectIDs = listOf("GONE"))
-        assertEquals(listOf("N"), HomeListLogic.homeNotes(listOf(note), folders).map { it.id })
-        val both = Note(id = "B", projectIDs = listOf("GONE", "ACTIVE"))
-        assertEquals(emptyList<String>(), HomeListLogic.homeNotes(listOf(both), folders).map { it.id })
-    }
-
-            @Test fun archivingANoteTakesItOffTheHomeList() {
+    @Test fun archivingANoteTakesItOffTheHomeList() {
         val note = Note(id = "N", archivedAt = 1)
-        assertEquals(emptyList<Note>(), HomeListLogic.homeNotes(listOf(note), folders))
+        assertEquals(emptyList<Note>(), InboxLogic.notes(listOf(note)))
         assertEquals(emptyList<Note>(), ProjectsLogic.elements("ACTIVE", listOf(note.copy(projectIDs = listOf("ACTIVE")))))
     }
 
@@ -61,7 +42,7 @@ class HomeListLogicTest {
         val only = Note(id = "only", projectIDs = listOf("ARCHIVED"))
         val notes = listOf(shared, only)
         // Weder auf der Startseite noch im Archiv; sie bleiben in ihren Projekten.
-        assertEquals(emptyList<Note>(), HomeListLogic.homeNotes(notes, folders))
+        assertEquals(emptyList<Note>(), InboxLogic.notes(notes))
         assertEquals(emptyList<Note>(), HomeListLogic.archivedNotes(notes))
         assertEquals(listOf("shared"), ProjectsLogic.elements("ACTIVE", notes).map { it.id })
         assertEquals(setOf("shared", "only"), ProjectsLogic.elements("ARCHIVED", notes).map { it.id }.toSet())
@@ -119,7 +100,7 @@ class HomeListLogicTest {
         assertEquals(emptyList<Note>(), HomeListLogic.archivedNotes(listOf(trashed)))
         val restored = trashed.copy(deletedAt = null)
         assertEquals(listOf("N"), HomeListLogic.archivedNotes(listOf(restored)).map { it.id })
-        assertEquals(emptyList<Note>(), HomeListLogic.homeNotes(listOf(restored), folders))
+        assertEquals(emptyList<Note>(), InboxLogic.notes(listOf(restored)))
     }
 
         @Test fun searchFindsArchivedNotesByKindAndTag() {
@@ -161,16 +142,6 @@ class HomeListLogicTest {
         val older = PorridgeJson.parseToJsonElement("""{"id":"F","name":"A","createdAt":1,"updatedAt":2}""").jsonObject
         assertEquals(SyncMerge.hash(older), SyncMerge.hash(record))
         assertEquals(null, PorridgeJson.decodeFromJsonElement(NoteFolder.serializer(), older).archivedAt)
-    }
-
-    @Test fun elementLimitSharesFromTheTopDown() {
-        assertEquals(HomeListLogic.ElementLimits(2, 4, 0), HomeListLogic.elementLimits(2, 4, showAll = false))
-        assertEquals(HomeListLogic.ElementLimits(2, 23, 7), HomeListLogic.elementLimits(2, 30, showAll = false))
-        assertEquals(HomeListLogic.ElementLimits(25, 0, 20), HomeListLogic.elementLimits(40, 5, showAll = false))
-    }
-
-    @Test fun elementLimitShowsAllWhenAskedAndStillCountsTheHidden() {
-        assertEquals(HomeListLogic.ElementLimits(2, 30, 7), HomeListLogic.elementLimits(2, 30, showAll = true))
     }
 
     @Test fun recordingNotesBecomeListItemsWithTheirTime() {

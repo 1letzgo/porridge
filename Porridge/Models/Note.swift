@@ -44,6 +44,16 @@ final class Note {
     var speakersData: Data?
     var segmentsData: Data?
 
+    // Everything that comes into the app is an intake: it has a channel, waits in the inbox and is filed into buckets.
+    /// The channel the note came in through (`NoteSource`); "" for notes from before there were channels.
+    var sourceRaw: String = ""
+    /// Files that belong to the note (shared images, PDFs, documents) as JSON of `[Attachment]`.
+    var attachmentsData: Data?
+    /// When the note was first put into a bucket. Whether it is in the inbox does not depend on it (`isInInbox`).
+    var filedAt: Date?
+    /// The buckets (`NoteFolder.id` as uppercase strings) suggested for the note; taken on or dropped by the user.
+    var suggestedProjectIDs: [String] = []
+
     init() {
         self.id = UUID()
     }
@@ -63,21 +73,54 @@ final class Note {
     }
 
     var speakers: [Speaker] {
-        get { speakersData.flatMap { try? JSONDecoder().decode([Speaker].self, from: $0) } ?? [] }
+        get { speakersData.map(TranscriptCache.speakers) ?? [] }
         set { speakersData = try? JSONEncoder().encode(newValue) }
     }
 
     var segments: [TranscriptSegment] {
-        get { segmentsData.flatMap { try? JSONDecoder().decode([TranscriptSegment].self, from: $0) } ?? [] }
+        get { segmentsData.map(TranscriptCache.segments) ?? [] }
         set { segmentsData = try? JSONEncoder().encode(newValue) }
+    }
+
+    var source: NoteSource {
+        get { NoteSource(rawValue: sourceRaw) ?? .unknown }
+        set { sourceRaw = newValue.rawValue }
+    }
+
+    var attachments: [Attachment] {
+        get { attachmentsData.flatMap { try? JSONDecoder().decode([Attachment].self, from: $0) } ?? [] }
+        set { attachmentsData = newValue.isEmpty ? nil : try? Attachment.encoder.encode(newValue) }
+    }
+
+    /// In the inbox: in no bucket. Everything stays there until it is put into one, and comes back when it is
+    /// taken out of its last one.
+    var isInInbox: Bool { projectIDs.isEmpty && deletedAt == nil && archivedAt == nil }
+
+    /// Every file of the note in the store: its recordings and its attachments.
+    var storedFileNames: [String] {
+        [audioFileName, pendingAudioFileName].compactMap { $0 } + audioFileNames + attachments.map(\.fileName)
     }
 
     var isLink: Bool { url != nil }
 
+    /// An image or a file shared into the app or picked in it: listed as that, not as a note. Images and files are
+    /// two kinds that are treated alike. A note that got a file attached stays a note.
+    var isStored: Bool { attachmentsData != nil && source == .share && url == nil && !isRecording }
+
+    /// An image: a photo or a screenshot.
+    var isImage: Bool { isStored && attachments.first?.kind == .image }
+
+    /// A file: a PDF or a document.
+    var isFile: Bool { isStored && !isImage }
+
+    /// Came in from outside (a link, a shared file or text): something to keep, not the user's own words. Such
+    /// notes never produce tasks.
+    var isSaved: Bool { url != nil || source == .share }
+
     /// Nothing in it at all: no title, text, recording, link or summary.
     var isEmptyLeftover: Bool {
         title.isEmpty && text.isEmpty && audioFileNames.isEmpty && pendingAudioFileName == nil
-            && audioFileName == nil && segmentsData == nil && url == nil && summary == nil
+            && audioFileName == nil && segmentsData == nil && url == nil && summary == nil && attachmentsData == nil
     }
 
     var linkURL: URL? { url.flatMap { URL(string: $0) } }
@@ -218,5 +261,43 @@ enum NoteText {
             line = line.trimmingCharacters(in: .whitespaces)
             return line.isEmpty ? nil : line
         }
+    }
+}
+
+/// The transcript of a note is stored as JSON and asked for all the time: by the list, and by the open note five
+/// times a second while its recording plays. Decoding an hour of meeting each time made the screen stutter; the last
+/// few decoded transcripts are kept, found by their bytes.
+enum TranscriptCache {
+    private final class Box<Value>: NSObject {
+        let value: Value
+        init(_ value: Value) { self.value = value }
+    }
+
+    private static let segmentCache: NSCache<NSData, Box<[TranscriptSegment]>> = {
+        let cache = NSCache<NSData, Box<[TranscriptSegment]>>()
+        cache.countLimit = 6
+        return cache
+    }()
+
+    private static let speakerCache: NSCache<NSData, Box<[Speaker]>> = {
+        let cache = NSCache<NSData, Box<[Speaker]>>()
+        cache.countLimit = 64
+        return cache
+    }()
+
+    static func segments(_ data: Data) -> [TranscriptSegment] {
+        let key = data as NSData
+        if let cached = segmentCache.object(forKey: key) { return cached.value }
+        let value = (try? JSONDecoder().decode([TranscriptSegment].self, from: data)) ?? []
+        segmentCache.setObject(Box(value), forKey: key)
+        return value
+    }
+
+    static func speakers(_ data: Data) -> [Speaker] {
+        let key = data as NSData
+        if let cached = speakerCache.object(forKey: key) { return cached.value }
+        let value = (try? JSONDecoder().decode([Speaker].self, from: data)) ?? []
+        speakerCache.setObject(Box(value), forKey: key)
+        return value
     }
 }

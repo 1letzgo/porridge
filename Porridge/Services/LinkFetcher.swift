@@ -26,19 +26,31 @@ enum LinkFetcher {
         var request = URLRequest(url: url, timeoutInterval: 25)
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
         request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        // The answer is looked at before its body is loaded: a link to a video or a download would otherwise
+        // be read into memory whole.
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
         guard let http = response as? HTTPURLResponse else { throw FetchError.failed("No answer from the server.") }
         guard (200..<300).contains(http.statusCode) else { throw FetchError.failed("The server answered \(http.statusCode).") }
         let type = http.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
         guard type.isEmpty || type.contains("html") || type.contains("text/plain") else {
             // PDFs, images and the like: nothing to read.
+            bytes.task.cancel()
             return Page(title: nil, text: "")
         }
+        var data = Data()
+        data.reserveCapacity(min(maxBytes, max(0, Int(http.expectedContentLength))))
+        for try await byte in bytes {
+            data.append(byte)
+            // The start of a page holds its title and text; nothing of use comes after this much.
+            if data.count >= maxBytes { break }
+        }
+        bytes.task.cancel()
         let html = decode(data, contentType: type)
         return type.contains("text/plain") ? Page(title: nil, text: String(html.prefix(maxLength))) : extract(html)
     }
 
     private static let maxLength = 60_000
+    private static let maxBytes = 4_000_000
 
     private static func decode(_ data: Data, contentType: String) -> String {
         var encoding = String.Encoding.utf8

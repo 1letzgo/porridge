@@ -5,12 +5,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import de.letzgo.porridge.data.LinkImport
+import de.letzgo.porridge.data.ShareImport
 import de.letzgo.porridge.ui.AppRoot
 import de.letzgo.porridge.ui.PorridgeTheme
 import de.letzgo.porridge.ui.SharedLinks
 
-/** iOS: `PorridgeApp` / `RootView`; nimmt auch geteilte Links an (iOS: Share-Extension `PorridgeShare`). */
+/** iOS: `PorridgeApp` / `RootView`; nimmt auch Geteiltes an (Links, Text, Bilder, PDFs, Dateien, Audio) (iOS: Share-Extension `PorridgeShare`). */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -25,8 +25,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handle(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_SEND) return
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
-        LinkImport.webAddress(text)?.let { SharedLinks.pending.value = it }
+        ShareImport.read(intent)?.let { SharedLinks.pending.value = it }
+        // Derselbe Intent kommt nach einer Drehung wieder: Er ist erledigt.
+        intent?.action = Intent.ACTION_MAIN
     }
 }

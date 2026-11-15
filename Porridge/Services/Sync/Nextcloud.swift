@@ -6,27 +6,33 @@ struct NextcloudAccount: Equatable {
     var server: URL
     var loginName: String
     var appPassword: String
+    /// The name of the user's folder on the server. Usually the login name; not when the login is an email
+    /// address or an alias (LDAP), and then the files are only found under this. Asked from the server once.
+    var userID: String? = nil
 
     private static let serverKey = "nextcloudServer"
     private static let loginKey = "nextcloudLogin"
+    private static let userIDKey = "nextcloudUserID"
     private static let passwordKey = "nextcloudAppPassword"
 
     static var saved: NextcloudAccount? {
         guard let server = UserDefaults.standard.string(forKey: serverKey).flatMap(URL.init(string:)),
               let login = UserDefaults.standard.string(forKey: loginKey),
               let password = Keychain.get(passwordKey) else { return nil }
-        return NextcloudAccount(server: server, loginName: login, appPassword: password)
+        return NextcloudAccount(server: server, loginName: login, appPassword: password, userID: UserDefaults.standard.string(forKey: userIDKey))
     }
 
     func save() {
         UserDefaults.standard.set(server.absoluteString, forKey: Self.serverKey)
         UserDefaults.standard.set(loginName, forKey: Self.loginKey)
+        UserDefaults.standard.set(userID, forKey: Self.userIDKey)
         Keychain.set(appPassword, for: Self.passwordKey)
     }
 
     static func remove() {
         UserDefaults.standard.removeObject(forKey: serverKey)
         UserDefaults.standard.removeObject(forKey: loginKey)
+        UserDefaults.standard.removeObject(forKey: userIDKey)
         Keychain.set(nil, for: passwordKey)
     }
 
@@ -121,8 +127,22 @@ struct WebDAV {
     var root: URL {
         account.server
             .appending(path: "remote.php/dav/files")
-            .appending(path: account.loginName)
+            .appending(path: account.userID ?? account.loginName)
             .appending(path: "Porridge", directoryHint: .isDirectory)
+    }
+
+    /// The user's id as the server knows it (OCS "cloud/user"); nil when the server does not say.
+    func fetchUserID() async -> String? {
+        var components = URLComponents(url: account.server.appending(path: "ocs/v2.php/cloud/user"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "format", value: "json")]
+        guard let url = components?.url else { return nil }
+        var request = request(url, method: "GET")
+        request.timeoutInterval = 30
+        request.setValue("true", forHTTPHeaderField: "OCS-APIRequest")
+        guard let (data, response) = try? await URLSession.shared.data(for: request), status(response) == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = ((json["ocs"] as? [String: Any])?["data"] as? [String: Any])?["id"] as? String, !id.isEmpty else { return nil }
+        return id
     }
 
     var recordings: URL { root.appending(path: "Recordings", directoryHint: .isDirectory) }

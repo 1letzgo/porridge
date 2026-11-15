@@ -20,8 +20,13 @@ object AudioDecoder {
             extractor.selectTrack(track)
             val format = extractor.getTrackFormat(track)
             val codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
-            codec.configure(format, null, null, 0)
-            codec.start()
+            try {
+                codec.configure(format, null, null, 0)
+                codec.start()
+            } catch (e: Throwable) {
+                runCatching { codec.release() }
+                throw e
+            }
             var sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             var pcmFloat = false

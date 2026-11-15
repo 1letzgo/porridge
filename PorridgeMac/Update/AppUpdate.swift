@@ -132,7 +132,9 @@ final class AppUpdate {
                     version: String(release.tag_name.dropFirst(tagPrefix.count)),
                     tag: release.tag_name,
                     pageURL: release.html_url,
-                    downloadURL: release.assets.first { $0.name.hasSuffix(".zip") }?.browser_download_url,
+                    // The Mac app by its name (scripts/release-mac.sh); any zip only for releases from before that.
+                    downloadURL: (release.assets.first { $0.name.hasPrefix("Porridge-mac-") && $0.name.hasSuffix(".zip") }
+                        ?? release.assets.first { $0.name.hasSuffix(".zip") })?.browser_download_url,
                     notes: release.body ?? ""
                 )
             }

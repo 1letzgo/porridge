@@ -42,7 +42,7 @@ fun SearchBar(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         )
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            for (k in listOf(ProjectsLogic.Kind.MEETING, ProjectsLogic.Kind.NOTE, ProjectsLogic.Kind.LINK)) {
+            for (k in ProjectsLogic.Kind.entries) {
                 FilterChip(selected = kind == k, onClick = { onKind(if (kind == k) null else k) }, label = { Text(k.title) })
             }
             for (token in tokens) InputChip(selected = true, onClick = { onTokens(tokens - token) }, label = { Text("#$token") }, trailingIcon = { Icon(Icons.Filled.Close, "Remove #$token") })

@@ -18,14 +18,17 @@ enum NoteStore {
     /// An audio or video file from outside becomes a meeting that is transcribed.
     @discardableResult
     @MainActor
-    static func importAudio(from url: URL, context: ModelContext, processing: ProcessingService) throws -> Note {
+    static func importAudio(
+        from url: URL, title: String? = nil, source: NoteSource = .audioImport, context: ModelContext, processing: ProcessingService
+    ) throws -> Note {
         let fileName = try AudioStore.importFile(from: url)
         let note = Note()
-        note.title = url.deletingPathExtension().lastPathComponent
+        note.title = title.map { ($0 as NSString).deletingPathExtension } ?? url.deletingPathExtension().lastPathComponent
         note.titleIsCustom = true
         note.statusRaw = ProcessingStatus.recorded.rawValue
         note.audioFileName = fileName
         note.inputName = "Import"
+        note.source = source
         if let info = AudioStore.audioInfo(for: fileName) {
             note.duration = info.duration
             note.channelCount = info.channels
@@ -47,9 +50,7 @@ enum NoteStore {
     }
 
     static func deletePermanently(_ note: Note, in context: ModelContext) {
-        note.audioFileNames.forEach(AudioStore.delete)
-        AudioStore.delete(note.pendingAudioFileName)
-        AudioStore.delete(note.audioFileName)
+        note.storedFileNames.forEach(AudioStore.delete)
         context.delete(note)
         try? context.save()
     }

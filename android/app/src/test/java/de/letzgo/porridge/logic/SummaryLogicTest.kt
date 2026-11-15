@@ -52,6 +52,23 @@ class SummaryLogicTest {
         assertEquals(listOf("x"), SummaryLogic.carryOver(summarized, before, own).labels)
     }
 
+    @Test fun enhanceReplacesTextAndFillsEmptyTags() {
+        val note = Note(id = "A", text = "einkaufen milch und brot", updatedAt = 1)
+        val raw = "```\nEinkaufen:\n[ ] Milch\n- [ ] Brot\nTAGS: Einkauf, Haushalt\n```"
+        val enhanced = SummaryLogic.applyEnhance(note, note.text, raw, now = 9)
+        assertEquals("Einkaufen:\n- [ ] Milch\n- [ ] Brot", enhanced.text)
+        assertEquals(listOf("Einkauf", "Haushalt"), enhanced.labels)
+        assertEquals(9L, enhanced.updatedAt)
+        // Eigene Tags bleiben.
+        assertEquals(listOf("x"), SummaryLogic.applyEnhance(note.copy(labels = listOf("x")), note.text, raw).labels)
+    }
+
+    @Test fun enhanceKeepsTextTypedMeanwhile() {
+        val note = Note(id = "A", text = "neu getippt")
+        assertTrue(runCatching { SummaryLogic.applyEnhance(note, "alt", "Besser") }.exceptionOrNull() is SummaryException)
+        assertTrue(runCatching { SummaryLogic.applyEnhance(note, note.text, "TAGS: a") }.exceptionOrNull() is SummaryException)
+    }
+
     @Test fun requestPicksMaterial() {
         val meeting = Note(text = "Eigene Notiz").withSegments(listOf(TranscriptSegment(start = 0.0, end = 1.0, text = "Hallo zusammen, wir sind heute hier und das ist gut.")))
         val r = SummaryLogic.request(meeting, "auto")

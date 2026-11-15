@@ -68,6 +68,27 @@ final class AudioRecorder {
     }
 
     func start() throws {
+        // A second start would leave the first engine running with nobody to stop it.
+        guard !isRecording else { return }
+        do {
+            try begin()
+        } catch {
+            // Nothing half started stays behind: no tap, no open file, no active session.
+            engine?.inputNode.removeTap(onBus: 0)
+            engine?.stop()
+            engine = nil
+            writer?.close()
+            writer = nil
+            AudioStore.delete(fileName)
+            fileName = nil
+            #if os(iOS)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            #endif
+            throw error
+        }
+    }
+
+    private func begin() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothHFP, .defaultToSpeaker])
@@ -230,6 +251,14 @@ final class AudioRecorder {
             MainActor.assumeIsolated { self?.handleConfigurationChange() }
         })
         #if os(iOS)
+        // The audio system was restarted: the engine is dead and records nothing while the clock would run on.
+        observers.append(center.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                if self?.isRecording == true { self?.onInterrupted?() }
+            }
+        })
         observers.append(center.addObserver(
             forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
         ) { [weak self] note in

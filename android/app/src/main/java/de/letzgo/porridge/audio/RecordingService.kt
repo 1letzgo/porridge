@@ -50,21 +50,65 @@ class RecordingService : Service() {
         val recording = RecordingSession.isRecording
         val idle = !recording && !busy && downloads.isEmpty()
         if (idle && intent?.getBooleanExtra(EXTRA_FOREGROUND, false) != true) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            stopSelf()
+            leaveForeground()
             return START_NOT_STICKY
         }
         val type = if (recording && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(recording), type)
+        if (foregroundType == type) {
+            // Schon im Vordergrund, mit diesem Typ: nur neu zeichnen. Ein erneutes startForeground mit Mikrofon lehnt
+            // Android aus dem Hintergrund ab (Fortschritt eines Downloads während der Aufnahme), und das beendete die App.
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(recording))
+        } else {
+            try {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(recording), type)
+                foregroundType = type
+            } catch (e: Exception) {
+                // Abgelehnt (aus dem Hintergrund, oder die Zeit für dataSync ist verbraucht). Läuft der Dienst schon im
+                // Vordergrund, bleibt er es mit dem alten Typ; die Arbeit geht weiter.
+                Log.w("RecordingService", "not in the foreground: $e")
+                if (foregroundType == null) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(recording))
+            }
+        }
         // Eine kurze Aufgabe kann schon vorbei sein. Der Aufruf oben muss trotzdem sein: Ein mit startForegroundService
         // gestarteter Dienst, der ohne ihn endet, beendet die ganze App.
-        if (idle) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            stopSelf()
-        }
+        if (idle) leaveForeground()
         return START_NOT_STICKY
+    }
+
+    /** Der Typ, mit dem der Dienst gerade im Vordergrund läuft; null, wenn er es nicht tut. */
+    private var foregroundType: Int? = null
+
+    private fun leaveForeground() {
+        foregroundType = null
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    /**
+     * Android 15: Die Zeit eines dataSync-Dienstes (sechs Stunden am Tag) ist um. Wer dann nicht aufhört, wird beendet.
+     * Eine laufende Aufnahme hält der Mikrofon-Typ; nur der wird behalten.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Log.w("RecordingService", "foreground time is up for type $fgsType")
+        if (RecordingSession.isRecording && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(recording = true), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                foregroundType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }.onFailure { leaveForeground() }
+        } else {
+            leaveForeground()
+        }
+    }
+
+    override fun onDestroy() {
+        foregroundType = null
+        super.onDestroy()
     }
 
     private fun notification(recording: Boolean): Notification {

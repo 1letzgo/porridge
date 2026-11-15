@@ -95,16 +95,21 @@ object NoteChunks {
         val result = mutableListOf<NoteChunk>()
         for (note in notes) {
             if (note.isDeleted) continue
+            val before = result.size
             // Ein gespeicherter Link ist über Adresse und Seite zu finden, auch wenn seine Seite nicht lesbar war.
             note.url?.takeIf { it.isNotEmpty() }?.let { url ->
                 result += chunk(note, "Saved link" + (note.domain?.let { " ($it)" } ?: "") + ": " + url)
             }
+            // Ein Bild oder eine Datei ist über den Namen zu finden, auch wenn sich nichts daraus lesen ließ.
+            val attachments = if (note.attachmentsData == null) emptyList() else note.attachments
+            if (attachments.isNotEmpty()) result += chunk(note, (if (note.isImage) "Image: " else "File: ") + attachments.joinToString(", ") { it.name })
             note.summary?.takeIf { it.isNotEmpty() }?.let { summary ->
                 pieces(summary.split("\n")).forEach { result += chunk(note, "Summary: $it") }
             }
             pieces(note.text.split("\n")).forEach { result += chunk(note, it) }
             note.pageText?.takeIf { it.isNotEmpty() }?.let { page ->
-                val label = "Article" + (note.domain?.let { " ($it)" } ?: "") + ": "
+                // Woraus die Passage stammt: die Seite eines Links, oder was aus einem Bild oder einer Datei gelesen wurde.
+                val label = (if (note.isLink) "Article" + (note.domain?.let { " ($it)" } ?: "") else if (note.isImage) "Text in the image" else "Text of the file") + ": "
                 pieces(page.split("\n")).forEach { result += chunk(note, label + it) }
             }
             val speakers = note.speakers
@@ -113,6 +118,8 @@ object NoteChunks {
                 (name?.let { "$it: " } ?: "") + segment.text
             }
             pieces(lines).forEach { result += chunk(note, "Transcript: $it") }
+            // Nur ein Titel: Der Titel ist die Passage, die Notiz bleibt auffindbar.
+            if (result.size == before && note.title.isNotEmpty()) result += chunk(note, note.displayTitle)
         }
         return result
     }

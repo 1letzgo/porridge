@@ -7,20 +7,23 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import de.letzgo.porridge.model.ChatEntry
+import de.letzgo.porridge.model.ChatThread
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.model.VoiceProfile
 
 /**
- * iOS: `AppContainer` (SwiftData + CloudKit). Auf Android eine lokale Room-Datenbank ohne Sync;
- * Sicherung über `data/Backup.kt`. Schema in `app/schemas/` (Migrationen ab Version 2 dort prüfen).
+ * iOS: `AppContainer` (SwiftData). Auf Android eine lokale Room-Datenbank; der Abgleich läuft über `sync/NextcloudSync.kt`,
+ * die Sicherung über `data/Backup.kt`. Schema in `app/schemas/` (Migrationen ab Version 2 dort prüfen).
  */
-@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class], version = 7, exportSchema = true)
+@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class, ChatThread::class, ChatEntry::class], version = 11, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class PorridgeDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
     abstract fun folders(): FolderDao
     abstract fun voiceProfiles(): VoiceProfileDao
+    abstract fun chats(): ChatDao
 
     companion object {
         @Volatile private var instance: PorridgeDatabase? = null
@@ -30,7 +33,7 @@ abstract class PorridgeDatabase : RoomDatabase() {
         fun init(context: Context) {
             if (instance != null) return
             instance = Room.databaseBuilder(context.applicationContext, PorridgeDatabase::class.java, "porridge.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 .build()
         }
 
@@ -80,6 +83,86 @@ abstract class PorridgeDatabase : RoomDatabase() {
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS action_items")
+            }
+        }
+
+        /**
+         * Eingang, Anhänge und To-dos: Notizen bekommen Kanal, Anhänge, Ablage, Bucket-Vorschläge und Erinnerung. Was in
+         * keinem Bucket liegt, steht im Eingang. Die To-dos heißen
+         * `todos`, nicht wie die früheren `action_items`.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN sourceRaw TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE notes ADD COLUMN attachmentsData TEXT")
+                db.execSQL("ALTER TABLE notes ADD COLUMN filedAt INTEGER")
+                db.execSQL("ALTER TABLE notes ADD COLUMN suggestedProjectIDs TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE notes ADD COLUMN remindAt INTEGER")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `todos` (`id` TEXT NOT NULL, `noteID` TEXT, `text` TEXT NOT NULL, `details` TEXT NOT NULL, " +
+                        "`isDone` INTEGER NOT NULL, `doneAt` INTEGER, `dueAt` INTEGER, `remindAt` INTEGER, `createdAt` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, `order` INTEGER NOT NULL, `source` TEXT NOT NULL, `summaryKey` TEXT, " +
+                        "`reviewRaw` TEXT NOT NULL, `projectIDs` TEXT NOT NULL, `archivedAt` INTEGER, PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
+        /** Kalender: Notizen kennen ihren Termin, To-dos ihre Erinnerung, und Termine bekommen Buckets (`event_refs`). */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN eventID TEXT")
+                db.execSQL("ALTER TABLE notes ADD COLUMN eventStart INTEGER")
+                db.execSQL("ALTER TABLE todos ADD COLUMN reminderID TEXT")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `event_refs` (`id` TEXT NOT NULL, `eventID` TEXT NOT NULL, `eventStart` INTEGER, `title` TEXT NOT NULL, " +
+                        "`start` INTEGER, `projectIDs` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
+        /**
+         * To-dos, Kalendertermine und Erinnerungen gehen wieder: Aufgaben stehen nur als Zeilen in der Zusammenfassung, Termine nur im
+         * Kalender. Die Tabellen `todos` und `event_refs` fallen weg, die Notizen verlieren `eventID`, `eventStart` und `remindAt` (auch die Erinnerungen gehen)
+         * (dafür wird ihre Tabelle neu gebaut: SQLite kann Spalten erst in neueren Versionen streichen).
+         */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `todos`")
+                db.execSQL("DROP TABLE IF EXISTS `event_refs`")
+                val columns = "`id`, `title`, `text`, `createdAt`, `updatedAt`, `statusRaw`, `errorMessage`, `pendingAudioFileName`, `audioFileNames`, " +
+                    "`folderID`, `projectIDs`, `isPinned`, `deletedAt`, `url`, `pageText`, `labels`, `summary`, `summaryModel`, `summarizedAt`, " +
+                    "`titleIsCustom`, `duration`, `inputName`, `channelCount`, `speakerModeRaw`, `audioFileName`, `speakersData`, `segmentsData`, " +
+                    "`archivedAt`, `sourceRaw`, `attachmentsData`, `filedAt`, `suggestedProjectIDs`"
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `notes_new` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `text` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, `statusRaw` TEXT NOT NULL, `errorMessage` TEXT, `pendingAudioFileName` TEXT, `audioFileNames` TEXT NOT NULL, " +
+                        "`folderID` TEXT, `projectIDs` TEXT NOT NULL, `isPinned` INTEGER NOT NULL, `deletedAt` INTEGER, `url` TEXT, `pageText` TEXT, " +
+                        "`labels` TEXT NOT NULL, `summary` TEXT, `summaryModel` TEXT, `summarizedAt` INTEGER, `titleIsCustom` INTEGER NOT NULL, " +
+                        "`duration` REAL NOT NULL, `inputName` TEXT, `channelCount` INTEGER NOT NULL, `speakerModeRaw` TEXT NOT NULL, `audioFileName` TEXT, " +
+                        "`speakersData` TEXT, `segmentsData` TEXT, `archivedAt` INTEGER, `sourceRaw` TEXT NOT NULL, `attachmentsData` TEXT, `filedAt` INTEGER, " +
+                        "`suggestedProjectIDs` TEXT NOT NULL, PRIMARY KEY(`id`))",
+                )
+                db.execSQL("INSERT INTO `notes_new` ($columns) SELECT $columns FROM `notes`")
+                db.execSQL("DROP TABLE `notes`")
+                db.execSQL("ALTER TABLE `notes_new` RENAME TO `notes`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notes_folderID` ON `notes` (`folderID`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notes_deletedAt` ON `notes` (`deletedAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_notes_updatedAt` ON `notes` (`updatedAt`)")
+            }
+        }
+
+        /** Der Chat mit den Notizen: mehrere Chats und ihre Nachrichten werden gehalten (nur auf diesem Gerät). */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `chat_threads` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, `projectID` TEXT, PRIMARY KEY(`id`))",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `chat_entries` (`id` TEXT NOT NULL, `threadID` TEXT NOT NULL, `roleRaw` TEXT NOT NULL, `text` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, `isError` INTEGER NOT NULL, `sourcesData` TEXT, PRIMARY KEY(`id`))",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_chat_entries_threadID` ON `chat_entries` (`threadID`)")
             }
         }
 

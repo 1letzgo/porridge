@@ -27,7 +27,7 @@ settings:
     CURRENT_PROJECT_VERSION: 1
     # TestFlight (iPhone, iPad, Mac) stays on its own version. For a new iOS build only raise the number below, above the last upload.
     TESTFLIGHT_MARKETING_VERSION: "1.0"
-    IOS_BUILD_NUMBER: 114
+    IOS_BUILD_NUMBER: 115
     CODE_SIGN_STYLE: Automatic
 targets:
   Porridge:
@@ -71,8 +71,12 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSSupportsLiveActivities: true
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your device.
-        NSCalendarsFullAccessUsageDescription: Porridge shows today's appointments so you can record a meeting for one of them.
+        NSCalendarsFullAccessUsageDescription: Porridge shows your calendar, lets you add events, and links recorded meetings to their appointment.
         NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
+        # A server of your own at home (Ollama, Nextcloud) often has no certificate: plain http is allowed there, and only there.
+        NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model or Nextcloud.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         BGTaskSchedulerPermittedIdentifiers:
           - de.letzgo.porridge.summary.*
         UIBackgroundModes:
@@ -146,8 +150,12 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your Mac. For dictation it listens while you hold the shortcut.
-        NSCalendarsFullAccessUsageDescription: Porridge shows today's appointments so you can record a meeting for one of them.
+        NSCalendarsFullAccessUsageDescription: Porridge shows your calendar, lets you add events, and links recorded meetings to their appointment.
         NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
+        # A server of your own at home (Ollama, Nextcloud) often has no certificate: plain http is allowed there, and only there.
+        NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model or Nextcloud.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         NSAppleEventsUsageDescription: Porridge pastes the dictated text into the app you are using.
         ITSAppUsesNonExemptEncryption: false
     settings:
@@ -213,7 +221,7 @@ targets:
     platform: iOS
     sources:
       - path: PorridgeShare
-      - path: Shared/LinkInbox.swift
+      - path: Shared/ShareInbox.swift
     entitlements:
       path: PorridgeShare/PorridgeShare.entitlements
       properties:
@@ -232,6 +240,9 @@ targets:
             NSExtensionActivationRule:
               NSExtensionActivationSupportsWebURLWithMaxCount: 1
               NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsImageWithMaxCount: 20
+              NSExtensionActivationSupportsMovieWithMaxCount: 5
+              NSExtensionActivationSupportsFileWithMaxCount: 20
     settings:
       base:
         MARKETING_VERSION: $(TESTFLIGHT_MARKETING_VERSION)

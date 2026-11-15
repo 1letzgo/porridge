@@ -4,6 +4,8 @@ import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Query
 import androidx.room.Upsert
+import de.letzgo.porridge.model.ChatEntry
+import de.letzgo.porridge.model.ChatThread
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.model.VoiceProfile
@@ -77,4 +79,32 @@ interface VoiceProfileDao {
 
     @Delete
     suspend fun delete(profile: VoiceProfile)
+}
+
+/** iOS: `ChatThread` und `ChatEntry` in SwiftData — die gehaltenen Chats und ihre Nachrichten. */
+@Dao
+interface ChatDao {
+    @Query("SELECT * FROM chat_threads ORDER BY updatedAt DESC")
+    fun observeThreads(): Flow<List<ChatThread>>
+
+    @Query("SELECT * FROM chat_threads WHERE id = :id")
+    suspend fun thread(id: String): ChatThread?
+
+    @Query("SELECT * FROM chat_entries WHERE threadID = :threadID ORDER BY createdAt")
+    fun observeEntries(threadID: String): Flow<List<ChatEntry>>
+
+    @Query("SELECT * FROM chat_entries WHERE threadID = :threadID ORDER BY createdAt")
+    suspend fun entries(threadID: String): List<ChatEntry>
+
+    @Upsert
+    suspend fun upsert(thread: ChatThread)
+
+    @Upsert
+    suspend fun upsert(entry: ChatEntry)
+
+    @Query("DELETE FROM chat_entries WHERE threadID = :threadID")
+    suspend fun deleteEntries(threadID: String)
+
+    @Query("DELETE FROM chat_threads WHERE id = :id")
+    suspend fun deleteThread(id: String)
 }

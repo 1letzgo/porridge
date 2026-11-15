@@ -90,7 +90,6 @@ struct PorridgeMacApp: App {
 private struct PorridgeCommands: Commands {
     @FocusedValue(\.libraryActions) private var library
     @FocusedValue(\.noteActions) private var note
-    @FocusedValue(\.homeFilter) private var filter
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -102,7 +101,7 @@ private struct PorridgeCommands: Commands {
             Button("Add Link…") { library?.addLink() }
                 .keyboardShortcut("l")
                 .disabled(library?.canCreate != true)
-            Button("New Project…") { library?.newProject?() }
+            Button("New Bucket…") { library?.newProject?() }
                 .disabled(library?.newProject == nil)
             Divider()
             Button("Import Audio…") { library?.importAudio() }
@@ -114,20 +113,20 @@ private struct PorridgeCommands: Commands {
             Button("Search") { library?.search() }
                 .keyboardShortcut("f")
                 .disabled(library == nil)
-            if let filter {
-                Picker("Filter", selection: filter) {
-                    ForEach(HomeFilter.allCases, id: \.self) { Text($0.title).tag($0) }
-                }
-            } else {
-                Menu("Filter") {}.disabled(true)
-            }
         }
         CommandMenu("Note") {
             Button(note?.isPinned == true ? "Unpin" : "Pin") { note?.togglePin() }
                 .disabled(note == nil || note?.isDeleted == true)
             Divider()
-            Button(note?.hasSummary == true ? "Summarize Again with AI…" : "Summarize with AI…") { note?.summarize() }
-                .disabled(note?.canSummarize != true || note?.isDeleted == true)
+            if note?.isPlainNote == true {
+                Button("Enhance with AI…") { note?.enhance() }
+                    .disabled(note?.canEnhance != true || note?.isDeleted == true)
+                Button("Undo Enhance") { note?.undoEnhance() }
+                    .disabled(note?.canUndoEnhance != true || note?.isDeleted == true)
+            } else {
+                Button(note?.hasSummary == true ? "Summarize Again with AI…" : "Summarize with AI…") { note?.summarize() }
+                    .disabled(note?.canSummarize != true || note?.isDeleted == true)
+            }
             Button("Edit Summary") { note?.editSummary() }
                 .disabled(note?.hasSummary != true || note?.canEditSummary != true || note?.isDeleted == true)
             Divider()
@@ -161,7 +160,9 @@ private struct UpdateAlert: ViewModifier {
             )
         ) {
             Button("Download") { update.download() }
-            Button("Skip This Version", role: .cancel) { update.skip() }
+            // No cancel role: Escape would skip the version for good.
+            Button("Skip This Version") { update.skip() }
+            Button("Later", role: .cancel) {}
         } message: {
             Text(update.available?.notes.isEmpty == false
                 ? update.available!.notes

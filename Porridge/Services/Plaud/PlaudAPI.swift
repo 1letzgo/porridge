@@ -40,6 +40,12 @@ struct PlaudAPI {
         return obj
     }
 
+    /// "https://api-euc1.plaud.ai": https, and plaud.ai or one of its subdomains.
+    static func isPlaudHost(_ address: String) -> Bool {
+        guard let url = URL(string: address), url.scheme == "https", let host = url.host()?.lowercased() else { return false }
+        return host == "plaud.ai" || host.hasSuffix(".plaud.ai")
+    }
+
     // Returns the parsed envelope, following a one-shot region redirect and updating `host`.
     private func call(_ method: String, _ path: String, body: [String: Any]?,
                       headers: [String: String] = [:]) async throws
@@ -68,6 +74,8 @@ struct PlaudAPI {
             let status = (json["status"] as? Int) ?? (json["code"] as? Int)
             if status == -302, let domains = (json["data"] as? [String: Any])?["domains"] as? [String: Any],
                let api = domains["api"] as? String {
+                // The next request carries the login token: only to Plaud itself, never to wherever a reply points.
+                guard Self.isPlaudHost(api) else { throw PlaudAPIError.message("unexpected API host: \(api)") }
                 currentHost = api
                 continue
             }

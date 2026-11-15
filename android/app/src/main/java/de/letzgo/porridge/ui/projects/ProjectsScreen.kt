@@ -21,7 +21,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material3.AlertDialog
@@ -49,7 +48,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.letzgo.porridge.data.Projects
@@ -101,11 +99,10 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, showsDivider: Bo
             Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.combinedClickable(onClick = { onOpen(project.id) }, onLongClick = { menu = true })) {
                 Column {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RowIcon(Icons.Filled.Folder, Brand.project)
+                        RowIcon(Icons.Filled.Folder, Brand.project, isPinned = project.isPinned)
                         Column(Modifier.weight(1f)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (project.isPinned) Icon(Icons.Filled.PushPin, "Pinned", tint = Brand.navy, modifier = Modifier.size(12.dp))
-                                Text(project.name.ifEmpty { "Untitled Project" }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(project.name.ifEmpty { "Untitled Bucket" }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Text(
                                 listOf(if (count == 1) "1 item" else "$count items", SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(changed))).joinToString("  ·  "),
@@ -113,7 +110,7 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, showsDivider: Bo
                             )
                         }
                     }
-                    if (showsDivider) HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    if (showsDivider) HorizontalDivider(Modifier.padding(start = 76.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
             DropdownMenu(menu, onDismissRequest = { menu = false }) {
@@ -124,11 +121,11 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, showsDivider: Bo
             }
         }
     }
-    if (renaming) TextPrompt("Rename Project", project.name, "Save", onDismiss = { renaming = false }) { name -> renaming = false; coroutines.launch { Projects.rename(project, name) } }
+    if (renaming) TextPrompt("Rename Bucket", project.name, "Save", onDismiss = { renaming = false }) { name -> renaming = false; coroutines.launch { Projects.rename(project, name) } }
     if (deleting) AlertDialog(
         onDismissRequest = { deleting = false },
-        title = { Text("Delete Project “${project.name}”?") },
-        text = { Text("Its notes, meetings and links stay; they are only no longer in this project.") },
+        title = { Text("Delete Bucket “${project.name}”?") },
+        text = { Text("Its notes, meetings and links stay; they are only no longer in this bucket.") },
         confirmButton = { TextButton(onClick = { deleting = false; coroutines.launch { Projects.delete(project) } }) { Text("Delete", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel") } },
     )
@@ -150,6 +147,8 @@ internal fun ProjectDetail(
             val chips = listOf<ProjectsLogic.Kind?>(null) + ProjectsLogic.Kind.entries
             for (kind in chips) {
                 val count = kind?.let { k -> all.count { ProjectsLogic.kind(it) == k } } ?: all.size
+                // Nur die Arten, von denen der Bucket etwas hat; die gewählte bleibt, solange sie gewählt ist.
+                if (kind != null && count == 0 && filter != kind) continue
                 FilterChip(
                     selected = filter == kind, onClick = { filter = kind },
                     label = { Text("${kind?.title ?: "All"} $count") },
@@ -160,7 +159,7 @@ internal fun ProjectDetail(
         if (shown.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 EmptyState(
-                    "Nothing Here Yet", "Add notes, meetings or links to this project from their page, or tap the plus button for a new note.",
+                    "Nothing Here Yet", "Add notes, meetings or links to this bucket from their page, or tap the plus button for a new note.",
                     Icons.Filled.FolderOpen,
                 )
             }

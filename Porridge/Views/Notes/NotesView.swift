@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UserNotifications
 
 struct NotesView: View {
     var openSettings: () -> Void = {}
@@ -32,15 +33,9 @@ struct NotesView: View {
     @State private var page = ListPage.home
     /// "More" was tapped: the list shows all projects, not only the latest.
     @State private var showAllProjects = false
-    /// "More" was tapped: the list shows all elements, not only the first `HomeList.maxElements`.
-    @State private var showAllElements = false
-    /// What the long list is narrowed to, chosen with the button beside the search.
-    @State private var homeFilter = HomeFilter.all
-    /// The filter button is unfolded into its options.
-    /// The search lies over whatever is shown, opened from its button.
-    @State private var showSearch = false
-    /// While the keyboard is up, the search card reaches down to it (the buttons below step aside).
-    @State private var keyboardShown = false
+    /// The chat page: which chat shows, kept while the app runs.
+    @State private var chatNavigation = ChatNavigation()
+    @Query(sort: \ChatThread.updatedAt, order: .reverse) private var chatThreads: [ChatThread]
     @State private var confirmEmptyTrash = false
     @State private var showRecorder = false
     @State private var showCalendar = false
@@ -49,11 +44,11 @@ struct NotesView: View {
     /// The plus button is unfolded into its options.
     @State private var showCreate = false
     @State private var showAudioImporter = false
+    @State private var showFileImporter = false
     @State private var audioImportError: String?
     @State private var showPlaud = false
     @State private var plaudSignedIn = PlaudAccount.isSignedIn
     @State private var linkText = ""
-    /// The task open in the detail column, like a note; a new one is made empty and opened right away.
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
     @State private var showNewProject = false
@@ -159,8 +154,9 @@ struct NotesView: View {
 
     var body: some View {
         columns
-        .onChange(of: showSearch) { _, open in
-            if !open {
+        // The search page was left: what was asked is forgotten. (A found note opened from it keeps the page.)
+        .onChange(of: page) { old, new in
+            if old == .search, new != .search {
                 search = ""
                 tagTokens = []
                 searchKind = nil
@@ -189,6 +185,7 @@ struct NotesView: View {
         .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio, .movie]) { result in
             importAudio(result)
         }
+        .modifier(FileIntake(isPicking: $showFileImporter) { addFiles($0) })
         .alert("Import Failed", isPresented: Binding(get: { audioImportError != nil }, set: { if !$0 { audioImportError = nil } })) {
             Button("OK") { audioImportError = nil }
         } message: {
@@ -199,7 +196,7 @@ struct NotesView: View {
         }
         .sheet(isPresented: $showCalendar) {
             RecordMeetingSheet(
-                onPick: { appointment in startRecording(titled: appointment.title) },
+                onPick: { appointment in startRecording(for: appointment) },
                 onNew: { startRecording(titled: nil) }
             )
         }
@@ -212,7 +209,7 @@ struct NotesView: View {
         } message: {
             Text("The page is saved as a note and summarized.")
         }
-        .alert("New Project", isPresented: $showNewProject) {
+        .alert("New Bucket", isPresented: $showNewProject) {
             TextField("Name", text: $projectName)
             Button("Cancel", role: .cancel) { projectName = "" }
             Button("Create") {
@@ -220,7 +217,7 @@ struct NotesView: View {
                 projectName = ""
             }
         }
-        .alert("Rename Project", isPresented: .constant(renamingProject != nil)) {
+        .alert("Rename Bucket", isPresented: .constant(renamingProject != nil)) {
             TextField("Name", text: $projectName)
             Button("Cancel", role: .cancel) {
                 renamingProject = nil
@@ -235,7 +232,7 @@ struct NotesView: View {
         .confirmationDialog(
             "Delete “\(deletingProject?.name ?? "")”?", isPresented: .constant(deletingProject != nil), titleVisibility: .visible
         ) {
-            Button("Delete Project", role: .destructive) {
+            Button("Delete Bucket", role: .destructive) {
                 if let deletingProject {
                     if page == .project(deletingProject.id) { page = .home }
                     Projects.delete(deletingProject, in: context)
@@ -252,9 +249,15 @@ struct NotesView: View {
             await RecordingJournal.recover(context: context, processing: processing)
             removeEmptyNotes()
             NoteStore.purgeExpired(in: context)
-            LinkImport.importInbox(context: context, processing: processing)
+            ShareImport.importInbox(context: context, processing: processing)
             Projects.migrateFolders(in: context)
+            // Reminders are gone: what was planned for them is taken back once.
+            let center = UNUserNotificationCenter.current()
+            let planned = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("remind-") }
+            if !planned.isEmpty { center.removePendingNotificationRequests(withIdentifiers: planned) }
         }
+        // The share sheet offers the buckets: it reads this list, it cannot open the store.
+        .task(id: shareProjects) { ShareInbox.writeProjects(shareProjects) }
         // The search index follows the notes: only what changed is cut again.
         .task(id: indexSignature) {
             try? await Task.sleep(for: .milliseconds(800))
@@ -262,7 +265,9 @@ struct NotesView: View {
             await NoteIndex.shared.refresh(notes)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { LinkImport.importInbox(context: context, processing: processing) }
+            if phase == .active {
+                ShareImport.importInbox(context: context, processing: processing)
+            }
         }
         #if os(iOS)
         // From a widget, a control or a shortcut; on a cold launch the action waits until the list appears.
@@ -279,9 +284,8 @@ struct NotesView: View {
             newProject: page == .home ? { showNewProject = true } : nil,
             importAudio: { showAudioImporter = true },
             importPlaud: { showPlaud = true },
-            search: { showSearch.toggle() }
+            search: { page = page == .search ? .home : .search }
         ))
-        .focusedSceneValue(\.homeFilter, page == .home ? $homeFilter : nil)
         #endif
         .onReceive(NotificationCenter.default.publisher(for: .newNote)) { _ in
             addNote()
@@ -364,6 +368,12 @@ struct NotesView: View {
                 // Deleted on another device.
                 home
             }
+        case .inbox:
+            inboxPage
+        case .search:
+            searchPage
+        case .chat:
+            ChatPage(notes: notes, projects: projects, navigation: chatNavigation) { openNote($0) }
         case .archive:
             archive
         case .trash:
@@ -378,85 +388,89 @@ struct NotesView: View {
         }
     }
 
-    /// The search as a card: what is found opens, and the card folds away.
-    private var searchPanel: some View {
-        OverlayPanel(title: "Search", systemImage: "magnifyingglass", tint: .brandNavy, onClose: closeSearch) {
-            SearchPane(
-                text: $search, tokens: $tagTokens, kind: $searchKind,
-                tags: TagToken.counts(notes.filter { !$0.isDeleted }),
-                hasQuery: hasQuery
-            ) {
-                searchResults
-            }
-            .padding(.top, 12)
+    /// The search as a page of its own: what is found opens from it, and going back returns to the results.
+    private var searchPage: some View {
+        SearchPane(
+            text: $search, tokens: $tagTokens, kind: $searchKind,
+            tags: TagToken.counts(notes.filter { !$0.isDeleted }),
+            hasQuery: hasQuery
+        ) {
+            searchResults
         }
     }
 
-    private func closeSearch() {
-        withAnimation(.snappy) { showSearch = false }
+    /// Opens the chat page. From a bucket the chat is about that bucket; the last chat about it is taken up again.
+    private func openChat() {
+        chatNavigation.open(from: projectForNew, threads: chatThreads)
+        page = .chat
     }
 
     /// The one long list: the projects as folders on top, then what is in no project, open tasks first; at the
     /// end the way to the archive and the trash.
     private var home: some View {
-        let keys = Set(projects.map(Projects.key))
-        let filter = homeFilter
-        let folders = filter.showsProjects ? HomeList.activeProjects(projects) : []
-        let recent = HomeList.shownProjects(folders, showAll: showAllProjects || filter == .projects) { project in
-            max(project.updatedAt, ProjectContent(of: project, notes: notes).lastChange ?? .distantPast)
+        let folders = HomeList.activeProjects(projects)
+        let contents = ProjectContent.byProject(notes)
+        let recent = HomeList.shownProjects(folders, showAll: showAllProjects) { project in
+            max(project.updatedAt, contents[Projects.key(project)]?.lastChange ?? .distantPast)
         }
-        let loose = HomeList.notes(notes, projects: keys).filter(filter.matches)
-        let pinned = loose.filter(\.isPinned)
-        let unpinned = loose.filter { !$0.isPinned }
-        let limits = HomeList.elementLimits(pinned: pinned.count, notes: unpinned.count, showAll: showAllElements)
-        let grouped = groups(Array(unpinned.prefix(limits.notes)))
+        let waiting = Inbox.notes(notes)
         let archived = HomeList.archivedProjects(projects).count + HomeList.archivedNotes(notes).count
-        let deleted = notes.filter(\.isDeleted).count
-        let isEmpty = folders.isEmpty && loose.isEmpty
+        let isEmpty = folders.isEmpty && waiting.isEmpty
         return List(selection: $selection) {
+            // The inbox is the first category, with one entry of its name: what is new or in no bucket.
+            Section {
+                InboxRow(waiting: waiting) { page = .inbox }
+                    .lastInSection(true)
+            } header: {
+                ListHeader(title: "Inbox", tint: .brandSky, isFirst: true)
+            }
+            // The buckets as a list: the pinned and the latest few, the rest behind "More".
             if !folders.isEmpty {
-                projectsSection(recent.shown, isFirst: true, hidden: filter == .projects ? 0 : recent.hidden)
+                projectsSection(recent.shown, contents: contents, isFirst: false, hidden: recent.hidden)
             }
-            if !pinned.isEmpty {
-                Section {
-                    let shown = pinned.prefix(limits.pinned)
-                    ForEach(shown) { note in row(note, isLast: note.id == shown.last?.id) }
-                } header: {
-                    ListHeader(title: "Pinned", tint: .brandNavy, isFirst: folders.isEmpty)
-                }
-            }
-            dateSections(grouped, isFirst: folders.isEmpty && pinned.isEmpty)
-            if limits.hidden > 0 {
-                Section {
-                    moreRow(hidden: limits.hidden, isExpanded: showAllElements, tint: .brandSky) { showAllElements.toggle() }
-                }
-            }
-            if filter == .all, archived > 0 {
+            if archived > 0 {
                 Section {} header: {
-                    ListHeaderButton(title: "Archive", count: archived, tint: .brandNavy, isFirst: isEmpty) { page = .archive }
-                }
-            }
-            if filter == .all, deleted > 0 {
-                Section {} header: {
-                    ListHeaderButton(title: "Recently Deleted", count: deleted, tint: .red, isFirst: isEmpty && archived == 0) { page = .trash }
+                    ListHeaderButton(title: "Archive", count: archived, tint: .brandNavy, isFirst: false) { page = .archive }
                 }
             }
         }
         .cardList()
         .roomForFloatingButtons()
         .overlay {
-            if isEmpty, filter != .all {
-                EmptyStateView(
-                    title: "Nothing to Show",
-                    message: "The list has nothing of this kind.",
-                    systemImage: filter.systemImage
-                )
-            } else if isEmpty, archived == 0, deleted == 0 {
+            if isEmpty, archived == 0 {
                 EmptyStateView(
                     title: "Nothing Here Yet",
-                    message: "Add notes, meetings, links and projects with the plus button.",
+                    message: "Add notes, meetings, links and buckets with the plus button.",
                     systemImage: "note.text"
                 )
+            }
+        }
+    }
+
+    /// The inbox opened: what is in no bucket, newest first, each with its suggested buckets.
+    private var inboxPage: some View {
+        let waiting = Inbox.notes(notes)
+        let buckets = projects.filter { !$0.isArchived }
+        return List(selection: $selection) {
+            Section {
+                ForEach(waiting) { note in
+                    let isLast = note.id == waiting.last?.id
+                    if FilingBar.suggested(for: note, among: buckets).isEmpty {
+                        NoteListRow(note: note) { remove(note) }
+                            .lastInSection(isLast)
+                    } else {
+                        NoteListRow(note: note) { remove(note) }
+                        FilingBar(note: note, projects: buckets)
+                            .lastInSection(isLast)
+                    }
+                }
+            }
+        }
+        .cardList()
+        .roomForFloatingButtons()
+        .overlay {
+            if waiting.isEmpty {
+                EmptyStateView(title: "Inbox Empty", message: "What is new or in no bucket waits here.", systemImage: "tray")
             }
         }
     }
@@ -466,7 +480,7 @@ struct NotesView: View {
         let archivedNotes = HomeList.archivedNotes(notes)
         return List(selection: $selection) {
             if !folders.isEmpty {
-                projectsSection(folders, isFirst: true)
+                projectsSection(folders, contents: ProjectContent.byProject(notes), isFirst: true)
             }
             dateSections(groups(archivedNotes), isFirst: folders.isEmpty)
         }
@@ -476,7 +490,7 @@ struct NotesView: View {
             if folders.isEmpty, archivedNotes.isEmpty {
                 EmptyStateView(
                     title: "Nothing Archived",
-                    message: "Archive a project or note with a swipe or a long press.",
+                    message: "Archive a bucket or note with a swipe or a long press.",
                     systemImage: "archivebox"
                 )
             }
@@ -513,7 +527,6 @@ struct NotesView: View {
                 Section {
                     ForEach(group.notes) { note in
                         Button {
-                            closeSearch()
                             openNote(note.id)
                         } label: {
                             NoteRow(note: note, stage: processing.stages[note.id])
@@ -537,12 +550,12 @@ struct NotesView: View {
         }
     }
 
-    private func projectsSection(_ folders: [NoteFolder], isFirst: Bool, hidden: Int = 0) -> some View {
+    private func projectsSection(_ folders: [NoteFolder], contents: [String: ProjectContent], isFirst: Bool, hidden: Int = 0) -> some View {
         Section {
             ForEach(folders) { project in
                 ProjectRow(
                     project: project,
-                    content: ProjectContent(of: project, notes: notes),
+                    content: contents[Projects.key(project)] ?? ProjectContent(),
                     onOpen: { page = .project(project.id) },
                     onRename: {
                         projectName = project.name
@@ -557,7 +570,7 @@ struct NotesView: View {
                 moreRow(hidden: hidden, isExpanded: showAllProjects, tint: .brandProject) { showAllProjects.toggle() }
             }
         } header: {
-            ListHeader(title: "Projects", tint: .brandProject, isFirst: isFirst)
+            ListHeader(title: "Buckets", tint: .brandProject, isFirst: isFirst)
         }
     }
 
@@ -576,34 +589,24 @@ struct NotesView: View {
             .lastInSection(isLast)
     }
 
-    /// Unfolds what the list leaves out, in place.
     private func moreRow(hidden: Int, isExpanded: Bool, tint: Color, toggle: @escaping () -> Void) -> some View {
-        Button {
-            withAnimation(.snappy, toggle)
-        } label: {
-            HStack(spacing: 4) {
-                Text(isExpanded ? "Less" : "More")
-                if !isExpanded {
-                    Text("\(hidden)").foregroundStyle(.secondary)
-                }
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.caption.weight(.bold))
-                Spacer(minLength: 0)
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(tint.readable)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .cardListRow()
-        .listRowSeparator(.hidden, edges: .bottom)
+        MoreRow(hidden: hidden, isExpanded: isExpanded, tint: tint, toggle: toggle)
     }
 
     /// Changes when a note's content changed (the index compares hashes, this only wakes it up).
-    private var indexSignature: String {
-        notes.reduce(into: "") { result, note in
-            result += "\(note.id)\(note.updatedAt.timeIntervalSince1970)\(note.summary?.count ?? 0)\(note.segmentsData?.count ?? 0)\(note.pageText?.count ?? 0)\(note.isDeleted)|"
+    /// A number, not a text: this is asked at every redraw of the list, and a string of every note's id and date
+    /// was built and thrown away each time.
+    private var indexSignature: Int {
+        var hasher = Hasher()
+        for note in notes {
+            hasher.combine(note.id)
+            hasher.combine(note.updatedAt)
+            hasher.combine(note.summary?.utf8.count ?? 0)
+            hasher.combine(note.segmentsData?.count ?? 0)
+            hasher.combine(note.pageText?.utf8.count ?? 0)
+            hasher.combine(note.isDeleted)
         }
+        return hasher.finalize()
     }
 
     private var hasQuery: Bool {
@@ -619,62 +622,37 @@ struct NotesView: View {
     }
 
     /// The ways to start something: one plus button bottom right, the same in every view, that unfolds into
-    /// the imports, link, meeting and note (and project on the long list). Bottom left the filter and the search.
+    /// link, meeting and note (and bucket on the long list). Bottom left the chat and the search.
     private var createMenu: some View {
         ZStack(alignment: .bottom) {
-            if showCreate || showSearch {
-                // Tapping anywhere else folds the menu or the card again.
-                Color.black.opacity(showSearch ? 0.18 : 0.08)
+            if showCreate {
+                // Tapping anywhere else folds the menu again.
+                Color.black.opacity(0.08)
                     .ignoresSafeArea()
-                    .onTapGesture { withAnimation(.snappy) { showCreate = false; showSearch = false } }
+                    .onTapGesture { withAnimation(.snappy) { showCreate = false } }
                     .transition(.opacity)
                     .accessibilityHidden(true)
             }
             VStack(spacing: 14) {
-                #if os(iOS)
-                if showSearch {
-                    overlayCard { searchPanel }
-                }
-                #endif
-                if !(showSearch && keyboardShown), !page.isSettings {
+                if !page.hidesFloatingButtons {
                     HStack(alignment: .bottom, spacing: 12) {
-                        if !showSearch, page == .home {
-                            Menu {
-                                homeFilterPicker
-                            } label: {
-                                Image(systemName: homeFilter.systemImage)
-                                    .font(.title2.weight(.semibold))
-                                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                                    .foregroundStyle(homeFilter == .all ? Color.brandNavy : homeFilter.tint.onFill)
-                                    .frame(width: 58, height: 58)
-                                    .floatingCircle(fill: homeFilter == .all ? .appBackground : homeFilter.tint)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(filterLabel)
-                            .accessibilityIdentifier("HomeFilterButton")
-                        }
+                        // The chat with the notes and the search, bottom left: each opens its own page.
                         FloatingActionButton(
-                            systemImage: showSearch ? "xmark" : "magnifyingglass",
-                            label: showSearch ? "Close Search" : "Search", fill: .appBackground, foreground: .brandNavy
+                            systemImage: "bubble.left.and.bubble.right.fill", label: "Chat", fill: .appBackground, foreground: .brandNavy
                         ) {
-                            withAnimation(.snappy) {
-                                showCreate = false
-                                showSearch.toggle()
-                            }
+                            withAnimation(.snappy) { showCreate = false }
+                            openChat()
+                        }
+                        FloatingActionButton(systemImage: "magnifyingglass", label: "Search", fill: .appBackground, foreground: .brandNavy) {
+                            withAnimation(.snappy) { showCreate = false }
+                            page = .search
                         }
                         Spacer()
-                        if !showSearch, page != .archive, page != .trash {
+                        if page != .archive, page != .trash {
                             VStack(alignment: .trailing, spacing: 14) {
                                 if showCreate {
-                                    createOption("Import Audio", systemImage: "square.and.arrow.down", tint: .brandNavy) { showAudioImporter = true }
-                                    if plaudSignedIn {
-                                        createOption("Import Plaud", systemImage: "waveform", tint: .brandNavy) { showPlaud = true }
-                                    }
-                                    Rectangle()
-                                        .fill(Color.primary.opacity(0.2))
-                                        .frame(width: 150, height: 1)
                                     if page == .home {
-                                        createOption("Project", systemImage: "folder.badge.plus", tint: .brandProject) { showNewProject = true }
+                                        createOption("Bucket", systemImage: "folder.badge.plus", tint: .brandProject) { showNewProject = true }
                                     }
                                     createOption("Link", systemImage: "link", tint: .brandLink) { showAddLink = true }
                                     createOption("Meeting", systemImage: "mic.fill", tint: .brandNavy) { showCalendar = true }
@@ -696,53 +674,15 @@ struct NotesView: View {
                 }
             }
             .padding(.horizontal, 22)
-            .padding(.bottom, showSearch && keyboardShown ? 8 : 16)
+            .padding(.bottom, 16)
             // While something is unfolded, VoiceOver stays in it and the escape gesture folds it.
             .accessibilityElement(children: .contain)
-            .accessibilityAddTraits(showCreate || showSearch ? .isModal : [])
+            .accessibilityAddTraits(showCreate ? .isModal : [])
             .accessibilityAction(.escape) {
-                withAnimation(.snappy) { showCreate = false; showSearch = false }
+                withAnimation(.snappy) { showCreate = false }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        #if os(iOS)
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-            withAnimation(.snappy) { keyboardShown = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(.snappy) { keyboardShown = false }
-        }
-        #endif
-    }
-
-    /// The kinds the long list can be narrowed to, the chosen one checked.
-    private var homeFilterPicker: some View {
-        Picker("Filter", selection: $homeFilter.animation(.snappy)) {
-            ForEach(HomeFilter.allCases, id: \.self) { option in
-                Label(option.title, systemImage: option.systemImage).tag(option)
-            }
-        }
-        .pickerStyle(.inline)
-        .labelsHidden()
-    }
-
-    private var filterLabel: String {
-        switch homeFilter {
-        case .all: "Filter"
-        case .projects: "Filter: Projects"
-        case .meetings: "Filter: Meetings"
-        case .notes: "Filter: Notes"
-        case .links: "Filter: Links"
-        }
-    }
-
-    /// A card unfolding from the buttons at the bottom left.
-    private func overlayCard<Card: View>(@ViewBuilder _ card: () -> Card) -> some View {
-        card()
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
-            .padding(.top, 8)
-            .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9, anchor: .bottomLeading))))
     }
 
     /// One unfolded option: a single white pill, icon on the left in the color of its kind, then the text.
@@ -774,6 +714,16 @@ struct NotesView: View {
         .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity)))
     }
 
+    /// Opens Recently Deleted; shown next to Settings while it holds notes.
+    private var trashButton: some View {
+        Button { page = .trash } label: {
+            Label("Recently Deleted", systemImage: "trash")
+        }
+        .foregroundStyle(.red)
+        .accessibilityLabel("Recently Deleted")
+        .help("Recently Deleted")
+    }
+
     /// The actions of the list, shown as plain icons at the right of the custom bar (iOS).
     @ViewBuilder
     private func listActions(_ shown: ListPage) -> some View {
@@ -782,13 +732,39 @@ struct NotesView: View {
                 Label("Delete All", systemImage: "trash")
             }
         }
-        if !shown.isSettings {
+        if shown == .chat {
+            ChatBarActions(navigation: chatNavigation)
+        }
+        if shown == .home, notes.contains(where: \.isDeleted) {
+            trashButton
+        }
+        // What is brought in from outside has its own menu in the bar; on a bucket's page it goes into the bucket.
+        if shown == .home || project(on: shown) != nil {
+            importMenu
+                .menuStyle(.button)
+        }
+        if shown == .home {
             Button {
                 page = .settings
             } label: {
                 Label("Settings", systemImage: "gearshape")
             }
         }
+    }
+
+    /// Import: audio, a photo or a file, recordings from Plaud.
+    private var importMenu: some View {
+        Menu {
+            Button { showAudioImporter = true } label: { Label("Import Audio", systemImage: "waveform") }
+            if plaudSignedIn {
+                Button { showPlaud = true } label: { Label("Import Plaud", systemImage: "recordingtape") }
+            }
+            Button { showFileImporter = true } label: { Label("Photo or File", systemImage: "paperclip") }
+        } label: {
+            Label("Import", systemImage: "square.and.arrow.down")
+        }
+        .accessibilityLabel("Import")
+        .help("Import")
     }
 
     @ToolbarContentBuilder
@@ -802,35 +778,37 @@ struct NotesView: View {
             }
         }
         createToolbar
-        ToolbarItem(placement: .primaryAction) {
-            Button { showSearch.toggle() } label: {
-                Label("Search", systemImage: "magnifyingglass")
+        if page == .chat {
+            ToolbarItemGroup(placement: .primaryAction) { ChatBarActions(navigation: chatNavigation) }
+        } else {
+            ToolbarItem(placement: .primaryAction) {
+                Button { openChat() } label: {
+                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
+                }
+                .accessibilityLabel("Chat")
+                .help("Chat with Your Buckets")
             }
-            .accessibilityLabel("Search")
-            .help("Search")
-            .popover(isPresented: $showSearch, arrowEdge: .bottom) {
-                searchPanel
-                    .frame(width: 480, height: 620)
+        }
+        if page != .search {
+            ToolbarItem(placement: .primaryAction) {
+                Button { page = .search } label: {
+                    Label("Search", systemImage: "magnifyingglass")
+                }
+                .accessibilityLabel("Search")
+                .help("Search")
             }
         }
         if page == .home {
+            if notes.contains(where: \.isDeleted) {
+                ToolbarItem(placement: .primaryAction) { trashButton }
+            }
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    homeFilterPicker
-                } label: {
-                    Label("Filter", systemImage: homeFilter.systemImage)
+                Button { openSettings() } label: {
+                    Label("Settings", systemImage: "gearshape")
                 }
-                .foregroundStyle(homeFilter == .all ? Color.primary : homeFilter.tint)
-                .accessibilityLabel(filterLabel)
-                .help(filterLabel)
+                .accessibilityLabel("Settings")
+                .help("Settings")
             }
-        }
-        ToolbarItem(placement: .primaryAction) {
-            Button { openSettings() } label: {
-                Label("Settings", systemImage: "gearshape")
-            }
-            .accessibilityLabel("Settings")
-            .help("Settings")
         }
     }
 
@@ -848,16 +826,11 @@ struct NotesView: View {
         } else if page != .archive {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button { showAudioImporter = true } label: { Label("Import Audio", systemImage: "square.and.arrow.down") }
-                    if plaudSignedIn {
-                        Button { showPlaud = true } label: { Label("Import Plaud", systemImage: "waveform") }
-                    }
-                    Divider()
                     Button { addNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
                     Button { showCalendar = true } label: { Label("Record Meeting", systemImage: "mic.fill") }
                     Button { showAddLink = true } label: { Label("Add Link", systemImage: "link") }
                     if page == .home {
-                        Button { showNewProject = true } label: { Label("New Project", systemImage: "folder.badge.plus") }
+                        Button { showNewProject = true } label: { Label("New Bucket", systemImage: "folder.badge.plus") }
                     }
                 } label: {
                     Label("New", systemImage: "plus")
@@ -865,6 +838,7 @@ struct NotesView: View {
                 .accessibilityLabel("New")
                 .help("New")
             }
+            ToolbarItem(placement: .primaryAction) { importMenu }
         }
     }
 
@@ -884,6 +858,9 @@ struct NotesView: View {
         switch shown {
         case .home: "Porridge"
         case .project: project(on: shown)?.name ?? "Porridge"
+        case .inbox: "Inbox"
+        case .chat: "Chat"
+        case .search: "Search"
         case .archive: "Archive"
         case .trash: "Recently Deleted"
         case .settings: "Settings"
@@ -896,7 +873,7 @@ struct NotesView: View {
     private func listTint(_ shown: ListPage) -> Color {
         switch shown {
         case .project: project(on: shown) == nil ? .brandSky : .brandProject
-        case .archive: .brandNavy
+        case .archive, .chat, .search: .brandNavy
         case .trash: .red
         default: .brandSky
         }
@@ -919,6 +896,9 @@ struct NotesView: View {
         switch shown {
         case .home: "tray.full.fill"
         case .project: project(on: shown) == nil ? "tray.full.fill" : "folder.fill"
+        case .inbox: "tray.fill"
+        case .chat: "bubble.left.and.bubble.right.fill"
+        case .search: "magnifyingglass"
         case .archive: "archivebox.fill"
         case .trash: "trash.fill"
         case .settings: "gearshape.fill"
@@ -1014,6 +994,17 @@ struct NotesView: View {
         }
     }
 
+    private var shareProjects: [ShareInbox.Project] {
+        projects.filter { !$0.isArchived }.map { ShareInbox.Project(id: Projects.key($0), name: $0.name) }
+    }
+
+    /// Files picked or dropped: each becomes a file (audio a recording), the first is opened at once.
+    private func addFiles(_ urls: [URL]) {
+        guard let note = ShareImport.add(files: urls, project: projectForNew, context: context, processing: processing) else { return }
+        selection = note.id
+        column = .detail
+    }
+
     /// The project new things go into: the one that is open.
     private var projectForNew: String? {
         openProject.map(Projects.key)
@@ -1021,6 +1012,7 @@ struct NotesView: View {
 
     private func addNote() {
         let note = Note()
+        note.source = .note
         // In a project the new note goes into it.
         if let project = projectForNew {
             note.projectIDs = [project]
@@ -1045,6 +1037,11 @@ struct NotesView: View {
     }
     #endif
 
+    /// Records a meeting for a calendar appointment: the note gets its title.
+    private func startRecording(for event: CalendarAppointment) {
+        startRecording(titled: event.title)
+    }
+
     /// Opens the recorder once the sheet with the appointments is gone.
     private func startRecording(titled title: String?) {
         appointmentTitle = title
@@ -1057,6 +1054,7 @@ struct NotesView: View {
     /// A recorded meeting becomes a note that is transcribed with speakers.
     private func addRecording(from result: RecordingResult, speakerNames: [String], liveText: String, written: [RecordingNote]) {
         let note = Note()
+        note.source = .meeting
         note.title = appointmentTitle ?? Note.defaultMeetingTitle(for: note.createdAt)
         note.titleIsCustom = appointmentTitle != nil
         appointmentTitle = nil
@@ -1082,8 +1080,8 @@ struct NotesView: View {
 
     /// A recorded meeting: stored, opened and transcribed.
     private func insertAndProcess(_ note: Note) {
-        if let project = projectForNew {
-            note.projectIDs = [project]
+        if let project = projectForNew, !note.projectIDs.contains(project) {
+            note.projectIDs.append(project)
         }
         context.insert(note)
         try? context.save()
@@ -1127,17 +1125,9 @@ struct NoteRow: View {
     var body: some View {
         // Plain notes are sky blue, recorded meetings navy, saved links orange.
         HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 12) {
-                ThingsRowIcon(systemImage: icon, tint: tint)
-                    .accessibilityLabel(note.isLink ? "Link" : note.isRecording ? "Meeting" : "Note")
-                if note.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(Color.brandNavy)
-                        .accessibilityLabel("Pinned")
-                }
-            }
-            .padding(.top, 1)
+            ThingsRowIcon(systemImage: icon, tint: tint, isPinned: note.isPinned)
+                .accessibilityLabel(note.isLink ? "Link" : note.isImage ? "Image" : note.isFile ? "File" : note.isRecording ? "Meeting" : "Note")
+                .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
                 Text(note.displayTitle)
                     .font(.body)
@@ -1159,15 +1149,29 @@ struct NoteRow: View {
                 .lineLimit(1)
                 .padding(.top, 2)
             }
+            // The first picture or PDF of the note, small.
+            if let attachment = note.attachmentsData == nil ? nil : note.attachments.first(where: { $0.kind != .file }) {
+                Spacer(minLength: 0)
+                RowThumbnail(attachment: attachment)
+            }
         }
     }
 
     private var icon: String {
-        note.isLink ? "link" : (note.isRecording ? "waveform" : "text.alignleft")
+        note.isLink ? "link" : note.isStored ? fileIcon : (note.isRecording ? "waveform" : note.attachmentsData != nil ? "paperclip" : "text.alignleft")
+    }
+
+    /// A file shows what it is: a picture, a PDF or a document.
+    private var fileIcon: String {
+        switch note.attachments.first?.kind {
+        case .image: "photo"
+        case .pdf: "doc.richtext"
+        default: "doc"
+        }
     }
 
     private var tint: Color {
-        note.isLink ? .brandLink : (note.isRecording ? .brandNavy : .brandSky)
+        note.isLink ? .brandLink : (note.isRecording || note.isStored ? .brandNavy : .brandSky)
     }
 
     @ViewBuilder
@@ -1263,11 +1267,17 @@ struct NoteActions {
     let isPinned: Bool
     let hasSummary: Bool
     let canSummarize: Bool
+    /// A plain note: no recording and no link. It is enhanced instead of summarized.
+    let isPlainNote: Bool
+    let canEnhance: Bool
+    let canUndoEnhance: Bool
     let canEditSummary: Bool
     let canTranscribe: Bool
     let hasTranscript: Bool
     let togglePin: () -> Void
     let summarize: () -> Void
+    let enhance: () -> Void
+    let undoEnhance: () -> Void
     let editSummary: () -> Void
     let transcribeAgain: () -> Void
     let copyTranscript: () -> Void
@@ -1278,7 +1288,6 @@ struct NoteActions {
 extension FocusedValues {
     @Entry var libraryActions: LibraryActions?
     @Entry var noteActions: NoteActions?
-    @Entry var homeFilter: Binding<HomeFilter>?
 }
 
 extension Notification.Name {
@@ -1307,11 +1316,20 @@ enum ListPage: Hashable {
     case home
     /// One project with everything in it.
     case project(UUID)
+    /// The inbox: what is new or in no bucket.
+    case inbox
+    /// The chat with the notes.
+    case chat
+    /// The search through everything.
+    case search
     case archive
     case trash
     case settings
     case voices
     case acknowledgements
+
+    /// The page has its own bottom (the chat's field, the settings): the round buttons stay away.
+    var hidesFloatingButtons: Bool { isSettings || self == .chat || self == .search }
 
     var isSettings: Bool {
         switch self {
@@ -1324,4 +1342,46 @@ enum ListPage: Hashable {
 extension EnvironmentValues {
     /// Goes to another page of the list column; for the subpages of Settings.
     @Entry var openListPage: (ListPage) -> Void = { _ in }
+}
+
+/// Files come into the list through a picker ("Photo or File") or by dropping them on it (Mac, iPad).
+private struct FileIntake: ViewModifier {
+    @Binding var isPicking: Bool
+    let add: ([URL]) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            // A second importer on the same view would replace the one for audio: this one sits on a view of its own.
+            .background {
+                Color.clear.fileImporter(isPresented: $isPicking, allowedContentTypes: [.image, .pdf, .data], allowsMultipleSelection: true) { result in
+                    if let urls = try? result.get() { add(urls) }
+                }
+            }
+            .dropDestination(for: URL.self) { urls, _ in
+                let files = urls.filter(\.isFileURL)
+                guard !files.isEmpty else { return false }
+                add(files)
+                return true
+            }
+    }
+}
+
+/// The small picture of an attachment at the end of a list row.
+private struct RowThumbnail: View {
+    let attachment: Attachment
+    @State private var picture: CGImage?
+
+    var body: some View {
+        Group {
+            if let picture {
+                Image(decorative: picture, scale: 1).resizable().scaledToFill()
+            } else {
+                Color.primary.opacity(0.06)
+            }
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityHidden(true)
+        .task(id: attachment.fileName) { picture = await AttachmentThumbnail.load(attachment, maxPixels: 160) }
+    }
 }

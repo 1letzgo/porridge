@@ -9,6 +9,7 @@ enum TextInserter {
     static var canPaste: Bool { AXIsProcessTrusted() }
 
     private static let promptedKey = "accessibilityPrompted"
+    private static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 
     /// Asks macOS for the Accessibility permission. The system prompt is shown only once per app; after
     /// that the Accessibility list in System Settings is opened instead, where the switch is.
@@ -38,14 +39,17 @@ enum TextInserter {
 
         board.clearContents()
         board.setString(text, forType: .string)
+        // Clipboard managers leave out what is marked like this (nspasteboard.org): the text is only passing through.
+        if saved != nil { board.setData(Data(), forType: transientType) }
         let ours = board.changeCount
         guard canPaste else { return false }
 
         await waitForModifiersReleased()
         pressCommandV()
 
-        // Give the target app time to read the clipboard before the old content comes back.
-        try? await Task.sleep(for: .milliseconds(450))
+        // Give the target app time to read the clipboard before the old content comes back. A busy app takes a
+        // while to get to the ⌘V; too early and it would paste the old content.
+        try? await Task.sleep(for: .milliseconds(900))
         if let saved, board.changeCount == ours {
             restore(saved, to: board)
         }

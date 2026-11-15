@@ -63,16 +63,20 @@ final class NotesFeaturesTests: XCTestCase {
         let name = unique("Trash")
         app.newNote(title: name)
         app.goBack()
+        // A new note waits in the inbox, the newest on top.
+        let inbox = app.buttons["InboxCategory"]
+        XCTAssertTrue(inbox.waitForExistence(timeout: 10), "Inbox missing on the home list")
+        inbox.tap()
         let row = app.staticTexts[name]
-        XCTAssertTrue(app.reveal(row), "new note missing in the list")
+        XCTAssertTrue(app.reveal(row), "new note missing in the inbox")
 
         row.press(forDuration: 1.2)
         let pin = app.buttons["Pin"]
         XCTAssertTrue(pin.waitForExistence(timeout: 5), "row menu missing")
         pin.tap()
 
-        // A pinned note moves to the top, out of view after the scrolling above. Its menu now offers to unpin.
-        XCTAssertTrue(app.revealAbove(app.staticTexts[name]), "pinned note missing")
+        // Its menu now offers to unpin.
+        XCTAssertTrue(app.reveal(app.staticTexts[name]), "pinned note missing")
         app.staticTexts[name].press(forDuration: 1.2)
         XCTAssertTrue(app.buttons["Unpin"].waitForExistence(timeout: 5), "note was not pinned")
 
@@ -80,11 +84,12 @@ final class NotesFeaturesTests: XCTestCase {
         let delete = app.buttons["Delete"]
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
         delete.tap()
-        XCTAssertFalse(app.staticTexts[name].waitForExistence(timeout: 3), "note still in the list")
+        XCTAssertFalse(app.staticTexts[name].waitForExistence(timeout: 3), "note still in the inbox")
 
-        // The last row of the list, after everything earlier runs left behind.
-        let trash = app.staticTexts["Recently Deleted"]
-        XCTAssertTrue(app.reveal(trash), "Recently Deleted missing")
+        // Recently Deleted opens from the bar of the home list.
+        app.goBack()
+        let trash = app.buttons["Recently Deleted"].firstMatch
+        XCTAssertTrue(trash.waitForExistence(timeout: 10), "Recently Deleted missing")
         trash.tap()
         XCTAssertTrue(app.reveal(app.staticTexts[name]), "note not in the trash")
     }
@@ -132,11 +137,11 @@ final class NotesFeaturesTests: XCTestCase {
     func testProjectIsCreatedAndPinned() throws {
         let app = launchApp()
         let name = unique("Project")
-        app.create("Project")
+        app.create("Bucket")
         let field = app.textFields["Name"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), "name field missing")
         field.typeText(name)
-        app.alerts.buttons["Create"].tap()
+        app.confirmAlert("Create")
         // A new project opens or shows in the list; go back to the list if it opened.
         if !app.buttons["Create"].waitForExistence(timeout: 3) { app.goBack() }
         let back = app.buttons["Back"]
@@ -157,7 +162,7 @@ final class NotesFeaturesTests: XCTestCase {
         // Clean up, so runs do not pile projects up.
         XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 5))
         app.buttons["Delete"].tap()
-        let confirm = app.buttons["Delete Project"]
+        let confirm = app.buttons["Delete Bucket"]
         if confirm.waitForExistence(timeout: 5) { confirm.tap() }
     }
 }

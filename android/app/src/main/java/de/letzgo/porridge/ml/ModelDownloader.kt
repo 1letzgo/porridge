@@ -70,6 +70,17 @@ object ModelDownloader {
         val request = Request.Builder().url(file.url).apply { if (have > 0) header("Range", "bytes=$have-") }.build()
         val client = Net.client.newBuilder().readTimeout(60, TimeUnit.SECONDS).callTimeout(0, TimeUnit.SECONDS).build()
         client.newCall(request).execute().use { response ->
+            if (response.code == 416 && have > 0) {
+                // Nach dem, was schon da ist, hat der Server nichts mehr: Die Datei ist vollständig (die Prüfsumme danach
+                // entscheidet), oder der Rest ist von einer anderen Fassung und unbrauchbar. Ohne das käme hier für
+                // immer derselbe Fehler, und das Modell ließe sich nie installieren.
+                if (file.sha256 != null || have >= file.bytes * 95 / 100) {
+                    progress(have)
+                    return
+                }
+                part.delete()
+                throw IOException("stale partial download")
+            }
             if (!response.isSuccessful) error("Download failed (HTTP ${response.code}).")
             // 206: es geht weiter, wo es aufgehört hat; 200: der Server fängt von vorn an.
             val append = response.code == 206

@@ -64,8 +64,15 @@ data class NoteBlock(val kind: Kind = Kind.Paragraph, val indent: Int = 0, val t
         fun numbers(blocks: List<NoteBlock>): List<Int> {
             var counters = mutableMapOf<Int, Int>()
             return blocks.map { block ->
-                counters = counters.filterKeys { it < block.indent }.toMutableMap()
-                if (block.kind != Kind.Numbered) 0 else counters.merge(block.indent, 1, Int::plus)!!
+                // Dieselbe Zählung wie `NoteMarkdown.next`: Einträge einer Ebene zählen weiter, tiefere Ebenen beginnen
+                // neu, und ein Absatz, der keine Liste ist, beendet jede Liste.
+                if (block.kind == Kind.Numbered) {
+                    counters = counters.filterKeys { it <= block.indent }.toMutableMap()
+                    counters.merge(block.indent, 1, Int::plus)!!
+                } else {
+                    counters = if (block.isList) counters.filterKeys { it < block.indent }.toMutableMap() else mutableMapOf()
+                    0
+                }
             }
         }
 
@@ -74,16 +81,5 @@ data class NoteBlock(val kind: Kind = Kind.Paragraph, val indent: Int = 0, val t
             return blocks.mapIndexed { i, block -> block.mark(numbers[i]) + block.text }.joinToString("\n")
         }
 
-        /** Zeichenposition im Markdown, an der der Text eines Blocks beginnt. */
-        fun textOffset(index: Int, blocks: List<NoteBlock>): Int {
-            val numbers = numbers(blocks)
-            var offset = 0
-            blocks.forEachIndexed { i, block ->
-                val mark = block.mark(numbers[i])
-                if (i == index) return offset + mark.length
-                offset += mark.length + block.text.length + 1
-            }
-            return offset
-        }
     }
 }

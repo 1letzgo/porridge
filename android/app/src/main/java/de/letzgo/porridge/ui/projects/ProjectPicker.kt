@@ -5,7 +5,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,15 +76,15 @@ fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit) {
                 Icon(Icons.Filled.Folder, null, tint = Brand.project, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
                 Text(project.name, style = MaterialTheme.typography.labelLarge, color = Brand.project)
-                Icon(Icons.Filled.Close, "Remove from Project", tint = Brand.project, modifier = Modifier.size(24.dp).clip(CircleShape).combinedClickable(onClick = { onToggle(project.id) }))
+                Icon(Icons.Filled.Close, "Remove from Bucket", tint = Brand.project, modifier = Modifier.size(24.dp).clip(CircleShape).combinedClickable(onClick = { onToggle(project.id) }))
             }
         }
     }
     Box {
         Surface(onClick = { menu = true }, shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceVariant) {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Add, "Add to Project", tint = Brand.project, modifier = Modifier.size(16.dp))
-                Text(" Project", style = MaterialTheme.typography.labelLarge, color = Brand.project)
+                Icon(Icons.Filled.Add, "Add to Bucket", tint = Brand.project, modifier = Modifier.size(16.dp))
+                Text(" Bucket", style = MaterialTheme.typography.labelLarge, color = Brand.project)
             }
         }
         DropdownMenu(menu, onDismissRequest = { menu = false }) {
@@ -103,12 +102,12 @@ fun ProjectPills(assigned: List<String>, onToggle: (String) -> Unit) {
             }
             if (sorted.isNotEmpty()) HorizontalDivider()
             DropdownMenuItem(
-                text = { Text("New Project…") }, leadingIcon = { Icon(Icons.Filled.Add, null, tint = Brand.project) },
+                text = { Text("New Bucket…") }, leadingIcon = { Icon(Icons.Filled.Add, null, tint = Brand.project) },
                 onClick = { menu = false; creating = true },
             )
         }
     }
-    if (creating) TextPrompt("New Project", "", "Create", onDismiss = { creating = false }) { name ->
+    if (creating) TextPrompt("New Bucket", "", "Create", onDismiss = { creating = false }) { name ->
         creating = false
         coroutines.launch { onToggle(Projects.create(name).id) }
     }
@@ -123,10 +122,10 @@ fun ProjectChooser(assigned: List<String>, onToggle: (String) -> Unit, onDismiss
     val sorted = remember(projects) { projects.sortedByName() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Projects") },
+        title = { Text("Buckets") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                if (sorted.isEmpty()) Text("Create a project with the plus button first.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (sorted.isEmpty()) Text("Create a bucket with the plus button first.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 for (project in sorted) {
                     if (project.archivedAt != null && project.id !in assigned) continue
                     Row(

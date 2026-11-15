@@ -24,7 +24,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -73,6 +75,12 @@ fun ChromeBar(title: String, icon: ImageVector?, tint: Color = Brand.sky, onBack
 sealed interface ListPage {
     data object Home : ListPage
     data class Project(val id: String) : ListPage
+    /** Der Eingang: alles Neue und alles ohne Bucket. */
+    data object Inbox : ListPage
+    /** iOS: `ListPage.chat` — der Chat mit den Notizen. */
+    data object Chat : ListPage
+    /** iOS: `ListPage.search` — die Suche durch alles. */
+    data object Search : ListPage
     data object Archive : ListPage
     data object Trash : ListPage
 }
@@ -103,11 +111,19 @@ fun EmptyState(title: String, message: String, icon: ImageVector, modifier: Modi
     }
 }
 
-/** iOS: `ThingsRowIcon` — kleines Symbol vor einer Zeile. */
+/** iOS: `ThingsRowIcon` — das Symbol vor einer Zeile, so hoch wie ihre zwei Zeilen; Angeheftetes trägt oben rechts am Rand eine Nadel. */
 @Composable
-fun RowIcon(icon: ImageVector, tint: Color) {
-    Box(Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(tint.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = null, tint = Brand.readable(tint), modifier = Modifier.size(16.dp))
+fun RowIcon(icon: ImageVector, tint: Color, isPinned: Boolean = false) {
+    Box {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(11.dp)).background(tint.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = Brand.readable(tint), modifier = Modifier.size(24.dp))
+        }
+        if (isPinned) Box(
+            Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp).size(18.dp).clip(CircleShape).background(Brand.navy),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.PushPin, "Pinned", tint = Brand.onFill(Brand.navy), modifier = Modifier.size(11.dp))
+        }
     }
 }
 

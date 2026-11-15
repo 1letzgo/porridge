@@ -37,6 +37,11 @@ enum Projects {
 
     static func toggle(_ project: NoteFolder, on note: Note, in context: ModelContext) {
         note.projectIDs = toggled(note.projectIDs, key(project))
+        // Put into a bucket by hand: it has left the inbox, whatever was suggested.
+        if note.projectIDs.contains(key(project)) {
+            note.filedAt = note.filedAt ?? Date()
+            note.suggestedProjectIDs = []
+        }
         note.updatedAt = Date()
         try? context.save()
     }

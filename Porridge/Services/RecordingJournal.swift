@@ -37,6 +37,7 @@ final class RecordingJournal: @unchecked Sendable {
 
     /// The recording of this run: never taken for a leftover.
     private nonisolated(unsafe) static var activeID: UUID?
+    @MainActor private static var isRecovering = false
 
     private let id = UUID()
     private let queue = DispatchQueue(label: "de.letzgo.porridge.journal", qos: .userInitiated)
@@ -126,6 +127,10 @@ final class RecordingJournal: @unchecked Sendable {
     /// Makes a meeting of every recording that did not end. Too short to be a meeting: only tidied up.
     @MainActor
     static func recover(context: ModelContext, processing: ProcessingService) async {
+        // A second window asks too; one pass at a time, or every leftover became two meetings.
+        guard !isRecovering else { return }
+        isRecovering = true
+        defer { isRecovering = false }
         let active = activeID?.uuidString
         let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
         for infoURL in files where infoURL.pathExtension == "json" && infoURL.deletingPathExtension().lastPathComponent != active {
@@ -135,7 +140,12 @@ final class RecordingJournal: @unchecked Sendable {
                 try? FileManager.default.removeItem(at: sound)
                 continue
             }
-            let recovered = await Task.detached(priority: .userInitiated) { try? encode(sound) }.value
+            let encoded = await Task.detached(priority: .userInitiated) { Result { try encode(sound) } }.value
+            guard case .success(let recovered) = encoded else {
+                // No room or no encoder right now: the copy stays and the next launch tries again.
+                print("[journal] not recovered, kept for the next launch: \(encoded)")
+                continue
+            }
             if let recovered, let meeting = meetingToContinue(info.continues, context: context) {
                 meeting.addRecordedPart(recovered.fileName, written: info.notes.map { RecordingNote(at: $0.at, text: $0.text) })
                 try? context.save()
@@ -143,6 +153,7 @@ final class RecordingJournal: @unchecked Sendable {
                 print("[journal] recovered \(Int(recovered.duration)) s of a meeting")
             } else if let recovered {
                 let note = Note()
+                note.source = .meeting
                 note.createdAt = info.startedAt
                 note.updatedAt = info.startedAt
                 note.title = info.title ?? Note.defaultMeetingTitle(for: info.startedAt)
@@ -185,20 +196,28 @@ final class RecordingJournal: @unchecked Sendable {
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
-        let file = try AVAudioFile(forWriting: AudioStore.url(for: name), settings: settings, commonFormat: .pcmFormatInt16, interleaved: true)
-        let input = try FileHandle(forReadingFrom: sound)
-        defer { try? input.close() }
-        let chunk = Int(sampleRate) * 2
-        while let data = try input.read(upToCount: chunk), !data.isEmpty {
-            let frames = AVAudioFrameCount(data.count / 2)
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { break }
-            buffer.frameLength = frames
-            data.withUnsafeBytes { raw in
-                buffer.int16ChannelData?[0].update(from: raw.bindMemory(to: Int16.self).baseAddress!, count: Int(frames))
+        do {
+            let file = try AVAudioFile(forWriting: AudioStore.url(for: name), settings: settings, commonFormat: .pcmFormatInt16, interleaved: true)
+            let input = try FileHandle(forReadingFrom: sound)
+            defer { try? input.close() }
+            let chunk = Int(sampleRate) * 2
+            while let data = try input.read(upToCount: chunk), data.count >= 2 {
+                let frames = AVAudioFrameCount(data.count / 2)
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { throw CocoaError(.fileWriteUnknown) }
+                buffer.frameLength = frames
+                data.withUnsafeBytes { raw in
+                    if let base = raw.bindMemory(to: Int16.self).baseAddress {
+                        buffer.int16ChannelData?[0].update(from: base, count: Int(frames))
+                    }
+                }
+                try file.write(from: buffer)
             }
-            try file.write(from: buffer)
+            file.close()
+        } catch {
+            // Half a file is no recording; the plain sound is still there for another try.
+            AudioStore.delete(name)
+            throw error
         }
-        file.close()
         return (name, Double(bytes / 2) / sampleRate)
     }
 }

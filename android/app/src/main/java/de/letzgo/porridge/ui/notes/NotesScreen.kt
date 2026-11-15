@@ -1,10 +1,17 @@
 package de.letzgo.porridge.ui.notes
 
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import de.letzgo.porridge.logic.InboxLogic
 import de.letzgo.porridge.ui.components.pageTransition
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.activity.compose.BackHandler
@@ -25,8 +32,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.imePadding
@@ -36,12 +41,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -49,16 +52,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.MoveToInbox
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
@@ -125,7 +129,10 @@ import de.letzgo.porridge.ui.projects.ProjectChooser
 import de.letzgo.porridge.ui.projects.ProjectDetail
 import de.letzgo.porridge.ui.projects.ProjectRow
 import de.letzgo.porridge.ui.projects.sortedByName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.produceState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -145,11 +152,8 @@ class ListState {
     /** Die in der Suche gewählte Art (null = alle). */
     var searchKind by mutableStateOf<ProjectsLogic.Kind?>(null)
     /** Worauf die lange Liste eingeengt ist, gewählt mit dem Knopf neben der Suche. */
-    var homeFilter by mutableStateOf(HomeListLogic.HomeFilter.ALL)
     /** „More“ wurde getippt: die Liste zeigt alle Projekte, nicht nur die letzten. */
     var showAllProjects by mutableStateOf(false)
-    /** „More“ wurde getippt: die Liste zeigt alle Elemente, nicht nur die ersten [HomeListLogic.MAX_ELEMENTS]. */
-    var showAllElements by mutableStateOf(false)
     private val scrollStates = HashMap<ListPage, LazyListState>()
 
     fun scroll(page: ListPage): LazyListState = scrollStates.getOrPut(page) { LazyListState() }
@@ -184,13 +188,17 @@ fun NotesScreen(
     val coroutines = rememberCoroutineScope()
     val context = LocalContext.current
     /** Die Suche liegt als Karte über der jeweiligen Ansicht. */
-    var showSearch by remember { mutableStateOf(false) }
+    // iOS: `chatNavigation` — die Chat-Seite: welcher Chat zu sehen ist, gehalten solange die App läuft.
+    val chatNavigation = remember { de.letzgo.porridge.ui.chat.ChatNavigation() }
+    val chatThreads by remember { PorridgeDatabase.shared.chats().observeThreads() }.collectAsState(initial = emptyList())
+    // Wohin „Zurück“ aus dem Chat und aus der Suche führt: die Seite, von der sie geöffnet wurden.
+    var chatReturn by remember { mutableStateOf<ListPage>(ListPage.Home) }
     var creatingProject by remember { mutableStateOf(false) }
     /** Wohin Neues kommt: ins offene Projekt. */
     val projectForNew = (page as? ListPage.Project)?.id
     var showCreate by remember { mutableStateOf(false) }
     // Bei jedem Öffnen neu: Angemeldet wird in den Einstellungen, und eine Anmeldung kann auslaufen.
-    val plaudSignedIn = remember(showCreate) { PlaudAccount.load().userToken != null }
+    val plaudSignedIn = remember(showCreate, page) { PlaudAccount.load().userToken != null }
     var audioImportError by remember { mutableStateOf<String?>(null) }
     val audioImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -199,6 +207,12 @@ fun NotesScreen(
         }
     }
     var showAddLink by remember { mutableStateOf(false) }
+    val fileImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        coroutines.launch {
+            de.letzgo.porridge.data.ShareImport.save(context.applicationContext, de.letzgo.porridge.data.ShareImport.Shared(null, null, uris), projectForNew)?.let { onOpen(it.id) }
+        }
+    }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
 
     // Beim Start: Papierkorb leeren, unterbrochene Verarbeitung fortsetzen (iOS: `.task`).
@@ -222,13 +236,16 @@ fun NotesScreen(
 
     fun goBack() {
         // Ein archiviertes Projekt wurde aus dem Archiv geöffnet.
-        list.page = if (openProject?.archivedAt != null) ListPage.Archive else ListPage.Home
+        list.page = when {
+            list.page == ListPage.Chat -> chatReturn
+            // Die Suche wird verlassen: Was gefragt war, ist vergessen. (Ein geöffneter Treffer behält die Seite.)
+            list.page == ListPage.Search -> { list.clearSearch(); chatReturn }
+            openProject?.archivedAt != null -> ListPage.Archive
+            else -> ListPage.Home
+        }
     }
-    fun closeSearch() { showSearch = false; list.clearSearch() }
     // Die Zurück-Geste (auch vom Rand) schließt erst die offene Karte, dann die Unterseite.
     BackHandler(enabled = page != ListPage.Home) { goBack() }
-    BackHandler(enabled = showSearch) { closeSearch() }
-
     val trash = remember(notes) { notes.filter { it.isDeleted }.sortedByDescending { it.deletedAt } }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -240,25 +257,46 @@ fun NotesScreen(
             val shownProject = (shown as? ListPage.Project)?.let { p -> folders.firstOrNull { it.id == p.id } }
             val title = when (shown) {
                 ListPage.Home -> "Porridge"
-                is ListPage.Project -> shownProject?.name?.ifEmpty { "Untitled Project" }.orEmpty()
+                is ListPage.Project -> shownProject?.name?.ifEmpty { "Untitled Bucket" }.orEmpty()
                 ListPage.Archive -> "Archive"
                 ListPage.Trash -> "Recently Deleted"
+                ListPage.Inbox -> "Inbox"
+                ListPage.Chat -> "Chat"
+                ListPage.Search -> "Search"
             }
             val icon: ImageVector = when (shown) {
                 ListPage.Home -> Icons.Filled.Inbox
                 is ListPage.Project -> Icons.Filled.Folder
                 ListPage.Archive -> Icons.Filled.Archive
                 ListPage.Trash -> Icons.Filled.Delete
+                ListPage.Inbox -> Icons.Filled.MoveToInbox
+                ListPage.Chat -> Icons.Filled.Chat
+                ListPage.Search -> Icons.Filled.Search
             }
             val tint = when (shown) {
                 ListPage.Home -> Brand.sky
                 is ListPage.Project -> Brand.project
                 ListPage.Archive -> Brand.navy
                 ListPage.Trash -> Brand.danger
+                ListPage.Inbox -> Brand.sky
+                ListPage.Chat -> Brand.navy
+                ListPage.Search -> Brand.navy
             }
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             ChromeBar(title, icon, tint = tint, onBack = if (shown == ListPage.Home) null else ({ goBack() })) {
+                if (shown == ListPage.Chat) de.letzgo.porridge.ui.chat.ChatBarActions(chatNavigation)
                 if (shown == ListPage.Trash && trash.isNotEmpty()) IconButton(onClick = { confirmEmptyTrash = true }) { Icon(Icons.Outlined.Delete, "Delete All", tint = Brand.dangerText) }
+                if (shown == ListPage.Home && trash.isNotEmpty()) IconButton(onClick = { list.page = ListPage.Trash }) { Icon(Icons.Outlined.Delete, "Recently Deleted", tint = Brand.dangerText) }
+                // iOS: `importMenu` — was von außen hereinkommt, hat sein eigenes Menü in der Leiste; in einem Bucket landet es dort.
+                if (shown == ListPage.Home || shownProject != null) Box {
+                    var importOpen by remember { mutableStateOf(false) }
+                    IconButton(onClick = { importOpen = true }) { Icon(Icons.Filled.FileDownload, "Import", tint = Brand.navy) }
+                    DropdownMenu(importOpen, onDismissRequest = { importOpen = false }) {
+                        DropdownMenuItem(text = { Text("Import Audio") }, leadingIcon = { Icon(Icons.Filled.GraphicEq, null) }, onClick = { importOpen = false; audioImporter.launch(arrayOf("audio/*", "video/*")) })
+                        if (plaudSignedIn) DropdownMenuItem(text = { Text("Import Plaud") }, leadingIcon = { Icon(Icons.Filled.FileDownload, null) }, onClick = { importOpen = false; onPlaud(projectForNew) })
+                        DropdownMenuItem(text = { Text("Photo or File") }, leadingIcon = { Icon(Icons.Filled.AttachFile, null) }, onClick = { importOpen = false; fileImporter.launch(arrayOf("image/*", "application/pdf", "text/*", "application/*")) })
+                    }
+                }
                 if (shown == ListPage.Home) IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings", tint = Brand.navy) }
             }
             val listModifier = Modifier.weight(1f)
@@ -269,6 +307,10 @@ fun NotesScreen(
                 shown is ListPage.Project ->
                     if (shownProject == null) Spacer(listModifier)
                     else ProjectDetail(shownProject, notes, stages, onOpen, scroll, listModifier)
+                // iOS: `searchPage` — die Suche als eigene Seite: Ein Treffer öffnet sich daraus, zurück führt zu den Treffern.
+                shown == ListPage.Search -> Box(listModifier.imePadding()) { SearchPanel(list, notes, stages, indexVersion, onOpen) }
+                shown == ListPage.Chat -> de.letzgo.porridge.ui.chat.ChatPage(notes, folders, chatNavigation, onOpen, listModifier.imePadding().navigationBarsPadding())
+                shown == ListPage.Inbox -> InboxList(notes, folders, stages, onOpen, scroll, listModifier)
                 shown == ListPage.Archive -> ArchiveList(notes, folders, stages, onOpen, { list.page = ListPage.Project(it) }, scroll, listModifier)
                 else -> TrashList(trash, stages, onOpen, scroll, listModifier)
             }
@@ -276,24 +318,16 @@ fun NotesScreen(
         }
         // Derselbe Plus-Knopf auf jeder Seite, unten links die Suche (iOS: `createMenu`). In einem offenen Projekt
         // kommt alles Neue ins Projekt; die Liste bleibt, wo sie ist, das Neue öffnet sich darüber.
-        CreateMenu(
+        // Chat und Suche sind eigene Seiten mit eigenem Feld: Die runden Knöpfe bleiben dort weg.
+        if (page != ListPage.Chat && page != ListPage.Search) CreateMenu(
             showCreate, { showCreate = it },
             showsPlus = page != ListPage.Archive && page != ListPage.Trash,
             onProject = if (page == ListPage.Home) ({ creatingProject = true }) else null,
             onNote = { onNewNote(projectForNew) },
             onMeeting = onRecord, onLink = { showAddLink = true },
-            onImportAudio = { audioImporter.launch(arrayOf("audio/*", "video/*")) },
-            onImportPlaud = if (plaudSignedIn) ({ onPlaud(projectForNew) }) else null,
-            filter = if (page == ListPage.Home) list.homeFilter else null,
-            onFilter = { list.homeFilter = it; coroutines.launch { list.scroll(ListPage.Home).scrollToItem(0) } },
-            showSearch = showSearch, onSearch = { if (it) showSearch = true else closeSearch() },
-            // Ein Treffer schließt die Karte; die Anfrage bleibt für den Weg zurück zu den Treffern.
-            search = {
-                SearchPanel(
-                    list, notes, stages, indexVersion,
-                    onOpen = { id -> showSearch = false; onOpen(id) },
-                )
-            },
+            onSearch = { chatReturn = page; list.page = ListPage.Search },
+            // iOS: `openChat` — der Chat öffnet seine eigene Seite; aus einem Bucket geht er über diesen Bucket.
+            onChat = { chatReturn = page; chatNavigation.open(projectForNew, chatThreads); list.page = ListPage.Chat },
         )
     }
 
@@ -302,12 +336,11 @@ fun NotesScreen(
         showAddLink = false
         val pid = projectForNew
         coroutines.launch {
-            val note = LinkImport.add(address)
-            pid?.let { Projects.toggle(note, it) }
+            val note = LinkImport.add(address, project = pid)
             onOpen(note.id)
         }
     }
-    if (creatingProject) TextPrompt("New Project", "", "Create", onDismiss = { creatingProject = false }) { name ->
+    if (creatingProject) TextPrompt("New Bucket", "", "Create", onDismiss = { creatingProject = false }) { name ->
         creatingProject = false
         coroutines.launch { list.page = ListPage.Project(Projects.create(name).id) }
     }
@@ -320,68 +353,35 @@ fun NotesScreen(
     )
 }
 
-/** Symbole wie im Plus-Menü (iOS: `HomeFilter.systemImage`). */
-private fun filterIcon(filter: HomeListLogic.HomeFilter): ImageVector = when (filter) {
-    HomeListLogic.HomeFilter.ALL -> Icons.Filled.FilterList
-    HomeListLogic.HomeFilter.PROJECTS -> Icons.Filled.Folder
-    HomeListLogic.HomeFilter.MEETINGS -> Icons.Filled.Mic
-    HomeListLogic.HomeFilter.NOTES -> Icons.Outlined.EditNote
-    HomeListLogic.HomeFilter.LINKS -> Icons.Filled.Link
-}
-
-/** Farben wie im Plus-Menü (iOS: `HomeFilter.tint`). */
-@Composable
-private fun filterTint(filter: HomeListLogic.HomeFilter): Color = when (filter) {
-    HomeListLogic.HomeFilter.ALL, HomeListLogic.HomeFilter.MEETINGS -> Brand.navy
-    HomeListLogic.HomeFilter.PROJECTS -> Brand.project
-    HomeListLogic.HomeFilter.NOTES -> Brand.sky
-    HomeListLogic.HomeFilter.LINKS -> LinkOrange
-}
-
 /** iOS: Startseite von `NotesView` — Projekte, Angeheftetes, dann Meetings, Notizen und Links nach Datum; am Ende Archiv und Papierkorb. */
 @Composable
 private fun HomeList(
     list: ListState, notes: List<Note>, folders: List<NoteFolder>, stages: Map<String, String>,
     onOpen: (String) -> Unit, state: LazyListState, modifier: Modifier,
 ) {
-    val filter = list.homeFilter
-    val projects = remember(folders, notes, list.showAllProjects, filter) {
-        val active = if (filter.showsProjects) HomeListLogic.activeProjects(folders) else emptyList()
-        val showAll = list.showAllProjects || filter == HomeListLogic.HomeFilter.PROJECTS
-        HomeListLogic.shownProjects(active, showAll) { ProjectsLogic.lastChange(it, notes) }
+    val projects = remember(folders, notes, list.showAllProjects) {
+        HomeListLogic.shownProjects(HomeListLogic.activeProjects(folders), list.showAllProjects) { ProjectsLogic.lastChange(it, notes) }
     }
-    val home = remember(notes, folders, filter) { HomeListLogic.homeNotes(notes, folders).filter(filter::matches) }
-    val (pinned, rest) = remember(home) { home.partition { it.isPinned } }
-    val limits = HomeListLogic.elementLimits(pinned.size, rest.size, list.showAllElements)
     val archiveCount = remember(folders, notes) { HomeListLogic.archiveCount(folders, notes) }
+    // iOS: `InboxRow` unter der Kopfzeile „Inbox“ in `NotesView.home`.
+    val waiting = remember(notes) { InboxLogic.notes(notes) }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
+        // Der Eingang ist die erste Kategorie, mit einem Eintrag seines Namens: was neu ist oder in keinem Bucket liegt.
+        item(key = "h-inbox") { SectionHeader("Inbox", color = Brand.sky) }
+        item(key = "row-inbox") { InboxRow(waiting) { list.page = ListPage.Inbox } }
+        // Die Buckets als Liste: die angepinnten und die zuletzt geänderten, der Rest hinter „More“.
         if (projects.shown.isNotEmpty()) {
-            item(key = "h-projects") { SectionHeader("Projects", color = Brand.project) }
+            item(key = "h-projects") { SectionHeader("Buckets", color = Brand.project) }
             // Mit „More“ darunter ist die Zeile nicht die letzte.
-            projectRows(projects.shown, notes, moreFollows = projects.hidden > 0 && filter != HomeListLogic.HomeFilter.PROJECTS) { list.page = ListPage.Project(it) }
-            if (projects.hidden > 0 && filter != HomeListLogic.HomeFilter.PROJECTS) item(key = "more-projects") {
+            projectRows(projects.shown, notes, moreFollows = projects.hidden > 0) { list.page = ListPage.Project(it) }
+            if (projects.hidden > 0) item(key = "more-projects") {
                 MoreRow(projects.hidden, list.showAllProjects, Brand.project) { list.showAllProjects = !list.showAllProjects }
             }
         }
-        if (pinned.isNotEmpty()) {
-            item(key = "h-pinned") { SectionHeader("Pinned", color = Brand.navy) }
-            noteRows(pinned.take(limits.pinned), stages, onOpen)
+        if (projects.shown.isEmpty() && waiting.isEmpty() && archiveCount == 0) {
+            item(key = "empty") { EmptyState("Nothing Here Yet", "Add notes, meetings, links and buckets with the plus button.", Icons.AutoMirrored.Filled.Notes) }
         }
-        dateGroups(rest.take(limits.notes), stages, onOpen)
-        if (limits.hidden > 0) item(key = "more-elements") {
-            MoreRow(limits.hidden, list.showAllElements, Brand.sky) { list.showAllElements = !list.showAllElements }
-        }
-        if (projects.shown.isEmpty() && home.isEmpty()) {
-            item(key = "empty") {
-                if (filter == HomeListLogic.HomeFilter.ALL) EmptyState("Nothing Here Yet", "Add notes, meetings, links and projects with the plus button.", Icons.AutoMirrored.Filled.Notes)
-                else EmptyState("Nothing to Show", "The list has nothing of this kind.", filterIcon(filter))
-            }
-        }
-        if (filter == HomeListLogic.HomeFilter.ALL) {
-            if (archiveCount > 0) item(key = "row-archive") { PageRow("Archive", archiveCount, Brand.navy) { list.page = ListPage.Archive } }
-            val deleted = notes.count { it.isDeleted }
-            if (deleted > 0) item(key = "row-trash") { PageRow("Recently Deleted", deleted, Brand.danger) { list.page = ListPage.Trash } }
-        }
+        if (archiveCount > 0) item(key = "row-archive") { PageRow("Archive", archiveCount, Brand.navy) { list.page = ListPage.Archive } }
     }
 }
 
@@ -395,13 +395,13 @@ private fun ArchiveList(
     val archived = remember(notes) { HomeListLogic.archivedNotes(notes) }
     if (projects.isEmpty() && archived.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            EmptyState("Nothing Archived", "Archive projects and notes you are done with. They stay in the search.", Icons.Filled.Archive)
+            EmptyState("Nothing Archived", "Archive buckets and notes you are done with. They stay in the search.", Icons.Filled.Archive)
         }
         return
     }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
         if (projects.isNotEmpty()) {
-            item(key = "h-projects") { SectionHeader("Projects", color = Brand.project) }
+            item(key = "h-projects") { SectionHeader("Buckets", color = Brand.project) }
             projectRows(projects, notes, onProject = onProject)
         }
         dateGroups(archived, stages, onOpen)
@@ -445,9 +445,14 @@ private fun SearchResults(
     val query = list.search
     val tokens = list.tagTokens
     val kind = list.searchKind
-    val foundNotes = remember(notes, query, tokens, kind, indexVersion) {
-        HomeListLogic.searchNotes(notes, query, tokens, kind, if (query.isBlank()) null else AppGraph.index.noteIDs(query))
+    // Gesucht wird neben der Oberfläche: Bei vielen Notizen kostete sonst jeder Buchstabe einen Ruck. Das letzte
+    // Ergebnis bleibt stehen, bis das neue da ist.
+    val found by produceState<List<Note>?>(null, notes, query, tokens, kind, indexVersion) {
+        value = withContext(Dispatchers.Default) {
+            HomeListLogic.searchNotes(notes, query, tokens, kind, if (query.isBlank()) null else AppGraph.index.noteIDs(query))
+        }
     }
+    val foundNotes = found ?: return
     if (foundNotes.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { EmptyState("No Results", "Nothing matches your search.", Icons.Filled.Search) }
         return
@@ -488,7 +493,7 @@ private fun MoreRow(hidden: Int, expanded: Boolean, color: Color, onToggle: () -
 
 /** Eine Kopfzeile wie „Done“ am Ende der Liste, die zu einer Unterseite führt. */
 @Composable
-private fun PageRow(title: String, count: Int, color: Color, onClick: () -> Unit) {
+private fun PageRow(title: String, count: Int?, color: Color, onClick: () -> Unit) {
     SectionHeader(title, count, Modifier.clickable(onClick = onClick), color = color) {
         Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -562,10 +567,10 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
                     DropdownMenuItem(text = { Text("Recover") }, onClick = { menu = false; coroutines.launch { store.restore(note) } })
                     DropdownMenuItem(text = { Text("Delete Now", color = Brand.dangerText) }, onClick = { menu = false; confirmDeleteNow = true })
                 } else {
-                    if (!archived) DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { PorridgeDatabase.shared.notes().upsert(note.copy(isPinned = !note.isPinned)) } })
+                    if (!archived) DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { NoteStore().update(note.id, touch = false) { it.copy(isPinned = !it.isPinned) } } })
                     DropdownMenuItem(text = { Text(if (archived) "Unarchive" else "Archive") }, onClick = { menu = false; coroutines.launch { if (archived) store.unarchive(note) else store.archive(note) } })
-                    DropdownMenuItem(text = { Text("Projects…") }, onClick = { menu = false; choosing = true })
-                    if (projectID != null) DropdownMenuItem(text = { Text("Remove from Project") }, onClick = { menu = false; coroutines.launch { Projects.toggle(note, projectID) } })
+                    DropdownMenuItem(text = { Text("Buckets…") }, onClick = { menu = false; choosing = true })
+                    if (projectID != null) DropdownMenuItem(text = { Text("Remove from Bucket") }, onClick = { menu = false; coroutines.launch { Projects.toggle(note, projectID) } })
                     DropdownMenuItem(text = { Text("Delete", color = Brand.dangerText) }, onClick = { menu = false; coroutines.launch { store.trash(note) } })
                 }
             }
@@ -578,16 +583,30 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
 internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivider: Boolean = true) {
     val (icon, tint) = when {
         note.isLink -> Icons.Filled.Link to LinkOrange
+        note.isImage -> Icons.Filled.Image to Brand.navy
+        note.isFile -> Icons.Filled.Description to Brand.navy
         note.isRecording -> Icons.Outlined.GraphicEq to Brand.navy
+        note.attachmentsData != null -> Icons.Filled.AttachFile to Brand.sky
         else -> Icons.AutoMirrored.Filled.Notes to Brand.sky
+    }
+    // iOS: `RowThumbnail` — das erste Bild der Notiz, klein, am Ende der Zeile.
+    val pictureFile = remember(note.attachmentsData) { note.attachments.firstOrNull { it.kind == de.letzgo.porridge.model.Attachment.Kind.IMAGE }?.fileName }
+    val picture by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, pictureFile) {
+        value = if (pictureFile == null || !AudioStore.exists(pictureFile)) null else withContext(Dispatchers.IO) {
+            runCatching {
+                val path = AudioStore.file(pictureFile).path
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(path, bounds)
+                var sample = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 320) sample *= 2
+                android.graphics.BitmapFactory.decodeFile(path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+            }.getOrNull()
+        }
     }
     Surface(color = MaterialTheme.colorScheme.background, modifier = modifier) {
         Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    RowIcon(icon, tint)
-                    if (note.isPinned) Icon(Icons.Filled.PushPin, "Pinned", tint = Brand.navy, modifier = Modifier.size(12.dp))
-                }
+                RowIcon(icon, tint, isPinned = note.isPinned)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(note.displayTitle, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (note.preview.isNotEmpty()) Text(note.preview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -603,8 +622,14 @@ internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivide
                     }
                     Text(footer.joinToString("  ·  "), style = MaterialTheme.typography.labelSmall, color = if (note.isDeleted) Brand.danger.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
                 }
+                picture?.let { bitmap ->
+                    androidx.compose.foundation.Image(
+                        bitmap, null, Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    )
+                }
             }
-            if (showsDivider) HorizontalDivider(Modifier.padding(start = 58.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            if (showsDivider) HorizontalDivider(Modifier.padding(start = 76.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }
@@ -616,7 +641,11 @@ private fun groups(list: List<Note>): List<Pair<String, List<Note>>> {
     val year = today.get(Calendar.YEAR)
     for (note in list) {
         val day = Calendar.getInstance().apply { timeInMillis = note.updatedAt; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
-        val days = TimeUnit.MILLISECONDS.toDays(today.timeInMillis - day.timeInMillis).toInt()
+        // Kalendertage, nicht 24-Stunden-Stücke: In der Woche der Zeitumstellung hat ein Tag 23 oder 25 Stunden.
+        val days = java.time.temporal.ChronoUnit.DAYS.between(
+            java.time.Instant.ofEpochMilli(day.timeInMillis).atZone(java.time.ZoneId.systemDefault()).toLocalDate(),
+            java.time.Instant.ofEpochMilli(today.timeInMillis).atZone(java.time.ZoneId.systemDefault()).toLocalDate(),
+        ).toInt()
         val title = when {
             days <= 0 -> "Today"
             days == 1 -> "Yesterday"
@@ -636,68 +665,29 @@ private fun groups(list: List<Note>): List<Pair<String, List<Note>>> {
 private fun CreateMenu(
     open: Boolean, onOpen: (Boolean) -> Unit, showsPlus: Boolean, onProject: (() -> Unit)?,
     onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit,
-    onImportAudio: () -> Unit, onImportPlaud: (() -> Unit)?,
     /** Die Wahl für die lange Liste; null, wo es den Knopf nicht gibt. */
-    filter: HomeListLogic.HomeFilter?, onFilter: (HomeListLogic.HomeFilter) -> Unit,
-    showSearch: Boolean, onSearch: (Boolean) -> Unit, search: @Composable () -> Unit,
+    onSearch: () -> Unit, onChat: () -> Unit,
 ) {
-    val cardOpen = showSearch
-    var filterOpen by remember { mutableStateOf(false) }
     BackHandler(enabled = open) { onOpen(false) }
     // Andere Seite oder offene Karte: die Arten klappen wieder ein.
-    if (filter == null || cardOpen) filterOpen = false
     Box(Modifier.fillMaxSize()) {
-        if (open || cardOpen) Box(
-            Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (cardOpen) 0.18f else 0.08f)).combinedClickableNoRipple {
-                onOpen(false)
-                if (showSearch) onSearch(false)
-            },
-        )
-        // Die Suche klappt wie das Plus-Menü aus ihrem Knopf auf: eine Karte über der Ansicht (iOS: `OverlayPanel`).
-        Column(Modifier.align(Alignment.BottomStart).fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)) {
-            AnimatedVisibility(cardOpen, Modifier.weight(1f)) {
-                Surface(shape = RoundedCornerShape(22.dp), shadowElevation = 10.dp, color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().padding(bottom = 14.dp)) {
-                    search()
-                }
-            }
-            if (!cardOpen) Spacer(Modifier.weight(1f))
-            // Mit Tastatur reicht die Karte bis an sie heran; der Knopf tritt so lange zur Seite. Bei offener Karte bleibt nur ihr Knopf.
-            if (!(cardOpen && WindowInsets.isImeVisible)) Row(Modifier.padding(start = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (filter != null && !cardOpen) {
-                    val isAll = filter == HomeListLogic.HomeFilter.ALL
-                    Box {
-                        SkyFab(
-                            filterIcon(filter), if (isAll) "Filter" else "Filter: ${filter.title}",
-                            container = if (isAll) MaterialTheme.colorScheme.surfaceContainerHigh else filterTint(filter),
-                            content = if (isAll) Brand.navy else Brand.onFill(filterTint(filter)),
-                        ) { onOpen(false); filterOpen = true }
-                        DropdownMenu(filterOpen, onDismissRequest = { filterOpen = false }) {
-                            for (option in HomeListLogic.HomeFilter.entries) DropdownMenuItem(
-                                text = { Text(option.title) },
-                                onClick = { filterOpen = false; onFilter(option) },
-                                modifier = Modifier.semantics { selected = option == filter },
-                                leadingIcon = { Icon(filterIcon(option), null, tint = Brand.readable(filterTint(option))) },
-                                trailingIcon = if (option == filter) ({ Icon(Icons.Filled.Check, null) }) else null,
-                            )
-                        }
-                    }
-                }
-                SkyFab(if (showSearch) Icons.Filled.Close else Icons.Filled.Search, if (showSearch) "Close Search" else "Search", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); filterOpen = false; onSearch(!showSearch) }
-            }
+        if (open) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.08f)).combinedClickableNoRipple { onOpen(false) })
+        // iOS: Chat und Suche unten links; jede öffnet ihre eigene Seite.
+        Row(Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 22.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SkyFab(Icons.Filled.Chat, "Chat", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); onChat() }
+            SkyFab(Icons.Filled.Search, "Search", container = MaterialTheme.colorScheme.surfaceContainerHigh, content = Brand.navy) { onOpen(false); onSearch() }
         }
-        if (showsPlus && !cardOpen) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (showsPlus) Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 16.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             AnimatedVisibility(open) {
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    CreateOption("Import Audio", Icons.Filled.FileDownload, Brand.navy) { onOpen(false); onImportAudio() }
-                    if (onImportPlaud != null) CreateOption("Import Plaud", Icons.Filled.GraphicEq, Brand.navy) { onOpen(false); onImportPlaud() }
-                    HorizontalDivider(Modifier.width(150.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
-                    if (onProject != null) CreateOption("Project", Icons.Filled.Folder, Brand.project) { onOpen(false); onProject() }
+                    if (onProject != null) CreateOption("Bucket", Icons.Filled.Folder, Brand.project) { onOpen(false); onProject() }
+
                     CreateOption("Link", Icons.Filled.Link, LinkOrange) { onOpen(false); onLink() }
                     CreateOption("Meeting", Icons.Filled.Mic, Brand.navy) { onOpen(false); onMeeting() }
                     CreateOption("Note", Icons.Outlined.EditNote, Brand.sky) { onOpen(false); onNote() }
                 }
             }
-            SkyFab(Icons.Filled.Add, if (open) "Close" else "Create", Modifier.rotate(if (open) 45f else 0f)) { filterOpen = false; onOpen(!open) }
+            SkyFab(Icons.Filled.Add, if (open) "Close" else "Create", Modifier.rotate(if (open) 45f else 0f)) { onOpen(!open) }
         }
     }
 }
@@ -708,12 +698,15 @@ private suspend fun importAudio(context: android.content.Context, uri: android.n
         val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
         if (c.moveToFirst() && i >= 0) c.getString(i) else null
     } ?: "Import"
-    val fileName = AudioStore.importFile(context, uri, name.substringAfterLast('.', "m4a"))
-    val info = AudioStore.audioInfo(fileName)
+    // Kopieren und Ausmessen nicht auf dem Thread der Oberfläche: Eine Stunde Video sind hunderte Megabyte.
+    val (fileName, info) = withContext(Dispatchers.IO) {
+        val copied = AudioStore.importFile(context, uri, name.substringAfterLast('.', "m4a"))
+        copied to AudioStore.audioInfo(copied)
+    }
     val note = Note(
         title = name.substringBeforeLast('.'), titleIsCustom = true, statusRaw = ProcessingStatus.RECORDED.raw,
         audioFileName = fileName, inputName = "Import", duration = info?.first ?: 0.0, channelCount = info?.second ?: 1,
-        projectIDs = listOfNotNull(projectID),
+        projectIDs = listOfNotNull(projectID), sourceRaw = de.letzgo.porridge.model.NoteSource.AUDIO_IMPORT.raw,
     )
     PorridgeDatabase.shared.notes().upsert(note)
     ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
@@ -754,4 +747,62 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
         confirmButton = { TextButton(enabled = address != null, onClick = { address?.let(onAdd) }) { Text("Add") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** iOS: `InboxRow` — der Eingang als der eine Eintrag seiner Kategorie, mit eigenem Symbol. */
+@Composable
+private fun InboxRow(waiting: List<Note>, onOpen: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RowIcon(Icons.Filled.MoveToInbox, Brand.sky)
+        Column(Modifier.weight(1f)) {
+            Text("Inbox", style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+            Text(
+                if (waiting.isEmpty()) "Nothing waiting" else "${waiting.size} waiting",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+            )
+        }
+    }
+}
+
+/** iOS: `NotesView.inboxPage` — der Eingang geöffnet: was in keinem Bucket liegt, neueste zuerst, je mit den Ablage-Knöpfen. */
+@Composable
+private fun InboxList(
+    notes: List<Note>, folders: List<NoteFolder>, stages: Map<String, String>, onOpen: (String) -> Unit, state: LazyListState, modifier: Modifier,
+) {
+    val waiting = remember(notes) { InboxLogic.notes(notes) }
+    val buckets = remember(folders) { folders.filter { it.archivedAt == null && it.name.isNotBlank() }.sortedBy { it.name.lowercase() } }
+    if (waiting.isEmpty()) {
+        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            EmptyState("Inbox Empty", "What is new or in no bucket waits here.", Icons.Filled.MoveToInbox)
+        }
+        return
+    }
+    LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
+        for (note in waiting) {
+            val suggests = note.suggestedProjectIDs.any { id -> buckets.any { it.id == id } }
+            item(key = "in-" + note.id) { NoteSwipeRow(note, stages[note.id], onOpen, showsDivider = !suggests) }
+            if (suggests) item(key = "f-" + note.id) { FilingBar(note, buckets) }
+        }
+    }
+}
+
+/** Die vorgeschlagenen Buckets eines Eintrags im Eingang; jeder andere Bucket steckt im langen Druck der Zeile (iOS: `FilingBar.swift`). */
+@Composable
+fun FilingBar(note: Note, folders: List<NoteFolder>, modifier: Modifier = Modifier.padding(start = 76.dp, end = 20.dp, bottom = 10.dp)) {
+    val coroutines = rememberCoroutineScope()
+    val store = remember { NoteStore() }
+    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        for (folder in note.suggestedProjectIDs.mapNotNull { id -> folders.firstOrNull { it.id == id } }) {
+            AssistChip(
+                onClick = { coroutines.launch { store.file(note, folder.id) } },
+                label = { Text(folder.name, maxLines = 1) },
+                leadingIcon = { Icon(Icons.Filled.AutoAwesome, "Suggested bucket", Modifier.size(16.dp)) },
+                trailingIcon = { Icon(Icons.Filled.Close, "Drop Suggestion", Modifier.size(16.dp).clickable { coroutines.launch { store.dismissSuggestions(note) } }) },
+                colors = AssistChipDefaults.assistChipColors(containerColor = Brand.project, labelColor = Color.White, leadingIconContentColor = Color.White, trailingIconContentColor = Color.White),
+            )
+        }
+    }
 }

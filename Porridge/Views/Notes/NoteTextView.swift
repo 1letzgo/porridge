@@ -47,7 +47,38 @@ final class NoteTextCoordinator: NSObject {
         controller.isEmpty = storage.length == 0
         textView.selectedRange = NSRange(location: min(selected.location, storage.length), length: 0)
         resetTypingAttributes()
+        forgetUndo()
     }
+
+    /// The editor changed the text itself (another note's text, a marker, new numbers). The undo steps recorded
+    /// before point at places that have moved; replaying them would put text in the wrong spot.
+    private func forgetUndo() {
+        textView?.undoManager?.removeAllActions()
+    }
+
+    /// Typing that has not reached the note yet (see `commit`).
+    var hasPendingCommit: Bool { pendingCommit != nil }
+
+    /// The app ends or leaves the screen: what was typed last must not wait for its turn.
+    func observeAppEnd() {
+        #if os(macOS)
+        let names = [NSApplication.willTerminateNotification, NSApplication.willResignActiveNotification]
+        #else
+        let names = [UIApplication.willResignActiveNotification, UIApplication.willTerminateNotification]
+        #endif
+        for name in names {
+            appObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { if self?.hasPendingCommit == true { self?.flush() } }
+            })
+        }
+    }
+
+    func stopObserving() {
+        appObservers.forEach(NotificationCenter.default.removeObserver)
+        appObservers.removeAll()
+    }
+
+    private var appObservers: [NSObjectProtocol] = []
 
     /// Hands the text to the note shortly after the last change. Writing on every key press makes the
     /// notes list update while typing, which costs letters.
@@ -75,7 +106,7 @@ final class NoteTextCoordinator: NSObject {
         guard let textView, let storage = textView.noteStorage else { return text.wrappedValue.count }
         let location = controller.isEditing ? min(textView.selectedRange.location, storage.length) : storage.length
         if location == storage.length { return NoteMarkdown.markdown(from: storage).count }
-        return NoteMarkdown.markdown(from: storage.attributedSubstring(from: NSRange(location: 0, length: location))).count
+        return NoteMarkdown.markdown(from: storage.attributedSubstring(from: NSRange(location: 0, length: location)), openEnded: true).count
     }
 
     func blur() {
@@ -165,6 +196,7 @@ final class NoteTextCoordinator: NSObject {
             let shifted = selection.location + (selection.location >= paragraph.location + oldMarker ? marker.length - oldMarker : 0)
             textView.selectedRange = NSRange(location: max(range.location + marker.length, min(shifted, storage.length)), length: selection.length)
         }
+        if oldMarker != marker.length { forgetUndo() }
         if kind == .numbered { renumber() }
         if range.length == 0 {
             // No characters to carry the kind: what is typed next gets it.
@@ -197,6 +229,7 @@ final class NoteTextCoordinator: NSObject {
                     storage.addAttributes(NoteMarkdown.paragraphAttributes(kind: .numbered, indent: indent), range: NSRange(location: paragraph.location, length: marker.length))
                     let delta = marker.length - old
                     length += delta
+                    if delta != 0 { forgetUndo() }
                     if selection.location >= paragraph.location + old { selection.location += delta }
                 }
             }
@@ -272,6 +305,7 @@ final class NoteTextCoordinator: NSObject {
                 storage.replaceCharacters(in: range, with: newline)
                 isAdjusting = false
                 textView.selectedRange = NSRange(location: range.location + newline.length, length: 0)
+                forgetUndo()
                 if kind == .numbered { renumber() }
                 resetTypingAttributes()
                 textView.didRestyle()
@@ -284,6 +318,7 @@ final class NoteTextCoordinator: NSObject {
                 isAdjusting = false
                 restyle(paragraphRange(at: range.location + 1), kind: .paragraph, indent: 0)
                 textView.selectedRange = NSRange(location: range.location + 1, length: 0)
+                forgetUndo()
                 resetTypingAttributes()
                 commit()
                 return false
@@ -322,6 +357,7 @@ final class NoteTextCoordinator: NSObject {
             storage.replaceCharacters(in: NSRange(location: start, length: 0), with: NSAttributedString(string: replacement, attributes: textView.typingAttributes))
             isAdjusting = false
             textView.selectedRange = NSRange(location: start + (replacement as NSString).length, length: 0)
+            forgetUndo()
             didChange()
             return false
         }
@@ -347,6 +383,7 @@ final class NoteTextCoordinator: NSObject {
                 isAdjusting = true
                 storage?.deleteCharacters(in: content)
                 isAdjusting = false
+                forgetUndo()
                 textView.selectedRange = NSRange(location: content.location, length: 0)
                 restyle(paragraphRange(at: content.location), kind: converted, indent: 0)
                 commit()
@@ -586,6 +623,7 @@ struct NoteTextView: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.load(text)
         context.coordinator.controller.bind(context.coordinator)
+        context.coordinator.observeAppEnd()
         textView.isEditable = isEditable
         return scrollView
     }
@@ -595,7 +633,15 @@ struct NoteTextView: NSViewRepresentable {
         coordinator.text = $text
         guard let textView = coordinator.textView else { return }
         textView.isEditable = isEditable
-        if text != coordinator.lastWritten { coordinator.load(text) }
+        // Typing that is still on its way to the note is newer than a text from outside: it is written next
+        // and wins, instead of being replaced here.
+        if text != coordinator.lastWritten, !coordinator.hasPendingCommit { coordinator.load(text) }
+    }
+
+    /// The window closes or another note is shown: the last letters go to the note first.
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: NoteTextCoordinator) {
+        if coordinator.hasPendingCommit { coordinator.flush() }
+        coordinator.stopObserving()
     }
 }
 
@@ -695,6 +741,7 @@ struct NoteTextView: UIViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.load(text)
         context.coordinator.controller.bind(context.coordinator)
+        context.coordinator.observeAppEnd()
         textView.isEditable = isEditable
         return textView
     }
@@ -703,7 +750,14 @@ struct NoteTextView: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.text = $text
         textView.isEditable = isEditable
-        if text != coordinator.lastWritten { coordinator.load(text) }
+        // Typing that is still on its way to the note is newer than a text from outside: it is written next
+        // and wins, instead of being replaced here.
+        if text != coordinator.lastWritten, !coordinator.hasPendingCommit { coordinator.load(text) }
+    }
+
+    static func dismantleUIView(_ textView: NotePlatformTextView, coordinator: NoteTextCoordinator) {
+        if coordinator.hasPendingCommit { coordinator.flush() }
+        coordinator.stopObserving()
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: NotePlatformTextView, context: Context) -> CGSize? {

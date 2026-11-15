@@ -15,10 +15,12 @@ fun gitCommitCount(): Int = runCatching {
 }.getOrDefault(1)
 
 /** Eine Versionsquelle für alle Plattformen: `MARKETING_VERSION` aus `project.yml` (wie scripts/release-mac.sh). */
-fun marketingVersion(): String = runCatching {
+fun marketingVersion(): String {
     val yml = rootProject.file("../project.yml").readText()
-    Regex("""(?m)^\s*MARKETING_VERSION:\s*([^\s#]+)""").find(yml)!!.groupValues[1].trim()
-}.getOrDefault("0.0.0")
+    // Ohne Version kein Build: Eine stille „0.0.0“ gälte dem Update-Vergleich als älter als jede Veröffentlichung.
+    return Regex("""(?m)^\s*MARKETING_VERSION:\s*([^\s#]+)""").find(yml)?.groupValues?.get(1)?.trim()?.trim('"')?.takeIf { it.isNotEmpty() }
+        ?: throw GradleException("MARKETING_VERSION is missing in project.yml")
+}
 
 android {
     namespace = "de.letzgo.porridge"
@@ -116,6 +118,8 @@ dependencies {
     implementation("androidx.room:room-ktx:$room")
     ksp("androidx.room:room-compiler:$room")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    // Texterkennung in geteilten Bildern und PDFs, auf dem Gerät (das Modell für lateinische Schrift liegt im APK).
+    implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation(files("libs/sherpa-onnx-$sherpaVersion.aar"))
     // llama.cpp (Zusammenfassungen, Chat, Satzvektoren auf dem Gerät), nur arm64.

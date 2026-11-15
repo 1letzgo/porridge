@@ -7,8 +7,13 @@ enum SummaryError: LocalizedError {
     case missingModel
     case emptyTranscript
     case emptyNote
+    /// An image or a file nothing could be read out of.
+    case emptyFile(isImage: Bool)
     case emptyResponse
     case provider(String)
+    case tooLongToEnhance
+    case noteChanged
+    case truncated
 
     var errorDescription: String? {
         switch self {
@@ -17,8 +22,12 @@ enum SummaryError: LocalizedError {
         case .missingModel: "Please choose a model in Settings."
         case .emptyTranscript: "The transcript is empty."
         case .emptyNote: "The note is empty."
+        case .emptyFile(let isImage): isImage ? "No text could be read from this image." : "No text could be read from this file."
         case .emptyResponse: "The model returned no response."
         case .provider(let message): message
+        case .tooLongToEnhance: "The note is too long for this model. Choose a larger model or a cloud model."
+        case .noteChanged: "The note was changed while it was being enhanced, so your text was kept."
+        case .truncated: "The model stopped before the note was finished, so your text was kept. Try a model with a longer output."
         }
     }
 }
@@ -79,8 +88,11 @@ enum SummaryService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let hasTranscript = !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let page = (note.pageText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasArticle = note.isLink && !page.isEmpty
+        // A page, or the text read out of shared files.
+        let hasArticle = (note.isLink || note.attachmentsData != nil) && !page.isEmpty
         guard hasTranscript || hasArticle || !own.isEmpty else {
+            // An image or a file has no note text to read: what counts is what was read out of it.
+            if note.isStored { throw SummaryError.emptyFile(isImage: note.isImage) }
             throw note.isRecording ? SummaryError.emptyTranscript : SummaryError.emptyNote
         }
 
@@ -89,21 +101,31 @@ enum SummaryService {
             material = transcript + (own.isEmpty ? "" : "\n\nNotes the user wrote down:\n" + own)
         } else if hasArticle {
             // The start of an article says what it is about; more only makes the model slow and hungry for memory.
-            material = (title.isEmpty ? "" : title + "\n\n") + String(page.prefix(maxArticleLength)) + (own.isEmpty ? "" : "\n\nNotes the user wrote down:\n" + own)
+            let ownNotes = note.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            material = (title.isEmpty ? "" : title + "\n\n") + String(page.prefix(maxArticleLength)) + (ownNotes.isEmpty ? "" : "\n\nNotes the user wrote down:\n" + ownNotes)
         } else {
             material = (title.isEmpty ? "" : title + "\n\n") + note.text
         }
         let language = SummaryLanguage.detect(in: material)
         let chosen = model ?? .current
-        let raw = try await run(
+        let stored = note.modelContext != nil
+        // A note in the inbox gets a bucket suggested along with its summary.
+        let buckets = Inbox.candidates(for: note)
+        let answer = try await run(
             model: chosen,
             header: hasTranscript ? header(for: note)
                 : "Date: \(note.createdAt.formatted(date: .long, time: .shortened))" + (note.url.map { "\nSource: \($0)" } ?? ""),
             material: material, language: language,
-            system: hasTranscript ? systemPrompt(language, template: template) : notePrompt(language, isLink: note.isLink),
+            system: (hasTranscript ? systemPrompt(language, template: template) : notePrompt(language, isLink: note.isSaved, isDocument: !note.isLink))
+                + Inbox.promptLine(buckets),
             noun: hasTranscript ? "meeting" : "note", focus: hasTranscript ? template.focus : "", progress: progress
         )
 
+        // Deleted for good while the model was working (trash emptied, removed by sync): there is nothing to write to.
+        guard !stored || note.modelContext != nil else { throw CancellationError() }
+        let (raw, bucket) = Inbox.splitProject(answer, projects: buckets)
+        // Only a suggestion: the note stays in the inbox until the user takes it on. Not when it was filed meanwhile.
+        if let bucket, note.isInInbox { note.suggestedProjectIDs = [Projects.key(bucket)] }
         let body: String
         if hasTranscript {
             let (newTitle, text) = splitTitle(raw)
@@ -253,9 +275,9 @@ enum SummaryService {
     }
 
     /// A saved page is only summarized: a page never gives the user tasks (`isLink`).
-    private static func notePrompt(_ language: SummaryLanguage, isLink: Bool) -> String {
+    private static func notePrompt(_ language: SummaryLanguage, isLink: Bool, isDocument: Bool = false) -> String {
         let intro = isLink
-            ? "You summarize a web page the user saved. Write the whole summary in \(language.name) and in no other language, even though these instructions are in English.\nOnly use what is on the page. Do not write tasks or to-dos: a page is read, not worked on."
+            ? "You summarize \(isDocument ? "something the user saved: a document, a screenshot or a text shared from another app. Text read from images may contain recognition mistakes" : "a web page the user saved"). Write the whole summary in \(language.name) and in no other language, even though these instructions are in English.\nOnly use what is on the page. Do not write tasks or to-dos: a page is read, not worked on."
             : "You summarize a personal note. The note is written in \(language.name). Write the whole summary in \(language.name) and in no other language, even though these instructions are in English.\nThe note may come from dictation and contain recognition mistakes; silently fix obvious ones. Only use what is in the note."
         let tasks = isLink ? "" : """
 
@@ -355,5 +377,88 @@ enum SummaryService {
             return (title.isEmpty ? nil : title, lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines))
         }
         return (nil, text)
+    }
+
+    // MARK: - Enhance
+
+    /// Rewrites the text of a plain note in place: fixes mistakes, gives it structure, marks tasks as checkboxes
+    /// and fills an empty tag field. Returns the text from before, for undo.
+    static func enhance(_ note: Note, model: SummaryModel? = nil, progress: @escaping (String) -> Void = { _ in }) async throws -> String {
+        let original = note.text
+        let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw SummaryError.emptyNote }
+        let language = SummaryLanguage.detect(in: text)
+        let system = enhancePrompt(language)
+        let user = "Note:\n\(text)\n\n\(languageReminder(language))"
+        let stored = note.modelContext != nil
+        let raw: String
+        var truncated = false
+        switch model ?? .current {
+        case .local(let local):
+            // The whole note has to fit in one pass: parts would come back as notes, not as the note.
+            guard text.count <= singlePassLimit(local) else { throw SummaryError.tooLongToEnhance }
+            let models = ModelManager.shared
+            models.beginLLMUse()
+            defer { models.endLLMUse() }
+            let installed = local.isInstalled
+            progress(installed ? "Loading model…" : "Downloading model…")
+            try await models.ensureLLM(local) { fraction in
+                progress(!installed && fraction < 1 ? "Downloading model … \(Int(fraction * 100)) %" : "Loading model…")
+            }
+            progress("Enhancing note…")
+            raw = try await LocalLLM.shared.generate(model: local, system: system, user: user, maxTokens: enhanceTokenLimit(text))
+        case .cloud(let provider, let id):
+            let key = provider.apiKey
+            if provider.requiresKey, key.isEmpty { throw SummaryError.missingAPIKey(provider.label) }
+            progress("Enhancing note…")
+            let answer = try await ForegroundWork.retrying(waitsFirst: false) {
+                try await CloudLLM.completion(provider: provider, apiKey: key, model: id, system: system, user: user)
+            }
+            raw = answer.text
+            truncated = answer.truncated
+        }
+        guard !stored || note.modelContext != nil else { throw CancellationError() }
+        let (body, tags) = splitTags(withoutCodeFence(raw))
+        let enhanced = withListMarks(body).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !enhanced.isEmpty else { throw SummaryError.emptyResponse }
+        // The result replaces the note: one that ends in the middle would cost the rest of it.
+        guard !truncated, !isCutShort(enhanced, original: text) else { throw SummaryError.truncated }
+        // Typing went on meanwhile: the user's text wins.
+        guard note.text == original else { throw SummaryError.noteChanged }
+        note.text = enhanced
+        if note.labels.isEmpty { note.labels = tags }
+        note.updatedAt = Date()
+        return original
+    }
+
+    /// Room for the whole note and its marks; a token is about three characters, less in German.
+    static func enhanceTokenLimit(_ text: String) -> Int { min(8_000, text.count / 2 + 600) }
+
+    /// An enhanced note keeps every fact, so it is about as long as the note. Much shorter: the model ran out of
+    /// room or summarized. Short notes are left alone, a few words can shrink a lot.
+    static func isCutShort(_ enhanced: String, original: String) -> Bool {
+        original.count >= 400 && enhanced.count * 2 < original.count
+    }
+
+    static func enhancePrompt(_ language: SummaryLanguage) -> String {
+        """
+        You improve a personal note. The note is written in \(language.name). Write the improved note in \(language.name) only, even though these instructions are in English.
+        - Fix spelling, grammar and punctuation, and silently fix obvious dictation mistakes.
+        - Keep the meaning, every fact, name, number and date, and the author's voice. Do not summarize, leave nothing out and add nothing new.
+        - Give it structure: short paragraphs, "- " lists for enumerations, and "## " headings only when the note covers several topics.
+        - Write every concrete task (something the author has to do) as its own line "- [ ] <task>". Keep existing "- [ ]" and "- [x]" lines.
+        - Use only these marks: "## ", "- ", "1. ", "- [ ] ", "- [x] ", "**bold**". No introduction, no comment, no code block.
+
+        After the note, as the very last line:
+        TAGS: <3 to 5 short keywords in \(language.name), separated by commas, without # signs>
+        """
+    }
+
+    /// Some models wrap their answer in ``` although asked not to.
+    private static func withoutCodeFence(_ text: String) -> String {
+        var lines = text.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: "\n")
+        if lines.first?.hasPrefix("```") == true { lines.removeFirst() }
+        if lines.last?.trimmingCharacters(in: .whitespaces) == "```" { lines.removeLast() }
+        return lines.joined(separator: "\n")
     }
 }

@@ -28,21 +28,25 @@ final class DictationController {
     @ObservationIgnored private let modifierKey = ModifierKeyMonitor()
     @ObservationIgnored private var permissionWatch: Task<Void, Never>?
     @ObservationIgnored private var keyIsDown = false
+    /// Between a press and the running microphone (the permission is asked in between).
+    @ObservationIgnored private var isStarting = false
+    /// The recording was started with the shortcut, which ends it when it comes up (hold mode).
+    @ObservationIgnored private var heldByKey = true
+    @ObservationIgnored private var discardWhenStarted = false
     @ObservationIgnored private var messageTask: Task<Void, Never>?
 
     private init() {
         hotKey.onPress = { [weak self] in self?.shortcutPressed() }
         hotKey.onRelease = { [weak self] in self?.shortcutReleased() }
-        modifierKey.onPress = { [weak self] in self?.shortcutPressed() }
-        modifierKey.onRelease = { [weak self] in self?.shortcutReleased() }
+        modifierKey.onPress = { [weak self] in self?.modifierPressed() }
+        modifierKey.onRelease = { [weak self] in self?.modifierReleased() }
+        modifierKey.onCancel = { [weak self] in self?.modifierUsedForTyping() }
         recorder.onInterrupted = { [weak self] in self?.stopAndTranscribe() }
     }
 
     /// Registers the shortcut from the settings. Call again after they change.
     func reloadShortcut() {
-        hotKey.unregister()
-        modifierKey.stop()
-        permissionWatch?.cancel()
+        suspendShortcut()
         shortcutUnavailable = false
         shortcutNeedsAccessibility = false
         guard DictationSettings.enabled else { return }
@@ -56,6 +60,16 @@ final class DictationController {
         } else {
             shortcutUnavailable = !hotKey.register(keyCode: DictationSettings.keyCode, modifiers: DictationSettings.modifiers)
         }
+    }
+
+    /// Switches the shortcut off, while a new one is being chosen in the settings: pressing the old one there
+    /// would start a dictation whose end (the key coming up) nobody watches any more.
+    func suspendShortcut() {
+        hotKey.unregister()
+        modifierKey.stop()
+        permissionWatch?.cancel()
+        keyIsDown = false
+        if state == .recording, DictationSettings.mode == .hold { discardRecording() }
     }
 
     /// The permission is given in System Settings, outside the app: look every few seconds and start
@@ -77,7 +91,7 @@ final class DictationController {
 
     /// From the menu bar: the same as pressing the shortcut in toggle mode.
     func toggleFromMenu() {
-        if state == .recording { stopAndTranscribe() } else { startRecording() }
+        if state == .recording { stopAndTranscribe() } else { startRecording(heldByKey: false) }
     }
 
     // MARK: - Shortcut
@@ -97,12 +111,52 @@ final class DictationController {
         if DictationSettings.mode == .hold, state == .recording { stopAndTranscribe() }
     }
 
+    // A modifier key on its own is also a key for typing (right ⌥ gives "@" and "€" on many keyboards). Holding
+    // starts at once, so no word is lost, and is thrown away when a letter follows; a toggle waits for the key
+    // to come up alone.
+
+    private func modifierPressed() {
+        keyIsDown = true
+        if DictationSettings.mode == .hold { startRecording() }
+    }
+
+    private func modifierReleased() {
+        keyIsDown = false
+        switch DictationSettings.mode {
+        case .hold:
+            // Also ends a recording started from the menu.
+            if state == .recording { stopAndTranscribe() }
+        case .toggle:
+            if state == .recording { stopAndTranscribe() } else { startRecording() }
+        }
+    }
+
+    private func modifierUsedForTyping() {
+        keyIsDown = false
+        guard DictationSettings.mode == .hold else { return }
+        // Still asking for the microphone: `startRecording` sees this when it gets there.
+        discardWhenStarted = isStarting
+        if state == .recording, heldByKey { discardRecording() }
+    }
+
+    private func discardRecording() {
+        recorder.cancel()
+        set(.idle)
+    }
+
     // MARK: - Recording
 
-    private func startRecording() {
-        guard state == .idle || isMessage else { return }
+    /// - Parameter heldByKey: started with the shortcut; from the menu a recording in hold mode runs until the
+    ///   menu or the shortcut ends it, as no key is held.
+    private func startRecording(heldByKey: Bool = true) {
+        // `state` only changes once the microphone runs: a second press in between must not start a second recording.
+        guard state == .idle || isMessage, !isStarting else { return }
+        isStarting = true
+        discardWhenStarted = false
+        self.heldByKey = heldByKey
         messageTask?.cancel()
         Task {
+            defer { isStarting = false }
             guard await AudioRecorder.requestPermission() else {
                 show("Microphone access is off. Allow it in System Settings → Privacy & Security → Microphone.")
                 return
@@ -114,9 +168,13 @@ final class DictationController {
                 return
             }
             set(.recording)
+            if discardWhenStarted {
+                discardRecording()
+                return
+            }
             play("Tink")
             // Released while the permission was being checked.
-            if DictationSettings.mode == .hold, !keyIsDown { stopAndTranscribe() }
+            if heldByKey, DictationSettings.mode == .hold, !keyIsDown { stopAndTranscribe() }
         }
     }
 

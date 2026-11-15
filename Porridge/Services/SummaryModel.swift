@@ -41,10 +41,6 @@ enum SummaryModel: Hashable, Identifiable {
         }
     }
 
-    var isCloud: Bool {
-        if case .cloud = self { true } else { false }
-    }
-
     /// Ready to run without a download first.
     var isOnHand: Bool {
         switch self {

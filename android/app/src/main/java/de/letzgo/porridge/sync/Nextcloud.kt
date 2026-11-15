@@ -22,13 +22,23 @@ import java.io.File
 import java.net.URLDecoder
 
 /** iOS: `NextcloudAccount` — Server, Benutzer und ein eigenes App-Passwort aus dem Login im Browser (Login Flow v2). */
-data class NextcloudAccount(val server: String, val loginName: String, val appPassword: String) {
+data class NextcloudAccount(
+    val server: String,
+    val loginName: String,
+    val appPassword: String,
+    /**
+     * iOS: `NextcloudAccount.userID` — der Name des Ordners des Nutzers auf dem Server. Meist der Login-Name; nicht bei
+     * einer E-Mail-Adresse oder einem Alias (LDAP) als Login. Einmal vom Server erfragt.
+     */
+    val userID: String? = null,
+) {
     /** In den Einstellungen: „anna @ cloud.example.com“. */
     val label: String get() = "$loginName @ ${server.toHttpUrlOrNull()?.host ?: server}"
 
     fun save() {
         Prefs.set(SERVER_KEY, server)
         Prefs.set(LOGIN_KEY, loginName)
+        if (userID != null) Prefs.set(USER_ID_KEY, userID) else Prefs.remove(USER_ID_KEY)
         SecureStore.set(appPassword, PASSWORD_KEY)
     }
 
@@ -36,18 +46,20 @@ data class NextcloudAccount(val server: String, val loginName: String, val appPa
         private const val SERVER_KEY = "nextcloudServer"
         private const val LOGIN_KEY = "nextcloudLogin"
         private const val PASSWORD_KEY = "nextcloudAppPassword"
+        private const val USER_ID_KEY = "nextcloudUserID"
 
         val saved: NextcloudAccount?
             get() {
                 val server = Prefs.string(SERVER_KEY) ?: return null
                 val login = Prefs.string(LOGIN_KEY) ?: return null
                 val password = SecureStore.get(PASSWORD_KEY) ?: return null
-                return NextcloudAccount(server, login, password)
+                return NextcloudAccount(server, login, password, Prefs.string(USER_ID_KEY))
             }
 
         fun remove() {
             Prefs.remove(SERVER_KEY)
             Prefs.remove(LOGIN_KEY)
+            Prefs.remove(USER_ID_KEY)
             SecureStore.set(null, PASSWORD_KEY)
         }
     }
@@ -120,8 +132,19 @@ object NextcloudLogin {
 class WebDAV(private val account: NextcloudAccount, private val client: OkHttpClient = Net.client) {
     /** …/remote.php/dav/files/<user>/Porridge/ */
     val root: HttpUrl = account.server.toHttpUrlOrNull()!!.newBuilder()
-        .addPathSegments("remote.php/dav/files").addPathSegment(account.loginName).addPathSegment("Porridge").addPathSegment("")
+        .addPathSegments("remote.php/dav/files").addPathSegment(account.userID ?: account.loginName).addPathSegment("Porridge").addPathSegment("")
         .build()
+
+    /** iOS: `WebDAV.fetchUserID` — die ID des Nutzers, wie der Server sie kennt (OCS „cloud/user“); null, wenn er sie nicht nennt. */
+    suspend fun fetchUserID(): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = account.server.toHttpUrlOrNull()!!.newBuilder().addPathSegments("ocs/v2.php/cloud/user").addQueryParameter("format", "json").build()
+            client.newCall(request(url).header("OCS-APIRequest", "true").get().build()).execute().use { response ->
+                if (response.code != 200) return@use null
+                Json.parseToJsonElement(response.body.string()).jsonObject["ocs"]?.jsonObject?.get("data")?.jsonObject?.get("id")?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() }
+            }
+        }.getOrNull()
+    }
 
     val recordings: HttpUrl = root.resolve("Recordings/")!!
 
@@ -185,8 +208,13 @@ class WebDAV(private val account: NextcloudAccount, private val client: OkHttpCl
             if (response.code == 404) throw NextcloudException("This recording is not on Nextcloud yet. Try again once the other device has uploaded it.", 404)
             if (response.code != 200) throw httpError(response.code)
             val temp = File(target.parentFile, ".${target.name}.part")
-            temp.outputStream().use { response.body.byteStream().copyTo(it) }
-            temp.renameTo(target)
+            try {
+                temp.outputStream().use { response.body.byteStream().copyTo(it) }
+                if (!temp.renameTo(target)) throw NextcloudException("The recording could not be saved on this device.")
+            } finally {
+                // Nach einem Abbruch oder Fehler bleibt kein halber Rest liegen.
+                temp.delete()
+            }
         }
     }
 

@@ -12,9 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -31,7 +29,16 @@ object CloudLLM {
     private fun base(provider: AIProvider): String =
         baseOverride ?: provider.resolvedBaseURL() ?: throw SummaryException.missingBaseURL
 
-    suspend fun complete(provider: AIProvider, apiKey: String, model: String, system: String, user: String): String = withContext(Dispatchers.IO) {
+    suspend fun complete(provider: AIProvider, apiKey: String, model: String, system: String, user: String): String =
+        completion(provider, apiKey, model, system, user).text
+
+    /** [truncated]: Der Anbieter hat an seiner Ausgabegrenze aufgehört, der Text endet mittendrin. */
+    class Completion(val text: String, val truncated: Boolean)
+
+    /** iOS: `CloudLLM.isTruncation` — „length“ (OpenAI-Art), „max_tokens“ (Anthropic), „MAX_TOKENS“ (Google). */
+    fun isTruncation(stopReason: String?): Boolean = stopReason?.lowercase().let { it == "length" || it == "max_tokens" }
+
+    suspend fun completion(provider: AIProvider, apiKey: String, model: String, system: String, user: String): Completion = withContext(Dispatchers.IO) {
         val base = base(provider)
         if (model.isEmpty()) throw SummaryException.missingModel
         val request = Request.Builder()
@@ -88,7 +95,12 @@ object CloudLLM {
                     ?.let { it as? JsonArray }?.mapNotNull { it.obj()?.get("text")?.str() }?.joinToString("")
         }
         if (text.isNullOrEmpty()) throw SummaryException.emptyResponse
-        text
+        val stop = when (provider.style) {
+            AIProvider.Style.OPENAI_COMPATIBLE -> (json["choices"] as? JsonArray)?.firstOrNull()?.obj()?.get("finish_reason")?.str()
+            AIProvider.Style.ANTHROPIC -> json["stop_reason"]?.str()
+            AIProvider.Style.GOOGLE -> (json["candidates"] as? JsonArray)?.firstOrNull()?.obj()?.get("finishReason")?.str()
+        }
+        Completion(text, isTruncation(stop))
     }
 
     /** Chat-Modelle, die dieser Schlüssel nutzen kann, wie der Anbieter sie meldet. */

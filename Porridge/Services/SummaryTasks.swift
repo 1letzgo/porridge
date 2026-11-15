@@ -53,7 +53,7 @@ enum SummaryTasks {
 
     /// A checkbox in the summary was tapped. A saved page has no tasks to tick.
     static func toggleLine(_ line: Int, of note: Note, in context: ModelContext) {
-        guard !note.isLink, let summary = note.summary,
+        guard !note.isSaved, let summary = note.summary,
               let task = parse(summary).first(where: { $0.line == line }) else { return }
         var lines = summary.components(separatedBy: "\n")
         lines[line] = ticked(lines[line], done: !task.done, isCheckbox: task.isCheckbox)

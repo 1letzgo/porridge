@@ -61,4 +61,13 @@ class NoteMergeLogicTest {
         assertEquals("j.m4a", joined.audioFileName)
         assertEquals(listOf("d.m4a"), joined.audioFileNames)
     }
+
+    @Test fun recordingsOfTheOtherNotesMoveToTheBase() {
+        val a = Note(id = "A", createdAt = 1, audioFileName = "a.m4a", audioFileNames = listOf("d.m4a"))
+        val b = Note(id = "B", createdAt = 2, audioFileName = "b.m4a", audioFileNames = listOf("e.m4a", "f.m4a"))
+        val joined = NoteMergeLogic.merge(a, listOf(a, b), listOf(0.0, 5.0), 9.0, "j.m4a", 1, now = 9)
+        assertEquals(listOf("d.m4a", "e.m4a", "f.m4a"), joined.audioFileNames)
+        val kept = NoteMergeLogic.merge(a, listOf(a, b), listOf(0.0, 5.0), 9.0, null, null, now = 9)
+        assertEquals(listOf("d.m4a", "e.m4a", "f.m4a", "a.m4a", "b.m4a"), kept.audioFileNames)
+    }
 }

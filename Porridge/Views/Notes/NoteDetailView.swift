@@ -43,6 +43,7 @@ struct NoteDetailView: View {
     @State private var editor = NoteEditorController()
     @State private var tab = NoteTab.note
     @State private var showSummaryOptions = false
+    @State private var showEnhanceOptions = false
     @State private var player = AudioPlayback()
     @State private var renamingSpeaker: Speaker?
     @State private var renameText = ""
@@ -55,7 +56,7 @@ struct NoteDetailView: View {
     @FocusState private var focused: Bool
 
     /// The tabs of this note: a recording has a transcript and no text field of its own (unless it has text).
-    private var opensOnSummary: Bool { note.isRecording || note.isLink }
+    private var opensOnSummary: Bool { note.isRecording || note.isLink || note.isStored }
 
     private var tabs: [(NoteTab, String)] {
         var list: [(NoteTab, String)] = []
@@ -65,7 +66,10 @@ struct NoteDetailView: View {
         if !opensOnSummary || !note.text.isEmpty || tab == .note { list.append((.note, "Note")) }
         if note.isRecording { list.append((.transcript, "Transcript")) }
         if note.isLink { list.append((.article, "Article")) }
-        if !opensOnSummary { list.append((.summary, "Summary")) }
+        // What was read out of the note's images and PDFs.
+        else if note.attachmentsData != nil, !(note.pageText ?? "").isEmpty { list.append((.article, "Text")) }
+        // A plain note is enhanced, not summarized; one summarized earlier keeps its summary.
+        if !opensOnSummary, note.summary != nil || isSummarizing || tab == .summary { list.append((.summary, "Summary")) }
         return list
     }
 
@@ -77,11 +81,17 @@ struct NoteDetailView: View {
 
             if !note.isDeleted { tagRow }
 
+            if note.attachmentsData != nil {
+                AttachmentStrip(note: note, onRemove: note.isDeleted ? nil : { removeAttachment($0) })
+            }
+
             statusView
 
             if !note.speakers.isEmpty { speakerChips }
 
-            TabSwitcher(selection: $tab, options: tabs.map { (value: $0.0, title: $0.1) })
+            if tabs.count > 1 {
+                TabSwitcher(selection: $tab, options: tabs.map { (value: $0.0, title: $0.1) })
+            }
 
             switch tab {
             case .summary:
@@ -95,7 +105,8 @@ struct NoteDetailView: View {
                     DictationStatus(dictation: dictation)
                     dictationPreview
                 } else {
-                    NoteBodyEditor(text: $note.text, isEditable: !note.isDeleted, controller: editor, placeholder: "Start typing or dictate…", growsWithText: true)
+                    if processing.canUndoEnhance(note) { enhancedBanner }
+                    NoteBodyEditor(text: $note.text, isEditable: !note.isDeleted && !isEnhancing, controller: editor, placeholder: "Start typing or dictate…", growsWithText: true)
                 }
             }
         }
@@ -132,11 +143,16 @@ struct NoteDetailView: View {
             isPinned: note.isPinned,
             hasSummary: note.summary != nil,
             canSummarize: !isSummarizing && canSummarize,
+            isPlainNote: !opensOnSummary,
+            canEnhance: canEnhance,
+            canUndoEnhance: processing.canUndoEnhance(note),
             canEditSummary: !isSummarizing,
             canTranscribe: note.hasLocalAudio && processing.stages[note.id] == nil,
             hasTranscript: !note.segments.isEmpty,
             togglePin: { note.isPinned.toggle(); try? context.save() },
             summarize: { requestSummary() },
+            enhance: { showEnhanceOptions = true },
+            undoEnhance: { processing.undoEnhance(note) },
             editSummary: { startEditingSummary() },
             transcribeAgain: { processing.enqueue(.transcript(note.id)) },
             copyTranscript: { Clipboard.copy(note.transcriptText()) },
@@ -193,11 +209,11 @@ struct NoteDetailView: View {
             if dictation.phase == .recording { Task { await finishDictation() } }
         }
         .onChange(of: note.text) {
-            note.updatedAt = Date()
+            if !SyncRecords.wasJustApplied(note.id) { note.updatedAt = Date() }
             saveIfFilled()
         }
         .onChange(of: note.title) {
-            note.updatedAt = Date()
+            if !SyncRecords.wasJustApplied(note.id) { note.updatedAt = Date() }
             saveIfFilled()
         }
         .sheet(isPresented: $showExport) {
@@ -232,6 +248,16 @@ struct NoteDetailView: View {
                 if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
                 tab = .transcript
             }
+        }
+        .sheet(isPresented: $showEnhanceOptions) {
+            SummaryOptionsSheet(replacesSummary: false, showsTemplates: false, material: "note", enhances: true) { _, model in
+                enhance(model: model)
+            }
+        }
+        .alert("Enhance Failed", isPresented: .constant(processing.enhanceErrors[note.id] != nil)) {
+            Button("OK") { processing.clearEnhanceError(note.id) }
+        } message: {
+            Text(processing.enhanceErrors[note.id] ?? "")
         }
         .sheet(isPresented: $showSummaryOptions) {
             SummaryOptionsSheet(
@@ -358,6 +384,9 @@ struct NoteDetailView: View {
                         processing.enqueue(.link(note.id, summarize: false))
                     }
                     .buttonStyle(ChunkyButtonStyle())
+                } else if note.attachmentsData != nil, !note.isRecording {
+                    Button("Try Again") { processing.enqueue(.attachment(note.id)) }
+                        .buttonStyle(ChunkyButtonStyle())
                 } else if AudioStore.exists(note.pendingAudioFileName) {
                     Button("Try Again") { processing.enqueue(.note(note.id)) }
                         .buttonStyle(ChunkyButtonStyle())
@@ -397,11 +426,38 @@ struct NoteDetailView: View {
         }
     }
 
+    /// Takes a file off the note; the file itself goes with the next sync, once nothing points at it.
+    private func removeAttachment(_ attachment: Attachment) {
+        note.attachments.removeAll { $0.id == attachment.id }
+        AudioStore.delete(attachment.fileName)
+        note.updatedAt = Date()
+        if note.attachments.isEmpty {
+            if !note.isLink { note.pageText = nil }
+        } else {
+            processing.enqueue(.attachment(note.id))
+        }
+        try? context.save()
+    }
+
+    private var suggestedProjects: [NoteFolder] {
+        guard note.isInInbox, !note.suggestedProjectIDs.isEmpty else { return [] }
+        let all = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
+        return note.suggestedProjectIDs.compactMap { id in all.first { Projects.key($0) == id && !$0.isArchived } }
+    }
+
     // MARK: - Tags
 
     private var tagRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                // The bucket suggested for a note in the inbox: a tap files it there.
+                ForEach(suggestedProjects) { project in
+                    SuggestionPill(name: project.name) {
+                        withAnimation(.snappy) { Inbox.file(note, into: Projects.key(project), in: context) }
+                    } onDismiss: {
+                        withAnimation(.snappy) { Inbox.dismissSuggestions(note, in: context) }
+                    }
+                }
                 ProjectPills(assigned: note.projectIDs) { project in
                     Projects.toggle(project, on: note, in: context)
                 }
@@ -454,9 +510,9 @@ struct NoteDetailView: View {
 
     // MARK: - Toolbar
 
-    private var barTitle: String { note.isLink ? "Link" : note.isRecording ? "Meeting" : "Note" }
-    private var barIcon: String { note.isLink ? "link" : note.isRecording ? "waveform" : "text.alignleft" }
-    private var barTint: Color { note.isLink ? .brandLink : note.isRecording ? .brandNavy : .brandSky }
+    private var barTitle: String { note.isLink ? "Link" : note.isImage ? "Image" : note.isFile ? "File" : note.isRecording ? "Meeting" : "Note" }
+    private var barIcon: String { note.isLink ? "link" : note.isImage ? "photo" : note.isFile ? "doc" : note.isRecording ? "waveform" : "text.alignleft" }
+    private var barTint: Color { note.isLink ? .brandLink : note.isRecording || note.isStored ? .brandNavy : .brandSky }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
@@ -491,12 +547,24 @@ struct NoteDetailView: View {
                 Button { note.isPinned.toggle(); try? context.save() } label: {
                     Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
                 }
-                Button {
-                    requestSummary()
-                } label: {
-                    Label(note.summary == nil ? "Summarize with AI…" : "Summarize Again with AI…", systemImage: "sparkles")
+                if opensOnSummary {
+                    Button {
+                        requestSummary()
+                    } label: {
+                        Label(note.summary == nil ? "Summarize with AI…" : "Summarize Again with AI…", systemImage: "sparkles")
+                    }
+                    .disabled(isSummarizing || !canSummarize)
+                } else {
+                    Button { showEnhanceOptions = true } label: {
+                        Label("Enhance with AI…", systemImage: "wand.and.stars")
+                    }
+                    .disabled(!canEnhance)
+                    if processing.canUndoEnhance(note) {
+                        Button { processing.undoEnhance(note) } label: {
+                            Label("Undo Enhance", systemImage: "arrow.uturn.backward")
+                        }
+                    }
                 }
-                .disabled(isSummarizing || !canSummarize)
                 if note.summary != nil {
                     Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
                         .disabled(isSummarizing)
@@ -598,6 +666,24 @@ struct NoteDetailView: View {
     }
 
     private var isSummarizing: Bool { processing.summarizing.contains(note.id) }
+    private var isEnhancing: Bool { processing.enhancing.contains(note.id) }
+
+    private var canEnhance: Bool {
+        processing.stages[note.id] == nil && !note.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Shown above the text after an enhance, while the original can still come back.
+    private var enhancedBanner: some View {
+        HStack(spacing: 12) {
+            Label("Enhanced with AI", systemImage: "wand.and.stars")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.brandNavy)
+            Spacer(minLength: 0)
+            Button("Undo") { processing.undoEnhance(note) }
+                .buttonStyle(PillButtonStyle())
+        }
+        .flatPanel()
+    }
     private var summaryError: String? { processing.summaryErrors[note.id] }
 
     private var canSummarize: Bool {
@@ -719,7 +805,7 @@ struct NoteDetailView: View {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
-                            MarkdownText(markdown: summary, onToggleTask: note.isDeleted || note.isLink ? nil : { toggleSummaryTask(line: $0) })
+                            MarkdownText(markdown: summary, onToggleTask: note.isDeleted || note.isSaved ? nil : { toggleSummaryTask(line: $0) })
                             if !note.isDeleted {
                                 Menu {
                                     Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
@@ -777,7 +863,7 @@ struct NoteDetailView: View {
     private var summarizeMessage: String {
         note.isRecording
             ? "Let AI summarize this meeting – including decisions and action items."
-            : note.isLink ? "Let AI summarize this page." : "Let AI summarize this note."
+            : note.isLink ? "Let AI summarize this page." : note.isImage ? "Let AI summarize this image." : note.isFile ? "Let AI summarize this file." : "Let AI summarize this note."
     }
 
     private func startEditingSummary() {
@@ -807,6 +893,21 @@ struct NoteDetailView: View {
         focused = false
         editor.blur()
         let job = ProcessingService.Job.summary(note.id, template, model)
+        let processing = processing
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            processing.enqueue(job)
+        }
+    }
+
+    /// Runs in the queue: it goes on when this screen closes, and the text is locked meanwhile.
+    private func enhance(model: SummaryModel) {
+        guard !isEnhancing else { return }
+        tab = .note
+        // The editor hands its text to the note a moment after typing; make sure it has.
+        focused = false
+        editor.blur()
+        let job = ProcessingService.Job.enhance(note.id, model)
         let processing = processing
         Task {
             try? await Task.sleep(for: .milliseconds(150))

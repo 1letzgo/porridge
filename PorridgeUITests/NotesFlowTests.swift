@@ -34,6 +34,8 @@ final class NotesFlowTests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 30), "settings button missing")
         settings.tap()
         XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
+        // The settings are split into areas; the switch is in "Recording".
+        app.buttons["Recording"].firstMatch.tap()
         XCTAssertTrue(app.reveal(app.switches["Record New Notes Automatically"].firstMatch), "switch missing")
     }
 
@@ -44,6 +46,8 @@ final class NotesFlowTests: XCTestCase {
         settings.tap()
         let row = app.buttons["Acknowledgements"].firstMatch
         XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
+        // The settings are split into areas; the row is in "About", which is still chosen after coming back.
+        app.buttons["About"].firstMatch.tap()
         XCTAssertTrue(app.reveal(row), "acknowledgements row missing")
         row.tap()
         XCTAssertTrue(app.staticTexts["Libraries"].waitForExistence(timeout: 10), "acknowledgements did not open")
@@ -70,18 +74,6 @@ final class NotesFlowTests: XCTestCase {
         XCTAssertTrue(reopened.waitForExistence(timeout: 10), "note did not open from the search")
     }
 
-    /// The filter is the system menu now; its button says what is chosen.
-    func testFilterMenuNarrowsTheList() throws {
-        let app = launchApp()
-        let filter = app.buttons["HomeFilterButton"]
-        XCTAssertTrue(filter.waitForExistence(timeout: 30))
-        filter.tap()
-        let notes = app.buttons["Notes"]
-        XCTAssertTrue(notes.waitForExistence(timeout: 5), "filter menu did not open")
-        notes.tap()
-        XCTAssertTrue(app.buttons["Filter: Notes"].waitForExistence(timeout: 5))
-    }
-
     /// VoiceOver sees what this test sees: a row of the list has to be something to press.
     func testNoteRowIsAButtonForAssistiveTechnologies() throws {
         let app = launchApp()
@@ -92,6 +84,10 @@ final class NotesFlowTests: XCTestCase {
         field.tap()
         field.typeText(title)
         app.buttons["Back"].firstMatch.tap()
+        // A new note waits in the inbox, the first entry of the home list.
+        let inbox = app.buttons["InboxCategory"]
+        XCTAssertTrue(inbox.waitForExistence(timeout: 10), "Inbox missing on the home list")
+        inbox.tap()
         let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10), "row is not a button:\n\(app.debugDescription)")
         row.tap()
@@ -103,7 +99,7 @@ final class NotesFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
-        XCTAssertTrue(app.buttons["HomeFilterButton"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["Create"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons["Create"].isHittable)
         app.buttons["Create"].tap()
         sleep(1)

@@ -21,7 +21,7 @@ struct ProjectPills: View {
                         Image(systemName: "xmark").font(.caption2.weight(.bold))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Remove from Project")
+                    .accessibilityLabel("Remove from Bucket")
                 }
                 .foregroundStyle(Color.brandProject)
                 .padding(.horizontal, 12)
@@ -39,9 +39,9 @@ struct ProjectPills: View {
                     }
                 }
                 if !projects.isEmpty { Divider() }
-                Button { name = ""; creating = true } label: { Label("New Project…", systemImage: "folder.badge.plus") }
+                Button { name = ""; creating = true } label: { Label("New Bucket…", systemImage: "folder.badge.plus") }
             } label: {
-                Label("Project", systemImage: "plus")
+                Label("Bucket", systemImage: "plus")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.brandProject)
                     .padding(.horizontal, 12)
@@ -51,9 +51,9 @@ struct ProjectPills: View {
             .menuStyle(.button)
             .buttonStyle(.plain)
             .fixedSize()
-            .accessibilityLabel("Add to Project")
+            .accessibilityLabel("Add to Bucket")
         }
-        .alert("New Project", isPresented: $creating) {
+        .alert("New Bucket", isPresented: $creating) {
             TextField("Name", text: $name)
             Button("Cancel", role: .cancel) {}
             Button("Create") {
@@ -85,7 +85,7 @@ struct ProjectMenu: View {
                     }
                 }
             } label: {
-                Label("Projects", systemImage: "folder")
+                Label("Buckets", systemImage: "folder")
             }
         }
     }

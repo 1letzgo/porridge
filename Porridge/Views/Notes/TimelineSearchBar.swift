@@ -23,70 +23,25 @@ struct TagToken: Identifiable, Hashable {
 
 /// The kinds of elements the search can be narrowed to.
 enum SearchKind: CaseIterable {
-    case meetings, notes, links
+    case meetings, notes, links, images, files
 
     var title: LocalizedStringKey {
         switch self {
         case .meetings: "Meetings"
         case .notes: "Notes"
         case .links: "Links"
+        case .images: "Images"
+        case .files: "Files"
         }
     }
 
     func matches(_ note: Note) -> Bool {
         switch self {
         case .meetings: note.isRecording && !note.isLink
-        case .notes: !note.isRecording && !note.isLink
+        case .notes: !note.isRecording && !note.isLink && !note.isStored
         case .links: note.isLink
-        }
-    }
-}
-
-/// What the one long list can be narrowed to with its filter button. It only narrows what the list shows: an
-/// element in a project stays in its project.
-enum HomeFilter: CaseIterable {
-    case all, projects, meetings, notes, links
-
-    var title: LocalizedStringKey {
-        switch self {
-        case .all: "All"
-        case .projects: "Projects"
-        case .meetings: SearchKind.meetings.title
-        case .notes: SearchKind.notes.title
-        case .links: SearchKind.links.title
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .all: "line.3.horizontal.decrease"
-        case .projects: "folder.fill"
-        case .meetings: "mic.fill"
-        case .notes: "square.and.pencil"
-        case .links: "link"
-        }
-    }
-
-    /// The colors of the plus button's options.
-    var tint: Color {
-        switch self {
-        case .all: .brandNavy
-        case .projects: .brandProject
-        case .meetings: .accentColor
-        case .notes: .brandSky
-        case .links: .brandLink
-        }
-    }
-
-    var showsProjects: Bool { self == .all || self == .projects }
-
-    func matches(_ note: Note) -> Bool {
-        switch self {
-        case .all: true
-        case .projects: false
-        case .meetings: SearchKind.meetings.matches(note)
-        case .notes: SearchKind.notes.matches(note)
-        case .links: SearchKind.links.matches(note)
+        case .images: note.isImage
+        case .files: note.isFile
         }
     }
 }
@@ -161,7 +116,6 @@ struct SearchPane<Results: View>: View {
                 .scrollDismissesKeyboard(.interactively)
             }
         }
-        .onAppear { focused = true }
     }
 
     private func kindChip(_ option: SearchKind) -> some View {

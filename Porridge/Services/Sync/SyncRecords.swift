@@ -21,7 +21,11 @@ enum SyncRecords {
             "duration": note.duration,
             "channelCount": note.channelCount,
             "speakerModeRaw": note.speakerModeRaw,
+            "sourceRaw": note.sourceRaw,
+            "suggestedProjectIDs": note.suggestedProjectIDs,
         ]
+        r["attachmentsData"] = note.attachmentsData.flatMap { String(data: $0, encoding: .utf8) }
+        r["filedAt"] = note.filedAt.map { ms($0) }
         r["errorMessage"] = note.errorMessage
         r["pendingAudioFileName"] = note.pendingAudioFileName
         r["folderID"] = note.folderID?.uuidString
@@ -39,7 +43,19 @@ enum SyncRecords {
         return r
     }
 
-    static func apply(_ r: SyncRecord, to note: Note) {
+    /// When a note last got its content from the other device. Its screen sees the text change like typing and
+    /// must not date the note to now for it: that would move it to today and falsify "the newer one wins".
+    @MainActor private static var appliedAt: [UUID: Date] = [:]
+
+    @MainActor static func wasJustApplied(_ id: UUID) -> Bool {
+        guard let at = appliedAt[id] else { return false }
+        if Date().timeIntervalSince(at) < 3 { return true }
+        appliedAt[id] = nil
+        return false
+    }
+
+    @MainActor static func apply(_ r: SyncRecord, to note: Note) {
+        appliedAt[note.id] = Date()
         note.title = r["title"] as? String ?? ""
         note.text = r["text"] as? String ?? ""
         note.createdAt = date(r["createdAt"]) ?? note.createdAt
@@ -67,6 +83,13 @@ enum SyncRecords {
         note.audioFileName = r["audioFileName"] as? String
         note.speakersData = (r["speakersData"] as? String).map { Data($0.utf8) }
         note.segmentsData = (r["segmentsData"] as? String).map { Data($0.utf8) }
+        // A record written by a version from before the inbox has none of these fields (newer ones always write
+        // `sourceRaw`): what this device knows stays.
+        guard r["sourceRaw"] != nil else { return }
+        note.sourceRaw = r["sourceRaw"] as? String ?? ""
+        note.attachmentsData = (r["attachmentsData"] as? String).map { Data($0.utf8) }
+        note.filedAt = date(r["filedAt"])
+        note.suggestedProjectIDs = r["suggestedProjectIDs"] as? [String] ?? []
     }
 
     /// A recording still on its way to a transcript stays on this device until it is done.
@@ -74,9 +97,11 @@ enum SyncRecords {
         note.pendingAudioFileName != nil || note.status == .recorded || note.status == .transcribing
     }
 
-    /// The recordings a note points at.
+    /// The files a note points at: its recordings and its attachments.
     static func audioFiles(_ r: SyncRecord) -> [String] {
-        [r["audioFileName"] as? String].compactMap { $0 } + (r["audioFileNames"] as? [String] ?? [])
+        let attachments = (r["attachmentsData"] as? String)
+            .flatMap { try? JSONDecoder().decode([Attachment].self, from: Data($0.utf8)) } ?? []
+        return [r["audioFileName"] as? String].compactMap { $0 } + (r["audioFileNames"] as? [String] ?? []) + attachments.map(\.fileName)
     }
 
     // MARK: NoteFolder

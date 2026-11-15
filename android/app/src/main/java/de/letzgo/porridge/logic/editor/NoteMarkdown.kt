@@ -120,6 +120,11 @@ object NoteMarkdown {
         return when (kind) {
             Kind.Bullet, Kind.Numbered -> {
                 val tab = (paragraph).firstOrNull { buffer.text[it] == '\t' } ?: return 0
+                // Nur ein echter Marker („•“ oder „12.“): Eine in die Liste eingefügte Zeile hat keinen, und bis zu ihrem
+                // ersten Tab abzuschneiden nähme Text weg.
+                val head = buffer.text.subSequence(paragraph.first, tab)
+                val isNumber = head.length > 1 && head.last() == '.' && head.dropLast(1).all { it.isDigit() }
+                if (head.toString() != "•" && !isNumber) return 0
                 tab - paragraph.first + 1
             }
             is Kind.Checklist -> if (buffer.style(paragraph.first).checkbox) 1 else 0
@@ -170,12 +175,17 @@ object NoteMarkdown {
                 if (bold) { out.append("**"); bold = false }
                 out.append(text)
             } else {
-                if (italic != runItalic || bold != runBold) {
+                // Kursiv liegt in fett. Nur was sich ändert, wird geschlossen und geöffnet: Kursive Wörter in einem fetten
+                // Satz sind „**a *b* c**“, nicht fett um sie herum zu und wieder auf.
+                if (bold != runBold) {
                     if (italic) { out.append("*"); italic = false }
-                    if (bold) { out.append("**"); bold = false }
+                    out.append("**")
+                    bold = runBold
                 }
-                if (runBold && !bold) { out.append("**"); bold = true }
-                if (runItalic && !italic) { out.append("*"); italic = true }
+                if (italic != runItalic) {
+                    out.append("*")
+                    italic = runItalic
+                }
                 out.append(text)
             }
             i = j

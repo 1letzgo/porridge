@@ -3,7 +3,6 @@ package de.letzgo.porridge.ui.notes
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,9 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,8 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.ProcessingStatus
-import de.letzgo.porridge.model.path
-import de.letzgo.porridge.model.tree
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.NoteMerger
 import de.letzgo.porridge.sync.NextcloudSync
@@ -56,7 +51,8 @@ import java.util.Locale
 @Composable
 fun SummaryEditorSheet(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var text by remember { mutableStateOf(initial) }
-    ModalBottomSheet(onDismissRequest = { onSave(text) }) {
+    // Wegwischen verliert nichts, was getippt wurde; ohne Änderung ist es dasselbe wie „Cancel“ und schreibt nichts.
+    ModalBottomSheet(onDismissRequest = { if (text == initial) onDismiss() else onSave(text) }) {
         Column(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onDismiss) { Text("Cancel") }

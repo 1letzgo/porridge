@@ -131,6 +131,10 @@ class PlaudImporter(context: Context) {
         } catch (e: PlaudBLEException.Cancelled) {
             _status.value = ""
             return null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Der Bildschirm ist zu: kein Fehler, den jemand sehen müsste, und der Abbruch muss weitergehen.
+            _status.value = ""
+            throw e
         } catch (e: Throwable) {
             errorMessage.value = e.message
             _status.value = ""
@@ -242,7 +246,7 @@ class PlaudImporter(context: Context) {
         /** Legt eine übernommene Aufnahme als neue Notiz an und startet die Transkription. */
         suspend fun addNote(audio: PlaudImportedAudio, projectID: String? = null): Note = withContext(NonCancellable) {
             val info = AudioStore.audioInfo(audio.fileName)
-            val note = Note(
+            val note = Note(sourceRaw = de.letzgo.porridge.model.NoteSource.PLAUD.raw,
                 createdAt = audio.date, updatedAt = audio.date, title = Note.defaultMeetingTitle(audio.date), statusRaw = ProcessingStatus.RECORDED.raw,
                 audioFileName = audio.fileName, duration = audio.duration, inputName = "Plaud", channelCount = info?.second ?: 1,
             )

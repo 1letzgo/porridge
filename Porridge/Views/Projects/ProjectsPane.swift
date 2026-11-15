@@ -14,16 +14,8 @@ struct ProjectRow: View {
     var body: some View {
         Button(action: onOpen) {
             HStack(alignment: .top, spacing: 12) {
-                VStack(spacing: 12) {
-                    ThingsRowIcon(systemImage: "folder.fill", tint: .brandProject)
-                    if project.isPinned {
-                        Image(systemName: "pin.fill")
-                            .font(.caption2)
-                            .foregroundStyle(Color.brandNavy)
-                            .accessibilityLabel("Pinned")
-                    }
-                }
-                .padding(.top, 1)
+                ThingsRowIcon(systemImage: "folder.fill", tint: .brandProject, isPinned: project.isPinned)
+                    .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(project.name)
                         .foregroundStyle(.primary)
@@ -88,6 +80,41 @@ struct ProjectRow: View {
     }
 }
 
+/// The inbox as the one entry of its category on the home list: what is new or in no bucket, with its own symbol.
+struct InboxRow: View {
+    let waiting: [Note]
+    var onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(alignment: .top, spacing: 12) {
+                ThingsRowIcon(systemImage: "tray.fill", tint: .brandSky)
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Inbox")
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(waiting.isEmpty ? "Nothing waiting" : "\(waiting.count) waiting")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if let last = waiting.first?.createdAt {
+                    Text(last.formatted(.dateTime.day().month(.abbreviated)))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .cardListRow()
+        .accessibilityIdentifier("InboxCategory")
+    }
+}
+
 /// One project opened: everything in it that is not archived (meetings, notes, links), filtered by kind.
 struct ProjectPage: View {
     let project: NoteFolder
@@ -96,7 +123,6 @@ struct ProjectPage: View {
     @Binding var selection: UUID?
     /// Moves a note to the trash.
     var onRemove: (Note) -> Void
-
     @State private var filter = ProjectFilter.all
 
     var body: some View {
@@ -104,7 +130,8 @@ struct ProjectPage: View {
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(ProjectFilter.allCases, id: \.self) { kind in
+                    // Only the kinds the bucket has something of; the one chosen stays while it is.
+                    ForEach(ProjectFilter.allCases.filter { $0 == .all || $0 == filter || content.count($0) > 0 }, id: \.self) { kind in
                         chip(kind, count: content.count(kind))
                     }
                 }
@@ -112,11 +139,11 @@ struct ProjectPage: View {
             }
             .padding(.bottom, Look.headerGap)
             List(selection: $selection) {
-                let noMeetings = !filter.shows(.meetings) || content.meetings.isEmpty
-                let noNotes = !filter.shows(.notes) || content.notes.isEmpty
                 section("Meetings", content.meetings, kind: .meetings, tint: .brandNavy, isFirst: true)
-                section("Notes", content.notes, kind: .notes, tint: .brandSky, isFirst: noMeetings)
-                section("Links", content.links, kind: .links, tint: .brandLink, isFirst: noMeetings && noNotes)
+                section("Notes", content.notes, kind: .notes, tint: .brandSky, isFirst: false)
+                section("Links", content.links, kind: .links, tint: .brandLink, isFirst: false)
+                section("Images", content.images, kind: .images, tint: .brandNavy, isFirst: false)
+                section("Files", content.files, kind: .files, tint: .brandNavy, isFirst: false)
             }
             .cardList()
             .roomForFloatingButtons()
@@ -124,7 +151,7 @@ struct ProjectPage: View {
                 if content.count(filter) == 0 {
                     EmptyStateView(
                         title: "Nothing Here Yet",
-                        message: "Add meetings, notes and links to the project from their page.",
+                        message: "Add meetings, notes and links to the bucket from their page.",
                         systemImage: "folder"
                     )
                 }
@@ -167,31 +194,52 @@ struct ProjectContent {
     var meetings: [Note] = []
     var notes: [Note] = []
     var links: [Note] = []
+    var images: [Note] = []
+    var files: [Note] = []
+
+    init() {}
 
     init(of project: NoteFolder, notes all: [Note]) {
         let id = Projects.key(project)
-        for note in all where !note.isDeleted && !note.isArchived && note.projectIDs.contains(id) {
-            if note.isLink {
-                links.append(note)
-            } else if note.isRecording {
-                meetings.append(note)
-            } else {
-                notes.append(note)
-            }
+        for note in all where !note.isDeleted && !note.isArchived && note.projectIDs.contains(id) { add(note) }
+    }
+
+    /// The content of every bucket in one pass over the notes, by the bucket's key (`Projects.key`). For lists of
+    /// buckets: asking each bucket on its own would walk all notes once per bucket.
+    static func byProject(_ all: [Note]) -> [String: ProjectContent] {
+        var contents: [String: ProjectContent] = [:]
+        for note in all where !note.isDeleted && !note.isArchived {
+            for id in note.projectIDs { contents[id, default: ProjectContent()].add(note) }
+        }
+        return contents
+    }
+
+    private mutating func add(_ note: Note) {
+        if note.isLink {
+            links.append(note)
+        } else if note.isStored {
+            // Read once: telling an image from a file decodes the note's attachments.
+            if note.isImage { images.append(note) } else { files.append(note) }
+        } else if note.isRecording {
+            meetings.append(note)
+        } else {
+            notes.append(note)
         }
     }
 
     func count(_ kind: ProjectFilter) -> Int {
         switch kind {
-        case .all: meetings.count + notes.count + links.count
+        case .all: meetings.count + notes.count + links.count + images.count + files.count
         case .meetings: meetings.count
         case .notes: notes.count
         case .links: links.count
+        case .images: images.count
+        case .files: files.count
         }
     }
 
     var lastChange: Date? {
-        (meetings + notes + links).map(\.updatedAt).max()
+        (meetings + notes + links + images + files).map(\.updatedAt).max()
     }
 
     var summary: String {
@@ -199,13 +247,15 @@ struct ProjectContent {
             (meetings.count, String(localized: "Meeting"), String(localized: "Meetings")),
             (notes.count, String(localized: "Note"), String(localized: "Notes")),
             (links.count, String(localized: "Link"), String(localized: "Links")),
+            (images.count, String(localized: "Image"), String(localized: "Images")),
+            (files.count, String(localized: "File"), String(localized: "Files")),
         ].filter { $0.0 > 0 }.map { "\($0.0) \($0.0 == 1 ? $0.1 : $0.2)" }
         return parts.isEmpty ? String(localized: "Empty") : parts.joined(separator: " · ")
     }
 }
 
 enum ProjectFilter: CaseIterable {
-    case all, meetings, notes, links
+    case all, meetings, notes, links, images, files
 
     var title: LocalizedStringKey {
         switch self {
@@ -213,6 +263,8 @@ enum ProjectFilter: CaseIterable {
         case .meetings: "Meetings"
         case .notes: "Notes"
         case .links: "Links"
+        case .images: "Images"
+        case .files: "Files"
         }
     }
 

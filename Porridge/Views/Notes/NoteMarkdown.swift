@@ -93,6 +93,11 @@ enum NoteMarkdown {
         case .bullet, .numbered:
             let text = (attributed.string as NSString).substring(with: paragraph)
             guard let tab = text.firstIndex(of: "\t") else { return 0 }
+            // Only a real marker ("•" or "12."): a line pasted into a list has none, and cutting up to its
+            // first tab would take text away.
+            let head = text[..<tab]
+            let isNumber = head.count > 1 && head.last == "." && head.dropLast().allSatisfy(\.isNumber)
+            guard head == "•" || isNumber else { return 0 }
             return (text[...tab] as NSString).length
         case .checklist:
             return attributed.attribute(.attachment, at: paragraph.location, effectiveRange: nil) != nil ? 1 : 0
@@ -137,7 +142,9 @@ enum NoteMarkdown {
 
     // MARK: - Attributed → Markdown
 
-    static func markdown(from attributed: NSAttributedString) -> String {
+    /// - Parameter openEnded: the text is cut off at the cursor: bold or italic running at its end is not closed,
+    ///   so the length of the result is the place of the cursor in the Markdown of the whole text.
+    static func markdown(from attributed: NSAttributedString, openEnded: Bool = false) -> String {
         let string = attributed.string as NSString
         var lines: [String] = []
         var counters: [Int: Int] = [:]
@@ -149,7 +156,8 @@ enum NoteMarkdown {
             let (kind, indent) = paragraphKind(in: attributed, at: range.location)
             let marker = markerLength(in: attributed, paragraph: range)
             let text = NSRange(location: content.location + marker, length: max(0, content.length - marker))
-            let block = NoteBlock(kind: kind, indent: indent, text: inlineMarkdown(attributed, range: text, kind: kind))
+            let isLast = range.location + range.length >= string.length
+            let block = NoteBlock(kind: kind, indent: indent, text: inlineMarkdown(attributed, range: text, kind: kind, closes: !(openEnded && isLast)))
             let number = next(counters: &counters, kind: kind, indent: indent)
             lines.append(block.mark(number: number) + block.text)
             location = range.location + range.length
@@ -180,7 +188,7 @@ enum NoteMarkdown {
     }
 
     /// The text of a paragraph with `**` and `*` around bold and italic runs.
-    static func inlineMarkdown(_ attributed: NSAttributedString, range: NSRange, kind: NoteBlock.Kind) -> String {
+    static func inlineMarkdown(_ attributed: NSAttributedString, range: NSRange, kind: NoteBlock.Kind, closes: Bool = true) -> String {
         var out = ""
         var bold = false, italic = false
         var headingBold = false
@@ -198,16 +206,23 @@ enum NoteMarkdown {
                 out += text
                 return
             }
-            if italic != runItalic || bold != runBold {
+            // Italic sits inside bold. Only what changes is closed and opened: italic words in a bold sentence
+            // are "**a *b* c**", not bold closed and opened again around them.
+            if bold != runBold {
                 if italic { out += "*"; italic = false }
-                if bold { out += "**"; bold = false }
+                out += "**"
+                bold = runBold
             }
-            if runBold, !bold { out += "**"; bold = true }
-            if runItalic, !italic { out += "*"; italic = true }
+            if italic != runItalic {
+                out += "*"
+                italic = runItalic
+            }
             out += text
         }
-        if italic { out += "*" }
-        if bold { out += "**" }
+        if closes {
+            if italic { out += "*" }
+            if bold { out += "**" }
+        }
         return out
     }
 

@@ -72,10 +72,15 @@ struct NoteBlock: Identifiable, Equatable {
     static func numbers(for blocks: [NoteBlock]) -> [Int] {
         var counters: [Int: Int] = [:]
         return blocks.map { block in
-            counters = counters.filter { $0.key < block.indent }
-            guard block.kind == .numbered else { return 0 }
-            counters[block.indent, default: 0] += 1
-            return counters[block.indent]!
+            // The same counting as `NoteMarkdown.next`: items at a level count on, deeper levels start over,
+            // and a paragraph that is no list ends every list.
+            if block.kind == .numbered {
+                counters = counters.filter { $0.key <= block.indent }
+                counters[block.indent, default: 0] += 1
+                return counters[block.indent]!
+            }
+            counters = block.isList ? counters.filter { $0.key < block.indent } : [:]
+            return 0
         }
     }
 
@@ -97,17 +102,6 @@ struct NoteBlock: Identifiable, Equatable {
         return blocks.enumerated().map { $1.mark(number: numbers[$0]) + $1.text }.joined(separator: "\n")
     }
 
-    /// Character offset in the Markdown of the start of a block's text.
-    static func textOffset(of index: Int, in blocks: [NoteBlock]) -> Int {
-        let numbers = numbers(for: blocks)
-        var offset = 0
-        for (i, block) in blocks.enumerated() {
-            let mark = block.mark(number: numbers[i])
-            if i == index { return offset + mark.count }
-            offset += mark.count + block.text.count + 1
-        }
-        return offset
-    }
 }
 
 extension NoteBlock.Kind {

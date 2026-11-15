@@ -59,7 +59,42 @@ data class Note(
     val segmentsData: String? = null,
     /** Gesetzt, solange die Notiz im Archiv liegt; übersteht den Papierkorb. */
     val archivedAt: Long? = null,
+    // Alles, was in die App kommt, ist ein Eingang: Er hat einen Kanal, wartet im Eingang und wird in Buckets abgelegt.
+    /** Der Kanal, über den die Notiz kam ([NoteSource]); "" bei Notizen aus der Zeit davor. */
+    val sourceRaw: String = "",
+    /** Dateien der Notiz (geteilte Bilder, PDFs, Dokumente) als JSON von `[Attachment]`; der Text bleibt, wie iOS ihn schrieb. */
+    val attachmentsData: String? = null,
+    /** Wann die Notiz zum ersten Mal in einen Bucket kam. Ob sie im Eingang liegt, hängt nicht daran ([isInInbox]). */
+    val filedAt: Long? = null,
+    /** Die für die Notiz vorgeschlagenen Buckets (`NoteFolder.id`); der Nutzer nimmt sie an oder verwirft sie. */
+    val suggestedProjectIDs: List<String> = emptyList(),
+    /** Wann die Notiz an sich erinnern soll. */
+    /** Der Kalendertermin, zu dem die Notiz gehört (iOS: `calendarItemExternalIdentifier`), und bei Serienterminen der Beginn des gemeinten Vorkommens. */
 ) {
+    val source: NoteSource get() = NoteSource.of(sourceRaw)
+
+    val attachments: List<Attachment>
+        get() = attachmentsData?.let { runCatching { PorridgeJson.decodeFromString(AttachmentJson.list, it) }.getOrNull() } ?: emptyList()
+
+    fun withAttachments(value: List<Attachment>) =
+        copy(attachmentsData = if (value.isEmpty()) null else PorridgeJson.encodeToString(AttachmentJson.list, value))
+
+    /** Im Eingang: in keinem Bucket. Alles bleibt dort, bis es in einen kommt, und ist zurück, wenn es seinen letzten verlässt. */
+    val isInInbox: Boolean get() = projectIDs.isEmpty() && deletedAt == null && archivedAt == null
+
+    /** Jede Datei der Notiz im Speicher: ihre Aufnahmen und ihre Anhänge. */
+    val storedFileNames: List<String>
+        get() = listOfNotNull(audioFileName, pendingAudioFileName) + audioFileNames + attachments.map { it.fileName }
+
+    /** Kam von außen (ein Link, eine geteilte Datei oder Text): etwas zum Aufheben. Daraus entstehen nie Aufgaben. */
+    val isSaved: Boolean get() = url != null || source == NoteSource.SHARE
+
+    /** iOS: `SyncRecords.apply` — die Eingangsfelder einer anderen Notiz (für Einträge älterer Versionen, die sie nicht kennen). */
+    fun withIntakeOf(other: Note) = copy(
+        sourceRaw = other.sourceRaw, attachmentsData = other.attachmentsData, filedAt = other.filedAt,
+        suggestedProjectIDs = other.suggestedProjectIDs,
+    )
+
     val status: ProcessingStatus get() = ProcessingStatus.of(statusRaw)
     val isDeleted: Boolean get() = deletedAt != null
     val speakerMode: SpeakerMode get() = SpeakerMode.of(speakerModeRaw)
@@ -74,6 +109,18 @@ data class Note(
     fun withSegments(value: List<TranscriptSegment>) = copy(segmentsData = PorridgeJson.encodeToString(TranscriptJson.segments, value))
 
     val isLink: Boolean get() = url != null
+
+    /**
+     * iOS: `Note.isStored` — ein Bild oder eine Datei, geteilt oder gewählt: so geführt, nicht als Notiz. Bilder und
+     * Dateien sind zwei Arten, die gleich behandelt werden.
+     */
+    val isStored: Boolean get() = attachmentsData != null && source == NoteSource.SHARE && url == null && !isRecording
+
+    /** iOS: `Note.isImage` — ein Foto oder ein Bildschirmfoto. */
+    val isImage: Boolean get() = isStored && attachments.firstOrNull()?.kind == Attachment.Kind.IMAGE
+
+    /** iOS: `Note.isFile` — ein PDF oder ein Dokument. */
+    val isFile: Boolean get() = isStored && !isImage
 
     /** Die Seite eines Links ohne „www.“, z. B. „github.com“. */
     val domain: String?
@@ -174,6 +221,10 @@ data class Note(
  * Serializer der JSON-Spalten. Außerhalb von [Note], weil Room (KSP) die vom Serialisierungs-Plugin erst später
  * erzeugten Typen sonst im Entity sieht und abbricht.
  */
+internal object AttachmentJson {
+    val list = ListSerializer(Attachment.serializer())
+}
+
 internal object TranscriptJson {
     val speakers = ListSerializer(Speaker.serializer())
     val segments = ListSerializer(TranscriptSegment.serializer())

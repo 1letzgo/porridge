@@ -37,6 +37,7 @@ object MeetingPdf {
         val document = PdfDocument()
         var line = 0
         var number = 1
+        try {
         while (line < layout.lineCount) {
             val top = layout.getLineTop(line)
             // So viele ganze Zeilen, wie auf die Seite passen.
@@ -50,7 +51,10 @@ object MeetingPdf {
             number++
         }
         file.outputStream().use { document.writeTo(it) }
-        document.close()
+        } finally {
+            // Auch wenn das Schreiben scheitert (kein Platz): Das Dokument hält native Seiten, bis es geschlossen ist.
+            document.close()
+        }
     }
 
     private fun draw(canvas: Canvas, layout: StaticLayout, top: Int, bottom: Int, number: Int) {

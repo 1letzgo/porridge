@@ -27,8 +27,10 @@ struct MarkdownText: View {
         markdown.components(separatedBy: "\n").enumerated().compactMap { index, rawLine in
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty else { return nil }
-            if line.hasPrefix("#") {
-                return .heading(line.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces))
+            // "## Title" is a heading; "#budget #q3" is a line of tags.
+            let marks = line.prefix(while: { $0 == "#" })
+            if !marks.isEmpty, marks.count <= 6, line.dropFirst(marks.count).first?.isWhitespace == true {
+                return .heading(line.dropFirst(marks.count).trimmingCharacters(in: .whitespaces))
             }
             for (prefix, done) in [("- [ ] ", false), ("- [x] ", true), ("- [X] ", true)] where line.hasPrefix(prefix) {
                 return .task(String(line.dropFirst(prefix.count)), done: done, line: index)

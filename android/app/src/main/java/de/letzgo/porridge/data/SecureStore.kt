@@ -2,6 +2,7 @@ package de.letzgo.porridge.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
@@ -13,10 +14,26 @@ import androidx.security.crypto.MasterKey
 object SecureStore {
     private lateinit var prefs: SharedPreferences
 
+    private const val FILE = "porridge.secure"
+
     fun init(context: Context) {
+        prefs = try {
+            open(context)
+        } catch (e: Exception) {
+            // Die Datei passt nicht zum Schlüssel dieses Geräts (von einem anderen Gerät übernommen, Keystore zurückgesetzt).
+            // Lesbar wird sie nie mehr, und ohne das stürzte die App bei jedem Start ab: neu anfangen, die Schlüssel
+            // und Konten werden noch einmal eingegeben.
+            Log.w("SecureStore", "unreadable, starting empty: $e")
+            context.deleteSharedPreferences(FILE)
+            runCatching { java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS) }
+            open(context)
+        }
+    }
+
+    private fun open(context: Context): SharedPreferences {
         val key = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-        prefs = EncryptedSharedPreferences.create(
-            context, "porridge.secure", key,
+        return EncryptedSharedPreferences.create(
+            context, FILE, key,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )

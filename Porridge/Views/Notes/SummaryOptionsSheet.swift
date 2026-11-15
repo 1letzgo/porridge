@@ -7,6 +7,8 @@ struct SummaryOptionsSheet: View {
     var showsTemplates = true
     /// What goes to a cloud model, for the hint: "transcript", "note" or "page".
     var material = "transcript"
+    /// Asks for the model of an enhance (a plain note's text is rewritten) instead of a summary.
+    var enhances = false
     let onStart: (SummaryTemplate, SummaryModel) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -39,7 +41,11 @@ struct SummaryOptionsSheet: View {
                             dismiss()
                             onStart(.general, model)
                         } label: {
-                            Label(replacesSummary ? "Summarize Again" : "Summarize", systemImage: "sparkles")
+                            if enhances {
+                                Label("Enhance", systemImage: "wand.and.stars")
+                            } else {
+                                Label(replacesSummary ? "Summarize Again" : "Summarize", systemImage: "sparkles")
+                            }
                         }
                         .buttonStyle(ChunkyButtonStyle())
                         .padding(.top, 8)
@@ -68,6 +74,11 @@ struct SummaryOptionsSheet: View {
                         }
                     }
                     }
+                    if enhances {
+                        Text("AI fixes mistakes, gives the note structure and marks tasks as checkboxes. Your text is replaced; Undo brings it back.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     if replacesSummary {
                         Text("This replaces the current summary; your edits to it are lost.")
                             .font(.footnote)
@@ -77,7 +88,7 @@ struct SummaryOptionsSheet: View {
                 .padding(20)
             }
             .background(Color.appBackground)
-            .brandNavigationTitle(replacesSummary ? "Summarize Again" : "Summarize")
+            .brandNavigationTitle(enhances ? "Enhance" : replacesSummary ? "Summarize Again" : "Summarize")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

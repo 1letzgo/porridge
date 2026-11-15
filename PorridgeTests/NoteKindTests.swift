@@ -3,8 +3,8 @@ import XCTest
 
 /// The same cases as Android's `HomeListLogicTest`.
 @MainActor
-final class HomeFilterTests: XCTestCase {
-    private func shown(_ filter: HomeFilter) -> [String] {
+final class NoteKindTests: XCTestCase {
+    private func shown(_ kind: SearchKind) -> [String] {
         let plain = Note()
         plain.title = "plain"
         let meeting = Note()
@@ -13,19 +13,28 @@ final class HomeFilterTests: XCTestCase {
         let link = Note()
         link.title = "link"
         link.url = "https://example.com"
-        return [plain, meeting, link].filter(filter.matches).map(\.title)
+        let file = Note()
+        file.title = "file"
+        file.source = .share
+        file.attachments = [Attachment(fileName: "a.pdf", name: "Invoice.pdf", kindRaw: "pdf")]
+        let image = Note()
+        image.title = "image"
+        image.source = .share
+        image.attachments = [Attachment(fileName: "c.png", name: "Screenshot.png", kindRaw: "image")]
+        // A note with a file attached stays a note.
+        let attached = Note()
+        attached.title = "attached"
+        attached.source = .note
+        attached.attachments = [Attachment(fileName: "b.png", name: "Photo.png", kindRaw: "image")]
+        return [plain, meeting, link, file, image, attached].filter(kind.matches).map(\.title)
     }
 
     func testKeepsOnlyItsKind() {
-        XCTAssertEqual(shown(.all), ["plain", "meeting", "link"])
         XCTAssertEqual(shown(.meetings), ["meeting"])
-        XCTAssertEqual(shown(.notes), ["plain"])
+        XCTAssertEqual(shown(.notes), ["plain", "attached"])
         XCTAssertEqual(shown(.links), ["link"])
-        XCTAssertEqual(shown(.projects), [])
-    }
-
-    func testShowsProjectsOnlyWhereItSays() {
-        XCTAssertEqual(HomeFilter.allCases.filter(\.showsProjects), [.all, .projects])
+        XCTAssertEqual(shown(.files), ["file"])
+        XCTAssertEqual(shown(.images), ["image"])
     }
 
     func testThinkingIsRemoved() {
@@ -38,20 +47,6 @@ final class HomeFilterTests: XCTestCase {
         XCTAssertEqual(LocalModel(rawValue: "nemotronBolt"), .nemotronBolt)
         XCTAssertEqual(LocalModel.nemotronBolt.repoID, "lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit")
     }
-    func testElementLimitSharesFromTheTopDown() {
-        let few = HomeList.elementLimits(pinned: 2, notes: 4, showAll: false)
-        XCTAssertEqual([few.pinned, few.notes, few.hidden], [2, 4, 0])
-        let many = HomeList.elementLimits(pinned: 2, notes: 40, showAll: false)
-        XCTAssertEqual([many.pinned, many.notes, many.hidden], [2, 23, 17])
-        let manyPinned = HomeList.elementLimits(pinned: 40, notes: 5, showAll: false)
-        XCTAssertEqual([manyPinned.pinned, manyPinned.notes, manyPinned.hidden], [25, 0, 20])
-    }
-
-    func testElementLimitShowsAllWhenAskedAndStillCountsTheHidden() {
-        let all = HomeList.elementLimits(pinned: 2, notes: 40, showAll: true)
-        XCTAssertEqual([all.pinned, all.notes, all.hidden], [2, 40, 17])
-    }
-
     func testRecordingNotesBecomeListItemsWithTheirTime() {
         let notes = [RecordingNote(at: 65, text: "Ask about pricing"), RecordingNote(at: 3725, text: "Send the plan")]
         XCTAssertEqual(RecordingNote.markdown(notes), "- \(TimeInterval(65).clockString) Ask about pricing\n- \(TimeInterval(3725).clockString) Send the plan")

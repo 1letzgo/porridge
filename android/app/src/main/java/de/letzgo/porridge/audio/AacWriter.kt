@@ -9,7 +9,12 @@ import java.io.File
 /** Schreibt 16-Bit-PCM (verschränkt) als AAC in eine m4a-Datei (iOS: `AVAudioFile` mit `kAudioFormatMPEG4AAC`). */
 class AacWriter(file: File, private val sampleRate: Int, private val channels: Int, bitRate: Int = 64_000 * channels) {
     private val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-    private val muxer = MediaMuxer(file.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+    private val muxer = try {
+        MediaMuxer(file.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+    } catch (e: Throwable) {
+        codec.release()
+        throw e
+    }
     private var track = -1
     private var muxing = false
     private var framesWritten = 0L
@@ -21,8 +26,15 @@ class AacWriter(file: File, private val sampleRate: Int, private val channels: I
             setInteger(MediaFormat.KEY_BIT_RATE, bitRate)
             setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16_384 * channels)
         }
-        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        codec.start()
+        try {
+            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            codec.start()
+        } catch (e: Throwable) {
+            // Sonst bleiben Encoder und Datei offen, bis der Prozess endet; Encoder gibt es nur wenige.
+            runCatching { codec.release() }
+            runCatching { muxer.release() }
+            throw e
+        }
     }
 
     /** `pcm[0 until count]`, Kanäle verschränkt. */

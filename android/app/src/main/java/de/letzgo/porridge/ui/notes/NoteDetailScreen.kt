@@ -1,5 +1,9 @@
 package de.letzgo.porridge.ui.notes
 
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.ModalBottomSheet
 import de.letzgo.porridge.ui.components.ChromeBar
 import androidx.compose.material.icons.filled.GraphicEq
@@ -27,7 +31,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -40,9 +43,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forward10
@@ -152,7 +157,8 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     val saveLock = remember { kotlinx.coroutines.sync.Mutex() }
     val stages by ProcessingService.stages.collectAsState()
     val stage = stages[note.id]
-    val player = remember { AudioPlayback() }
+    val playerContext = LocalContext.current
+    val player = remember { AudioPlayback(playerContext) }
     val dictation = remember { InlineDictation() }
     val dictationPhase by dictation.phase.collectAsState()
     val editor = remember { NoteEditorController() }
@@ -161,6 +167,11 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     val summarizing by ProcessingService.summarizing.collectAsState()
     val summaryErrors by ProcessingService.summaryErrors.collectAsState()
     val isSummarizing = note.id in summarizing
+    val enhancing by ProcessingService.enhancing.collectAsState()
+    val enhanceErrors by ProcessingService.enhanceErrors.collectAsState()
+    val enhanceUndo by ProcessingService.enhanceUndo.collectAsState()
+    val isEnhancing = note.id in enhancing
+    val canUndoEnhance = enhanceUndo[note.id]?.enhanced == note.text
     var confirmDeleteAudio by remember { mutableStateOf(false) }
     var confirmDeleteSummary by remember { mutableStateOf(false) }
     var confirmContinueRecording by remember { mutableStateOf(false) }
@@ -174,13 +185,15 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     var showMerge by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
-    val opensOnSummary = note.isRecording || note.isLink
+    val opensOnSummary = note.isRecording || note.isLink || note.isStored
     val tabs = buildList {
         if (opensOnSummary) add(NoteTab.SUMMARY)
         if (!opensOnSummary || note.text.isNotEmpty()) add(NoteTab.NOTE)
         if (note.isRecording) add(NoteTab.TRANSCRIPT)
-        if (note.isLink) add(NoteTab.ARTICLE)
-        if (!opensOnSummary) add(NoteTab.SUMMARY)
+        // Der Artikel, oder was aus den Bildern und PDFs der Notiz gelesen wurde.
+        if (note.isLink || (note.attachmentsData != null && !note.pageText.isNullOrEmpty())) add(NoteTab.ARTICLE)
+        // Eine einfache Notiz wird verbessert, nicht zusammengefasst; eine früher zusammengefasste behält ihre Zusammenfassung.
+        if (!opensOnSummary && (note.summary != null || isSummarizing)) add(NoteTab.SUMMARY)
     }
     var tab by remember { mutableStateOf(if (opensOnSummary || note.id in ProcessingService.summarizing.value) NoteTab.SUMMARY else NoteTab.NOTE) }
     if (tab !in tabs) tab = tabs.first()
@@ -246,6 +259,16 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     }
 
     var askTemplate by remember { mutableStateOf(false) }
+    var askEnhance by remember { mutableStateOf(false) }
+
+    // iOS: `enhance(model:)` — läuft in der Warteschlange; der Text ist solange gesperrt.
+    suspend fun enhance(model: de.letzgo.porridge.cloud.SummaryModel) {
+        if (isEnhancing) return
+        tab = NoteTab.NOTE
+        editor.blur()
+        delay(150)
+        ProcessingService.enqueue(ProcessingService.Job.Enhance(note.id, model))
+    }
 
     // Läuft in der Warteschlange wie ein Transkript: Sie geht weiter, wenn dieser Bildschirm zugeht.
     suspend fun summarize(template: SummaryTemplate = SummaryTemplate.GENERAL, model: de.letzgo.porridge.cloud.SummaryModel? = null) {
@@ -267,9 +290,9 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
         Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
             // Leiste: zurück, Art der Notiz, teilen, mehr.
             ChromeBar(
-                title = if (note.isLink) "Link" else if (note.isRecording) "Meeting" else "Note",
-                icon = if (note.isLink) Icons.Filled.Link else if (note.isRecording) Icons.Filled.GraphicEq else Icons.AutoMirrored.Filled.Notes,
-                tint = if (note.isLink) LinkOrange else if (note.isRecording) Brand.navy else Brand.sky,
+                title = if (note.isLink) "Link" else if (note.isImage) "Image" else if (note.isFile) "File" else if (note.isRecording) "Meeting" else "Note",
+                icon = if (note.isLink) Icons.Filled.Link else if (note.isImage) Icons.Filled.Image else if (note.isFile) Icons.Filled.Description else if (note.isRecording) Icons.Filled.GraphicEq else Icons.AutoMirrored.Filled.Notes,
+                tint = if (note.isLink) LinkOrange else if (note.isRecording || note.isStored) Brand.navy else Brand.sky,
                 onBack = onClose,
             ) {
                 if (note.isRecording && !note.isLink) IconButton(onClick = { showExport = true }) { Icon(Icons.Filled.FileUpload, "Export", tint = Brand.navy) }
@@ -282,9 +305,12 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                             DropdownMenuItem(text = { Text("Recover") }, onClick = { act { coroutines.launch { NoteStore().restore(note); onClose() } } })
                         } else {
                             DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { act { update { it.copy(isPinned = !it.isPinned) } } })
-                            DropdownMenuItem(text = { Text(if (note.summary == null) "Summarize with AI…" else "Summarize Again with AI…") }, enabled = stage == null && canSummarize(note), onClick = {
+                            if (opensOnSummary) DropdownMenuItem(text = { Text(if (note.summary == null) "Summarize with AI…" else "Summarize Again with AI…") }, enabled = stage == null && canSummarize(note), onClick = {
                                 act { requestSummary() }
-                            })
+                            }) else {
+                                DropdownMenuItem(text = { Text("Enhance with AI…") }, enabled = stage == null && note.text.isNotBlank(), onClick = { act { askEnhance = true } })
+                                if (canUndoEnhance) DropdownMenuItem(text = { Text("Undo Enhance") }, onClick = { act { AppGraph.scope.launch { ProcessingService.undoEnhance(note.id) } } })
+                            }
                             if (note.summary != null) DropdownMenuItem(text = { Text("Edit Summary") }, enabled = !isSummarizing, onClick = { act { tab = NoteTab.SUMMARY; editingSummary = true } })
                             HorizontalDivider()
                             if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Transcribe Again") }, enabled = stage == null, onClick = { act { ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id)) } })
@@ -316,11 +342,21 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                 }
                 else TagRow(
                     note, onAdd = { addingTag = true },
-                    onProject = { id -> update { n -> n.copy(projectIDs = ProjectsLogic.toggled(n.projectIDs, id)) } },
+                    onProject = { id ->
+                        update { n ->
+                            val ids = ProjectsLogic.toggled(n.projectIDs, id)
+                            // Von Hand in einen Bucket gelegt: aus dem Eingang, was auch immer vorgeschlagen war.
+                            if (id in ids) n.copy(projectIDs = ids, filedAt = n.filedAt ?: System.currentTimeMillis(), suggestedProjectIDs = emptyList()) else n.copy(projectIDs = ids)
+                        }
+                    },
                 ) { tag -> update { n -> n.copy(labels = n.labels.filter { !it.equals(tag, true) }) } }
+                // Der für eine Notiz im Eingang vorgeschlagene Bucket: Ein Tipp legt sie dort ab.
+                if (stored != null && note.isInInbox && note.suggestedProjectIDs.isNotEmpty()) InboxSuggestion(note)
+                if (note.attachmentsData != null) AttachmentStrip(note, editable = !note.isDeleted)
                 StatusPanel(note, stage.takeUnless { isSummarizing })
                 if (note.speakers.isNotEmpty()) SpeakerChips(note.speakers) { renaming = it }
-                if (tabs.size > 1) TabSwitcher(tabs, tab) { tab = it }
+                // Bei Anhängen steht dort, was aus ihnen gelesen wurde.
+                if (tabs.size > 1) TabSwitcher(tabs, tab, articleTitle = if (note.isLink) "Article" else "Text") { tab = it }
                 Box(Modifier.padding(bottom = if (note.hasLocalAudio && tab != NoteTab.NOTE) 0.dp else 8.dp)) {
                     when (tab) {
                         NoteTab.SUMMARY -> SummaryTab(note, isSummarizing, stage, onSummarize = { requestSummary() },
@@ -332,8 +368,9 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                         NoteTab.ARTICLE -> ArticleTab(note, stage.takeUnless { isSummarizing }, context)
                         NoteTab.NOTE -> if (dictationPhase != InlineDictation.Phase.IDLE) {
                             DictationPreview(note.text, dictationStart, liveText, dictationPhase == InlineDictation.Phase.POLISHING)
-                        } else {
-                            NoteBodyEditor(note.text, { text -> update { it.copy(text = text) } }, editor, Modifier.fillMaxSize(), isEditable = !note.isDeleted, growsWithText = true, placeholder = "Start typing or dictate…")
+                        } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (canUndoEnhance) EnhancedBanner { AppGraph.scope.launch { ProcessingService.undoEnhance(note.id) } }
+                            NoteBodyEditor(note.text, { text -> update { it.copy(text = text) } }, editor, Modifier.fillMaxSize(), isEditable = !note.isDeleted && !isEnhancing, growsWithText = true, placeholder = "Start typing or dictate…")
                         }
                     }
                 }
@@ -395,8 +432,9 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
             coroutines.launch {
                 // Lernt auch die Stimme unter diesem Namen; frühere unbenannte Sprecher werden damit verglichen.
                 val voices = VoiceProfiles()
-                val speakers = voices.rename(speaker.id, name, note.speakers)
-                db.notes().upsert(note.withSpeakers(speakers))
+                // Auf dem frischen Stand: Ein Transkript, das inzwischen fertig wurde, bleibt.
+                val speakers = voices.rename(speaker.id, name, (db.notes().get(note.id) ?: note).speakers)
+                NoteStore().update(note.id) { it.withSpeakers(speakers) }
                 voices.rematchAllMeetings()
             }
         }
@@ -440,6 +478,34 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
             }
         }
     }
+    if (askEnhance) {
+        // Gilt nur für dieses Verbessern; der Standard bleibt, wie er in den Einstellungen steht.
+        var chosen by remember { mutableStateOf(de.letzgo.porridge.cloud.SummaryModel.current) }
+        var open by remember { mutableStateOf(false) }
+        val options = de.letzgo.porridge.cloud.SummaryModel.run { if (current in available) available else listOf(current) + available }
+        ModalBottomSheet(onDismissRequest = { askEnhance = false }) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp).navigationBarsPadding().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { askEnhance = false }) { Text("Cancel") }
+                    Text("Enhance", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(72.dp))
+                }
+                Text("Model", style = MaterialTheme.typography.labelLarge, color = Brand.skyText)
+                Box {
+                    TextButton(onClick = { open = true }) { Text(chosen.menuTitle, color = Brand.navy) }
+                    DropdownMenu(open, onDismissRequest = { open = false }) {
+                        for (option in options) DropdownMenuItem(text = { Text(option.menuTitle) }, onClick = { chosen = option; open = false })
+                    }
+                }
+                (chosen as? de.letzgo.porridge.cloud.SummaryModel.Cloud)?.let { Text("The note goes to ${if (it.provider == de.letzgo.porridge.cloud.AIProvider.CUSTOM) "your server" else it.provider.label}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Button(onClick = { askEnhance = false; AppGraph.scope.launch { enhance(chosen) } }, colors = Brand.mainButton(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Icon(Icons.Filled.AutoFixHigh, null); Text("  Enhance")
+                }
+                Text("AI fixes mistakes, gives the note structure and marks tasks as checkboxes. Your text is replaced; Undo brings it back.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+    enhanceErrors[note.id]?.let { AlertDialog(onDismissRequest = { ProcessingService.clearEnhanceError(note.id) }, title = { Text("Enhance Failed") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { ProcessingService.clearEnhanceError(note.id) }) { Text("OK") } }) }
     if (confirmContinueRecording) AlertDialog(
         onDismissRequest = { confirmContinueRecording = false },
         title = { Text("Continue Recording?") },
@@ -450,7 +516,7 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     if (confirmDeleteSummary) AlertDialog(
         onDismissRequest = { confirmDeleteSummary = false },
         title = { Text("Delete Summary?") }, text = { Text("Your edits and check marks in it are lost. You can write a new one at any time.") },
-        confirmButton = { TextButton(onClick = { confirmDeleteSummary = false; coroutines.launch { db.notes().upsert(note.copy(summary = null, summaryModel = null, summarizedAt = null)) } }) { Text("Delete Summary", color = Brand.dangerText) } },
+        confirmButton = { TextButton(onClick = { confirmDeleteSummary = false; coroutines.launch { NoteStore().update(note.id) { it.copy(summary = null, summaryModel = null, summarizedAt = null) } } }) { Text("Delete Summary", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { confirmDeleteSummary = false }) { Text("Cancel") } },
     )
     if (confirmDeleteAudio) AlertDialog(
@@ -466,11 +532,23 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
         editingSummary = false
         coroutines.launch {
             val trimmed = text.trim()
-            val updated = if (trimmed.isEmpty()) note.copy(summary = null, summaryModel = null, summarizedAt = null) else note.copy(summary = trimmed)
-            db.notes().upsert(updated)
+            NoteStore().update(note.id) { if (trimmed.isEmpty()) it.copy(summary = null, summaryModel = null, summarizedAt = null) else it.copy(summary = trimmed) }
         }
     }
     if (showMerge) MergeNotesSheet(note, onDismiss = { showMerge = false }) { player.stop(); tab = NoteTab.TRANSCRIPT }
+}
+
+/** iOS: `enhancedBanner` — über dem Text nach dem Verbessern, solange das Original zurückkommen kann. */
+@Composable
+private fun EnhancedBanner(onUndo: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp)).padding(start = 14.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.AutoFixHigh, null, tint = Brand.navy)
+        Text("  Enhanced with AI", style = MaterialTheme.typography.titleSmall, color = Brand.navy, modifier = Modifier.weight(1f))
+        TextButton(onClick = onUndo) { Text("Undo") }
+    }
 }
 
 private fun canSummarize(note: Note) = !(note.text.isEmpty() && note.title.isEmpty() && note.segments.isEmpty() && note.pageText.isNullOrEmpty())
@@ -490,6 +568,69 @@ private suspend fun toggleSummaryTask(note: Note, line: Int) {
     val current = db.notes().get(note.id) ?: return
     val summary = SummaryChecklist.toggled(current.summary.orEmpty(), line) ?: return
     db.notes().upsert(current.copy(summary = summary, updatedAt = System.currentTimeMillis()))
+}
+
+/** Der vorgeschlagene Bucket einer Notiz im Eingang (iOS: `SuggestionPill` in der Tag-Zeile). */
+@Composable
+private fun InboxSuggestion(note: Note) {
+    val folders by remember { PorridgeDatabase.shared.folders().observeAll() }.collectAsState(initial = emptyList())
+    FilingBar(note, folders.filter { it.archivedAt == null && it.name.isNotBlank() }.sortedBy { it.name.lowercase() }, Modifier)
+}
+
+/**
+ * iOS: `AttachmentStrip` — die Dateien einer Notiz in einer Reihe: Bilder mit kleinem Bild, andere mit ihrem Namen. Ein
+ * Tipp öffnet die Datei in der passenden App; eine, die nur auf einem anderen Gerät liegt, wird vorher geholt.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun AttachmentStrip(note: Note, editable: Boolean) {
+    val context = LocalContext.current
+    val coroutines = rememberCoroutineScope()
+    var error by remember { mutableStateOf<String?>(null) }
+    fun open(attachment: de.letzgo.porridge.model.Attachment) = coroutines.launch {
+        runCatching {
+            if (!AudioStore.exists(attachment.fileName)) de.letzgo.porridge.sync.NextcloudSync.fetchRecording(attachment.fileName)
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.updates", AudioStore.file(attachment.fileName), attachment.name)
+            val mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(attachment.fileName.substringAfterLast('.', "").lowercase()) ?: "*/*"
+            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        }.onFailure { error = it.message ?: "The file could not be opened." }
+    }
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        for (attachment in note.attachments) {
+            var menu by remember(attachment.id) { mutableStateOf(false) }
+            val picture by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, attachment.fileName) {
+                value = if (attachment.kind != de.letzgo.porridge.model.Attachment.Kind.IMAGE || !AudioStore.exists(attachment.fileName)) null else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching {
+                        val file = AudioStore.file(attachment.fileName)
+                        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+                        var sample = 1
+                        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 720) sample *= 2
+                        android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+                    }.getOrNull()
+                }
+            }
+            Column(Modifier.width(120.dp).combinedClickable(onClick = { open(attachment) }, onLongClick = { if (editable) menu = true })) {
+                Box(Modifier.size(120.dp, 90.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+                    val bitmap = picture
+                    if (bitmap != null) androidx.compose.foundation.Image(bitmap, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                    else Icon(if (attachment.kind == de.letzgo.porridge.model.Attachment.Kind.PDF) Icons.Filled.PictureAsPdf else Icons.Filled.AttachFile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(attachment.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("Remove", color = Brand.dangerText) }, onClick = {
+                        menu = false
+                        coroutines.launch {
+                            val left = NoteStore().update(note.id) { n -> n.withAttachments(n.attachments.filter { it.id != attachment.id }).let { if (it.attachmentsData == null && !it.isLink) it.copy(pageText = null) else it } }
+                            AudioStore.delete(attachment.fileName)
+                            if (left?.attachmentsData != null) ProcessingService.enqueue(ProcessingService.Job.Attachment(note.id))
+                        }
+                    })
+                }
+            }
+        }
+    }
+    error?.let { AlertDialog(onDismissRequest = { error = null }, title = { Text("Could Not Open") }, text = { Text(it) }, confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } }) }
 }
 
 /** Die Notiz gibt es nicht (mehr): Zurück geht trotzdem. Der Hinweis erscheint erst, wenn sie nicht bloß noch lädt. */
@@ -614,7 +755,7 @@ private fun StatusPanel(note: Note, stage: String?) {
                 val coroutines = rememberCoroutineScope()
                 if (job != null) Button(onClick = {
                     coroutines.launch {
-                        if (note.isLink) PorridgeDatabase.shared.notes().upsert(note.copy(statusRaw = ProcessingStatus.RECORDED.raw))
+                        if (note.isLink) NoteStore().update(note.id, touch = false) { it.copy(statusRaw = ProcessingStatus.RECORDED.raw) }
                         ProcessingService.enqueue(job)
                     }
                 }, colors = Brand.mainButton()) { Text("Try Again") }
@@ -640,14 +781,14 @@ private fun SpeakerChips(speakers: List<Speaker>, onRename: (Speaker) -> Unit) {
 }
 
 @Composable
-private fun TabSwitcher(tabs: List<NoteTab>, selected: NoteTab, onSelect: (NoteTab) -> Unit) {
+private fun TabSwitcher(tabs: List<NoteTab>, selected: NoteTab, articleTitle: String = NoteTab.ARTICLE.title, onSelect: (NoteTab) -> Unit) {
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         tabs.forEachIndexed { index, tab ->
             SegmentedButton(
                 selected = tab == selected, onClick = { onSelect(tab) }, shape = SegmentedButtonDefaults.itemShape(index, tabs.size),
                 colors = SegmentedButtonDefaults.colors(activeContainerColor = Brand.sky.copy(alpha = 0.18f), activeContentColor = Brand.navy),
                 icon = {},
-            ) { Text(tab.title) }
+            ) { Text(if (tab == NoteTab.ARTICLE) articleTitle else tab.title) }
         }
     }
 }
@@ -660,6 +801,8 @@ private fun SummaryTab(
     val message = when {
         note.isRecording -> "Let AI summarize this meeting – including decisions and action items."
         note.isLink -> "Let AI summarize this page."
+        note.isImage -> "Let AI summarize this image."
+        note.isFile -> "Let AI summarize this file."
         else -> "Let AI summarize this note."
     }
     Column(Modifier.fillMaxWidth().padding(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -675,7 +818,7 @@ private fun SummaryTab(
             note.summary != null -> {
                 var menu by remember { mutableStateOf(false) }
                 Row(verticalAlignment = Alignment.Top) {
-                    MarkdownText(note.summary, Modifier.weight(1f), onToggleTask = if (note.isDeleted || note.isLink) null else onToggleTask)
+                    MarkdownText(note.summary, Modifier.weight(1f), onToggleTask = if (note.isDeleted || note.isSaved) null else onToggleTask)
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreHoriz, "Summary Options", tint = Brand.navy) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {

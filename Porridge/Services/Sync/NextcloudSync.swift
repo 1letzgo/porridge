@@ -125,6 +125,12 @@ final class NextcloudSync {
             }
         }
         do {
+            var account = account
+            if account.userID == nil, let id = await WebDAV(account: account).fetchUserID() {
+                account.userID = id
+                account.save()
+                if self.account?.loginName == account.loginName { self.account = account }
+            }
             let dav = WebDAV(account: account)
             try await syncFile(dav, context: container.mainContext)
             try await syncRecordings(dav, context: container.mainContext)
@@ -252,7 +258,7 @@ final class NextcloudSync {
             }
             for id in result.toDelete {
                 guard let note = byID[id] else { continue }
-                for file in [note.audioFileName].compactMap({ $0 }) + note.audioFileNames { AudioStore.delete(file) }
+                note.storedFileNames.forEach(AudioStore.delete)
                 context.delete(note)
             }
         case "folders":
@@ -318,7 +324,7 @@ final class NextcloudSync {
     /// The recordings of the notes in the file and of the notes here still being processed.
     private func referencedRecordings(_ notes: [SyncRecord], context: ModelContext) throws -> Set<String> {
         let frozen = try context.fetch(FetchDescriptor<Note>()).filter(SyncRecords.isFrozen)
-            .flatMap { [$0.audioFileName, $0.pendingAudioFileName].compactMap { $0 } + $0.audioFileNames }
+            .flatMap(\.storedFileNames)
         return Set(notes.flatMap(SyncRecords.audioFiles) + frozen)
     }
 
@@ -346,7 +352,7 @@ final class NextcloudSync {
     private func syncRecordings(_ dav: WebDAV, context: ModelContext) async throws {
         let all = try context.fetch(FetchDescriptor<Note>())
         let notes = all.filter { !SyncRecords.isFrozen($0) }
-        let wanted = Set(notes.flatMap { [$0.audioFileName].compactMap { $0 } + $0.audioFileNames })
+        let wanted = Set(notes.flatMap { [$0.audioFileName].compactMap { $0 } + $0.audioFileNames + $0.attachments.map(\.fileName) })
         var state = State.load()
         let orphans = state.orphans ?? []
         guard !wanted.isEmpty || !orphans.isEmpty else { return }
@@ -355,7 +361,7 @@ final class NextcloudSync {
         var firstError: Error?
         if !orphans.isEmpty {
             await RecordingUploads.shared.cancel(Set(orphans))
-            let inUse = Set(all.flatMap { [$0.audioFileName, $0.pendingAudioFileName].compactMap { $0 } + $0.audioFileNames })
+            let inUse = Set(all.flatMap(\.storedFileNames))
             let result = await SyncMerge.eachFile(orphans.filter(AudioStore.isPlainName)) { name in
                 if remote.contains(name) { try await dav.delete(dav.recordings.appending(path: name)) }
                 remote.remove(name)

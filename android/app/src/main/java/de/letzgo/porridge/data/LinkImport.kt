@@ -22,11 +22,28 @@ object LinkImport {
         return clean.takeIf { !host.isNullOrBlank() && host.contains('.') }
     }
 
-    /** Speichert den Link als Notiz und lädt die Seite (mit Zusammenfassung). Ein schon gespeicherter Link wird nicht doppelt angelegt. */
-    suspend fun add(address: String, folderID: String? = null): Note {
+    /** iOS: `LinkImport.normalized` — eine Adresse ohne Fragment und Schrägstrich am Ende, um denselben Link wiederzufinden. */
+    fun normalized(address: String): String = runCatching {
+        val uri = URI(address.trim())
+        URI(uri.scheme?.lowercase(), uri.userInfo, uri.host?.lowercase(), uri.port, uri.path, uri.query, null).toString().trimEnd('/')
+    }.getOrDefault(address.trim().trimEnd('/'))
+
+    /**
+     * Speichert den Link als Notiz im Eingang und lädt die Seite (mit Zusammenfassung). Ein schon gespeicherter Link wird
+     * nicht doppelt angelegt: Er kommt aus dem Papierkorb zurück und rückt nach oben.
+     */
+    suspend fun add(address: String, project: String? = null, title: String? = null): Note {
         val db = PorridgeDatabase.shared
-        db.notes().all().firstOrNull { it.url == address && !it.isDeleted }?.let { return it }
-        val note = Note(url = address, title = address, statusRaw = ProcessingStatus.RECORDED.raw, folderID = folderID)
+        val key = normalized(address)
+        db.notes().all().firstOrNull { it.url != null && normalized(it.url) == key }?.let { existing ->
+            val moved = existing.copy(deletedAt = null, updatedAt = System.currentTimeMillis())
+            db.notes().upsert(moved)
+            return moved
+        }
+        val note = Note(
+            url = address, title = title?.takeIf { it.isNotBlank() && !it.startsWith("http") } ?: address,
+            statusRaw = ProcessingStatus.RECORDED.raw, projectIDs = listOfNotNull(project), sourceRaw = de.letzgo.porridge.model.NoteSource.LINK.raw,
+        )
         db.notes().upsert(note)
         ProcessingService.enqueue(ProcessingService.Job.Link(note.id, summarize = true))
         return note

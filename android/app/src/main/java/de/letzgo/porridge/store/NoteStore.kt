@@ -14,14 +14,27 @@ class NoteStore(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
 
     suspend fun save(note: Note) = db.notes().upsert(note.copy(updatedAt = System.currentTimeMillis()))
 
+    /**
+     * Ändert eine Notiz auf dem frischen Stand der Datenbank. Wer eine Zeile aus der Oberfläche zurückschreibt, überschreibt,
+     * was inzwischen dazukam (ein fertiges Transkript, eine Zusammenfassung). [touch] setzt `updatedAt`, damit die Änderung
+     * im Abgleich gegen das andere Gerät zählt; Anheften lässt es wie auf iOS stehen.
+     */
+    suspend fun update(id: String, touch: Boolean = true, change: (Note) -> Note): Note? {
+        val current = db.notes().get(id) ?: return null
+        val changed = change(current)
+        val updated = if (touch) changed.copy(updatedAt = System.currentTimeMillis()) else changed
+        db.notes().upsert(updated)
+        return updated
+    }
+
     suspend fun trash(note: Note) {
         val now = System.currentTimeMillis()
-        db.notes().upsert(note.copy(deletedAt = now, isPinned = false, updatedAt = now))
+        update(note.id) { it.copy(deletedAt = now, isPinned = false) }
     }
 
     suspend fun restore(note: Note) {
         val folderGone = note.folderID != null && db.folders().count(note.folderID) == 0
-        db.notes().upsert(note.copy(deletedAt = null, folderID = if (folderGone) null else note.folderID, updatedAt = System.currentTimeMillis()))
+        update(note.id) { it.copy(deletedAt = null, folderID = if (folderGone) null else it.folderID) }
     }
 
     /** Archiviert die Notiz, auf dem frischen Stand der Datenbank. */
@@ -30,14 +43,17 @@ class NoteStore(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
     suspend fun unarchive(note: Note) = setArchived(note, null)
 
     private suspend fun setArchived(note: Note, archivedAt: Long?) {
-        val current = db.notes().get(note.id) ?: return
-        db.notes().upsert(current.copy(archivedAt = archivedAt, updatedAt = System.currentTimeMillis()))
+        // iOS: `Archive.set` — im Archiv ist nichts angeheftet.
+        update(note.id) { it.copy(archivedAt = archivedAt, isPinned = if (archivedAt != null) false else it.isPinned) }
     }
 
+    /** iOS: `Inbox.file` — legt die Notiz in einen Bucket; sie verlässt den Eingang. */
+    suspend fun file(note: Note, project: String) = update(note.id) { de.letzgo.porridge.logic.InboxLogic.filed(it, project) }
+
+    suspend fun dismissSuggestions(note: Note) = update(note.id) { it.copy(suggestedProjectIDs = emptyList()) }
+
     suspend fun deletePermanently(note: Note) {
-        note.audioFileNames.forEach(AudioStore::delete)
-        AudioStore.delete(note.pendingAudioFileName)
-        AudioStore.delete(note.audioFileName)
+        note.storedFileNames.forEach(AudioStore::delete)
         db.notes().delete(note)
     }
 

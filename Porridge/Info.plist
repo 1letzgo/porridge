@@ -26,10 +26,17 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Porridge connects to your Plaud recorder over Bluetooth to import your recordings.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Porridge shows today's appointments so you can record a meeting for one of them.</string>
+	<string>Porridge shows your calendar, lets you add events, and links recorded meetings to their appointment.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Porridge connects to servers in your network that you entered yourself, such as your own AI model or Nextcloud.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Porridge records meetings and notes with the microphone and transcribes them on your device.</string>
 	<key>NSSupportsLiveActivities</key>

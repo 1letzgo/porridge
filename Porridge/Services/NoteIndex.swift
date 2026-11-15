@@ -2,8 +2,9 @@ import CryptoKit
 import Foundation
 import Observation
 
-/// The passages of all notes with their word statistics, for the search. Kept in a file of its own (not synced;
-/// it can be rebuilt from the notes at any time) and only the notes that changed since the last run are cut again.
+/// The passages of all notes, ready for the chat and the search: word statistics for BM25 and a sentence
+/// vector for meaning. Kept in a file of its own (not synced; it can be rebuilt from the notes at any time)
+/// and only the notes that changed since the last run are cut and embedded again.
 @MainActor
 @Observable
 final class NoteIndex {
@@ -11,14 +12,18 @@ final class NoteIndex {
 
     /// Goes up whenever the passages change, so views that search re-run.
     private(set) var version = 0
+    /// Passages still waiting for their vector.
+    private(set) var pendingEmbeddings = 0
 
     @ObservationIgnored private var entries: [UUID: IndexedNote] = [:]
+    @ObservationIgnored private var flat: [ChatChunk] = []
     @ObservationIgnored private var loaded = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private var embedTask: Task<Void, Never>?
 
     struct IndexedNote: Codable {
         var hash: String
-        var chunks: [NoteChunk]
+        var chunks: [ChatChunk]
     }
 
     private struct File: Codable {
@@ -26,7 +31,7 @@ final class NoteIndex {
         var notes: [UUID: IndexedNote]
     }
 
-    private static let fileVersion = 2
+    private static let fileVersion = 3
 
     nonisolated private static var fileURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -39,8 +44,8 @@ final class NoteIndex {
 
     // MARK: - Keeping up with the notes
 
-    /// Makes the index match `notes`: new and changed notes are cut into passages, deleted ones are dropped.
-    /// Cheap when nothing changed.
+    /// Makes the index match `notes`: new and changed notes are cut into passages (and embedded in the
+    /// background), deleted ones are dropped. Cheap when nothing changed.
     func refresh(_ notes: [Note]) async {
         if !loaded { await load() }
         var changed = false
@@ -49,7 +54,14 @@ final class NoteIndex {
             seen.insert(note.id)
             let hash = note.indexHash
             if entries[note.id]?.hash == hash { continue }
-            entries[note.id] = IndexedNote(hash: hash, chunks: NoteChunks.chunks(from: [note]))
+            let chunks = ChatRetrieval.chunks(from: [note])
+            // Vectors of unchanged passages are kept (the note may have changed elsewhere).
+            let known = Dictionary(entries[note.id]?.chunks.compactMap { chunk in chunk.embedding.map { (chunk.text, $0) } } ?? [], uniquingKeysWith: { first, _ in first })
+            entries[note.id] = IndexedNote(hash: hash, chunks: chunks.map { chunk in
+                var chunk = chunk
+                chunk.embedding = known[chunk.text]
+                return chunk
+            })
             changed = true
         }
         for id in entries.keys where !seen.contains(id) {
@@ -57,23 +69,90 @@ final class NoteIndex {
             changed = true
         }
         if changed {
-            version += 1
+            rebuildFlat()
             scheduleSave()
+        }
+        embedMissing()
+    }
+
+    private func rebuildFlat() {
+        flat = entries.values.flatMap(\.chunks)
+        version += 1
+    }
+
+    /// All passages, newest note first.
+    var chunks: [ChatChunk] { flat }
+
+    // MARK: - Embeddings
+
+    private func embedMissing() {
+        let missing = flat.filter { $0.embedding == nil }
+        pendingEmbeddings = missing.count
+        guard !missing.isEmpty, embedTask == nil else { return }
+        embedTask = Task { [weak self] in
+            defer { Task { @MainActor in self?.embedTask = nil } }
+            guard await TextEmbedder.shared.isAvailable else {
+                await MainActor.run { self?.pendingEmbeddings = 0 }
+                return
+            }
+            var batch: [(UUID, String, [Float])] = []
+            for (i, chunk) in missing.enumerated() {
+                if Task.isCancelled { return }
+                if let vector = await TextEmbedder.shared.vector(for: chunk.text) {
+                    batch.append((chunk.noteID, chunk.text, vector))
+                }
+                if batch.count >= 20 || i == missing.count - 1 {
+                    let done = batch
+                    batch = []
+                    await MainActor.run { self?.store(done, remaining: missing.count - i - 1) }
+                }
+            }
         }
     }
 
+    private func store(_ vectors: [(UUID, String, [Float])], remaining: Int) {
+        for (noteID, text, vector) in vectors {
+            guard var entry = entries[noteID] else { continue }
+            for index in entry.chunks.indices where entry.chunks[index].text == text && entry.chunks[index].embedding == nil {
+                entry.chunks[index].embedding = vector
+            }
+            entries[noteID] = entry
+        }
+        pendingEmbeddings = remaining
+        rebuildFlat()
+        scheduleSave()
+        // Passages may have been added while this ran.
+        if remaining == 0 { embedTask = nil; embedMissing() }
+    }
+
     // MARK: - Searching
+
+    /// The passages that fit `question` best: by words (BM25) and by meaning (vector), mixed. `within` narrows
+    /// them to some notes (those of a bucket); nil is everything.
+    func search(_ question: String, budget: Int = 6500, within notes: Set<UUID>? = nil) async -> [ChatChunk] {
+        let vector = await TextEmbedder.shared.vector(for: question)
+        return ChatRetrieval.search(question, in: passages(within: notes), queryVector: vector, budget: budget)
+    }
+
+    func recent(budget: Int = 4500, within notes: Set<UUID>? = nil) -> [ChatChunk] {
+        ChatRetrieval.recent(from: passages(within: notes), budget: budget)
+    }
+
+    private func passages(within notes: Set<UUID>?) -> [ChatChunk] {
+        guard let notes else { return flat }
+        return flat.filter { notes.contains($0.noteID) }
+    }
 
     /// The notes in which every word of `query` occurs (word forms count), for the list's search.
     /// Nil while the index is not loaded yet.
     func noteIDs(matching query: String) -> Set<UUID>? {
         guard loaded else { return nil }
-        let words = Array(Set(NoteChunks.tokens(query)))
+        let words = Array(Set(ChatRetrieval.tokens(query)))
         guard !words.isEmpty else { return Set(entries.keys) }
         var result = Set<UUID>()
         for (id, entry) in entries {
             let all = words.allSatisfy { word in
-                entry.chunks.contains { NoteChunks.frequency(word, $0) > 0 }
+                entry.chunks.contains { ChatRetrieval.frequency(word, $0) > 0 }
             }
             if all { result.insert(id) }
         }
@@ -91,7 +170,7 @@ final class NoteIndex {
         }.value
         if let file, file.version == Self.fileVersion {
             entries = file.notes
-            version += 1
+            rebuildFlat()
         }
     }
 
@@ -120,6 +199,8 @@ extension Note {
         }
         if let segmentsData { hasher.update(data: segmentsData) }
         if let speakersData { hasher.update(data: speakersData) }
+        // The names of its files are a passage too.
+        if let attachmentsData { hasher.update(data: attachmentsData) }
         // Links got a passage of their own (their address): their passages are cut again once.
         if url != nil { hasher.update(data: Data("link-passage".utf8)) }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()

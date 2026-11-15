@@ -7,7 +7,10 @@ import de.letzgo.porridge.model.RecordingNote
 import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.store.AudioStore
 import de.letzgo.porridge.store.PorridgeDatabase
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import java.io.BufferedOutputStream
@@ -95,43 +98,60 @@ class RecordingJournal(title: String?, continues: String? = null) {
         private const val SAMPLE_RATE = 16_000
         private val folder: File get() = File(AudioStore.directory.parentFile, "RecordingJournal").apply { mkdirs() }
         @Volatile private var activeID: String? = null
+        /** Zwei Läufe zugleich machten aus jeder Kopie zwei Meetings (iOS: `isRecovering`). */
+        private val recovering = Mutex()
 
         /** Macht aus jeder Aufnahme, die nicht zu Ende kam, ein Meeting. Zu kurz für eines: wird nur weggeräumt. */
-        suspend fun recover() = withContext(Dispatchers.IO) {
-            val active = activeID
-            for (infoFile in folder.listFiles { file -> file.extension == "json" && file.nameWithoutExtension != active }.orEmpty()) {
-                val sound = File(folder, infoFile.nameWithoutExtension + ".pcm")
-                val info = runCatching { PorridgeJson.decodeFromString(Info.serializer(), infoFile.readText()) }.getOrNull()
-                if (info != null) {
-                    runCatching { encode(sound) }.getOrNull()?.let { (fileName, duration) ->
-                        // Weg oder wartet schon auf einen anderen Teil: Die Aufnahme wird ein eigenes Meeting.
-                        val meeting = info.continues?.let { PorridgeDatabase.shared.notes().get(it) }?.takeIf { !it.isDeleted && it.pendingAudioFileName == null }
-                        if (meeting != null) {
-                            PorridgeDatabase.shared.notes().upsert(meeting.withRecordedPart(fileName, info.notes.map { RecordingNote(it.at, it.text) }))
-                            ProcessingService.enqueue(ProcessingService.Job.NoteAudio(meeting.id))
-                            return@let
+        suspend fun recover() = recovering.withLock {
+            withContext(Dispatchers.IO) {
+                val active = activeID
+                for (infoFile in folder.listFiles { file -> file.extension == "json" && file.nameWithoutExtension != active }.orEmpty()) {
+                    val sound = File(folder, infoFile.nameWithoutExtension + ".pcm")
+                    val info = runCatching { PorridgeJson.decodeFromString(Info.serializer(), infoFile.readText()) }.getOrNull()
+                    if (info != null) {
+                        val encoded = runCatching { encode(sound) }
+                        if (encoded.isFailure) {
+                            // Kein Platz oder kein Encoder: Die Kopie bleibt, der nächste Start versucht es wieder.
+                            Log.w("RecordingJournal", "not recovered, kept for the next launch: ${encoded.exceptionOrNull()}")
+                            continue
                         }
-                        val note = Note(
-                            title = info.title ?: Note.defaultMeetingTitle(info.startedAt), titleIsCustom = info.title != null,
-                            createdAt = info.startedAt, updatedAt = info.startedAt, statusRaw = ProcessingStatus.RECORDED.raw,
-                            audioFileName = fileName, duration = duration, channelCount = 1, inputName = "Recovered",
-                            text = RecordingNote.markdown(info.notes.map { RecordingNote(it.at, it.text) }),
-                        )
-                        PorridgeDatabase.shared.notes().upsert(note)
-                        ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
+                        encoded.getOrNull()?.let { (fileName, duration) -> store(info, fileName, duration) }
+                        AudioStore.delete(info.unfinishedFile)
                     }
-                    AudioStore.delete(info.unfinishedFile)
+                    sound.delete()
+                    infoFile.delete()
                 }
-                sound.delete()
-                infoFile.delete()
             }
+        }
+
+        private suspend fun store(info: Info, fileName: String, duration: Double) {
+            // Weg oder wartet schon auf einen anderen Teil: Die Aufnahme wird ein eigenes Meeting.
+            val meeting = info.continues?.let { PorridgeDatabase.shared.notes().get(it) }?.takeIf { !it.isDeleted && it.pendingAudioFileName == null }
+            if (meeting != null) {
+                PorridgeDatabase.shared.notes().upsert(meeting.withRecordedPart(fileName, info.notes.map { RecordingNote(it.at, it.text) }))
+                ProcessingService.enqueue(ProcessingService.Job.NoteAudio(meeting.id))
+                return
+            }
+            val note = Note(sourceRaw = de.letzgo.porridge.model.NoteSource.MEETING.raw,
+                title = info.title ?: Note.defaultMeetingTitle(info.startedAt), titleIsCustom = info.title != null,
+                createdAt = info.startedAt, updatedAt = info.startedAt, statusRaw = ProcessingStatus.RECORDED.raw,
+                audioFileName = fileName, duration = duration, channelCount = 1, inputName = "Recovered",
+                text = RecordingNote.markdown(info.notes.map { RecordingNote(it.at, it.text) }),
+            )
+            PorridgeDatabase.shared.notes().upsert(note)
+            ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
         }
 
         /** Der rohe Ton als m4a im [AudioStore]; null bei weniger als einer Sekunde. */
         private fun encode(sound: File): Pair<String, Double>? {
             if (sound.length() < SAMPLE_RATE * 2L) return null
             val name = AudioStore.newFileName()
-            val writer = AacWriter(AudioStore.file(name), SAMPLE_RATE, 1)
+            val writer = try {
+                AacWriter(AudioStore.file(name), SAMPLE_RATE, 1)
+            } catch (e: Throwable) {
+                AudioStore.delete(name)
+                throw e
+            }
             try {
                 sound.inputStream().buffered().use { input ->
                     val bytes = ByteArray(SAMPLE_RATE * 2)
@@ -147,9 +167,13 @@ class RecordingJournal(title: String?, continues: String? = null) {
                         writer.write(samples, samples.size)
                     }
                 }
-            } finally {
-                writer.close()
+            } catch (e: Throwable) {
+                // Eine halbe Datei ist keine Aufnahme; der rohe Ton liegt für den nächsten Versuch noch da.
+                runCatching { writer.close() }
+                AudioStore.delete(name)
+                throw e
             }
+            writer.close()
             return name to writer.duration
         }
     }

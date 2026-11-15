@@ -146,9 +146,13 @@ final class PlaudImporter {
                 throw PlaudBLEError.message("The recorder sent the recording in a format Porridge does not know.")
             }
             status = "Converting…"
-            let ogg = try PlaudCrypto.decryptRecordingFile(raw, privateKey: key)
+            // Off the main actor: an hour of recording takes long enough to freeze the screen.
+            let (ogg, complete) = try await Task.detached(priority: .userInitiated) {
+                let ogg = try PlaudCrypto.decryptRecordingFile(raw, privateKey: key)
+                return (ogg, PlaudCrypto.isCompleteOgg(ogg))
+            }.value
             // The cipher has no checksum, so damaged bytes would still "decrypt": the audio's own page checksums prove the copy whole.
-            guard PlaudCrypto.isCompleteOgg(ogg) else {
+            guard complete else {
                 throw PlaudBLEError.message("The copy of this recording is damaged. Please try again.")
             }
             let fileName = AudioStore.newFileName(extension: "m4a")
@@ -283,6 +287,7 @@ final class PlaudImporter {
     /// Stores an imported recording as a new note and starts transcribing it.
     static func addNote(_ audio: PlaudImportedAudio, projectID: String? = nil, context: ModelContext, processing: ProcessingService) {
         let note = Note()
+        note.source = .plaud
         note.createdAt = audio.date
         note.updatedAt = audio.date
         note.title = Note.defaultMeetingTitle(for: audio.date)

@@ -2,7 +2,7 @@
 # Builds the Mac app for release, signs it, zips it and publishes it as a GitHub release.
 #
 #   scripts/release-mac.sh            # release the version from project.yml
-#   scripts/release-mac.sh --bump     # first raise CURRENT_PROJECT_VERSION by one (and regenerate the project)
+#   scripts/release-mac.sh --bump     # first raise CURRENT_PROJECT_VERSION by one, regenerate the project and commit that
 #   scripts/release-mac.sh --dry-run  # build and zip only, no GitHub release
 #
 # Tag: mac-v<MARKETING_VERSION>, asset: Porridge-mac-<version>.zip. A tag that exists already stops the
@@ -28,12 +28,22 @@ for arg in "$@"; do
   esac
 done
 
+# Before the bump: it changes project.yml itself, and that change is committed below.
+if [[ -n $(git status --porcelain) ]]; then
+  echo "Working tree not clean; commit first so the tag points at what was built." >&2
+  git status --short >&2
+  exit 1
+fi
+
 if (( BUMP )); then
   current=$(sed -n 's/^ *CURRENT_PROJECT_VERSION: *\([0-9]*\).*/\1/p' project.yml | head -1)
   next=$((current + 1))
   sed -i '' "s/^\( *CURRENT_PROJECT_VERSION:\) *$current/\1 $next/" project.yml
   echo "CURRENT_PROJECT_VERSION: $current → $next"
   xcodegen generate >/dev/null
+  if (( ! DRY )); then
+    git commit -qam "Mac build $next"
+  fi
 fi
 
 VERSION=$(sed -n 's/^ *MARKETING_VERSION: *\([^ ]*\).*/\1/p' project.yml | head -1)
@@ -43,12 +53,6 @@ ASSET="Porridge-mac-$VERSION.zip"
 
 if (( ! DRY )) && gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   echo "Release $TAG exists already on $REPO. Raise MARKETING_VERSION in project.yml first." >&2
-  exit 1
-fi
-
-if [[ -n $(git status --porcelain) ]]; then
-  echo "Working tree not clean; commit first so the tag points at what was built." >&2
-  git status --short >&2
   exit 1
 fi
 
@@ -65,10 +69,17 @@ echo "Building $SCHEME $VERSION ($BUILD) …"
 rm -rf "$DERIVED/Build/Products/Release"
 xcodebuild -scheme "$SCHEME" -configuration Release -destination 'platform=macOS' \
   -derivedDataPath "$DERIVED" "${SIGN_ARGS[@]}" build 2>&1 \
-  | grep -E '^\*\* BUILD|^/.* error:' || true
+  | { grep -E '^\*\* BUILD|^/.* error:' || true; }
+# The build's own result, not grep's: an app from an earlier build must not be released as this one.
+(( pipestatus[1] == 0 )) || { echo "Build failed." >&2; exit 1; }
 APP="$DERIVED/Build/Products/Release/Porridge.app"
 [[ -d $APP ]] || { echo "Build failed: $APP missing" >&2; exit 1; }
 codesign --verify --deep --strict "$APP"
+BUILT=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
+if [[ $BUILT != "$VERSION" ]]; then
+  echo "The app says version $BUILT, the tag would say $VERSION. Run xcodegen generate and try again." >&2
+  exit 1
+fi
 
 mkdir -p "$OUT"
 rm -f "$OUT/$ASSET"
@@ -100,8 +111,10 @@ if [[ -z $DEVELOPER_ID ]]; then
   NOTES+=$'\n\n'"Not notarized: after downloading, right-click Porridge.app and choose Open the first time."
 fi
 NOTES+=$'\n\n'"SHA-256: $(shasum -a 256 "$OUT/$ASSET" | cut -d' ' -f1)"
+# As a draft until the zip is there: the app's update check must never find a release without its download.
 if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  gh release create "$TAG" --repo "$REPO" --title "Porridge Mac $VERSION" --notes "$NOTES"
+  gh release create "$TAG" --repo "$REPO" --title "Porridge Mac $VERSION" --notes "$NOTES" --draft
 fi
 gh release upload "$TAG" "$OUT/$ASSET" --repo "$REPO" --clobber
+gh release edit "$TAG" --repo "$REPO" --draft=false
 gh release view "$TAG" --repo "$REPO" --json url --jq .url

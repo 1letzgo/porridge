@@ -48,7 +48,8 @@ enum OpusOggDecoder {
                     case 1:
                         break
                     default:
-                        stream.packets.append(current)
+                        // An empty packet carries no sound and has no bytes to hand to the decoder.
+                        if !current.isEmpty { stream.packets.append(current) }
                     }
                     packetNumber += 1
                     current = Data()
@@ -101,7 +102,9 @@ enum OpusOggDecoder {
             var offset = 0
             for (i, packet) in packets.enumerated() {
                 packet.withUnsafeBytes { raw in
-                    compressed.data.advanced(by: offset).copyMemory(from: raw.baseAddress!, byteCount: packet.count)
+                    if let base = raw.baseAddress {
+                        compressed.data.advanced(by: offset).copyMemory(from: base, byteCount: packet.count)
+                    }
                 }
                 compressed.packetDescriptions![i] = AudioStreamPacketDescription(
                     mStartOffset: Int64(offset), mVariableFramesInPacket: 0, mDataByteSize: UInt32(packet.count)

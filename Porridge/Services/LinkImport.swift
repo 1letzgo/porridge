@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// Turns links into notes: from the share sheet, or added by hand.
+/// Turns links into notes: added by hand, or shared into the app (`ShareImport`).
 @MainActor
 enum LinkImport {
     /// An address without fragment and trailing slash, for finding the same link twice.
@@ -15,24 +15,12 @@ enum LinkImport {
         return text
     }
 
-    private static func knownAddresses(in context: ModelContext) -> [String: Note] {
+    static func knownAddresses(in context: ModelContext) -> [String: Note] {
         var result: [String: Note] = [:]
         for note in (try? context.fetch(FetchDescriptor<Note>())) ?? [] {
             if let url = note.url { result[normalized(url)] = note }
         }
         return result
-    }
-
-    /// Takes the links the share sheet left behind and saves them as notes.
-    static func importInbox(context: ModelContext, processing: ProcessingService) {
-        let entries = LinkInbox.drain()
-        guard !entries.isEmpty else { return }
-        var known = knownAddresses(in: context)
-        for entry in entries {
-            let note = save(entry.url, title: entry.title, date: entry.date, known: &known, context: context, processing: processing)
-            known[normalized(entry.url)] = note
-        }
-        try? context.save()
     }
 
     /// An address typed by hand: `nil` unless it is a web address; "example.com" becomes "https://example.com".
@@ -55,7 +43,7 @@ enum LinkImport {
         return note
     }
 
-    private static func save(
+    static func save(
         _ address: String, title: String?, date: Date, known: inout [String: Note],
         context: ModelContext, processing: ProcessingService
     ) -> Note {
@@ -71,6 +59,7 @@ enum LinkImport {
         note.createdAt = date
         note.updatedAt = date
         note.statusRaw = ProcessingStatus.recorded.rawValue
+        note.source = .link
         context.insert(note)
         processing.enqueue(.link(note.id, summarize: true))
         return note

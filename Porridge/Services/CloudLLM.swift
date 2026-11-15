@@ -12,6 +12,11 @@ enum CloudLLM {
     // MARK: - Summary
 
     static func complete(provider: AIProvider, apiKey: String, model: String, system: String, user: String) async throws -> String {
+        try await completion(provider: provider, apiKey: apiKey, model: model, system: system, user: user).text
+    }
+
+    /// `truncated`: the provider stopped at its output limit, so the text ends in the middle.
+    static func completion(provider: AIProvider, apiKey: String, model: String, system: String, user: String) async throws -> (text: String, truncated: Bool) {
         guard let base = provider.resolvedBaseURL else { throw SummaryError.missingBaseURL }
         guard !model.isEmpty else { throw SummaryError.missingModel }
 
@@ -69,7 +74,18 @@ enum CloudLLM {
                 .compactMap { $0["text"] as? String }.joined()
         }
         guard let text, !text.isEmpty else { throw SummaryError.emptyResponse }
-        return text
+        let stop: String? = switch provider.style {
+        case .openAICompatible: (json["choices"] as? [[String: Any]])?.first?["finish_reason"] as? String
+        case .anthropic: json["stop_reason"] as? String
+        case .google: (json["candidates"] as? [[String: Any]])?.first?["finishReason"] as? String
+        }
+        return (text, isTruncation(stop))
+    }
+
+    /// "length" (OpenAI style), "max_tokens" (Anthropic), "MAX_TOKENS" (Google).
+    static func isTruncation(_ stopReason: String?) -> Bool {
+        guard let reason = stopReason?.lowercased() else { return false }
+        return reason == "length" || reason == "max_tokens"
     }
 
     // MARK: - Model list

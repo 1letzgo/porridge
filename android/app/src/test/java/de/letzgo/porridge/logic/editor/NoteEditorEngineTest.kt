@@ -124,6 +124,16 @@ class NoteEditorEngineTest {
         assertEquals(NoteBlock(NoteBlock.Kind.Checklist(true), 1, "a"), blocks[1])
         assertEquals(NoteBlock(NoteBlock.Kind.Numbered, 1, "b"), blocks[2])
         assertEquals("# T\n  - [x] a\n  1. b\n> q\nx", NoteBlock.markdown(blocks))
-        assertEquals(12, NoteBlock.textOffset(1, blocks))
+    }
+
+    @Test fun numbersCountOnPerLevelAndStartOverAfterOtherBlocks() {
+        val blocks = NoteBlock.parse("1. a\n1. b\n  1. x\n  1. y\n1. c\ntext\n1. d\n- e\n1. f")
+        assertEquals(listOf(1, 2, 1, 2, 3, 0, 1, 0, 1), NoteBlock.numbers(blocks))
+    }
+
+    @Test fun italicInsideBoldKeepsTheBoldOpen() {
+        val md = "**a *b* c** und ***d***"
+        engine.load(md)
+        assertEquals(md, engine.markdown())
     }
 }

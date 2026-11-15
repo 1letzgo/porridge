@@ -1,5 +1,9 @@
 package de.letzgo.porridge.audio
 
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import de.letzgo.porridge.store.AudioStore
 import kotlinx.coroutines.CoroutineScope
@@ -13,7 +17,16 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** iOS: `AudioPlayback` (Services/AudioPlayback.swift) — Abspielen, Springen und Vor/Zurück in einer Aufnahme. */
-class AudioPlayback {
+class AudioPlayback(context: Context? = null) {
+    // iOS regelt das über die Audio-Session: Ein Anruf oder eine andere App hält die Wiedergabe an.
+    private val audioManager = context?.applicationContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+    private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        .setAudioAttributes(attributes)
+        .setOnAudioFocusChangeListener { change ->
+            if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) scope.launch { pause() }
+        }
+        .build()
     private var player: MediaPlayer? = null
     private var loaded: String? = null
     private var ticker: Job? = null
@@ -30,9 +43,10 @@ class AudioPlayback {
         if (loaded == fileName) return
         stop()
         val p = MediaPlayer()
+        p.setAudioAttributes(attributes)
         p.setDataSource(AudioStore.file(fileName).absolutePath)
         p.prepare()
-        p.setOnCompletionListener { _isPlaying.value = false; ticker?.cancel() }
+        p.setOnCompletionListener { _isPlaying.value = false; ticker?.cancel(); audioManager?.abandonAudioFocusRequest(focus) }
         player = p
         loaded = fileName
         _duration.value = p.duration / 1000.0
@@ -43,6 +57,8 @@ class AudioPlayback {
 
     fun play() {
         val p = player ?: return
+        // Läuft gerade ein Anruf, gibt es keinen Fokus: dann nicht hineinspielen.
+        if (audioManager != null && audioManager.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return
         p.start()
         _isPlaying.value = true
         ticker?.cancel()
@@ -55,9 +71,10 @@ class AudioPlayback {
     }
 
     fun pause() {
-        player?.pause()
+        runCatching { player?.pause() }
         _isPlaying.value = false
         ticker?.cancel()
+        audioManager?.abandonAudioFocusRequest(focus)
     }
 
     fun seek(seconds: Double) {
@@ -71,6 +88,7 @@ class AudioPlayback {
 
     fun stop() {
         ticker?.cancel()
+        audioManager?.abandonAudioFocusRequest(focus)
         player?.release()
         player = null
         loaded = null

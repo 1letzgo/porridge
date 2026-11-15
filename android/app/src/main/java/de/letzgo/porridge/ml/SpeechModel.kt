@@ -5,6 +5,7 @@ import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
+import de.letzgo.porridge.audio.PreparedAudio
 import de.letzgo.porridge.model.Word
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -48,7 +49,23 @@ object SpeechModel : SpeechRecognizer {
         recognizer = withContext(Dispatchers.Default) { OfflineRecognizer(null, config) }
     }
 
+    /** Mitten in einem Abschnitt gäbe das Modell Speicher frei, in dem gerade gerechnet wird: dann erst danach. */
     fun release() {
+        if (!mutex.tryLock()) {
+            releaseWanted = true
+            return
+        }
+        try {
+            releaseNow()
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    @Volatile private var releaseWanted = false
+
+    private fun releaseNow() {
+        releaseWanted = false
         recognizer?.release()
         recognizer = null
         ModelManager.markUnloaded(pack)
@@ -57,9 +74,9 @@ object SpeechModel : SpeechRecognizer {
     override suspend fun transcribe(samples: FloatArray, language: String?): List<Word> =
         transcribe(samples.size, language, {}, { samples[it] }) { from, to -> samples.copyOfRange(from, to) }
 
-    /** Eine ganze Aufnahme (16-Bit, 16 kHz), abschnittsweise — nur der aktuelle Abschnitt liegt als Float vor; `progress` 0…1. */
-    suspend fun transcribe(pcm: ShortArray, language: String?, progress: (Float) -> Unit = {}): List<Word> =
-        transcribe(pcm.size, language, progress, { pcm[it] / 32768f }) { from, to -> FloatArray(to - from) { pcm[from + it] / 32768f } }
+    /** Eine ganze Aufnahme (16 kHz), abschnittsweise — nur der aktuelle Abschnitt liegt im Speicher; `progress` 0…1. */
+    suspend fun transcribe(audio: PreparedAudio, language: String?, progress: (Float) -> Unit = {}): List<Word> =
+        transcribe(audio.size, language, progress, { audio[it] }) { from, to -> audio.slice(from, to) }
 
     private suspend fun transcribe(
         size: Int,
@@ -68,31 +85,37 @@ object SpeechModel : SpeechRecognizer {
         sample: (Int) -> Float,
         slice: (Int, Int) -> FloatArray,
     ): List<Word> {
-        ensure()
+        return withContext(Dispatchers.Default) {
+            val words = mutableListOf<Word>()
+            for (range in ChunkPlanner.cuts(size, sample, SAMPLE_RATE)) {
+                progress(range.first.toFloat() / maxOf(size, 1))
+                // Sehr kurze Stücke füllt iOS auf eine Sekunde auf; das Modell braucht etwas Ton.
+                var chunk = slice(range.first, range.last + 1)
+                if (chunk.size < SAMPLE_RATE) chunk = chunk.copyOf(SAMPLE_RATE)
+                words += decode(chunk, range.first.toDouble() / SAMPLE_RATE)
+            }
+            progress(1f)
+            words
+        }
+    }
+
+    /**
+     * Das Modell gehört immer nur einem Abschnitt, nicht einer ganzen Aufnahme: Ein Diktat oder das Live-Transkript kommt
+     * so zwischen zwei Abschnitten einer langen Transkription dran, statt Minuten zu warten.
+     */
+    private suspend fun decode(chunk: FloatArray, offset: Double): List<Word> {
+        if (recognizer == null) ensure()
         return mutex.withLock {
-            val recognizer = checkNotNull(recognizer)
-            withContext(Dispatchers.Default) {
-                val words = mutableListOf<Word>()
-                for (range in ChunkPlanner.cuts(size, sample, SAMPLE_RATE)) {
-                    progress(range.first.toFloat() / maxOf(size, 1))
-                    // Sehr kurze Stücke füllt iOS auf eine Sekunde auf; das Modell braucht etwas Ton.
-                    var chunk = slice(range.first, range.last + 1)
-                    if (chunk.size < SAMPLE_RATE) chunk = chunk.copyOf(SAMPLE_RATE)
-                    val stream = recognizer.createStream()
-                    try {
-                        stream.acceptWaveform(chunk, SAMPLE_RATE)
-                        recognizer.decode(stream)
-                        val result = recognizer.getResult(stream)
-                        words += WordTimingLogic.words(
-                            result.tokens.toList(), result.timestamps.toList(), result.durations.toList(),
-                            offset = range.first.toDouble() / SAMPLE_RATE,
-                        )
-                    } finally {
-                        stream.release()
-                    }
-                }
-                progress(1f)
-                words
+            val recognizer = checkNotNull(recognizer) { "The speech model is not loaded." }
+            val stream = recognizer.createStream()
+            try {
+                stream.acceptWaveform(chunk, SAMPLE_RATE)
+                recognizer.decode(stream)
+                val result = recognizer.getResult(stream)
+                WordTimingLogic.words(result.tokens.toList(), result.timestamps.toList(), result.durations.toList(), offset = offset)
+            } finally {
+                stream.release()
+                if (releaseWanted) releaseNow()
             }
         }
     }

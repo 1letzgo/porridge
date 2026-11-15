@@ -1,22 +1,10 @@
 import Foundation
 import SwiftData
 
-/// What the one long list shows, and what is in the archive. An element in a project lives in the project and
-/// is not listed on its own; an id of a project that no longer exists does not count, so nothing gets lost.
+/// What the home list shows of the buckets, and what is in the archive.
 enum HomeList {
     /// How many projects that are not pinned the list shows before "More".
     static let recentProjects = 5
-    /// How many elements (pinned notes, notes) the list shows before "More".
-    static let maxElements = 25
-
-    /// Shares `maxElements` out from the top of the list down, unless all are asked for. `hidden` is how many that
-    /// leaves out when not all are shown.
-    static func elementLimits(pinned: Int, notes: Int, showAll: Bool) -> (pinned: Int, notes: Int, hidden: Int) {
-        let total = pinned + notes
-        let budget = showAll ? total : maxElements
-        let shownPinned = min(pinned, budget)
-        return (shownPinned, min(notes, budget - shownPinned), max(0, total - maxElements))
-    }
 
     static func activeProjects(_ projects: [NoteFolder]) -> [NoteFolder] {
         sorted(projects.filter { !$0.isArchived })
@@ -47,16 +35,8 @@ enum HomeList {
         return (pinned + (showAll ? others : Array(others.prefix(recentProjects))), max(0, others.count - recentProjects))
     }
 
-    static func notes(_ notes: [Note], projects: Set<String>) -> [Note] {
-        notes.filter { !$0.isDeleted && !$0.isArchived && !isInProject($0.projectIDs, projects) }
-    }
-
     static func archivedNotes(_ notes: [Note]) -> [Note] {
         notes.filter { $0.isArchived && !$0.isDeleted }
-    }
-
-    private static func isInProject(_ ids: [String], _ projects: Set<String>) -> Bool {
-        ids.contains { projects.contains($0) }
     }
 }
 
