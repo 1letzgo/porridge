@@ -8,7 +8,7 @@ enum ListItem: Hashable {
 
 /// A section of the middle column: its header and color.
 struct ListSection: Hashable {
-    enum Tint: Hashable { case sky, navy, project, link, red }
+    enum Tint: Hashable { case sky, navy, project, link, red, task }
     let id: String
     let title: String
     let tint: Tint
@@ -51,11 +51,13 @@ enum NoteListContent {
                 counts[kind, default: 0] += 1
                 byKind[kind, default: []].append(note)
             }
-            let order: [(KindFilter, ListSection.Tint)] = [(.meetings, .navy), (.notes, .sky), (.links, .link), (.images, .navy), (.files, .navy)]
+            let order: [(KindFilter, ListSection.Tint)] = [(.todos, .task), (.meetings, .navy), (.notes, .sky), (.links, .link), (.images, .navy), (.files, .navy)]
             var sections: [(ListSection, [ListItem])] = []
             for (kind, tint) in order where state.kindFilter == nil || state.kindFilter == kind {
                 guard let list = byKind[kind], !list.isEmpty else { continue }
-                sections.append((ListSection(id: kind.rawValue, title: kind.title, tint: tint), pinnedFirst(list).map { .note($0.id) }))
+                // To-dos: open ones first, then those done today.
+                let sorted = kind == .todos ? list.filter { !$0.isDone } + list.filter(\.isDone) : pinnedFirst(list)
+                sections.append((ListSection(id: kind.rawValue, title: kind.title, tint: tint), sorted.map { .note($0.id) }))
             }
             return Built(
                 sections: sections, emptyTitle: "Nothing Here Yet",
@@ -104,7 +106,10 @@ enum NoteListContent {
     /// What the search finds among the notes, archived ones included; strictly a timeline.
     static func search(_ notes: [Note], state: WindowState) -> [Note] {
         var result = notes.filter { !$0.isDeleted }
-        if let kind = state.kindFilter { result = result.filter(kind.matches) }
+        if let kind = state.kindFilter {
+            // In the search the chip is "Open To-dos": not done and not put away.
+            result = result.filter { kind == .todos ? $0.isTodo && !$0.isDone && !$0.isArchived : kind.matches($0) }
+        }
         if !state.searchTags.isEmpty {
             let wanted = state.searchTags.map { $0.lowercased() }
             result = result.filter { note in

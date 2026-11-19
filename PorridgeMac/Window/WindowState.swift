@@ -24,10 +24,11 @@ enum SidebarPage: Hashable, Codable {
 
 /// The kinds of elements a bucket's list or the search can be narrowed to.
 enum KindFilter: String, CaseIterable, Codable {
-    case meetings, notes, links, images, files
+    case todos, meetings, notes, links, images, files
 
     var title: String {
         switch self {
+        case .todos: "To-dos"
         case .meetings: "Meetings"
         case .notes: "Notes"
         case .links: "Links"
@@ -38,8 +39,9 @@ enum KindFilter: String, CaseIterable, Codable {
 
     func matches(_ note: Note) -> Bool {
         switch self {
+        case .todos: note.isTodo
         case .meetings: note.isRecording && !note.isLink
-        case .notes: !note.isRecording && !note.isLink && !note.isStored
+        case .notes: !note.isRecording && !note.isLink && !note.isStored && !note.isTodo
         case .links: note.isLink
         case .images: note.isImage
         case .files: note.isFile

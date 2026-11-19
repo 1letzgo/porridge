@@ -21,6 +21,19 @@ enum NoteOperations {
             menu.add("Open in New Window", symbol: "macwindow") { NoteWindowController.open(note.id) }
             menu.addSeparator()
         }
+        // To-dos: done or not, and a note that becomes one (or stops being one).
+        let todos = notes.filter(\.isTodo)
+        if !todos.isEmpty, todos.count == notes.count {
+            let done = todos.allSatisfy(\.isDone)
+            menu.add(done ? "Mark as Not Done" : "Mark as Done", symbol: done ? "square" : "checkmark.square") {
+                todos.forEach { TodoBridge.setDone(!done, $0) }
+            }
+        }
+        if notes.count == 1, let note = notes.first, note.canBeTodo {
+            menu.add(note.isTodo ? "Convert to Note" : "Convert to To-do", symbol: note.isTodo ? "text.alignleft" : "checkmark.square") {
+                TodoBridge.setTodo(!note.isTodo, note)
+            }
+        }
         if !notes.contains(where: \.isArchived) {
             let pinned = notes.allSatisfy(\.isPinned)
             menu.add(pinned ? "Unpin" : "Pin", symbol: pinned ? "pin.slash" : "pin") { setPinned(!pinned, notes) }

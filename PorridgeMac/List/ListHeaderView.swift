@@ -103,7 +103,7 @@ final class ListHeaderView: NSView {
             }
         case .search:
             for kind in KindFilter.allCases {
-                filters.addArrangedSubview(filterPill(title: kind.title, count: nil, kind: kind, isOn: state.kindFilter == kind, tint: .brandNavy))
+                filters.addArrangedSubview(filterPill(title: kind == .todos ? "Open To-dos" : kind.title, count: nil, kind: kind, isOn: state.kindFilter == kind, tint: .brandNavy))
             }
         default:
             break

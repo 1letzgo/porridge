@@ -312,6 +312,7 @@ private final class SectionHeaderCell: NSTableCellView {
         case .project: .brandProject
         case .link: .brandLinkText
         case .red: .brandDangerText
+        case .task: .brandTaskText
         }
         title.isHidden = section.title.isEmpty
         footnote.stringValue = section.footnote ?? ""

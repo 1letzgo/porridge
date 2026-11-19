@@ -109,8 +109,13 @@ final class NoteCellView: NSTableCellView {
             icon.tint = NoteKindStyle.tint(for: note)
             icon.isPinned = note.isPinned
         }
-        titleLabel.stringValue = note.displayTitle
-        titleLabel.textColor = isTodo && TodoBridge.isDone(note) ? .secondaryLabelColor : .labelColor
+        // A done to-do is struck through and grey.
+        let done = isTodo && TodoBridge.isDone(note)
+        titleLabel.attributedStringValue = NSAttributedString(string: note.displayTitle, attributes: [
+            .font: titleLabel.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize + 1, weight: .medium),
+            .foregroundColor: done ? NSColor.secondaryLabelColor : NSColor.labelColor,
+            .strikethroughStyle: done ? NSUnderlineStyle.single.rawValue : 0,
+        ])
         let preview = note.preview
         previewLabel.stringValue = preview
         previewLabel.isHidden = preview.isEmpty
@@ -169,7 +174,7 @@ final class NoteCellView: NSTableCellView {
             suggestions.addArrangedSubview(dismiss)
         }
 
-        setAccessibilityLabel([NoteKindStyle.name(for: note), note.displayTitle, preview, footerLabel.stringValue].filter { !$0.isEmpty }.joined(separator: ", "))
+        setAccessibilityLabel([isTodo ? (done ? "Done To-do" : "To-do") : NoteKindStyle.name(for: note), note.displayTitle, preview, footerLabel.stringValue].filter { !$0.isEmpty }.joined(separator: ", "))
     }
 
     private func footer(_ note: Note) -> String {
@@ -184,7 +189,7 @@ final class NoteCellView: NSTableCellView {
         }
         if TodoBridge.isTodo(note) {
             let progress = TodoBridge.progress(of: note)
-            if progress.total > 0 { parts.append(progress.label) }
+            if progress.total > 0 { parts.append("☑︎ " + progress.label) }
         }
         if let domain = note.domain { parts.append(domain) }
         if note.isRecording, note.duration > 0 {
