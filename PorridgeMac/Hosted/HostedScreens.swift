@@ -29,15 +29,13 @@ enum HostedSheet {
     }
 }
 
-final class NoteDetailViewController: NSViewController {
-    let note: Note
+final class ChatViewController: NSViewController {
     private let state: WindowState
-    private let startsRecording: Bool
+    private var token: UUID?
+    private var observing: Observing?
 
-    init(note: Note, state: WindowState, startsRecording: Bool) {
-        self.note = note
+    init(state: WindowState) {
         self.state = state
-        self.startsRecording = startsRecording
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -45,18 +43,105 @@ final class NoteDetailViewController: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let state = state
-        let note = note
-        view = NSHostingView(rootView: hosted(
-            NoteDetailView(note: note, onClose: { state.selection.removeAll { $0 == note.id } }, startsRecording: startsRecording)
-        ))
+        view = NSHostingView(rootView: AnyView(EmptyView()))
     }
 
-    func flushEditing() {}
-    func debugType(title: String? = nil, body: String? = nil) {}
-    func focusTitle() {}
-    func perform(_ command: NoteCommand) {}
-    func validate(_ command: NoteCommand, item: NSMenuItem) -> Bool { false }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        token = Library.shared.observe { [weak self] in self?.render() }
+        observing = Observing { [weak self] in
+            guard let self else { return }
+            _ = (self.state.chatID, self.state.chatScope)
+            self.render()
+        }
+    }
+
+    private func render() {
+        let library = Library.shared
+        let state = state
+        let thread = library.threads.first { $0.id == state.chatID }
+        (view as? NSHostingView<AnyView>)?.rootView = AnyView(hosted(
+            ChatView(
+                thread: thread, notes: library.notes, projects: library.projects,
+                scope: Binding(get: { state.chatScope }, set: { state.chatScope = $0 }),
+                onOpen: { id in
+                    if let note = Library.shared.note(id) { state.reveal(note) }
+                },
+                onCreate: { thread in state.chatID = thread.id }
+            )
+        ))
+    }
+}
+
+final class SettingsWindowController: NSWindowController {
+    static let shared = SettingsWindowController()
+
+    init() {
+        let window = NSWindow(contentViewController: NSHostingController(rootView: hosted(SettingsView(isEmbedded: true).frame(width: 640, height: 760))))
+        window.title = "Settings"
+        window.styleMask = [.titled, .closable]
+        super.init(window: window)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+@MainActor
+enum Onboarding {
+    static func showIfNeeded(in window: NSWindow?) {
+        guard !UserDefaults.standard.bool(forKey: AppSettings.onboardingDoneKey) else { return }
+        final class Box { var controller: NSViewController? }
+        let box = Box()
+        box.controller = HostedSheet.present(OnboardingView {
+            UserDefaults.standard.set(true, forKey: AppSettings.onboardingDoneKey)
+            box.controller?.dismiss(nil)
+        }, in: window, size: NSSize(width: 520, height: 640))
+    }
+}
+
+@MainActor
+enum NoteSheets {
+    static func summaryOptions(for note: Note, in controller: NSViewController) {
+        let processing = Library.shared.processing
+        HostedSheet.present(SummaryOptionsSheet(
+            replacesSummary: note.summary != nil,
+            showsTemplates: !note.segments.isEmpty,
+            material: !note.segments.isEmpty ? "transcript" : note.isLink ? "page" : "note"
+        ) { template, model in
+            guard !processing.summarizing.contains(note.id) else { return }
+            processing.enqueue(.summary(note.id, template, model))
+        }, in: controller.view.window)
+    }
+
+    static func enhanceOptions(for note: Note, in controller: NSViewController) {
+        let processing = Library.shared.processing
+        HostedSheet.present(SummaryOptionsSheet(replacesSummary: false, showsTemplates: false, material: "note", enhances: true) { _, model in
+            guard !processing.enhancing.contains(note.id) else { return }
+            processing.enqueue(.enhance(note.id, model))
+        }, in: controller.view.window)
+    }
+
+    static func editSummary(of note: Note, in controller: NSViewController) {
+        if note.summary == nil { note.summary = "" }
+        HostedSheet.present(SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 })), in: controller.view.window)
+    }
+
+    static func merge(_ note: Note, in controller: NSViewController) {
+        HostedSheet.present(MergeNotesSheet(base: note) {}, in: controller.view.window)
+    }
+
+    static func export(_ note: Note, in controller: NSViewController) {
+        HostedSheet.present(MeetingExportSheet(note: note), in: controller.view.window)
+    }
+
+    static func continueRecording(_ note: Note, in controller: NSViewController) {
+        HostedSheet.present(RecordingView(title: note.title, continues: note.id) { result, _, _, written in
+            note.addRecordedPart(result.fileName, written: written)
+            Library.shared.save()
+            Library.shared.processing.enqueue(.note(note.id))
+        }, in: controller.view.window, size: NSSize(width: 560, height: 640))
+    }
 }
 
 @MainActor
@@ -110,107 +195,5 @@ enum Capture {
             let library = Library.shared
             PlaudImporter.addNote(audio, projectID: state.projectForNew, context: library.context, processing: library.processing)
         }, in: controller.window)
-    }
-}
-
-final class ChatViewController: NSViewController {
-    private let state: WindowState
-    private var token: UUID?
-    private var observing: Observing?
-
-    init(state: WindowState) {
-        self.state = state
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func loadView() {
-        view = NSHostingView(rootView: AnyView(EmptyView()))
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        token = Library.shared.observe { [weak self] in self?.render() }
-        observing = Observing { [weak self] in
-            guard let self else { return }
-            _ = (self.state.chatID, self.state.chatScope)
-            self.render()
-        }
-    }
-
-    private func render() {
-        let library = Library.shared
-        let state = state
-        let thread = library.threads.first { $0.id == state.chatID }
-        (view as? NSHostingView<AnyView>)?.rootView = AnyView(hosted(
-            ChatView(
-                thread: thread, notes: library.notes, projects: library.projects,
-                scope: Binding(get: { state.chatScope }, set: { state.chatScope = $0 }),
-                onOpen: { id in
-                    if let note = Library.shared.note(id) { state.reveal(note) }
-                },
-                onCreate: { thread in state.chatID = thread.id }
-            )
-        ))
-    }
-}
-
-/// Placeholder until the AppKit editor (stage 3).
-final class NoteEditorView: NSView {
-    @objc func toggleBold(_ sender: Any?) {}
-    @objc func toggleItalic(_ sender: Any?) {}
-    @objc func makeHeading1(_ sender: Any?) {}
-    @objc func makeHeading2(_ sender: Any?) {}
-    @objc func makeHeading3(_ sender: Any?) {}
-    @objc func makeBody(_ sender: Any?) {}
-    @objc func makeBulleted(_ sender: Any?) {}
-    @objc func makeNumbered(_ sender: Any?) {}
-    @objc func makeChecklist(_ sender: Any?) {}
-    @objc func makeQuote(_ sender: Any?) {}
-    @objc func indentItems(_ sender: Any?) {}
-    @objc func outdentItems(_ sender: Any?) {}
-}
-
-final class NoteWindowController: NSWindowController {
-    static func open(_ id: UUID) {
-        guard let note = Library.shared.note(id) else { return }
-        let state = WindowState()
-        state.selection = [id]
-        let controller = NoteWindowController(window: NSWindow(contentViewController: NoteDetailViewController(note: note, state: state, startsRecording: false)))
-        controller.window?.title = note.displayTitle
-        controller.window?.setContentSize(NSSize(width: 640, height: 720))
-        controller.showWindow(nil)
-        windows.append(controller)
-    }
-
-    private static var windows: [NoteWindowController] = []
-}
-
-final class SettingsWindowController: NSWindowController {
-    static let shared = SettingsWindowController()
-
-    init() {
-        let window = NSWindow(contentViewController: NSHostingController(rootView: hosted(SettingsView(isEmbedded: true).frame(width: 640, height: 760))))
-        window.title = "Settings"
-        window.styleMask = [.titled, .closable]
-        super.init(window: window)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-}
-
-@MainActor
-enum Onboarding {
-    static func showIfNeeded(in window: NSWindow?) {
-        guard !UserDefaults.standard.bool(forKey: AppSettings.onboardingDoneKey) else { return }
-        final class Box { var controller: NSViewController? }
-        let box = Box()
-        box.controller = HostedSheet.present(OnboardingView {
-            UserDefaults.standard.set(true, forKey: AppSettings.onboardingDoneKey)
-            box.controller?.dismiss(nil)
-        }, in: window, size: NSSize(width: 520, height: 640))
     }
 }

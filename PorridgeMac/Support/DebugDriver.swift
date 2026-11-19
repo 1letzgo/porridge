@@ -87,6 +87,9 @@ enum DebugDriver {
             controller.split.detail.noteDetail?.debugType(body: argument)
         case "command":
             if let raw = Int(argument), let command = NoteCommand(rawValue: raw) { controller.split.detail.noteDetail?.perform(command) }
+        case "purge":
+            // Removes notes made for testing, by their exact title.
+            for note in library.notes where note.title == argument { NoteStore.deletePermanently(note, in: library.context) }
         case "dump":
             dump()
         default:
