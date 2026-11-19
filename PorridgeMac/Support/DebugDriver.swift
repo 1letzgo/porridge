@@ -90,6 +90,8 @@ enum DebugDriver {
         case "action":
             // Sends an action up the responder chain without asking whether it is enabled.
             if !NSApp.sendAction(Selector(argument), to: nil, from: nil) { _ = controller.perform(Selector(argument), with: nil) }
+        case "appearance":
+            NSApp.appearance = argument == "dark" ? NSAppearance(named: .darkAqua) : argument == "light" ? NSAppearance(named: .aqua) : nil
         case "settings":
             SettingsWindowController.shared.show(tab: argument.isEmpty ? nil : argument)
         case "purge":
