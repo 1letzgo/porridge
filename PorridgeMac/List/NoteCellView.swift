@@ -1,0 +1,261 @@
+import AppKit
+
+/// A note in the middle column: the icon of its kind, title, a preview of two lines and a footer with the date,
+/// the site, the length and its state. An entry in the inbox shows its suggested buckets under it.
+/// The cell follows its note: a title typed in the detail shows here at once.
+final class NoteCellView: NSTableCellView {
+    static let identifier = NSUserInterfaceItemIdentifier("note")
+
+    private let icon = KindIconView()
+    private let todoBox = TodoCheckboxButton()
+    private let titleLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize + 1, weight: .medium))
+    private let previewLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize), color: .secondaryLabelColor, lines: 2)
+    private let footerLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor)
+    private let badge = StateBadge()
+    private let thumbnail = NSImageView()
+    private let suggestions = NSStackView()
+    private var observing: Observing?
+    private(set) var noteID: UUID?
+    private var thumbnailFile: String?
+
+    /// Ticks a to-do from its box in the row.
+    var onToggleDone: ((Note) -> Void)?
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.identifier
+        thumbnail.translatesAutoresizingMaskIntoConstraints = false
+        thumbnail.imageScaling = .scaleProportionallyUpOrDown
+        thumbnail.wantsLayer = true
+        thumbnail.layer?.cornerRadius = 7
+        thumbnail.layer?.masksToBounds = true
+        thumbnail.setAccessibilityElement(false)
+        badge.setContentCompressionResistancePriority(.required, for: .horizontal)
+        badge.setContentHuggingPriority(.required, for: .horizontal)
+        footerLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        previewLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        todoBox.target = self
+        todoBox.action = #selector(toggleDone)
+
+        let footer = NSStackView.horizontal([footerLabel, NSView(), badge], spacing: 6)
+        footer.setHuggingPriority(.defaultLow, for: .horizontal)
+        suggestions.orientation = .horizontal
+        suggestions.spacing = 6
+        suggestions.translatesAutoresizingMaskIntoConstraints = false
+        let text = NSStackView.vertical([titleLabel, previewLabel, footer, suggestions], spacing: 3)
+        text.setCustomSpacing(5, after: previewLabel)
+        text.setCustomSpacing(8, after: footer)
+        let leading = NSView()
+        leading.translatesAutoresizingMaskIntoConstraints = false
+        leading.addSubview(icon)
+        leading.addSubview(todoBox)
+        todoBox.translatesAutoresizingMaskIntoConstraints = false
+        let row = NSStackView.horizontal([leading, text, thumbnail], spacing: 12, alignment: .top)
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            leading.widthAnchor.constraint(equalToConstant: 36),
+            leading.heightAnchor.constraint(equalToConstant: 36),
+            icon.topAnchor.constraint(equalTo: leading.topAnchor),
+            icon.leadingAnchor.constraint(equalTo: leading.leadingAnchor),
+            todoBox.centerXAnchor.constraint(equalTo: leading.centerXAnchor),
+            todoBox.centerYAnchor.constraint(equalTo: leading.centerYAnchor),
+            todoBox.widthAnchor.constraint(equalToConstant: 26),
+            todoBox.heightAnchor.constraint(equalToConstant: 26),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 9),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -9),
+            footer.widthAnchor.constraint(equalTo: text.widthAnchor),
+            titleLabel.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
+            previewLabel.widthAnchor.constraint(equalTo: text.widthAnchor),
+            thumbnail.widthAnchor.constraint(equalToConstant: 44),
+            thumbnail.heightAnchor.constraint(equalToConstant: 44),
+        ])
+        textField = titleLabel
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Shows the note and follows it until another one is shown.
+    func show(_ note: Note, buckets: [NoteFolder], showsSuggestions: Bool) {
+        noteID = note.id
+        observing?.cancel()
+        observing = Observing { [weak self, weak note] in
+            guard let self, let note, note.modelContext != nil || note.isEmptyLeftover == false else { return }
+            self.render(note, buckets: buckets, showsSuggestions: showsSuggestions)
+        }
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        observing?.cancel()
+        observing = nil
+        noteID = nil
+    }
+
+    private func render(_ note: Note, buckets: [NoteFolder], showsSuggestions: Bool) {
+        let processing = Library.shared.processing
+        let isTodo = TodoBridge.isTodo(note)
+        icon.isHidden = isTodo
+        todoBox.isHidden = !isTodo
+        if isTodo {
+            todoBox.isDone = TodoBridge.isDone(note)
+            todoBox.isPinned = note.isPinned
+            todoBox.isEnabled = !note.isDeleted
+        } else {
+            icon.symbol = NoteKindStyle.symbol(for: note)
+            icon.tint = NoteKindStyle.tint(for: note)
+            icon.isPinned = note.isPinned
+        }
+        titleLabel.stringValue = note.displayTitle
+        titleLabel.textColor = isTodo && TodoBridge.isDone(note) ? .secondaryLabelColor : .labelColor
+        let preview = note.preview
+        previewLabel.stringValue = preview
+        previewLabel.isHidden = preview.isEmpty
+        footerLabel.stringValue = footer(note)
+
+        let stage = processing.stages[note.id]
+        if let stage {
+            badge.show(stage, color: .controlAccentColor, spinning: true)
+        } else if note.status == .failed {
+            badge.show("Failed", color: .brandDangerText)
+        } else if [.recorded, .transcribing].contains(note.status), note.isRecording {
+            badge.show(note.hasLocalAudio ? "Waiting for transcription" : "Processing on another device")
+        } else if note.summary != nil {
+            badge.show("Summarized", color: .brandSkyText)
+        } else {
+            badge.show(nil)
+        }
+
+        // The first picture or PDF of the note, small.
+        let attachment = note.attachmentsData == nil ? nil : note.attachments.first { $0.kind != .file }
+        thumbnail.isHidden = attachment == nil
+        if let attachment, attachment.fileName != thumbnailFile {
+            thumbnailFile = attachment.fileName
+            thumbnail.image = nil
+            if let cached = Thumbnails.cached(attachment, maxPixels: 120) {
+                thumbnail.image = NSImage(cgImage: cached, size: .zero)
+            } else {
+                let id = note.id
+                Task { @MainActor [weak self] in
+                    let image = await Thumbnails.load(attachment, maxPixels: 120)
+                    guard let self, self.noteID == id, let image else { return }
+                    self.thumbnail.image = NSImage(cgImage: image, size: .zero)
+                }
+            }
+        } else if attachment == nil {
+            thumbnailFile = nil
+        }
+
+        // The buckets suggested for an inbox entry: a click files it there, the cross drops the suggestion.
+        suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let suggested = showsSuggestions && note.isInInbox
+            ? note.suggestedProjectIDs.compactMap { id in buckets.first { Projects.key($0) == id } } : []
+        suggestions.isHidden = suggested.isEmpty
+        for project in suggested {
+            let pill = PillButton(title: project.name, symbol: "sparkles", tint: .brandProject, target: self, action: #selector(fileSuggested(_:)))
+            pill.isFilled = true
+            pill.identifier = .init(Projects.key(project))
+            pill.setAccessibilityLabel("File into \(project.name)")
+            suggestions.addArrangedSubview(pill)
+        }
+        if !suggested.isEmpty {
+            let dismiss = NSButton(image: .symbol("xmark", size: 10, weight: .bold, label: "Drop Suggestion"), target: self, action: #selector(dismissSuggestions))
+            dismiss.isBordered = false
+            dismiss.contentTintColor = .secondaryLabelColor
+            dismiss.toolTip = "Drop Suggestion"
+            suggestions.addArrangedSubview(dismiss)
+        }
+
+        setAccessibilityLabel([NoteKindStyle.name(for: note), note.displayTitle, preview, footerLabel.stringValue].filter { !$0.isEmpty }.joined(separator: ", "))
+    }
+
+    private func footer(_ note: Note) -> String {
+        var parts: [String] = []
+        if let deletedAt = note.deletedAt {
+            let passed = Calendar.current.dateComponents([.day], from: deletedAt, to: Date()).day ?? 0
+            let left = max(0, NoteStore.trashDays - passed)
+            parts.append(left <= 1 ? String(localized: "Deleted tomorrow") : String(localized: "\(left) days left"))
+        } else {
+            if note.isArchived { parts.append(String(localized: "Archived")) }
+            parts.append(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
+        }
+        if TodoBridge.isTodo(note) {
+            let progress = TodoBridge.progress(of: note)
+            if progress.total > 0 { parts.append(progress.label) }
+        }
+        if let domain = note.domain { parts.append(domain) }
+        if note.isRecording, note.duration > 0 {
+            parts.append(note.duration.durationText)
+            if note.speakers.count > 1 { parts.append(String(localized: "\(note.speakers.count) speakers")) }
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    @objc private func fileSuggested(_ sender: NSButton) {
+        guard let id = noteID, let note = Library.shared.note(id), let key = sender.identifier?.rawValue else { return }
+        Inbox.file(note, into: key, in: Library.shared.context)
+    }
+
+    @objc private func dismissSuggestions() {
+        guard let id = noteID, let note = Library.shared.note(id) else { return }
+        Inbox.dismissSuggestions(note, in: Library.shared.context)
+    }
+
+    @objc private func toggleDone() {
+        guard let id = noteID, let note = Library.shared.note(id) else { return }
+        onToggleDone?(note)
+    }
+}
+
+/// The round box of a to-do, in the list and the detail: green and ticked when done.
+final class TodoCheckboxButton: NSButton {
+    var isDone = false { didSet { needsDisplay = true; updateAccessibility() } }
+    var isPinned = false { didSet { needsDisplay = true } }
+
+    init() {
+        super.init(frame: .zero)
+        isBordered = false
+        title = ""
+        setButtonType(.momentaryChange)
+        updateAccessibility()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func updateAccessibility() {
+        setAccessibilityRole(.checkBox)
+        setAccessibilityLabel(isDone ? "Done" : "Not Done")
+        setAccessibilityValue(isDone ? 1 : 0)
+        toolTip = isDone ? "Mark as Not Done" : "Mark as Done"
+    }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: 22, height: 22) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let side = min(bounds.width, bounds.height) - 4
+        let rect = NSRect(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2, width: side, height: side)
+        let path = NSBezierPath(roundedRect: rect, xRadius: side * 0.28, yRadius: side * 0.28)
+        let alpha: CGFloat = isEnabled ? 1 : 0.5
+        if isDone {
+            NSColor.brandTask.withAlphaComponent(alpha).setFill()
+            path.fill()
+            let check = NSImage.symbol("checkmark", size: side * 0.55, weight: .bold).tinted(NSColor.brandOnFill.withAlphaComponent(alpha))
+            check.draw(in: NSRect(x: rect.midX - check.size.width / 2, y: rect.midY - check.size.height / 2, width: check.size.width, height: check.size.height))
+        } else {
+            NSColor.brandTask.withAlphaComponent((isHighlighted ? 0.3 : 0.08) * alpha).setFill()
+            path.fill()
+            NSColor.brandTaskText.withAlphaComponent(alpha).setStroke()
+            path.lineWidth = 1.6
+            path.stroke()
+        }
+        if isPinned {
+            let dot = NSRect(x: rect.maxX - 5, y: rect.maxY - 5, width: 9, height: 9)
+            NSColor.brandNavy.setFill()
+            NSBezierPath(ovalIn: dot).fill()
+        }
+    }
+}

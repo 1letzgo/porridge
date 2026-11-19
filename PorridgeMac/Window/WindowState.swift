@@ -1,0 +1,123 @@
+import Foundation
+import Observation
+
+/// What the sidebar of a window shows; the Mac form of the list pages of iOS (`ListPage`).
+enum SidebarPage: Hashable, Codable {
+    /// What is new or in no bucket.
+    case inbox
+    /// The chat with the buckets.
+    case chat
+    /// One bucket with everything in it.
+    case project(UUID)
+    case archive
+    case trash
+    /// The search through everything (from the toolbar's field).
+    case search
+
+    /// New things go into the open bucket; in the archive and the trash nothing is created.
+    var allowsCreating: Bool { self != .archive && self != .trash }
+
+    var projectID: UUID? {
+        if case .project(let id) = self { id } else { nil }
+    }
+}
+
+/// The kinds of elements a bucket's list or the search can be narrowed to.
+enum KindFilter: String, CaseIterable, Codable {
+    case meetings, notes, links, images, files
+
+    var title: String {
+        switch self {
+        case .meetings: "Meetings"
+        case .notes: "Notes"
+        case .links: "Links"
+        case .images: "Images"
+        case .files: "Files"
+        }
+    }
+
+    func matches(_ note: Note) -> Bool {
+        switch self {
+        case .meetings: note.isRecording && !note.isLink
+        case .notes: !note.isRecording && !note.isLink && !note.isStored
+        case .links: note.isLink
+        case .images: note.isImage
+        case .files: note.isFile
+        }
+    }
+}
+
+/// The state of one main window: the page of the sidebar, the open note, the search. Every window and tab has
+/// its own; the views follow it through Observation.
+@MainActor
+@Observable
+final class WindowState {
+    var page: SidebarPage = .inbox {
+        didSet {
+            guard page != oldValue else { return }
+            if oldValue == .search, page != .search { clearSearch() }
+            kindFilter = nil
+        }
+    }
+    /// The notes selected in the list; the detail shows one when it is exactly one.
+    var selection: [UUID] = []
+    /// A new note that is not saved yet; it is stored when it gets its first content.
+    var draft: Note?
+    /// A new note should start dictating once it shows (Settings: "Record new notes").
+    var draftStartsRecording = false
+
+    var searchText = ""
+    /// Tags picked for the search; a note must have all of them.
+    var searchTags: [String] = []
+    /// Narrows a bucket's list or the search to one kind.
+    var kindFilter: KindFilter?
+
+    /// Which chat shows; nil is a new one that is not kept until its first question.
+    var chatID: UUID?
+    /// What a new chat is about (`Projects.key`); nil is all buckets.
+    var chatScope: String?
+
+    /// The note open in the detail, a new one not saved yet included.
+    var openNoteID: UUID? { selection.count == 1 ? selection.first : nil }
+
+    var hasSearch: Bool {
+        !searchText.trimmingCharacters(in: .whitespaces).isEmpty || !searchTags.isEmpty || kindFilter != nil
+    }
+
+    func clearSearch() {
+        searchText = ""
+        searchTags = []
+    }
+
+    /// The bucket new things go into: the one that is open.
+    var projectForNew: String? {
+        page.projectID.map { $0.uuidString }
+    }
+
+    func open(_ id: UUID) {
+        selection = [id]
+    }
+
+    /// Shows a note where it lives (its bucket, the inbox, the archive or the trash) and opens it; for notes reached
+    /// from elsewhere, like the sources of a chat answer.
+    func reveal(_ note: Note) {
+        if note.isDeleted {
+            page = .trash
+        } else if note.isArchived {
+            page = .archive
+        } else if let bucket = note.projectIDs.compactMap(UUID.init(uuidString:)).first {
+            page = .project(bucket)
+        } else {
+            page = .inbox
+        }
+        selection = [note.id]
+    }
+
+    /// Opening the chat from a bucket or the inbox: the last chat about it is taken up again, otherwise a new one starts.
+    func openChat(threads: [ChatThread]) {
+        let project = projectForNew
+        chatScope = project
+        chatID = threads.first { $0.projectID == project }?.id
+        page = .chat
+    }
+}
