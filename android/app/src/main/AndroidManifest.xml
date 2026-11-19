@@ -66,6 +66,12 @@
             android:foregroundServiceType="microphone|dataSync" />
 
         <!-- App-Update aus GitHub-Releases an den Paketinstaller übergeben (data/AppUpdate.kt). -->
+        <!-- ML Kit startet erst beim ersten Bild (data/AttachmentText.kt): Ein Fehler dort beim Start der App
+             (z. B. ohne Google-Play-Dienste) ließe sich vor Application.onCreate nicht abfangen. -->
+        <provider
+            android:name="com.google.mlkit.common.internal.MlKitInitProvider"
+            android:authorities="${applicationId}.mlkitinitprovider"
+            tools:node="remove" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

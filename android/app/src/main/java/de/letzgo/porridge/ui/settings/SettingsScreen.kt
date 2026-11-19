@@ -17,6 +17,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -165,6 +166,7 @@ private fun SettingsPage(pageScroll: androidx.compose.foundation.ScrollState, on
                 BackupCard()
             }
             if (area == SettingsArea.ABOUT) AboutCard()
+            if (area == SettingsArea.ABOUT) CrashLogCard()
             if (area == SettingsArea.ABOUT) Card("Acknowledgements") { Row(verticalAlignment = Alignment.CenterVertically) { Text("Open Source Licenses", Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Pill("Open", { onAcknowledgements() }) } }
         }
     }
@@ -699,4 +701,39 @@ private fun AboutCard() {
         }
     }
     release?.let { AppUpdateDialog(it) { release = null } }
+}
+
+/**
+ * Nur Android: das lokale Protokoll von Abstürzen und Reparaturen beim Start (`data/CrashLog.kt`). Zum Kopieren oder
+ * Teilen, wenn der Nutzer einen Fehler meldet; die App schickt es nirgendwohin.
+ */
+@Composable
+private fun CrashLogCard() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var log by remember { mutableStateOf(de.letzgo.porridge.data.CrashLog.read()) }
+    val text = log ?: return
+    Card("Crash Log", footer = "Stays on this device. Share it when you report a problem.") {
+        Text(
+            // Der jüngste Eintrag; geteilt wird alles.
+            text.substring(text.lastIndexOf("=== ").coerceAtLeast(0)).take(1500),
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 12,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Pill("Share", {
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(android.content.Intent.EXTRA_SUBJECT, "Porridge crash log")
+                    .putExtra(android.content.Intent.EXTRA_TEXT, text)
+                context.startActivity(android.content.Intent.createChooser(send, "Share Crash Log"))
+            })
+            Pill("Copy", {
+                val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Porridge crash log", text))
+            })
+            Spacer(Modifier.weight(1f))
+            Pill("Delete", { de.letzgo.porridge.data.CrashLog.clear(); log = null }, destructive = true)
+        }
+    }
 }

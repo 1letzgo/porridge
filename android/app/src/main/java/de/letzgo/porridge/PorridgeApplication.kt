@@ -5,6 +5,8 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import de.letzgo.porridge.audio.RecordingSession
+import de.letzgo.porridge.data.AttachmentText
+import de.letzgo.porridge.data.CrashLog
 import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.processing.ProcessingService
 import de.letzgo.porridge.data.Prefs
@@ -23,26 +25,41 @@ import de.letzgo.porridge.sync.NextcloudSync
 class PorridgeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Zuerst: Was ab hier abstürzt, steht danach in den Einstellungen zum Teilen (Settings → Crash Log).
+        CrashLog.install(this)
         Prefs.init(this)
         SecureStore.init(this)
         AudioStore.init(this)
         PorridgeDatabase.init(this)
         ModelManager.init(this)
+        AttachmentText.init(this)
         // Ohne gespeicherte Wahl das Modell, das zum Arbeitsspeicher passt.
-        if (Prefs.string(Keys.LOCAL_MODEL) == null || !hasChosenModel()) Prefs.set(Keys.LOCAL_MODEL, LocalModel.recommended(this).raw)
-        selectLocalModel()
+        optional("local model") {
+            if (Prefs.string(Keys.LOCAL_MODEL) == null || !hasChosenModel()) Prefs.set(Keys.LOCAL_MODEL, LocalModel.recommended(this).raw)
+            selectLocalModel()
+        }
         // Das Modell der früheren Bedeutungssuche belegt sonst über 600 MB, ohne dass etwas es nutzt.
-        java.io.File(ModelManager.root, "qwen3-embedding-0.6b").deleteRecursively()
+        optional("old embedding model") { java.io.File(ModelManager.root, "qwen3-embedding-0.6b").deleteRecursively() }
         RecordingSession.init(this)
         AppGraph.init(this)
         ProcessingService.onBusyChanged = { RecordingSession.setBusy(it) }
-        NextcloudSync.init(this)
-        AppGraph.scope.launch { RecordingJournal.recover() }
+        // Der Abgleich ist eine Zusatzfunktion: Geht sein Start schief, läuft die App ohne ihn.
+        optional("Nextcloud sync") { NextcloudSync.init(this) }
+        AppGraph.scope.launch { optional("recording recovery") { RecordingJournal.recover() } }
         // Zurück in der App: holen, was die anderen Geräte getan haben.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
-            override fun onStart(owner: LifecycleOwner) = NextcloudSync.syncSoon(0)
+            override fun onStart(owner: LifecycleOwner) = optional("sync on start") { NextcloudSync.syncSoon(0) }
             override fun onStop(owner: LifecycleOwner) = ModelManager.releaseIdleLLM()
         })
+    }
+
+    /** Ein Schritt, ohne den die App läuft: Scheitert er an Altbestand, wird das festgehalten statt abzustürzen. */
+    private inline fun optional(what: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            CrashLog.note("Startup step \"$what\" failed and was skipped", e)
+        }
     }
 
     override fun onTrimMemory(level: Int) {

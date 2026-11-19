@@ -30,12 +30,22 @@ abstract class PorridgeDatabase : RoomDatabase() {
 
         val shared: PorridgeDatabase get() = checkNotNull(instance) { "PorridgeDatabase.init fehlt" }
 
+        const val FILE_NAME = "porridge.db"
+
+        /**
+         * Öffnet die Datenbank gleich beim Start (statt bei der ersten Abfrage irgendwo im Hintergrund): Lässt sie sich
+         * nicht öffnen, baut [DatabaseRepair] sie aus ihren eigenen Daten neu auf, statt dass die App bei jedem Start abstürzt.
+         */
         fun init(context: Context) {
             if (instance != null) return
-            instance = Room.databaseBuilder(context.applicationContext, PorridgeDatabase::class.java, "porridge.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
-                .build()
+            val app = context.applicationContext
+            instance = DatabaseRepair.open(app, FILE_NAME) { name -> builder(app, name).build() }
         }
+
+        /** Alle Migrationen; auch für Tests und den Neuaufbau in [DatabaseRepair]. */
+        fun builder(context: Context, name: String): RoomDatabase.Builder<PorridgeDatabase> =
+            Room.databaseBuilder(context, PorridgeDatabase::class.java, name)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
 
         /** Aufgaben bekommen eigenen Text, ihre Ursprungszeile und einen Änderungszeitpunkt (iOS da54c01). */
         val MIGRATION_1_2 = object : Migration(1, 2) {

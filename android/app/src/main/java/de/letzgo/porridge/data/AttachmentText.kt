@@ -23,6 +23,17 @@ object AttachmentText {
     const val LIMIT = 200_000
     /** So viele PDF-Seiten werden höchstens gelesen. */
     const val PDF_PAGES = 30
+    @Volatile private var appContext: android.content.Context? = null
+
+    /**
+     * ML Kit startet nicht mehr von selbst beim Start der App (sein `MlKitInitProvider` ist im Manifest entfernt): Ging
+     * das schief, etwa auf einem Gerät ohne Google-Play-Dienste, stürzte die App ab, bevor sie etwas tun konnte. Jetzt
+     * erst beim ersten Bild; scheitert es dann, bleibt der Text des Bildes leer.
+     */
+    fun init(context: android.content.Context) {
+        appContext = context.applicationContext
+    }
+
     private val textExtensions = setOf("txt", "md", "markdown", "csv", "json", "xml", "html", "htm", "log", "yaml", "yml")
 
     /** Der Text aller Dateien in ihrer Reihenfolge; die Seiten eines PDFs sind markiert („Page 3“). */
@@ -54,6 +65,7 @@ object AttachmentText {
     }
 
     private fun recognize(bitmap: Bitmap): String {
+        appContext?.let { com.google.mlkit.common.sdkinternal.MlKitContext.initializeIfNeeded(it) }
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         return try {
             Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap, 0))).text

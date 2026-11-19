@@ -97,6 +97,9 @@ class NoteIndex(
         if (stored != null && stored.version == FILE_VERSION) {
             entries = HashMap(stored.notes)
             _version.value += 1
+        } else {
+            // Unlesbar oder ein altes Format: ein reiner Cache, er wird aus den Notizen neu gebaut.
+            withContext(Dispatchers.IO) { file.delete() }
         }
     }
 
@@ -105,11 +108,17 @@ class NoteIndex(
         val snapshot = Stored(FILE_VERSION, HashMap(entries))
         saveJob = scope.launch(Dispatchers.IO) {
             delay(2000)
-            val bytes = Cbor.encodeToByteArray(Stored.serializer(), snapshot)
-            file.parentFile?.mkdirs()
+            // Ein reiner Cache: Kein Platz auf dem Gerät ist kein Grund abzustürzen; er wird beim nächsten Start neu gebaut.
             val tmp = File(file.path + ".tmp")
-            tmp.writeBytes(bytes)
-            tmp.renameTo(file)
+            try {
+                val bytes = Cbor.encodeToByteArray(Stored.serializer(), snapshot)
+                file.parentFile?.mkdirs()
+                tmp.writeBytes(bytes)
+                tmp.renameTo(file)
+            } catch (e: Exception) {
+                tmp.delete()
+                de.letzgo.porridge.data.CrashLog.note("Search index not saved", e)
+            }
         }
     }
 
