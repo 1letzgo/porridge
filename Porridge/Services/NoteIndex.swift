@@ -127,15 +127,12 @@ final class NoteIndex {
 
     // MARK: - Searching
 
-    /// The passages that fit `question` best: by words (BM25) and by meaning (vector), mixed. `within` narrows
-    /// them to some notes (those of a bucket); nil is everything.
-    func search(_ question: String, budget: Int = 6500, within notes: Set<UUID>? = nil) async -> [ChatChunk] {
+    /// The passages a chat question is answered from (`ChatRetrieval.select`): by words (BM25) and by meaning
+    /// (vector), mixed, within the time the question names; the newest when nothing fits. `within` narrows them
+    /// to some notes (those of a bucket); nil is everything.
+    func search(_ question: String, within notes: Set<UUID>? = nil) async -> [ChatChunk] {
         let vector = await TextEmbedder.shared.vector(for: question)
-        return ChatRetrieval.search(question, in: passages(within: notes), queryVector: vector, budget: budget)
-    }
-
-    func recent(budget: Int = 4500, within notes: Set<UUID>? = nil) -> [ChatChunk] {
-        ChatRetrieval.recent(from: passages(within: notes), budget: budget)
+        return ChatRetrieval.select(question, in: passages(within: notes), queryVector: vector)
     }
 
     private func passages(within notes: Set<UUID>?) -> [ChatChunk] {

@@ -52,6 +52,86 @@ final class ChatTests: XCTestCase {
         XCTAssertEqual(ChatRetrieval.recent(from: chunks).count, 3)
     }
 
+    private func link(_ title: String, url: String, page: String, daysAgo: Int, now: Date) -> Note {
+        let link = note(title)
+        link.url = url
+        link.pageText = page
+        link.createdAt = now.addingTimeInterval(-Double(daysAgo) * 86400)
+        return link
+    }
+
+    /// The question of the screenshot: a long German note full of the words every text has used to take all the
+    /// places, and the GitHub links of the last days were not found.
+    func testTheLinksOfTheLastDaysAreFoundAmongALongNote() {
+        let now = Date()
+        let filler = (1...40).map { "Die Tage vor der Messe stelle ich mir vor, dass wir in den letzten Wochen der Planung die Bühne \($0) aufbauen." }
+        let long = note("Fusion MV", text: filler.joined(separator: "\n"))
+        long.createdAt = now.addingTimeInterval(-86400)
+        let old = link("Old repo", url: "https://github.com/old/repo", page: "An old project.", daysAgo: 60, now: now)
+        let links = [
+            link("swift-format", url: "https://github.com/swiftlang/swift-format", page: "Formatting for Swift source code.", daysAgo: 1, now: now),
+            link("ollama", url: "https://github.com/ollama/ollama", page: "Run large language models locally.", daysAgo: 2, now: now),
+            link("zed", url: "https://github.com/zed-industries/zed", page: "A code editor from the creators of Atom.", daysAgo: 3, now: now),
+        ]
+        let chunks = ChatRetrieval.chunks(from: [long, old] + links)
+        let question = "Stelle mir die GitHub Highlights der letzten Tage vor"
+
+        XCTAssertEqual(ChatRetrieval.queryWords(question), ["github"])
+        let picked = ChatRetrieval.select(question, in: chunks, now: now)
+        let titles = Set(picked.map(\.title))
+        XCTAssertTrue(titles.isSuperset(of: ["swift-format", "ollama", "zed"]), "\(titles)")
+        XCTAssertFalse(titles.contains("Old repo"), "the last days come first")
+        XCTAssertFalse(titles.contains("Fusion MV"))
+    }
+
+    func testAQuestionNamesItsTime() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        // Wednesday, 11 November 2026, noon.
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 11, hour: 12))!
+        func since(_ question: String) -> DateComponents? {
+            ChatRetrieval.since(in: question, now: now, calendar: calendar).map { calendar.dateComponents([.month, .day, .hour], from: $0) }
+        }
+        XCTAssertEqual(since("Was steht heute an?"), DateComponents(month: 11, day: 11, hour: 0))
+        XCTAssertEqual(since("Was kam gestern?"), DateComponents(month: 11, day: 10, hour: 0))
+        XCTAssertEqual(since("Was war diese Woche?"), DateComponents(month: 11, day: 9, hour: 0), "weeks start on Monday")
+        XCTAssertEqual(since("What happened last week?"), DateComponents(month: 11, day: 2, hour: 0))
+        XCTAssertEqual(since("GitHub der letzten Tage"), DateComponents(month: 11, day: 4, hour: 0))
+        XCTAssertEqual(since("Notizen der letzten 3 Tage"), DateComponents(month: 11, day: 8, hour: 0))
+        XCTAssertEqual(since("links from the last two weeks"), DateComponents(month: 10, day: 28, hour: 0))
+        XCTAssertEqual(since("Was ist neu diesen Monat?"), DateComponents(month: 11, day: 1, hour: 0))
+        XCTAssertNil(since("Wann fährt die Fähre?"))
+    }
+
+    func testATimeWithoutMatchesStillAnswers() {
+        let now = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!
+        let old = note("Urlaub", text: "Die Fähre nach Norwegen fährt am Dienstag.")
+        old.createdAt = now.addingTimeInterval(-90 * 86400)
+        let fresh = note("Einkauf", text: "Milch und Brot.")
+        fresh.createdAt = now.addingTimeInterval(-3600)
+        let chunks = ChatRetrieval.chunks(from: [old, fresh])
+        // Nothing about the ferry this week: the ferry is found anyway.
+        XCTAssertEqual(ChatRetrieval.select("Was gab es diese Woche zur Fähre?", in: chunks, now: now).first?.title, "Urlaub")
+        // No word to search for: the newest notes of that time.
+        XCTAssertEqual(ChatRetrieval.select("Was war heute?", in: chunks, now: now).map(\.title), ["Einkauf"])
+        // Only words every text has: the newest notes.
+        XCTAssertEqual(ChatRetrieval.select("Was ist das?", in: chunks, now: now).first?.title, "Einkauf")
+    }
+
+    func testOneNoteTakesAtMostThreePlaces() {
+        let long = note("Lang", text: (1...20).map { "Absatz \($0) über Hafer und noch mehr Hafer." }.joined(separator: "\n\n" + String(repeating: "x", count: 680) + "\n"))
+        let short = note("Kurz", text: "Hafer.")
+        let picked = ChatRetrieval.search("Hafer", in: ChatRetrieval.chunks(from: [long, short]))
+        XCTAssertLessThanOrEqual(picked.filter { $0.title == "Lang" }.count, ChatRetrieval.passagesPerNote)
+        XCTAssertTrue(picked.contains { $0.title == "Kurz" })
+    }
+
+    func testThePromptNamesToday() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let prompt = ChatService.prompt(question: "?", history: [], passages: [], buckets: [:], bucket: nil, now: now)
+        XCTAssertTrue(prompt.system.hasPrefix("Today is \(now.formatted(date: .complete, time: .omitted))."))
+    }
+
     func testAChatIsAboutAllNotesOrOneBucket() {
         let inBucket = note("A", buckets: ["P1"])
         let elsewhere = note("B", buckets: ["P2"])

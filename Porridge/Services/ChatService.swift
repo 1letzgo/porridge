@@ -147,8 +147,7 @@ final class ChatService {
         await index.refresh(notes)
         let scope = Self.scope(of: thread, notes: notes)
         let within = thread.projectID == nil ? nil : Set(scope.map(\.id))
-        var passages = await index.search(question, budget: 6500, within: within)
-        if passages.isEmpty { passages = index.recent(budget: 4500, within: within) }
+        let passages = await index.search(question, within: within)
         guard !passages.isEmpty else {
             answer(thread.projectID == nil ? "There is nothing in your notes yet." : "There is nothing in this bucket yet.")
             return
@@ -197,9 +196,10 @@ final class ChatService {
     /// What the model is told and asked. `limit` cuts the excerpts for a model with little room; the best come first.
     static func prompt(
         question: String, history: [(role: ChatEntry.Role, text: String)], passages: [ChatChunk],
-        buckets: [UUID: [String]], bucket: String?, limit: Int = .max
+        buckets: [UUID: [String]], bucket: String?, limit: Int = .max, now: Date = Date()
     ) -> (system: String, user: String) {
         let system = """
+        Today is \(now.formatted(date: .complete, time: .omitted)).
         You are the assistant of a private notes app. Answer the question using only the excerpts below. They are taken from the user's notes, meeting transcripts, saved web links (with the text of the page), images and files (with the text read out of them)\(bucket.map { ", all of them filed in the bucket \"\($0)\"" } ?? "").
         Every excerpt starts with a number in brackets, then the title of its note, its date and the buckets it is filed in. Name the numbers of the excerpts you used, like [2].
         If the excerpts do not contain the answer, say so briefly. Answer in the language of the question and be concise.

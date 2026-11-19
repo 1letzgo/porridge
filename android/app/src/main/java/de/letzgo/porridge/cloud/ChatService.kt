@@ -68,8 +68,7 @@ object ChatService {
             index.refresh(notes)
             val scope = ChatLogic.scope(thread.projectID, notes).associateBy { it.id }
             val chunks = index.chunks()
-            var passages = ChatLogic.search(q, chunks, scope)
-            if (passages.isEmpty()) passages = ChatLogic.recent(chunks, scope)
+            val passages = ChatLogic.select(q, chunks, scope)
             if (passages.isEmpty()) {
                 answer(if (thread.projectID == null) "There is nothing in your notes yet." else "There is nothing in this bucket yet.")
                 return
