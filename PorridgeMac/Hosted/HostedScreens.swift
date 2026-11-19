@@ -136,64 +136,7 @@ enum NoteSheets {
     }
 
     static func continueRecording(_ note: Note, in controller: NSViewController) {
-        HostedSheet.present(RecordingView(title: note.title, continues: note.id) { result, _, _, written in
-            note.addRecordedPart(result.fileName, written: written)
-            Library.shared.save()
-            Library.shared.processing.enqueue(.note(note.id))
-        }, in: controller.view.window, size: NSSize(width: 560, height: 640))
+        Capture.continueRecording(note)
     }
 }
 
-@MainActor
-enum Capture {
-    static func recordMeeting(in controller: MainWindowController) {
-        let state = controller.state
-        let window = controller.window
-        HostedSheet.present(RecordMeetingSheet(
-            onPick: { appointment in startRecording(title: appointment.title, state: state, window: window) },
-            onNew: { startRecording(title: nil, state: state, window: window) }
-        ), in: window)
-    }
-
-    private static func startRecording(title: String?, state: WindowState, window: NSWindow?) {
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(450))
-            HostedSheet.present(RecordingView(title: title) { result, names, liveText, written in
-                let note = Note()
-                note.source = .meeting
-                note.title = title ?? Note.defaultMeetingTitle(for: note.createdAt)
-                note.titleIsCustom = title != nil
-                note.statusRaw = ProcessingStatus.recorded.rawValue
-                note.audioFileName = result.fileName
-                note.duration = result.duration
-                note.channelCount = result.channelCount
-                note.inputName = result.inputName
-                note.text = RecordingNote.markdown(written)
-                if result.isSplitStereo {
-                    note.speakerMode = .channels
-                    note.speakers = [
-                        Speaker(id: SpeakerAssigner.leftChannelID, name: names[0], colorIndex: 0),
-                        Speaker(id: SpeakerAssigner.rightChannelID, name: names[1], colorIndex: 1),
-                    ]
-                }
-                if !liveText.isEmpty {
-                    note.segments = [TranscriptSegment(speakerId: nil, start: 0, end: result.duration, text: liveText)]
-                }
-                if let project = state.projectForNew { note.projectIDs = [project] }
-                let library = Library.shared
-                library.context.insert(note)
-                library.save()
-                state.open(note.id)
-                library.processing.enqueue(.transcript(note.id))
-            }, in: window, size: NSSize(width: 560, height: 640))
-        }
-    }
-
-    static func importPlaud(in controller: MainWindowController) {
-        let state = controller.state
-        HostedSheet.present(PlaudImportSheet { audio in
-            let library = Library.shared
-            PlaudImporter.addNote(audio, projectID: state.projectForNew, context: library.context, processing: library.processing)
-        }, in: controller.window)
-    }
-}
