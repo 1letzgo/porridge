@@ -11,7 +11,15 @@ import java.security.MessageDigest
 
 /** Was das Gerät nach dem letzten Sync über einen Eintrag wusste: Hash der eigenen Fassung und Hash der Fassung in der Datei. */
 @Serializable
-data class SyncBase(val local: String, val remote: String)
+data class SyncBase(
+    val local: String,
+    val remote: String,
+    /**
+     * iOS: `SyncBase.text` — der Text eines To-dos, wie er in die Datei ging: die Grundlage, um die Haken seiner
+     * Unteraufgaben zusammenzuführen, wenn beide Seiten es geändert haben (`Todos.mergeRecords`). Null bei allen anderen.
+     */
+    val text: String? = null,
+)
 
 /**
  * iOS: `SyncMerge` — Drei-Wege-Abgleich einer Sammlung (Notizen, Aufgaben, …) zwischen Gerät und Sync-Datei.
@@ -39,6 +47,17 @@ object SyncMerge {
             }
         }
         return FileResult(failed, firstError)
+    }
+
+    /**
+     * iOS: `SyncRecords.apply` — was von einem gelesenen Notiz-Eintrag gilt, wenn die Notiz hier schon liegt. Ein Eintrag
+     * ohne `sourceRaw` stammt von einer Version vor dem Eingang, einer ohne `todoStateRaw` von einer ohne To-dos (oder die
+     * Notiz war nie eins): Was dieses Gerät davon weiß, bleibt. Ein To-do zurück zur Notiz schreibt deshalb "none".
+     */
+    fun adoptNote(decoded: de.letzgo.porridge.model.Note, record: JsonObject, local: de.letzgo.porridge.model.Note?): de.letzgo.porridge.model.Note {
+        if (local == null) return decoded
+        val intake = if ("sourceRaw" !in record) decoded.withIntakeOf(local) else decoded
+        return if ("todoStateRaw" !in record) intake.withTodoOf(local) else intake
     }
 
     data class Local(val record: JsonObject, val updatedAt: Long)
@@ -112,7 +131,14 @@ object SyncMerge {
                         !remoteDirty -> false
                         else -> updatedAt(r!!) > l!!.updatedAt
                     }
-                    if (takeRemote) {
+                    // Ein To-do, das auf beiden Seiten geändert wurde, behält die Haken beider.
+                    val todo = if (localDirty && remoteDirty) {
+                        de.letzgo.porridge.logic.Todos.mergeRecords(b?.text, if (takeRemote) r!! else l!!.record, if (takeRemote) l!!.record else r!!, now)
+                    } else null
+                    if (todo != null) {
+                        merged[id] = todo
+                        toApply[id] = todo
+                    } else if (takeRemote) {
                         merged[id] = r!!
                         if (remoteDirty) toApply[id] = r
                     } else {

@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.LibraryAddCheck
+import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,7 +37,13 @@ import de.letzgo.porridge.ui.Brand
  * Listen, Checklisten (antippbar über [onToggleTask] mit dem Zeilenindex), Zitate, fett und kursiv.
  */
 @Composable
-fun MarkdownText(markdown: String, modifier: Modifier = Modifier, onToggleTask: ((Int) -> Unit)? = null) {
+fun MarkdownText(
+    markdown: String, modifier: Modifier = Modifier, onToggleTask: ((Int) -> Unit)? = null,
+    /** iOS: `onMakeTodo` — mit dem Text einer Aufgabenzeile, um sie als eigenes To-do zu übernehmen; null bietet nichts an. */
+    onMakeTodo: ((String) -> Unit)? = null,
+    /** Aufgaben (klein geschrieben), die schon To-dos sind: Sie zeigen das statt des Angebots. */
+    madeTodos: Set<String> = emptySet(),
+) {
     val blocks = NoteBlock.parse(markdown)
     val numbers = NoteBlock.numbers(blocks)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -63,7 +72,22 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier, onToggleTask: 
                         inline(block.text), style = MaterialTheme.typography.bodyLarge,
                         color = if (kind.checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         textDecoration = if (kind.checked) TextDecoration.LineThrough else null,
+                        modifier = if (onMakeTodo != null) Modifier.weight(1f) else Modifier,
                     )
+                    if (onMakeTodo != null) {
+                        // Die Aufgabe ohne ihre Auszeichnungen, als Titel des To-dos.
+                        val title = inline(block.text).text.trim()
+                        if (title.lowercase() in madeTodos) {
+                            // So groß wie der Knopf daneben, damit beide an derselben Stelle stehen.
+                            androidx.compose.foundation.layout.Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.LibraryAddCheck, "Taken over as a to-do", tint = Brand.taskText, modifier = Modifier.size(20.dp))
+                            }
+                        } else {
+                            IconButton(onClick = { onMakeTodo(title) }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Outlined.LibraryAdd, "Make To-do", tint = Brand.taskText, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
                 }
                 NoteBlock.Kind.Quote -> Text(inline(block.text), style = MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp))
                 NoteBlock.Kind.Paragraph -> if (block.text.isNotBlank()) Text(inline(block.text), style = MaterialTheme.typography.bodyLarge)

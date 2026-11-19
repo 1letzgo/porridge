@@ -43,6 +43,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckBox
+import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Add
@@ -109,6 +111,8 @@ import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.Me
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.logic.ProjectsLogic
+import de.letzgo.porridge.logic.Todos
+import de.letzgo.porridge.logic.editor.NoteEditorCommand
 import de.letzgo.porridge.logic.SummaryTemplate
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.ui.projects.ProjectPills
@@ -144,7 +148,12 @@ private enum class NoteTab(val title: String) { NOTE("Note"), TRANSCRIPT("Transc
  */
 @OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -> Unit = {}, onClose: () -> Unit) {
+fun NoteDetailScreen(
+    noteID: String, draft: Note?, onContinueRecording: (Note) -> Unit = {},
+    /** Öffnet eine andere Notiz: von einem To-do zurück zu der, aus deren Zusammenfassung es stammt. */
+    onOpenNote: (String) -> Unit = {},
+    onClose: () -> Unit,
+) {
     val context = LocalContext.current
     val db = PorridgeDatabase.shared
     val stored by db.notes().observe(noteID).collectAsState(initial = null)
@@ -184,6 +193,14 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
     var editingSummary by remember { mutableStateOf(false) }
     var showMerge by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+
+    // To-dos: die Notiz, aus der es stammt, und die To-dos, die aus der Zusammenfassung dieser Notiz übernommen wurden.
+    val sourceFlow = remember(note.todoSourceID) { note.todoSourceID?.let { db.notes().observe(it) } ?: kotlinx.coroutines.flow.flowOf(null) }
+    val todoSource = sourceFlow.collectAsState(initial = null).value?.takeIf { !it.isDeleted }
+    val offersTodos = note.summary != null && !note.isSaved && !note.isDeleted
+    val allFlow = remember(offersTodos) { if (offersTodos) db.notes().observeAll() else kotlinx.coroutines.flow.flowOf(emptyList()) }
+    val allNotes by allFlow.collectAsState(initial = emptyList())
+    val madeTodos = remember(allNotes, note.id) { Todos.madeFrom(note, allNotes).map { it.title.lowercase() }.toSet() }
 
     val opensOnSummary = note.isRecording || note.isLink || note.isStored
     val tabs = buildList {
@@ -290,9 +307,9 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
         Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
             // Leiste: zurück, Art der Notiz, teilen, mehr.
             ChromeBar(
-                title = if (note.isLink) "Link" else if (note.isImage) "Image" else if (note.isFile) "File" else if (note.isRecording) "Meeting" else "Note",
-                icon = if (note.isLink) Icons.Filled.Link else if (note.isImage) Icons.Filled.Image else if (note.isFile) Icons.Filled.Description else if (note.isRecording) Icons.Filled.GraphicEq else Icons.AutoMirrored.Filled.Notes,
-                tint = if (note.isLink) LinkOrange else if (note.isRecording || note.isStored) Brand.navy else Brand.sky,
+                title = if (note.isTodo) "To-do" else if (note.isLink) "Link" else if (note.isImage) "Image" else if (note.isFile) "File" else if (note.isRecording) "Meeting" else "Note",
+                icon = if (note.isTodo) Icons.Outlined.CheckBox else if (note.isLink) Icons.Filled.Link else if (note.isImage) Icons.Filled.Image else if (note.isFile) Icons.Filled.Description else if (note.isRecording) Icons.Filled.GraphicEq else Icons.AutoMirrored.Filled.Notes,
+                tint = if (note.isTodo) Brand.task else if (note.isLink) LinkOrange else if (note.isRecording || note.isStored) Brand.navy else Brand.sky,
                 onBack = onClose,
             ) {
                 if (note.isRecording && !note.isLink) IconButton(onClick = { showExport = true }) { Icon(Icons.Filled.FileUpload, "Export", tint = Brand.navy) }
@@ -305,6 +322,8 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                             DropdownMenuItem(text = { Text("Recover") }, onClick = { act { coroutines.launch { NoteStore().restore(note); onClose() } } })
                         } else {
                             DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { act { update { it.copy(isPinned = !it.isPinned) } } })
+                            if (note.isTodo) DropdownMenuItem(text = { Text(if (note.isDone) "Mark as Not Done" else "Mark as Done") }, onClick = { act { update { Todos.withDone(it, !it.isDone) ?: it } } })
+                            if (note.canBeTodo) DropdownMenuItem(text = { Text(if (note.isTodo) "Convert to Note" else "Convert to To-do") }, onClick = { act { update { Todos.withTodo(it, !it.isTodo) ?: it } } })
                             if (opensOnSummary) DropdownMenuItem(text = { Text(if (note.summary == null) "Summarize with AI…" else "Summarize Again with AI…") }, enabled = stage == null && canSummarize(note), onClick = {
                                 act { requestSummary() }
                             }) else {
@@ -335,7 +354,11 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                 }
             }
             Column(Modifier.weight(1f).verticalScroll(pageScroll).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Header(note, onNext = { tab = NoteTab.NOTE; editor.focusStart() }) { title -> update { it.copy(title = title, titleIsCustom = true) } }
+                Header(
+                    note, onNext = { tab = NoteTab.NOTE; editor.focusStart() },
+                    onToggleDone = { update { Todos.withDone(it, !it.isDone) ?: it } },
+                    source = todoSource, onOpenSource = onOpenNote,
+                ) { title -> update { it.copy(title = title, titleIsCustom = true) } }
                 if (note.isDeleted) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("In Recently Deleted", color = Brand.dangerText, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                     TextButton(onClick = { coroutines.launch { NoteStore().restore(note); onClose() } }) { Text("Recover") }
@@ -363,14 +386,28 @@ fun NoteDetailScreen(noteID: String, draft: Note?, onContinueRecording: (Note) -
                             onEdit = { editingSummary = true }, onInsert = { update { n -> n.copy(text = if (n.text.isEmpty()) n.summary.orEmpty() else n.text + "\n\n" + n.summary) } },
                             onCopy = { copy(context, note.summary.orEmpty()) },
                             onDelete = { confirmDeleteSummary = true },
-                            onToggleTask = { line -> coroutines.launch { toggleSummaryTask(note, line) } })
+                            onToggleTask = { line -> coroutines.launch { toggleSummaryTask(note, line) } },
+                            // Nie aus einem gespeicherten Link oder einer Datei; es öffnet sich erst, wenn man es will.
+                            onMakeTodo = if (offersTodos) { task -> coroutines.launch { NoteStore().makeTodo(task, note) } } else null,
+                            madeTodos = madeTodos)
                         NoteTab.TRANSCRIPT -> TranscriptTab(note, player) { segment, speaker -> update { n -> n.withSegments(n.segments.map { if (it.id == segment.id) it.copy(speakerId = speaker.id) else it }) } }
                         NoteTab.ARTICLE -> ArticleTab(note, stage.takeUnless { isSummarizing }, context)
                         NoteTab.NOTE -> if (dictationPhase != InlineDictation.Phase.IDLE) {
                             DictationPreview(note.text, dictationStart, liveText, dictationPhase == InlineDictation.Phase.POLISHING)
                         } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (canUndoEnhance) EnhancedBanner { AppGraph.scope.launch { ProcessingService.undoEnhance(note.id) } }
-                            NoteBodyEditor(note.text, { text -> update { it.copy(text = text) } }, editor, Modifier.fillMaxSize(), isEditable = !note.isDeleted && !isEnhancing, growsWithText = true, placeholder = "Start typing or dictate…")
+                            // Eine Box im Editor abgehakt, eine Unteraufgabe dazu: das To-do folgt (iOS: `Todos.follow`).
+                            NoteBodyEditor(
+                                note.text, { text -> update { Todos.following(it.copy(text = text), it.text) } }, editor, Modifier.fillMaxSize(),
+                                isEditable = !note.isDeleted && !isEnhancing, growsWithText = true,
+                                placeholder = if (note.isTodo) "Notes and subtasks…" else "Start typing or dictate…",
+                            )
+                            if (note.isTodo && !note.isDeleted && !isEnhancing) {
+                                TextButton(onClick = { editor.perform(NoteEditorCommand.AppendChecklistItem); editor.focusEnd() }) {
+                                    Icon(Icons.Filled.AddCircleOutline, null, tint = Brand.taskText)
+                                    Text("  Add Subtask", color = Brand.taskText, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                         }
                     }
                 }
@@ -665,7 +702,10 @@ private suspend fun finishDictation(dictation: InlineDictation, start: Int, upda
 
 @OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
+private fun Header(
+    note: Note, onNext: () -> Unit, onToggleDone: () -> Unit = {}, source: Note? = null, onOpenSource: (String) -> Unit = {},
+    onTitle: (String) -> Unit,
+) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         var title by remember(note.id) { mutableStateOf(note.title) }
@@ -673,18 +713,26 @@ private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
         // das Feld nicht überschreiben, sonst gehen beim schnellen Tippen Buchstaben verloren.
         val sent = remember(note.id) { mutableSetOf(note.title) }
         LaunchedEffect(note.title) { if (note.title !in sent && note.title != title) { title = note.title; sent += title } }
-        Box {
-            if (title.isEmpty()) Text("Title", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+        // iOS: Bei einem To-do steht die Box vor dem Titel; ein erledigtes ist grau und durchgestrichen.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (note.isTodo) TodoCheckbox(note.isDone, size = 26.dp, enabled = !note.isDeleted, onToggle = onToggleDone)
+        Box(Modifier.weight(1f)) {
+            if (title.isEmpty()) Text(if (note.isTodo) "To-do" else "Title", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
             BasicTextField(
                 // Einzeilig wie der iOS-Titel; Return springt in den Text.
                 value = title, onValueChange = { title = it.replace("\n", " "); sent += title; onTitle(title) }, enabled = !note.isDeleted,
                 singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Next, capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onNext = { onNext() }),
-                textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, color = Brand.navy),
+                textStyle = MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.Bold, color = if (note.isDone) MaterialTheme.colorScheme.onSurfaceVariant else Brand.navy,
+                    textDecoration = if (note.isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                ),
                 cursorBrush = SolidColor(Brand.sky), modifier = Modifier.fillMaxWidth(),
             )
         }
+        }
+        source?.let { TodoSourcePill(it, onOpenSource) }
         note.domain?.let { domain ->
             Row(Modifier.combinedClickable(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(note.url))) }), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Link, null, tint = Brand.linkText, modifier = Modifier.size(16.dp))
@@ -696,6 +744,10 @@ private fun Header(note: Note, onNext: () -> Unit, onTitle: (String) -> Unit) {
             add(SimpleDateFormat("EEEE, d MMMM, HH:mm", Locale.getDefault()).format(Date(note.createdAt)))
             if (note.isRecording && note.duration > 0) add(note.duration.durationText)
             note.inputName?.let { add(it) }
+            val doneAt = note.todoDoneAt
+            if (note.isDone && doneAt != null) add("Done " + SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(doneAt)))
+            val progress = note.todoProgress
+            if (progress.total > 0) add("${progress.done} of ${progress.total} done")
         }
         // Darf umbrechen: Auf eine Zeile begrenzt fiel der Mikrofonname weg und ein einzelnes „·“ blieb stehen.
         Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -797,6 +849,7 @@ private fun TabSwitcher(tabs: List<NoteTab>, selected: NoteTab, articleTitle: St
 private fun SummaryTab(
     note: Note, isSummarizing: Boolean, status: String?,
     onSummarize: () -> Unit, onEdit: () -> Unit, onInsert: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, onToggleTask: (Int) -> Unit,
+    onMakeTodo: ((String) -> Unit)? = null, madeTodos: Set<String> = emptySet(),
 ) {
     val message = when {
         note.isRecording -> "Let AI summarize this meeting – including decisions and action items."
@@ -818,7 +871,7 @@ private fun SummaryTab(
             note.summary != null -> {
                 var menu by remember { mutableStateOf(false) }
                 Row(verticalAlignment = Alignment.Top) {
-                    MarkdownText(note.summary, Modifier.weight(1f), onToggleTask = if (note.isDeleted || note.isSaved) null else onToggleTask)
+                    MarkdownText(note.summary, Modifier.weight(1f), onToggleTask = if (note.isDeleted || note.isSaved) null else onToggleTask, onMakeTodo = onMakeTodo, madeTodos = madeTodos)
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreHoriz, "Summary Options", tint = Brand.navy) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {

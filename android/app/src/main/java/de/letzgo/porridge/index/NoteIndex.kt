@@ -141,6 +141,8 @@ class NoteIndex(
             note.speakersData?.let { digest.update(it.toByteArray()) }
             // Die Namen ihrer Dateien sind auch eine Passage.
             note.attachmentsData?.let { digest.update(it.toByteArray()) }
+            // Der Stand eines To-dos steht in seiner Passage (`Todos.chatLine`).
+            note.todoStateRaw?.let { digest.update("todo:$it:${note.todoDoneAt}".toByteArray()) }
             // Links bekamen eine eigene Passage (ihre Adresse): ihre Passagen werden einmal neu geschnitten.
             if (note.url != null) digest.update("link-passage".toByteArray())
             return digest.digest().joinToString("") { "%02x".format(it) }

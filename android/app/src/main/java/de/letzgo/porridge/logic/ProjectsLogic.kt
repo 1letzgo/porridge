@@ -5,9 +5,13 @@ import de.letzgo.porridge.model.NoteFolder
 
 /** iOS: `ProjectsLogic` — wer zu einem Projekt gehört: Notizen, Meetings und Links über ihre `projectIDs`. */
 object ProjectsLogic {
-    enum class Kind(val title: String) { MEETING("Meetings"), NOTE("Notes"), LINK("Links"), IMAGE("Images"), FILE("Files") }
+    /** [searchTitle]: der Chip der Suche; bei To-dos findet er nur offene (iOS: `SearchKind.todos`, „Open To-dos“). */
+    enum class Kind(val title: String, val searchTitle: String = title) {
+        TODO("To-dos", "Open To-dos"), MEETING("Meetings"), NOTE("Notes"), LINK("Links"), IMAGE("Images"), FILE("Files"),
+    }
 
     fun kind(note: Note): Kind = when {
+        note.isTodo -> Kind.TODO
         note.isLink -> Kind.LINK
         note.isImage -> Kind.IMAGE
         note.isFile -> Kind.FILE
@@ -17,7 +21,21 @@ object ProjectsLogic {
 
     /** Alles eines Projekts, neueste zuerst; Gelöschtes und Archiviertes fehlen. */
     fun elements(projectID: String, notes: List<Note>): List<Note> =
-        notes.filter { !it.isDeleted && it.archivedAt == null && projectID in it.projectIDs }.sortedByDescending { it.updatedAt }
+        notes.filter { !it.isDeleted && !it.isArchived && projectID in it.projectIDs }.sortedByDescending { it.updatedAt }
+
+    /**
+     * iOS: `ProjectContent` — die Einträge eines Buckets nach Art, To-dos zuerst; unter ihnen die offenen vor denen, die
+     * heute erledigt wurden (früher erledigte sind weggeräumt, siehe `Note.isPutAway`).
+     */
+    fun sections(elements: List<Note>): List<Pair<Kind, List<Note>>> =
+        Kind.entries.mapNotNull { kind ->
+            val items = elements.filter { kind(it) == kind }
+            val sorted = if (kind == Kind.TODO) items.filter { !it.isDone } + items.filter { it.isDone } else items
+            if (sorted.isEmpty()) null else kind to sorted
+        }
+
+    /** Offene To-dos eines Buckets, für seine Zeile. */
+    fun openTodos(projectID: String, notes: List<Note>): Int = elements(projectID, notes).count { it.isTodo && !it.isDone }
 
     /** Letzte Änderung: die des Projekts selbst oder die des neuesten Eintrags. */
     fun lastChange(project: NoteFolder, notes: List<Note>): Long =

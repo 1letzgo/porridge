@@ -208,7 +208,8 @@ object NextcloudSync {
                     },
                     // iOS: `SyncRecords.apply` — ein Eintrag einer Version von vor dem Eingang kennt dessen Felder nicht (neuere
                     // schreiben `sourceRaw` immer): Was dieses Gerät weiß, bleibt.
-                    adopt = { decoded, record, local -> if ("sourceRaw" !in record && local != null) decoded.withIntakeOf(local) else decoded },
+                    // Ebenso die To-do-Felder (`SyncMerge.adoptNote`).
+                    adopt = SyncMerge::adoptNote,
                 ),
                 Collection(
                     "folders", NoteFolder.serializer(), { it.id },
@@ -303,7 +304,7 @@ object NextcloudSync {
                 // Ein nicht lesbarer Eintrag bleibt in der Datei, aber ohne Grundlage: Sonst läse ihn der nächste
                 // Lauf als „hier gelöscht“, und er verschwände auf allen Geräten.
                 newBase[collection.key] = result.merged.filterKeys { it !in merge.unreadable }
-                    .mapValues { (id, record) -> SyncBase(merge.localHashes[id].orEmpty(), SyncMerge.hash(record)) }.toMutableMap()
+                    .mapValues { (id, record) -> SyncBase(merge.localHashes[id].orEmpty(), SyncMerge.hash(record), de.letzgo.porridge.logic.Todos.baseText(record)) }.toMutableMap()
             }
             ownWriteAt = System.currentTimeMillis()
             output["deleted"] = JsonObject(deleted)

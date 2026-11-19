@@ -43,7 +43,7 @@ fun SearchBar(
         )
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             for (k in ProjectsLogic.Kind.entries) {
-                FilterChip(selected = kind == k, onClick = { onKind(if (kind == k) null else k) }, label = { Text(k.title) })
+                FilterChip(selected = kind == k, onClick = { onKind(if (kind == k) null else k) }, label = { Text(k.searchTitle) })
             }
             for (token in tokens) InputChip(selected = true, onClick = { onTokens(tokens - token) }, label = { Text("#$token") }, trailingIcon = { Icon(Icons.Filled.Close, "Remove #$token") })
             for ((tag, count) in tags) if (tag.lowercase() !in tokens) AssistChip(onClick = { onTokens(tokens + tag.lowercase()) }, label = { Text("#$tag  $count") })

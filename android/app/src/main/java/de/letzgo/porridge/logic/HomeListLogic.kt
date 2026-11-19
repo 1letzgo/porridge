@@ -28,7 +28,7 @@ object HomeListLogic {
 
     /** Archivierte Notizen; im Papierkorb gelten sie als gelöscht und kommen beim Wiederherstellen zurück. */
     fun archivedNotes(notes: List<Note>): List<Note> =
-        notes.filter { !it.isDeleted && it.archivedAt != null }.sortedByDescending { it.updatedAt }
+        notes.filter { !it.isDeleted && it.isArchived }.sortedByDescending { it.updatedAt }
 
     /** Die Anzahl in der Zeile „Archive“: was die Seite zeigt. */
     fun archiveCount(folders: List<NoteFolder>, notes: List<Note>): Int =
@@ -40,12 +40,19 @@ object HomeListLogic {
      */
     fun searchNotes(notes: List<Note>, query: String, tags: List<String>, kind: ProjectsLogic.Kind?, indexIDs: Set<String>?): List<Note> {
         return notes.filter { note ->
-            !note.isDeleted && (kind == null || ProjectsLogic.kind(note) == kind) && hasTags(note, tags) && when {
+            !note.isDeleted && matchesKind(note, kind) && hasTags(note, tags) && when {
                 query.isBlank() -> true
                 indexIDs != null -> note.id in indexIDs || note.title.contains(query, true) || note.url?.contains(query, true) == true
                 else -> note.matches(query)
             }
         }.sortedByDescending { it.updatedAt }
+    }
+
+    /** iOS: `SearchKind.matches` — „Open To-dos“ findet nur offene, nicht weggeräumte To-dos. */
+    fun matchesKind(note: Note, kind: ProjectsLogic.Kind?): Boolean = when (kind) {
+        null -> true
+        ProjectsLogic.Kind.TODO -> note.isTodo && !note.isDone && !note.isArchived
+        else -> ProjectsLogic.kind(note) == kind
     }
 
     private fun hasTags(note: Note, tags: List<String>) = tags.all { t -> note.tags.any { it.lowercase() == t } }

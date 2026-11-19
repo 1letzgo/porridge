@@ -98,12 +98,18 @@ fun AppRoot() {
             null -> NotesScreen(
                 list = list,
                 onOpen = ::open,
-                onNewNote = { pid -> val draft = Note(projectIDs = listOfNotNull(pid), sourceRaw = de.letzgo.porridge.model.NoteSource.NOTE.raw); push(Screen.Detail(draft.id, draft)) },
+                onNewNote = { pid, todo ->
+                    val draft = Note(
+                        projectIDs = listOfNotNull(pid), sourceRaw = de.letzgo.porridge.model.NoteSource.NOTE.raw,
+                        todoStateRaw = if (todo) de.letzgo.porridge.model.TodoState.OPEN.raw else null,
+                    )
+                    push(Screen.Detail(draft.id, draft))
+                },
                 onRecord = { showCalendar = true },
                 onSettings = { push(Screen.Settings) },
                 onPlaud = { pid -> push(Screen.Plaud(pid)) },
             )
-            is Screen.Detail -> NoteDetailScreen(top.id, top.draft, onContinueRecording = { note -> push(Screen.Recording(note.title, note.id)) }) { pop() }
+            is Screen.Detail -> NoteDetailScreen(top.id, top.draft, onContinueRecording = { note -> push(Screen.Recording(note.title, note.id)) }, onOpenNote = { id -> push(Screen.Detail(id, null)) }) { pop() }
             is Screen.Settings -> SettingsScreen(onBack = { pop() })
             is Screen.Plaud -> PlaudImportScreen(top.projectID, onBack = { pop() }) { id -> stack.clear(); open(id) }
             is Screen.Recording -> RecordingScreen(top.title, top.continues, onFinish = { result, names, liveText ->

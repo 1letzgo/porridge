@@ -103,6 +103,8 @@ object NoteChunks {
             // Ein Bild oder eine Datei ist über den Namen zu finden, auch wenn sich nichts daraus lesen ließ.
             val attachments = if (note.attachmentsData == null) emptyList() else note.attachments
             if (attachments.isNotEmpty()) result += chunk(note, (if (note.isImage) "Image: " else "File: ") + attachments.joinToString(", ") { it.name })
+            // iOS: `ChatRetrieval.chunks` — ein To-do sagt, dass es eins ist und ob es erledigt ist: „was ist noch offen?“ findet es.
+            if (note.isTodo) result += chunk(note, Todos.chatLine(note))
             note.summary?.takeIf { it.isNotEmpty() }?.let { summary ->
                 pieces(summary.split("\n")).forEach { result += chunk(note, "Summary: $it") }
             }

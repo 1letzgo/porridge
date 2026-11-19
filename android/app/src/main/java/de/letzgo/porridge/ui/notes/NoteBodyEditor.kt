@@ -25,6 +25,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
 import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
@@ -77,6 +79,14 @@ class NoteEditorController {
         val v = view ?: return
         v.requestFocus()
         v.setSelection(0)
+        (v.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(v, 0)
+    }
+
+    /** Fokus ans Textende mit Tastatur („Add Subtask“). */
+    fun focusEnd() {
+        val v = view ?: return
+        v.requestFocus()
+        v.setSelection(v.text?.length ?: 0)
         (v.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(v, 0)
     }
 
@@ -196,6 +206,9 @@ fun NoteFormatBar(controller: NoteEditorController) {
             button(Icons.Filled.FormatQuote, "Quote", NoteEditorCommand.SetKind(Kind.Quote))
             button(Icons.AutoMirrored.Filled.FormatIndentDecrease, "Outdent", NoteEditorCommand.Shift(false))
             button(Icons.AutoMirrored.Filled.FormatIndentIncrease, "Indent", NoteEditorCommand.Shift(true))
+            // iOS: „Move Line Up/Down“ im Formatmenü — Unteraufgaben (und jede Zeile) ordnen.
+            button(Icons.Filled.ArrowUpward, "Move Line Up", NoteEditorCommand.MoveLine(true))
+            button(Icons.Filled.ArrowDownward, "Move Line Down", NoteEditorCommand.MoveLine(false))
             IconButton(onClick = { controller.blur() }) { Icon(Icons.Filled.KeyboardHide, contentDescription = "Done", tint = Brand.navy) }
         }
     }

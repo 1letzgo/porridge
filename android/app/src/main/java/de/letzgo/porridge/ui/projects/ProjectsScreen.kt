@@ -57,6 +57,7 @@ import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.ui.Brand
 import de.letzgo.porridge.ui.components.EmptyState
 import de.letzgo.porridge.ui.components.RowIcon
+import de.letzgo.porridge.ui.components.SectionHeader
 import de.letzgo.porridge.ui.notes.NoteSwipeRow
 import de.letzgo.porridge.ui.notes.TextPrompt
 import kotlinx.coroutines.launch
@@ -79,6 +80,8 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, showsDivider: Bo
     val (count, changed) = remember(project, notes) {
         ProjectsLogic.elements(project.id, notes).size to ProjectsLogic.lastChange(project, notes)
     }
+    // iOS: Die Zeile zählt auch die offenen To-dos.
+    val openTodos = remember(project, notes) { ProjectsLogic.openTodos(project.id, notes) }
     val archived = project.archivedAt != null
     fun toggleArchive() { coroutines.launch { if (project.archivedAt != null) Projects.unarchive(project) else Projects.archive(project) } }
     // Der Zustand des Wischens behält seinen ersten Callback; so sieht er immer den aktuellen Stand.
@@ -105,7 +108,11 @@ internal fun ProjectRow(project: NoteFolder, notes: List<Note>, showsDivider: Bo
                                 Text(project.name.ifEmpty { "Untitled Bucket" }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Text(
-                                listOf(if (count == 1) "1 item" else "$count items", SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(changed))).joinToString("  ·  "),
+                                listOfNotNull(
+                                    if (count == 1) "1 item" else "$count items",
+                                    if (openTodos == 0) null else if (openTodos == 1) "1 Open To-do" else "$openTodos Open To-dos",
+                                    SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(changed)),
+                                ).joinToString("  ·  "),
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                             )
                         }
@@ -165,8 +172,13 @@ internal fun ProjectDetail(
             }
             return@Column
         }
+        // iOS: `ProjectsPane` — Abschnitte nach Art, To-dos zuerst (offene vor heute erledigten); gefiltert eine Art allein.
+        val sections = remember(shown) { ProjectsLogic.sections(shown) }
         LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
-            itemsIndexed(shown, key = { _, it -> it.id }) { index, note -> NoteSwipeRow(note, stages[note.id], onOpen, projectID = project.id, showsDivider = index < shown.lastIndex) }
+            for ((kind, items) in sections) {
+                if (filter == null && sections.size > 1) item(key = "h-" + kind.name) { SectionHeader(kind.title, color = if (kind == ProjectsLogic.Kind.TODO) Brand.task else Brand.project) }
+                itemsIndexed(items, key = { _, it -> it.id }) { index, note -> NoteSwipeRow(note, stages[note.id], onOpen, projectID = project.id, showsDivider = index < items.lastIndex) }
+            }
         }
     }
 }

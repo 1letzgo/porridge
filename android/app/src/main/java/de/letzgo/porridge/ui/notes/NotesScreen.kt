@@ -66,6 +66,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Settings
@@ -168,7 +169,8 @@ fun NotesScreen(
     list: ListState,
     onOpen: (String) -> Unit,
     /** Neue Notiz, auf Wunsch gleich in einem Projekt. */
-    onNewNote: (projectID: String?) -> Unit,
+    /** Eine neue Notiz oder ein To-do (dieselbe Notiz mit Erledigt-Stand), im offenen Bucket. */
+    onNewNote: (projectID: String?, todo: Boolean) -> Unit,
     onRecord: () -> Unit,
     onSettings: () -> Unit,
     /** Plaud-Import, auf Wunsch gleich in ein Projekt. */
@@ -323,7 +325,8 @@ fun NotesScreen(
             showCreate, { showCreate = it },
             showsPlus = page != ListPage.Archive && page != ListPage.Trash,
             onProject = if (page == ListPage.Home) ({ creatingProject = true }) else null,
-            onNote = { onNewNote(projectForNew) },
+            onNote = { onNewNote(projectForNew, false) },
+            onTodo = { onNewNote(projectForNew, true) },
             onMeeting = onRecord, onLink = { showAddLink = true },
             onSearch = { chatReturn = page; list.page = ListPage.Search },
             // iOS: `openChat` — der Chat öffnet seine eigene Seite; aus einem Bucket geht er über diesen Bucket.
@@ -518,7 +521,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
                 coroutines.launch {
                     when {
                         latest.isDeleted -> store.restore(latest)
-                        latest.archivedAt != null -> store.unarchive(latest)
+                        latest.isArchived -> store.unarchive(latest)
                         else -> store.archive(latest)
                     }
                 }
@@ -547,7 +550,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
         dismissButton = { TextButton(onClick = { confirmDeleteNow = false }) { Text("Cancel") } },
     )
     if (choosing) ProjectChooser(note.projectIDs, onToggle = { id -> coroutines.launch { Projects.toggle(note, id) } }, onDismiss = { choosing = false })
-    val archived = note.archivedAt != null
+    val archived = note.isArchived
     SwipeToDismissBox(
         state = state,
         backgroundContent = {
@@ -567,8 +570,15 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
                     DropdownMenuItem(text = { Text("Recover") }, onClick = { menu = false; coroutines.launch { store.restore(note) } })
                     DropdownMenuItem(text = { Text("Delete Now", color = Brand.dangerText) }, onClick = { menu = false; confirmDeleteNow = true })
                 } else {
+                    // iOS: das lange Drücken eines To-dos hat „Mark as Done“ und das Umwandeln.
+                    if (note.isTodo) DropdownMenuItem(text = { Text(if (note.isDone) "Mark as Not Done" else "Mark as Done") }, onClick = { menu = false; coroutines.launch { store.setDone(note, !note.isDone) } })
                     if (!archived) DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { NoteStore().update(note.id, touch = false) { it.copy(isPinned = !it.isPinned) } } })
-                    DropdownMenuItem(text = { Text(if (archived) "Unarchive" else "Archive") }, onClick = { menu = false; coroutines.launch { if (archived) store.unarchive(note) else store.archive(note) } })
+                    if (note.canBeTodo) DropdownMenuItem(text = { Text(if (note.isTodo) "Convert to Note" else "Convert to To-do") }, onClick = { menu = false; coroutines.launch { store.setTodo(note, !note.isTodo) } })
+                    // Ein To-do, das an einem früheren Tag erledigt wurde, ist von selbst weggeräumt: Herausholen ist hier
+                    // „Mark as Not Done“ (oben), das es wieder öffnet (iOS: dieselbe Stelle heißt so).
+                    if (!(note.isPutAway && note.archivedAt == null)) {
+                        DropdownMenuItem(text = { Text(if (archived) "Unarchive" else "Archive") }, onClick = { menu = false; coroutines.launch { if (archived) store.unarchive(note) else store.archive(note) } })
+                    }
                     DropdownMenuItem(text = { Text("Buckets…") }, onClick = { menu = false; choosing = true })
                     if (projectID != null) DropdownMenuItem(text = { Text("Remove from Bucket") }, onClick = { menu = false; coroutines.launch { Projects.toggle(note, projectID) } })
                     DropdownMenuItem(text = { Text("Delete", color = Brand.dangerText) }, onClick = { menu = false; coroutines.launch { store.trash(note) } })
@@ -603,12 +613,20 @@ internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivide
             }.getOrNull()
         }
     }
+    val coroutines = rememberCoroutineScope()
     Surface(color = MaterialTheme.colorScheme.background, modifier = modifier) {
         Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                RowIcon(icon, tint, isPinned = note.isPinned)
+                // Ein To-do trägt seine grüne Box statt des Symbols und wird gleich in der Liste abgehakt; ein gelöschtes nur gezeigt.
+                if (note.isTodo) TodoCheckbox(note.isDone, isPinned = note.isPinned, enabled = !note.isDeleted) {
+                    coroutines.launch { NoteStore().setDone(note, !note.isDone) }
+                } else RowIcon(icon, tint, isPinned = note.isPinned)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(note.displayTitle, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        note.displayTitle, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = if (note.isDone) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+                        textDecoration = if (note.isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                    )
                     if (note.preview.isNotEmpty()) Text(note.preview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     val footer = buildList {
                         val deletedAt = note.deletedAt
@@ -620,7 +638,10 @@ internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivide
                         if (note.isRecording && note.duration > 0) add(note.duration.durationText)
                         stage?.let { add(it) } ?: if (note.status == ProcessingStatus.FAILED) add("Failed") else Unit
                     }
-                    Text(footer.joinToString("  ·  "), style = MaterialTheme.typography.labelSmall, color = if (note.isDeleted) Brand.danger.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+                    Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(footer.joinToString("  ·  "), style = MaterialTheme.typography.labelSmall, color = if (note.isDeleted) Brand.danger.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        if (note.isTodo) TodoProgressLabel(note.todoProgress)
+                    }
                 }
                 picture?.let { bitmap ->
                     androidx.compose.foundation.Image(
@@ -664,7 +685,7 @@ private fun groups(list: List<Note>): List<Pair<String, List<Note>>> {
 @Composable
 private fun CreateMenu(
     open: Boolean, onOpen: (Boolean) -> Unit, showsPlus: Boolean, onProject: (() -> Unit)?,
-    onNote: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit,
+    onNote: () -> Unit, onTodo: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit,
     /** Die Wahl für die lange Liste; null, wo es den Knopf nicht gibt. */
     onSearch: () -> Unit, onChat: () -> Unit,
 ) {
@@ -684,6 +705,7 @@ private fun CreateMenu(
 
                     CreateOption("Link", Icons.Filled.Link, LinkOrange) { onOpen(false); onLink() }
                     CreateOption("Meeting", Icons.Filled.Mic, Brand.navy) { onOpen(false); onMeeting() }
+                    CreateOption("To-do", Icons.Outlined.CheckBox, Brand.task) { onOpen(false); onTodo() }
                     CreateOption("Note", Icons.Outlined.EditNote, Brand.sky) { onOpen(false); onNote() }
                 }
             }

@@ -33,6 +33,8 @@ class DatabaseRepairTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        // Was DatabaseRepair protokolliert, steht so im Testbericht.
+        org.robolectric.shadows.ShadowLog.stream = System.out
         cleanUp()
     }
 
@@ -114,6 +116,18 @@ class DatabaseRepairTest {
         assertTrue(backups().isEmpty())
     }
 
+    @Test
+    fun version115MigratesToTodosWithoutRepair() {
+        // 1.1.5: Version 11. MIGRATION_11_12 gibt den Notizen die To-do-Felder, leer.
+        create(11)
+        insertNote("N1", "From 1.1.5")
+
+        val notes = runBlocking { open().notes().all() }
+        assertEquals(listOf("From 1.1.5"), notes.map { it.title })
+        assertEquals(listOf<String?>(null), notes.map { it.todoStateRaw })
+        assertTrue(backups().isEmpty())
+    }
+
     // Aufbau
 
     private fun write(block: (SQLiteDatabase) -> Unit) {
@@ -129,6 +143,10 @@ class DatabaseRepairTest {
                 val table = entity.jsonObject.getValue("tableName").jsonPrimitive.content
                 val sql = edit(table, entity.jsonObject.getValue("createSql").jsonPrimitive.content.replace("\${TABLE_NAME}", table)) ?: continue
                 db.execSQL(sql)
+                // Die Indizes gehören zum Schema: Ohne sie hielte Room schon eine richtige Datenbank für falsch migriert.
+                for (index in entity.jsonObject["indices"]?.jsonArray.orEmpty()) {
+                    db.execSQL(index.jsonObject.getValue("createSql").jsonPrimitive.content.replace("\${TABLE_NAME}", table))
+                }
             }
             db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)")
             db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, ?)", arrayOf(hash ?: database.getValue("identityHash").jsonPrimitive.content))

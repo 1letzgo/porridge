@@ -10,6 +10,10 @@ sealed interface NoteEditorCommand {
     data class Shift(val deeper: Boolean) : NoteEditorCommand
     /** Fett (`**`) oder kursiv (`*`) um die Auswahl oder das Wort am Cursor; noch einmal entfernt es. */
     data class ToggleInline(val mark: String) : NoteEditorCommand
+    /** iOS: `.moveLine(up:)` — schiebt die Zeile am Cursor eine Stelle hoch oder runter (Unteraufgaben ordnen). */
+    data class MoveLine(val up: Boolean) : NoteEditorCommand
+    /** iOS: `.appendChecklistItem` — „Add Subtask“: eine leere Checklisten-Zeile am Ende, der Cursor darin. */
+    data object AppendChecklistItem : NoteEditorCommand
 }
 
 /**
@@ -339,8 +343,33 @@ class NoteEditorEngine(private val buffer: EditorBuffer, private val onCommit: (
             }
             is NoteEditorCommand.Shift -> shift(command.deeper)
             is NoteEditorCommand.ToggleInline -> toggleInline(command.mark)
+            is NoteEditorCommand.MoveLine -> if (!moveLine(command.up)) return
+            NoteEditorCommand.AppendChecklistItem -> {
+                // Auf dem Markdown wie iOS (`Todos.appendingSubtask`): eine leere Zeile am Ende wird wiederverwendet.
+                load(de.letzgo.porridge.logic.Todos.appendingSubtask(text = markdown()))
+            }
         }
         commit()
+    }
+
+    /** Die Absätze sind die Zeilen des Markdowns: Die Zeile am Cursor tauscht mit ihrer Nachbarin, der Cursor geht mit. */
+    private fun moveLine(up: Boolean): Boolean {
+        val cursor = buffer.selectionStart.coerceIn(0, buffer.length)
+        val line = (0 until cursor).count { text[it] == '\n' }
+        val column = cursor - paragraphRange(cursor).first
+        val before = markdown()
+        val moved = de.letzgo.porridge.logic.Todos.moveLine(line, if (up) -1 else 1, before)
+        if (moved == before) return false
+        load(moved)
+        val target = line + if (up) -1 else 1
+        var start = 0
+        repeat(target) { start = text.indexOf('\n', start).let { if (it < 0) text.length else it + 1 } }
+        val paragraph = paragraphRange(start)
+        val position = (start + column).coerceAtMost(contentEnd(paragraph)).coerceAtLeast(start)
+        buffer.selectionStart = position
+        buffer.selectionEnd = position
+        selectionChanged()
+        return true
     }
 
     private fun shift(deeper: Boolean) {

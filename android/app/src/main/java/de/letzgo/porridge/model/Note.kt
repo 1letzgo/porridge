@@ -68,8 +68,14 @@ data class Note(
     val filedAt: Long? = null,
     /** Die für die Notiz vorgeschlagenen Buckets (`NoteFolder.id`); der Nutzer nimmt sie an oder verwirft sie. */
     val suggestedProjectIDs: List<String> = emptyList(),
-    /** Wann die Notiz an sich erinnern soll. */
-    /** Der Kalendertermin, zu dem die Notiz gehört (iOS: `calendarItemExternalIdentifier`), und bei Serienterminen der Beginn des gemeinten Vorkommens. */
+    // Ein To-do ist eine Notiz wie jede andere mit einem Erledigt-Stand (`logic/Todos.kt`); seine Unteraufgaben sind die
+    // Checklisten-Zeilen von `text`. Alle drei fehlen im Sync-Eintrag, solange sie null sind (iOS: `Note.todoStateRaw` …).
+    /** [TodoState]: "open", "done" oder "none" für ein To-do, das wieder eine Notiz ist; null = nie ein To-do. */
+    val todoStateRaw: String? = null,
+    /** Wann das To-do abgehakt wurde (ms); null, solange es offen ist. */
+    val todoDoneAt: Long? = null,
+    /** Die Notiz (`id`), aus deren Zusammenfassung das To-do stammt. */
+    val todoSourceID: String? = null,
 ) {
     val source: NoteSource get() = NoteSource.of(sourceRaw)
 
@@ -80,7 +86,31 @@ data class Note(
         copy(attachmentsData = if (value.isEmpty()) null else PorridgeJson.encodeToString(AttachmentJson.list, value))
 
     /** Im Eingang: in keinem Bucket. Alles bleibt dort, bis es in einen kommt, und ist zurück, wenn es seinen letzten verlässt. */
-    val isInInbox: Boolean get() = projectIDs.isEmpty() && deletedAt == null && archivedAt == null
+    val isInInbox: Boolean get() = projectIDs.isEmpty() && deletedAt == null && !isArchived
+
+    /** iOS: `Note.isArchived` — von Hand archiviert, oder ein To-do, das vor heute erledigt wurde ([isPutAway]). */
+    val isArchived: Boolean get() = archivedAt != null || isPutAway
+
+    // Die Notiz als To-do (iOS: `extension Note` in Services/Todos.swift)
+
+    /** null: eine Notiz, die nie ein To-do war. */
+    val todoState: TodoState? get() = TodoState.of(todoStateRaw)
+
+    val isTodo: Boolean get() = todoState == TodoState.OPEN || todoState == TodoState.DONE
+
+    val isDone: Boolean get() = todoState == TodoState.DONE
+
+    val todoProgress: de.letzgo.porridge.logic.Todos.Progress
+        get() = if (isTodo) de.letzgo.porridge.logic.Todos.progress(text) else de.letzgo.porridge.logic.Todos.Progress(0, 0)
+
+    /** Ein To-do, das vor heute erledigt wurde: aus den Listen wie eine archivierte Notiz. */
+    val isPutAway: Boolean get() = isDone && de.letzgo.porridge.logic.Todos.isPutAway(todoDoneAt)
+
+    /** Jede Notiz außer einer gespeicherten (Link, geteilte Datei) und einem Meeting kann ein To-do sein. */
+    val canBeTodo: Boolean get() = !isSaved && !isRecording
+
+    /** iOS: `SyncRecords.apply` — die To-do-Felder einer anderen Notiz (für Einträge, die keine kennen). */
+    fun withTodoOf(other: Note) = copy(todoStateRaw = other.todoStateRaw, todoDoneAt = other.todoDoneAt, todoSourceID = other.todoSourceID)
 
     /** Jede Datei der Notiz im Speicher: ihre Aufnahmen und ihre Anhänge. */
     val storedFileNames: List<String>
@@ -161,6 +191,7 @@ data class Note(
             if (title.isNotEmpty()) parts += "# $title"
             parts += DateFormat.getDateTimeInstance(DateFormat.LONG, DateFormat.SHORT).format(Date(createdAt))
             url?.let { parts += it }
+            if (isTodo) parts += if (isDone) "[x] To-do, done" else "[ ] To-do"
             if (text.isNotEmpty()) parts += text
             if (!summary.isNullOrEmpty()) parts += "## Summary\n\n$summary"
             if (segmentsData != null && segments.isNotEmpty()) parts += "## Transcript\n\n${transcriptText()}"
@@ -180,6 +211,11 @@ data class Note(
     /** Text für die Listenzeile: der Text ohne Markdown (ohne erste Zeile, wenn sie als Titel dient). */
     val preview: String
         get() {
+            // Ein offenes To-do zeigt, was noch zu tun ist.
+            if (isTodo && !isDone) {
+                val open = de.letzgo.porridge.logic.Todos.subtasks(text).filter { !it.done }.map { it.text }
+                if (open.isNotEmpty()) return NoteText.plainLines(open.joinToString(" · ")).joinToString(" ")
+            }
             val lines = NoteText.plainLines(text)
             val own = (if (title.isBlank()) lines.drop(1) else lines).joinToString(" ")
             if (own.isNotEmpty()) return own
@@ -228,4 +264,19 @@ internal object AttachmentJson {
 internal object TranscriptJson {
     val speakers = ListSerializer(Speaker.serializer())
     val segments = ListSerializer(TranscriptSegment.serializer())
+}
+
+/**
+ * iOS: `TodoState` (Services/Todos.swift) — ob eine Notiz ein To-do ist. Gespeichert als `Note.todoStateRaw`; null = nie
+ * ein To-do, damit ihr Sync-Eintrag bleibt, wie er war.
+ */
+enum class TodoState(val raw: String) {
+    OPEN("open"),
+    DONE("done"),
+    /** War ein To-do und ist wieder eine Notiz: geschrieben, damit die anderen Geräte davon erfahren. */
+    NONE("none");
+
+    companion object {
+        fun of(raw: String?): TodoState? = entries.firstOrNull { it.raw == raw }
+    }
 }
