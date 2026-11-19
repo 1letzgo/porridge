@@ -137,6 +137,9 @@ enum AppMenu {
         menu.addItem(.separator())
         item(menu, "Indent", #selector(NoteEditorView.indentItems(_:)), "]")
         item(menu, "Outdent", #selector(NoteEditorView.outdentItems(_:)), "[")
+        menu.addItem(.separator())
+        item(menu, "Move Line Up", #selector(NoteEditorView.moveLineUp(_:)), String(UnicodeScalar(NSUpArrowFunctionKey)!), [.command, .option])
+        item(menu, "Move Line Down", #selector(NoteEditorView.moveLineDown(_:)), String(UnicodeScalar(NSDownArrowFunctionKey)!), [.command, .option])
         return menu
     }
 
