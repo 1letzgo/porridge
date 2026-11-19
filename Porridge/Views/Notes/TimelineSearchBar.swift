@@ -23,10 +23,11 @@ struct TagToken: Identifiable, Hashable {
 
 /// The kinds of elements the search can be narrowed to.
 enum SearchKind: CaseIterable {
-    case meetings, notes, links, images, files
+    case todos, meetings, notes, links, images, files
 
     var title: LocalizedStringKey {
         switch self {
+        case .todos: "Open To-dos"
         case .meetings: "Meetings"
         case .notes: "Notes"
         case .links: "Links"
@@ -37,8 +38,9 @@ enum SearchKind: CaseIterable {
 
     func matches(_ note: Note) -> Bool {
         switch self {
+        case .todos: note.isTodo && !note.isDone && !note.isArchived
         case .meetings: note.isRecording && !note.isLink
-        case .notes: !note.isRecording && !note.isLink && !note.isStored
+        case .notes: !note.isRecording && !note.isLink && !note.isStored && !note.isTodo
         case .links: note.isLink
         case .images: note.isImage
         case .files: note.isFile

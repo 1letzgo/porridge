@@ -27,6 +27,7 @@ struct NoteDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(ProcessingService.self) private var processing
     @Environment(ModelManager.self) private var models
+    @Environment(\.allNotes) private var allNotes
     @State private var dictation = InlineDictation()
     @State private var didStartRecording = false
     @State private var showExport = false
@@ -106,7 +107,13 @@ struct NoteDetailView: View {
                     dictationPreview
                 } else {
                     if processing.canUndoEnhance(note) { enhancedBanner }
-                    NoteBodyEditor(text: $note.text, isEditable: !note.isDeleted && !isEnhancing, controller: editor, placeholder: "Start typing or dictate…", growsWithText: true)
+                    NoteBodyEditor(
+                        text: $note.text, isEditable: !note.isDeleted && !isEnhancing, controller: editor,
+                        placeholder: note.isTodo ? "Notes and subtasks…" : "Start typing or dictate…", growsWithText: true
+                    )
+                    if note.isTodo, !note.isDeleted, !isEnhancing {
+                        addSubtaskButton
+                    }
                 }
             }
         }
@@ -208,8 +215,12 @@ struct NoteDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .porridgeStopRecording)) { _ in
             if dictation.phase == .recording { Task { await finishDictation() } }
         }
-        .onChange(of: note.text) {
-            if !SyncRecords.wasJustApplied(note.id) { note.updatedAt = Date() }
+        .onChange(of: note.text) { old, _ in
+            if !SyncRecords.wasJustApplied(note.id) {
+                note.updatedAt = Date()
+                // A box ticked in the editor, a subtask added: the to-do follows.
+                Todos.follow(note, from: old)
+            }
             saveIfFilled()
         }
         .onChange(of: note.title) {
@@ -308,17 +319,32 @@ struct NoteDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Title", text: Binding(
-                get: { note.title },
-                set: {
-                    note.title = $0
-                    note.titleIsCustom = true
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if note.isTodo {
+                    TodoCheckbox(isDone: note.isDone, size: 26) {
+                        withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) }
+                    }
+                    .disabled(note.isDeleted)
+                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 8 }
                 }
-            ), axis: .vertical)
-            .font(.title2.weight(.bold))
-            .foregroundStyle(Color.brandNavy)
-            .focused($focused)
-            .disabled(note.isDeleted)
+                TextField(note.isTodo ? "To-do" : "Title", text: Binding(
+                    get: { note.title },
+                    set: {
+                        note.title = $0
+                        note.titleIsCustom = true
+                    }
+                ), axis: .vertical)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(note.isDone ? Color.secondary : Color.brandNavy)
+                .strikethrough(note.isDone, color: .secondary)
+                .accessibilityIdentifier("Title")
+                .focused($focused)
+                .disabled(note.isDeleted)
+            }
+
+            if let source = todoSource {
+                TodoSourcePill(source: source)
+            }
 
             if let address = note.linkURL, let domain = note.domain {
                 Link(destination: address) {
@@ -342,6 +368,11 @@ struct NoteDetailView: View {
     /// One text, so a long line wraps as a line and not column by column.
     private var metaLine: String {
         var parts = [note.createdAt.formatted(.dateTime.weekday(.wide).day().month().hour().minute())]
+        if let done = note.todoDoneAt, note.isDone {
+            parts.append(String(localized: "Done \(done.formatted(.dateTime.day().month(.abbreviated).hour().minute()))"))
+        }
+        let progress = note.todoProgress
+        if progress.total > 0 { parts.append(String(localized: "\(progress.done) of \(progress.total) done")) }
         if note.isRecording, note.duration > 0 { parts.append(note.duration.durationText) }
         if let input = note.inputName { parts.append(input) }
         return parts.joined(separator: " · ")
@@ -510,9 +541,9 @@ struct NoteDetailView: View {
 
     // MARK: - Toolbar
 
-    private var barTitle: String { note.isLink ? "Link" : note.isImage ? "Image" : note.isFile ? "File" : note.isRecording ? "Meeting" : "Note" }
-    private var barIcon: String { note.isLink ? "link" : note.isImage ? "photo" : note.isFile ? "doc" : note.isRecording ? "waveform" : "text.alignleft" }
-    private var barTint: Color { note.isLink ? .brandLink : note.isRecording || note.isStored ? .brandNavy : .brandSky }
+    private var barTitle: String { note.isTodo ? "To-do" : note.isLink ? "Link" : note.isImage ? "Image" : note.isFile ? "File" : note.isRecording ? "Meeting" : "Note" }
+    private var barIcon: String { note.isTodo ? "checkmark.square" : note.isLink ? "link" : note.isImage ? "photo" : note.isFile ? "doc" : note.isRecording ? "waveform" : "text.alignleft" }
+    private var barTint: Color { note.isTodo ? .brandTask : note.isLink ? .brandLink : note.isRecording || note.isStored ? .brandNavy : .brandSky }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
@@ -546,6 +577,16 @@ struct NoteDetailView: View {
             } else {
                 Button { note.isPinned.toggle(); try? context.save() } label: {
                     Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
+                }
+                if note.isTodo {
+                    Button { withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) } } label: {
+                        Label(note.isDone ? "Mark as Not Done" : "Mark as Done", systemImage: note.isDone ? "square" : "checkmark.square")
+                    }
+                }
+                if note.canBeTodo {
+                    Button { withAnimation(.snappy) { Todos.setTodo(!note.isTodo, note, in: context) } } label: {
+                        Label(note.isTodo ? "Convert to Note" : "Convert to To-do", systemImage: note.isTodo ? "text.alignleft" : "checkmark.square")
+                    }
                 }
                 if opensOnSummary {
                     Button {
@@ -805,7 +846,13 @@ struct NoteDetailView: View {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
-                            MarkdownText(markdown: summary, onToggleTask: note.isDeleted || note.isSaved ? nil : { toggleSummaryTask(line: $0) })
+                            MarkdownText(
+                                markdown: summary,
+                                onToggleTask: note.isDeleted || note.isSaved ? nil : { toggleSummaryTask(line: $0) },
+                                // Never from a saved link or file.
+                                onMakeTodo: note.isDeleted || note.isSaved ? nil : { makeTodo(from: $0) },
+                                madeTodos: Set(Todos.madeFrom(note, among: allNotes).map { $0.title.lowercased() })
+                            )
                             if !note.isDeleted {
                                 Menu {
                                     Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
@@ -941,6 +988,29 @@ struct NoteDetailView: View {
 
     private func toggleSummaryTask(line: Int) {
         SummaryTasks.toggleLine(line, of: note, in: context)
+    }
+
+    /// A task line of the summary becomes a to-do of its own, in the same buckets; it opens only when asked to.
+    private func makeTodo(from task: String) {
+        Todos.create(fromTask: task, of: note, in: context)
+    }
+
+    /// The note this to-do was taken from, while it is there.
+    private var todoSource: Note? {
+        guard let id = note.todoSourceID else { return nil }
+        return allNotes.first { $0.id.uuidString == id && !$0.isDeleted }
+    }
+
+    private var addSubtaskButton: some View {
+        Button {
+            editor.perform(.appendChecklistItem)
+        } label: {
+            Label("Add Subtask", systemImage: "plus.circle")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color.brandTaskText)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
     }
 
     /// The note while dictating: live text in the accent color and a blinking cursor where it appears.

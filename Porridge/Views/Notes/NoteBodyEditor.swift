@@ -122,6 +122,11 @@ private struct NoteFormatButtons {
             Button { controller.perform(.setKind(.bullet)) } label: { Label("Bulleted List", systemImage: "list.bullet") }
             Button { controller.perform(.setKind(.numbered)) } label: { Label("Numbered List", systemImage: "list.number") }
             Button { controller.perform(.setKind(.quote)) } label: { Label("Quote", systemImage: "text.quote") }
+            Divider()
+            Button { controller.perform(.moveLine(up: true)) } label: { Label("Move Line Up", systemImage: "arrow.up") }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+            Button { controller.perform(.moveLine(up: false)) } label: { Label("Move Line Down", systemImage: "arrow.down") }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
         } label: {
             Image(systemName: "textformat")
         }

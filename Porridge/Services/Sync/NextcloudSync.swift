@@ -185,7 +185,10 @@ final class NextcloudSync {
                 output[collection.key] = result.merged.keys.sorted().compactMap { result.merged[$0] }
                 deleted[collection.key] = result.tombstones
                 newBase[collection.key] = result.merged.reduce(into: [:]) { base, entry in
-                    base[entry.key] = SyncBase(local: "", remote: SyncMerge.hash(entry.value))
+                    base[entry.key] = SyncBase(
+                        local: "", remote: SyncMerge.hash(entry.value),
+                        text: Todos.isTodoRecord(entry.value) ? entry.value["text"] as? String : nil
+                    )
                 }
             }
             output["deleted"] = deleted

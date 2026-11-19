@@ -10,6 +10,9 @@ typealias SyncRecord = [String: Any]
 struct SyncBase: Codable, Equatable {
     var local: String
     var remote: String
+    /// The text of a to-do as it was written to the file: the base of merging the ticks of its subtasks when
+    /// both sides changed it (`Todos.mergeRecords`). Nil for every other record.
+    var text: String? = nil
 }
 
 /// Three-way merge of one collection (notes, folders, …) between this device and the sync file. Kept free of
@@ -111,7 +114,12 @@ enum SyncMerge {
                 case (false, true): takeRemote = true
                 case (true, true): takeRemote = int64(r["updatedAt"] ?? r["createdAt"]) > l.updatedAt
                 }
-                if takeRemote {
+                // A to-do changed on both sides keeps the ticks of both.
+                if localDirty, remoteDirty,
+                   let merged = Todos.mergeRecords(base: b?.text, winner: takeRemote ? r : l.record, loser: takeRemote ? l.record : r, now: now) {
+                    result.merged[id] = merged
+                    result.toApply[id] = merged
+                } else if takeRemote {
                     result.merged[id] = r
                     if remoteDirty { result.toApply[id] = r }
                 } else {

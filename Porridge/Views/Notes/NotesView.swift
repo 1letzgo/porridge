@@ -75,6 +75,8 @@ struct NotesView: View {
             if let note = selectedNote {
                 NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id)
                     .id(note.id)
+                    .environment(\.openNote, { openNote($0) })
+                    .environment(\.allNotes, notes)
             } else {
                 EmptyStateView(title: "No Note Selected", message: "Pick a note from the list.", systemImage: "note.text")
             }
@@ -96,6 +98,8 @@ struct NotesView: View {
                         if let note = notes.first(where: { $0.id == id }) ?? (draft?.id == id ? draft : nil) {
                             NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id, onBack: { selection = nil })
                                 .id(note.id)
+                                .environment(\.openNote, { openNote($0) })
+                                .environment(\.allNotes, notes)
                         }
                     }
                 }
@@ -656,6 +660,7 @@ struct NotesView: View {
                                     }
                                     createOption("Link", systemImage: "link", tint: .brandLink) { showAddLink = true }
                                     createOption("Meeting", systemImage: "mic.fill", tint: .brandNavy) { showCalendar = true }
+                                    createOption("To-do", systemImage: "checkmark.square", tint: .brandTask) { addNote(todo: true) }
                                     createOption("Note", systemImage: "square.and.pencil", tint: .brandSky) { addNote() }
                                 }
                                 FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
@@ -1010,9 +1015,11 @@ struct NotesView: View {
         openProject.map(Projects.key)
     }
 
-    private func addNote() {
+    /// A new note, or a to-do: the same note with a done state, made the same way.
+    private func addNote(todo: Bool = false) {
         let note = Note()
         note.source = .note
+        if todo { note.todoState = .open }
         // In a project the new note goes into it.
         if let project = projectForNew {
             note.projectIDs = [project]
@@ -1121,17 +1128,29 @@ struct NoteRow: View {
     let stage: String?
 
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.modelContext) private var context
 
     var body: some View {
-        // Plain notes are sky blue, recorded meetings navy, saved links orange.
+        // Plain notes are sky blue, recorded meetings navy, saved links orange; a to-do is its green box.
         HStack(alignment: .top, spacing: 12) {
-            ThingsRowIcon(systemImage: icon, tint: tint, isPinned: note.isPinned)
-                .accessibilityLabel(note.isLink ? "Link" : note.isImage ? "Image" : note.isFile ? "File" : note.isRecording ? "Meeting" : "Note")
-                .padding(.top, 1)
+            Group {
+                if note.isTodo {
+                    // Ticked right in the list; a deleted one is only shown.
+                    TodoCheckbox(isDone: note.isDone, isPinned: note.isPinned) {
+                        withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) }
+                    }
+                    .disabled(note.isDeleted)
+                } else {
+                    ThingsRowIcon(systemImage: icon, tint: tint, isPinned: note.isPinned)
+                        .accessibilityLabel(note.isLink ? "Link" : note.isImage ? "Image" : note.isFile ? "File" : note.isRecording ? "Meeting" : "Note")
+                }
+            }
+            .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
                 Text(note.displayTitle)
                     .font(.body)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(note.isDone ? .secondary : .primary)
+                    .strikethrough(note.isDone, color: .secondary)
                     .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                 if !note.preview.isEmpty {
                     Text(note.preview)
@@ -1187,6 +1206,9 @@ struct NoteRow: View {
             // "30. Oct 10:52": day and time without the "at" in between, to fit a narrow sidebar.
             Text(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
                 .fixedSize()
+        }
+        if note.isTodo {
+            TodoProgressLabel(progress: note.todoProgress)
         }
         if let domain = note.domain, !compact {
             Label(domain, systemImage: "link")
@@ -1342,6 +1364,10 @@ enum ListPage: Hashable {
 extension EnvironmentValues {
     /// Goes to another page of the list column; for the subpages of Settings.
     @Entry var openListPage: (ListPage) -> Void = { _ in }
+    /// Opens a note by its id; for the way from a to-do back to the note it was made from.
+    @Entry var openNote: (UUID) -> Void = { _ in }
+    /// Every note of the list, for views that look up others (the to-dos made from a summary).
+    @Entry var allNotes: [Note] = []
 }
 
 /// Files come into the list through a picker ("Photo or File") or by dropping them on it (Mac, iPad).

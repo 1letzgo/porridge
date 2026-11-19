@@ -13,6 +13,10 @@ enum NoteEditorCommand {
     case shift(deeper: Bool)
     /// Bold (`**`) or italic (`*`) around the selection or the word at the cursor; again removes it.
     case toggleInline(String)
+    /// Moves the line with the cursor one place up or down (reorders list items and subtasks).
+    case moveLine(up: Bool)
+    /// A new unticked checklist item at the end, with the cursor in it (a to-do's "Add Subtask").
+    case appendChecklistItem
 }
 
 /// The note as one native text view (TextKit 2), the same editing logic on both platforms:
@@ -481,9 +485,60 @@ final class NoteTextCoordinator: NSObject {
             shift(deeper: deeper)
         case .toggleInline(let mark):
             toggleInline(mark)
+        case .moveLine(let up):
+            moveLine(up: up)
+            return
+        case .appendChecklistItem:
+            appendChecklistItem()
+            return
         }
         textView.didRestyle()
         commit()
+    }
+
+    /// Line `index` of the Markdown is paragraph `index` of the view: where it starts.
+    private func location(ofLine index: Int) -> Int {
+        var location = 0
+        for _ in 0..<index {
+            let paragraph = paragraphRange(at: location)
+            location = paragraph.location + paragraph.length
+        }
+        return min(location, string.length)
+    }
+
+    /// Markdown changed here as lines (move, append): written to the note and shown, the cursor on `line`.
+    private func replaceMarkdown(_ markdown: String, cursorLine line: Int, atEnd: Bool) {
+        guard let textView else { return }
+        load(markdown)
+        let start = location(ofLine: line)
+        let end = contentRange(of: paragraphRange(at: start))
+        textView.selectedRange = NSRange(location: atEnd ? end.location + end.length : textStart(of: paragraphRange(at: start)), length: 0)
+        resetTypingAttributes()
+        textView.didRestyle()
+        if text.wrappedValue != markdown { text.wrappedValue = markdown }
+    }
+
+    private func moveLine(up: Bool) {
+        guard let textView else { return }
+        flush()
+        let markdown = text.wrappedValue
+        let before = string.substring(to: min(textView.selectedRange.location, string.length))
+        let line = before.components(separatedBy: "\n").count - 1
+        let moved = Todos.moveLine(line, by: up ? -1 : 1, in: markdown)
+        guard moved != markdown else { return }
+        replaceMarkdown(moved, cursorLine: line + (up ? -1 : 1), atEnd: true)
+    }
+
+    private func appendChecklistItem() {
+        guard let textView else { return }
+        flush()
+        let markdown = Todos.appendingSubtask(to: text.wrappedValue)
+        #if os(macOS)
+        textView.window?.makeFirstResponder(textView)
+        #else
+        textView.becomeFirstResponder()
+        #endif
+        replaceMarkdown(markdown, cursorLine: markdown.components(separatedBy: "\n").count - 1, atEnd: true)
     }
 
     private func shift(deeper: Bool) {

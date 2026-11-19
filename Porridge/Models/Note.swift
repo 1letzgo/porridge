@@ -54,6 +54,14 @@ final class Note {
     /// The buckets (`NoteFolder.id` as uppercase strings) suggested for the note; taken on or dropped by the user.
     var suggestedProjectIDs: [String] = []
 
+    // A to-do is a note like any other with a done state (`Todos`); its subtasks are the checklist lines of `text`.
+    /// `TodoState` raw value: "open", "done", or "none" for a to-do turned back into a note; nil = never a to-do.
+    var todoStateRaw: String?
+    /// When the to-do was ticked; nil while it is open.
+    var todoDoneAt: Date?
+    /// The note (`id` as uppercase string) whose summary task this to-do was made from.
+    var todoSourceID: String?
+
     init() {
         self.id = UUID()
     }
@@ -65,7 +73,8 @@ final class Note {
 
     var isDeleted: Bool { deletedAt != nil }
 
-    var isArchived: Bool { archivedAt != nil }
+    /// Archived by hand, or a to-do done before today (`isPutAway`).
+    var isArchived: Bool { archivedAt != nil || isPutAway }
 
     var speakerMode: SpeakerMode {
         get { SpeakerMode(rawValue: speakerModeRaw) ?? .none }
@@ -94,7 +103,7 @@ final class Note {
 
     /// In the inbox: in no bucket. Everything stays there until it is put into one, and comes back when it is
     /// taken out of its last one.
-    var isInInbox: Bool { projectIDs.isEmpty && deletedAt == nil && archivedAt == nil }
+    var isInInbox: Bool { projectIDs.isEmpty && deletedAt == nil && !isArchived }
 
     /// Every file of the note in the store: its recordings and its attachments.
     var storedFileNames: [String] {
@@ -168,6 +177,7 @@ final class Note {
         if !title.isEmpty { parts.append("# \(title)") }
         parts.append(createdAt.formatted(date: .long, time: .shortened))
         if let url { parts.append(url) }
+        if isTodo { parts.append(isDone ? "[x] To-do, done" : "[ ] To-do") }
         if !text.isEmpty { parts.append(text) }
         if let summary, !summary.isEmpty { parts.append("## Summary\n\n\(summary)") }
         if !segments.isEmpty { parts.append("## Transcript\n\n\(transcriptText())") }
@@ -185,6 +195,11 @@ final class Note {
 
     /// Text for the list row: the body without Markdown marks (and without the first line when it serves as title).
     var preview: String {
+        // An open to-do shows what is still to do.
+        if isTodo, !isDone {
+            let open = Todos.subtasks(in: text).filter { !$0.done }.map(\.text)
+            if !open.isEmpty { return NoteText.plainLines(open.joined(separator: " · ")).joined(separator: " ") }
+        }
         let lines = NoteText.plainLines(text)
         let own = (title.trimmingCharacters(in: .whitespaces).isEmpty ? lines.dropFirst() : lines[...]).joined(separator: " ")
         if !own.isEmpty { return own }

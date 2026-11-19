@@ -139,7 +139,8 @@ struct ProjectPage: View {
             }
             .padding(.bottom, Look.headerGap)
             List(selection: $selection) {
-                section("Meetings", content.meetings, kind: .meetings, tint: .brandNavy, isFirst: true)
+                section("To-dos", content.todos, kind: .todos, tint: .brandTask, isFirst: true)
+                section("Meetings", content.meetings, kind: .meetings, tint: .brandNavy, isFirst: content.todos.isEmpty || !filter.shows(.todos))
                 section("Notes", content.notes, kind: .notes, tint: .brandSky, isFirst: false)
                 section("Links", content.links, kind: .links, tint: .brandLink, isFirst: false)
                 section("Images", content.images, kind: .images, tint: .brandNavy, isFirst: false)
@@ -191,6 +192,8 @@ struct ProjectPage: View {
 /// What is in a project, newest first. Archived elements are not
 /// in it: they are in the archive.
 struct ProjectContent {
+    /// Open ones first, then those done today (done earlier ones are put away, see `Note.isPutAway`).
+    var todos: [Note] = []
     var meetings: [Note] = []
     var notes: [Note] = []
     var links: [Note] = []
@@ -202,6 +205,7 @@ struct ProjectContent {
     init(of project: NoteFolder, notes all: [Note]) {
         let id = Projects.key(project)
         for note in all where !note.isDeleted && !note.isArchived && note.projectIDs.contains(id) { add(note) }
+        sortTodos()
     }
 
     /// The content of every bucket in one pass over the notes, by the bucket's key (`Projects.key`). For lists of
@@ -211,11 +215,18 @@ struct ProjectContent {
         for note in all where !note.isDeleted && !note.isArchived {
             for id in note.projectIDs { contents[id, default: ProjectContent()].add(note) }
         }
+        for key in contents.keys { contents[key]?.sortTodos() }
         return contents
     }
 
+    private mutating func sortTodos() {
+        todos = todos.filter { !$0.isDone } + todos.filter(\.isDone)
+    }
+
     private mutating func add(_ note: Note) {
-        if note.isLink {
+        if note.isTodo {
+            todos.append(note)
+        } else if note.isLink {
             links.append(note)
         } else if note.isStored {
             // Read once: telling an image from a file decodes the note's attachments.
@@ -229,7 +240,8 @@ struct ProjectContent {
 
     func count(_ kind: ProjectFilter) -> Int {
         switch kind {
-        case .all: meetings.count + notes.count + links.count + images.count + files.count
+        case .all: todos.count + meetings.count + notes.count + links.count + images.count + files.count
+        case .todos: todos.count
         case .meetings: meetings.count
         case .notes: notes.count
         case .links: links.count
@@ -239,11 +251,13 @@ struct ProjectContent {
     }
 
     var lastChange: Date? {
-        (meetings + notes + links + images + files).map(\.updatedAt).max()
+        (todos + meetings + notes + links + images + files).map(\.updatedAt).max()
     }
 
     var summary: String {
+        let open = todos.filter { !$0.isDone }.count
         let parts = [
+            (open, String(localized: "Open To-do"), String(localized: "Open To-dos")),
             (meetings.count, String(localized: "Meeting"), String(localized: "Meetings")),
             (notes.count, String(localized: "Note"), String(localized: "Notes")),
             (links.count, String(localized: "Link"), String(localized: "Links")),
@@ -255,11 +269,12 @@ struct ProjectContent {
 }
 
 enum ProjectFilter: CaseIterable {
-    case all, meetings, notes, links, images, files
+    case all, todos, meetings, notes, links, images, files
 
     var title: LocalizedStringKey {
         switch self {
         case .all: "All"
+        case .todos: "To-dos"
         case .meetings: "Meetings"
         case .notes: "Notes"
         case .links: "Links"

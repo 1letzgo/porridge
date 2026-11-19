@@ -34,6 +34,15 @@ extension ChatRetrieval {
         return result
     }
 
+    /// "To-do, open, 1 of 3 subtasks done: Pack" or "To-do, done on 19 Nov 2026: Pack".
+    static func todoLine(_ note: Note) -> String {
+        var head = "To-do, " + (note.isDone ? "done" : "open")
+        if note.isDone, let at = note.todoDoneAt { head += " on " + at.formatted(.dateTime.day().month(.abbreviated).year()) }
+        let progress = note.todoProgress
+        if progress.total > 0 { head += ", \(progress.done) of \(progress.total) subtasks done" }
+        return head + ": " + note.displayTitle
+    }
+
     /// Everything a note holds, cut into passages: its own text, its summary, the page of a link, the text read out
     /// of an image or a file, and the transcript of a meeting. Whatever comes in is read into the index this way.
     static func chunks(from notes: [Note]) -> [ChatChunk] {
@@ -50,6 +59,10 @@ extension ChatRetrieval {
             let attachments = note.attachmentsData == nil ? [] : note.attachments
             if !attachments.isEmpty {
                 result.append(chunk(note, text: (note.isImage ? "Image: " : "File: ") + attachments.map(\.name).joined(separator: ", ")))
+            }
+            // A to-do says so, and whether it is done: "what is still open?" finds it.
+            if note.isTodo {
+                result.append(chunk(note, text: todoLine(note)))
             }
             if let summary = note.summary, !summary.isEmpty {
                 for piece in pieces(summary.components(separatedBy: "\n")) {

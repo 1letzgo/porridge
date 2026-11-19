@@ -40,6 +40,10 @@ enum SyncRecords {
         r["audioFileName"] = note.audioFileName
         r["speakersData"] = note.speakersData.flatMap { String(data: $0, encoding: .utf8) }
         r["segmentsData"] = note.segmentsData.flatMap { String(data: $0, encoding: .utf8) }
+        // Left out for a note that never was a to-do, so the records (and their hashes) of all other notes stay.
+        r["todoStateRaw"] = note.todoStateRaw
+        r["todoDoneAt"] = note.todoDoneAt.map { ms($0) }
+        r["todoSourceID"] = note.todoSourceID
         return r
     }
 
@@ -83,6 +87,13 @@ enum SyncRecords {
         note.audioFileName = r["audioFileName"] as? String
         note.speakersData = (r["speakersData"] as? String).map { Data($0.utf8) }
         note.segmentsData = (r["segmentsData"] as? String).map { Data($0.utf8) }
+        // A record without `todoStateRaw` comes from a version without to-dos (or the note never was one): what
+        // this device knows of the to-do stays. Turning a to-do back into a note writes "none".
+        if let state = r["todoStateRaw"] as? String {
+            note.todoStateRaw = state
+            note.todoDoneAt = date(r["todoDoneAt"])
+            note.todoSourceID = r["todoSourceID"] as? String
+        }
         // A record written by a version from before the inbox has none of these fields (newer ones always write
         // `sourceRaw`): what this device knows stays.
         guard r["sourceRaw"] != nil else { return }

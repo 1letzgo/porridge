@@ -44,6 +44,11 @@ enum HomeList {
 enum Archive {
     static func set(_ archived: Bool, _ note: Note, in context: ModelContext) {
         guard note.modelContext != nil else { return }
+        // A done to-do from an earlier day is out of the lists by itself: taken out of the archive it is open again.
+        if !archived, note.isPutAway {
+            note.todoState = .open
+            note.todoDoneAt = nil
+        }
         note.archivedAt = archived ? Date() : nil
         if archived { note.isPinned = false }
         note.updatedAt = Date()
