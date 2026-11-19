@@ -4,24 +4,12 @@ import SwiftUI
 /// The row in the settings that leads to the known voices.
 struct VoicesRow: View {
     @Query private var voices: [VoiceProfile]
-    #if os(macOS)
-    @State private var isShown = false
-    #endif
 
     @Environment(\.openListPage) private var openListPage
 
     var body: some View {
-        #if os(iOS)
         Button { openListPage(.voices) } label: { label }
             .buttonStyle(.plain)
-        #else
-        Button { isShown = true } label: { label }
-            .buttonStyle(.plain)
-            .sheet(isPresented: $isShown) {
-                VoicesView()
-                    .frame(width: 520, height: 560)
-            }
-        #endif
     }
 
     private var label: some View {
@@ -54,16 +42,6 @@ struct VoicesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            #if !os(iOS)
-            HStack {
-                Text("Known Voices").font(.title2.weight(.bold))
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            #endif
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(sorted) { voice in
@@ -84,9 +62,7 @@ struct VoicesView: View {
         }
         .background(Color.appBackground)
         .brandNavigationTitle("Known Voices")
-        #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
-        #endif
         .alert("Rename Voice", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Cancel", role: .cancel) { renaming = nil }

@@ -51,9 +51,6 @@ struct RecordMeetingSheet: View {
             }
             .task { await load() }
         }
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 480)
-        #endif
     }
 
     /// For meetings that are not in the calendar; on top of the list, in light blue.
@@ -124,12 +121,6 @@ struct RecordMeetingSheet: View {
     }
 
     private func openSettings() {
-        #if os(iOS)
         if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-        #else
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
-            NSWorkspace.shared.open(url)
-        }
-        #endif
     }
 }

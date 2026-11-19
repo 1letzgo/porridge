@@ -110,9 +110,16 @@ targets:
     platform: macOS
     deploymentTarget: "15.0"
     sources:
+      # The Mac app has its own AppKit interface (PorridgeMac); it shares the models, services, the Markdown
+      # editor (Editor) and the assets, not the SwiftUI views and their entry.
       - path: Porridge
         excludes:
           - App/PorridgeApp.swift
+          - App/RootView.swift
+          - App/OnboardingView.swift
+          - Views
+          - Design/Theme.swift
+          - Design/BrandMenuLabel.swift
           - Info.plist
           - Porridge.entitlements
       - path: Shared

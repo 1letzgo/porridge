@@ -76,9 +76,6 @@ struct AddModelSheet: View {
                 }
             }
         }
-        #if os(macOS)
-        .frame(minWidth: 460, minHeight: 520)
-        #endif
     }
 }
 

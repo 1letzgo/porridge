@@ -3,23 +3,17 @@ import SwiftUI
 import UserNotifications
 
 struct NotesView: View {
-    var openSettings: () -> Void = {}
-
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
-    #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
-    #endif
     @Environment(ProcessingService.self) private var processing
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
     /// The tasks and decisions of all notes, taken from their summaries.
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
 
     @State private var selection: UUID?
-    #if os(iOS)
     /// The pages on the stack: those of the list column, and on a phone the open note on top.
     @State private var path: [ListRoute] = []
-    #endif
     /// A new note that is not saved yet; it is stored when it gets its first content.
     @State private var draft: Note?
     /// Which column is shown on a narrow screen. Set from code so a new note opens reliably.
@@ -66,11 +60,7 @@ struct NotesView: View {
 
     private var splitView: some View {
         NavigationSplitView(preferredCompactColumn: $column) {
-            #if os(iOS)
             pageStack
-            #else
-            list
-            #endif
         } detail: {
             if let note = selectedNote {
                 NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id)
@@ -83,7 +73,6 @@ struct NotesView: View {
         }
     }
 
-    #if os(iOS)
     /// Every page is a real page of the system's stack: it slides in, the swipe from the edge follows the finger,
     /// and what lies below keeps its scroll position. The floating buttons stay in place above the pages.
     private var pageStack: some View {
@@ -130,11 +119,9 @@ struct NotesView: View {
             path = pages.map(ListRoute.page) + [.page(page)]
         }
     }
-    #endif
 
     @ViewBuilder
     private var columns: some View {
-        #if os(iOS)
         Group {
             if sizeClass == .compact {
                 pageStack
@@ -151,9 +138,6 @@ struct NotesView: View {
             // Swiped back from the note.
             if sizeClass == .compact, selection != nil, path.last?.isPage != false { selection = nil }
         }
-        #else
-        splitView
-        #endif
     }
 
     var body: some View {
@@ -273,28 +257,9 @@ struct NotesView: View {
                 ShareImport.importInbox(context: context, processing: processing)
             }
         }
-        #if os(iOS)
         // From a widget, a control or a shortcut; on a cold launch the action waits until the list appears.
         .onReceive(NotificationCenter.default.publisher(for: .porridgeQuickAction)) { _ in runQuickAction() }
         .onAppear { runQuickAction() }
-        #endif
-        #if os(macOS)
-        #if os(macOS)
-        .focusedSceneValue(\.libraryActions, LibraryActions(
-            canCreate: page != .archive && page != .trash,
-            plaudSignedIn: plaudSignedIn,
-            recordMeeting: { showCalendar = true },
-            addLink: { showAddLink = true },
-            newProject: page == .home ? { showNewProject = true } : nil,
-            importAudio: { showAudioImporter = true },
-            importPlaud: { showPlaud = true },
-            search: { page = page == .search ? .home : .search }
-        ))
-        #endif
-        .onReceive(NotificationCenter.default.publisher(for: .newNote)) { _ in
-            addNote()
-        }
-        #endif
         .confirmationDialog("Delete All in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
             Button("Delete All", role: .destructive) {
                 if let selection, notes.first(where: { $0.id == selection })?.isDeleted == true { self.selection = nil }
@@ -322,39 +287,19 @@ struct NotesView: View {
 
     // MARK: - List
 
-    private var list: some View {
-        listColumn(page)
-    }
-
     private func listColumn(_ shown: ListPage) -> some View {
         VStack(spacing: 0) {
-            #if os(iOS)
             ChromeBar(title: listTitle(shown), systemImage: listIcon(shown), tint: listTint(shown), onBack: barBack(shown)) {
                 listActions(shown)
             }
             .padding(.bottom, Look.headerGap)
-            #else
-            // The list's name at the top of the sidebar, as in Things; the actions sit in the window's toolbar.
-            ListTitle(title: listTitle(shown), systemImage: listIcon(shown), tint: listTint(shown))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, 10)
-                .padding(.bottom, Look.headerGap)
-            #endif
 
             pageContent(shown)
         }
         .background(Color.appBackground)
         .navigationTitle(listTitle(shown))
-        #if os(iOS)
         // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
         .toolbar(.hidden, for: .navigationBar)
-        #else
-        .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 480)
-        .toolbar {
-            listToolbar
-        }
-        #endif
     }
 
     @ViewBuilder
@@ -772,81 +717,6 @@ struct NotesView: View {
         .help("Import")
     }
 
-    @ToolbarContentBuilder
-    private var listToolbar: some ToolbarContent {
-        if let barBack = barBack(page) {
-            ToolbarItem(placement: .navigation) {
-                Button(action: barBack) {
-                    Label("Back", systemImage: "chevron.left")
-                }
-                .accessibilityLabel("Back")
-            }
-        }
-        createToolbar
-        if page == .chat {
-            ToolbarItemGroup(placement: .primaryAction) { ChatBarActions(navigation: chatNavigation) }
-        } else {
-            ToolbarItem(placement: .primaryAction) {
-                Button { openChat() } label: {
-                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
-                }
-                .accessibilityLabel("Chat")
-                .help("Chat with Your Buckets")
-            }
-        }
-        if page != .search {
-            ToolbarItem(placement: .primaryAction) {
-                Button { page = .search } label: {
-                    Label("Search", systemImage: "magnifyingglass")
-                }
-                .accessibilityLabel("Search")
-                .help("Search")
-            }
-        }
-        if page == .home {
-            if notes.contains(where: \.isDeleted) {
-                ToolbarItem(placement: .primaryAction) { trashButton }
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button { openSettings() } label: {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .accessibilityLabel("Settings")
-                .help("Settings")
-            }
-        }
-    }
-
-    /// The Mac's plus: the same options as the button on iOS, or emptying the trash.
-    @ToolbarContentBuilder
-    private var createToolbar: some ToolbarContent {
-        if page == .trash {
-            if notes.contains(where: \.isDeleted) {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(role: .destructive) { confirmEmptyTrash = true } label: {
-                        Label("Delete All", systemImage: "trash")
-                    }
-                }
-            }
-        } else if page != .archive {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { addNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
-                    Button { showCalendar = true } label: { Label("Record Meeting", systemImage: "mic.fill") }
-                    Button { showAddLink = true } label: { Label("Add Link", systemImage: "link") }
-                    if page == .home {
-                        Button { showNewProject = true } label: { Label("New Bucket", systemImage: "folder.badge.plus") }
-                    }
-                } label: {
-                    Label("New", systemImage: "plus")
-                }
-                .accessibilityLabel("New")
-                .help("New")
-            }
-            ToolbarItem(placement: .primaryAction) { importMenu }
-        }
-    }
-
     // MARK: - Content of the list
 
     /// The project shown, if any (it may have been deleted on another device).
@@ -887,13 +757,7 @@ struct NotesView: View {
     /// The back pill of the bar: from a page to the long list, from an archived project to the archive.
     private func barBack(_ shown: ListPage) -> (() -> Void)? {
         guard shown != .home else { return nil }
-        #if os(iOS)
         return { if !path.isEmpty { path.removeLast() } }
-        #else
-        // An archived project was opened from the archive.
-        if case .project = shown, openProject?.isArchived == true { return { page = .archive } }
-        return { page = .home }
-        #endif
     }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
@@ -1029,7 +893,6 @@ struct NotesView: View {
         column = .detail
     }
 
-    #if os(iOS)
     private func runQuickAction() {
         switch QuickActionCenter.take() {
         case .newNote:
@@ -1042,7 +905,6 @@ struct NotesView: View {
             break
         }
     }
-    #endif
 
     /// Records a meeting for a calendar appointment: the note gets its title.
     private func startRecording(for event: CalendarAppointment) {
@@ -1245,80 +1107,6 @@ struct NoteRow: View {
     }
 }
 
-/// Title in the navigation bar in the style of Things: a colored square with the list's symbol, then the name in bold.
-private struct ListTitle: View {
-    let title: String
-    let systemImage: String
-    var tint: Color = .brandSky
-    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 22
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.caption2.weight(.bold))
-                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                .foregroundStyle(tint.onFill)
-                .frame(width: min(size, 32), height: min(size, 32))
-                .background(tint, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            Text(title)
-                .font(.headline.weight(.bold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
-    }
-}
-
-#if os(macOS)
-/// What the menu bar can do with the list.
-struct LibraryActions {
-    let canCreate: Bool
-    let plaudSignedIn: Bool
-    let recordMeeting: () -> Void
-    let addLink: () -> Void
-    let newProject: (() -> Void)?
-    let importAudio: () -> Void
-    let importPlaud: () -> Void
-    let search: () -> Void
-}
-
-/// What the menu bar can do with the open note.
-struct NoteActions {
-    let isDeleted: Bool
-    let isPinned: Bool
-    let hasSummary: Bool
-    let canSummarize: Bool
-    /// A plain note: no recording and no link. It is enhanced instead of summarized.
-    let isPlainNote: Bool
-    let canEnhance: Bool
-    let canUndoEnhance: Bool
-    let canEditSummary: Bool
-    let canTranscribe: Bool
-    let hasTranscript: Bool
-    let togglePin: () -> Void
-    let summarize: () -> Void
-    let enhance: () -> Void
-    let undoEnhance: () -> Void
-    let editSummary: () -> Void
-    let transcribeAgain: () -> Void
-    let copyTranscript: () -> Void
-    let delete: () -> Void
-    let recover: () -> Void
-}
-
-extension FocusedValues {
-    @Entry var libraryActions: LibraryActions?
-    @Entry var noteActions: NoteActions?
-}
-
-extension Notification.Name {
-    /// File → New Note (⌘N) in the menu bar.
-    static let newNote = Notification.Name("PorridgeNewNote")
-}
-#endif
-
-#if os(iOS)
 /// A page on the stack.
 enum ListRoute: Hashable {
     case page(ListPage)
@@ -1330,7 +1118,6 @@ enum ListRoute: Hashable {
 
     var isPage: Bool { page != nil }
 }
-#endif
 
 /// What the list column shows.
 enum ListPage: Hashable {

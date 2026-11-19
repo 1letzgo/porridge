@@ -1,58 +1,13 @@
 import SwiftUI
 
-/// The third-party packages and models the app uses, from `Acknowledgements.json` (built by
-/// scripts/acknowledgements.py): name, version, license and the full license text.
-struct Acknowledgements: Decodable {
-    struct Entry: Decodable, Identifiable {
-        let name: String
-        let version: String
-        let license: String
-        let url: String
-        /// Key into `licenses`: the same text is stored once.
-        let text: String
-
-        var id: String { name }
-    }
-
-    struct Section: Decodable, Identifiable {
-        let title: String
-        let entries: [Entry]
-
-        var id: String { title }
-    }
-
-    let licenses: [String: String]
-    let sections: [Section]
-
-    static let bundled: Acknowledgements = {
-        guard let url = Bundle.main.url(forResource: "Acknowledgements", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let list = try? JSONDecoder().decode(Acknowledgements.self, from: data)
-        else { return Acknowledgements(licenses: [:], sections: []) }
-        return list
-    }()
-}
-
-/// The Settings row that opens the list: pushed on iOS, a sheet in the Settings window of the Mac.
+/// The Settings row that opens the list (pushed onto the Settings page).
 struct AcknowledgementsRow: View {
-    #if os(macOS)
-    @State private var isShown = false
-    #endif
 
     @Environment(\.openListPage) private var openListPage
 
     var body: some View {
-        #if os(iOS)
         Button { openListPage(.acknowledgements) } label: { label }
             .buttonStyle(.plain)
-        #else
-        Button { isShown = true } label: { label }
-            .buttonStyle(.plain)
-            .sheet(isPresented: $isShown) {
-                AcknowledgementsView()
-                    .frame(width: 600, height: 680)
-            }
-        #endif
     }
 
     private var label: some View {
@@ -75,16 +30,6 @@ struct AcknowledgementsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            #if !os(iOS)
-            HStack {
-                Text("Acknowledgements").font(.title2.weight(.bold))
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            #endif
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 32) {
                     Text("Porridge is built with these open source packages and models. Thank you to everyone who made them.")
@@ -103,10 +48,8 @@ struct AcknowledgementsView: View {
         }
         .background(Color.appBackground)
         .brandNavigationTitle("Acknowledgements")
-        #if os(iOS)
         // Our own bar (ChromeBar) replaces the system one, as in Settings.
         .toolbar(.hidden, for: .navigationBar)
-        #endif
     }
 
     /// A group in the look of the Settings cards: bold title over a hairline, rows separated by hairlines.

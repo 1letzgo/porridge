@@ -1,11 +1,7 @@
 import AVFoundation
 import SwiftData
 import SwiftUI
-#if os(iOS)
 import UIKit
-#else
-import AppKit
-#endif
 
 private enum NoteTab: Hashable {
     case note
@@ -121,7 +117,6 @@ struct NoteDetailView: View {
         .frame(maxWidth: 820)
         .frame(maxWidth: .infinity)
         .modifier(NotePageScroll(following: liveText, isEditing: editor.isEditing))
-        #if os(iOS)
         .overlay(alignment: .bottom) {
             if editor.isEditing, !note.isDeleted, tab == .note, dictation.phase == .idle {
                 NoteKeyboardBar(controller: editor)
@@ -129,7 +124,6 @@ struct NoteDetailView: View {
                     .padding(.bottom, 6)
             }
         }
-        #endif
         .background(Color.appBackground)
         .inlineNavigationTitle()
         .keyboardDoneBar(isShown: focused) { focused = false }
@@ -144,30 +138,6 @@ struct NoteDetailView: View {
             }
         }
         .toolbar { toolbar }
-        #if os(macOS)
-        .focusedSceneValue(\.noteActions, NoteActions(
-            isDeleted: note.isDeleted,
-            isPinned: note.isPinned,
-            hasSummary: note.summary != nil,
-            canSummarize: !isSummarizing && canSummarize,
-            isPlainNote: !opensOnSummary,
-            canEnhance: canEnhance,
-            canUndoEnhance: processing.canUndoEnhance(note),
-            canEditSummary: !isSummarizing,
-            canTranscribe: note.hasLocalAudio && processing.stages[note.id] == nil,
-            hasTranscript: !note.segments.isEmpty,
-            togglePin: { note.isPinned.toggle(); try? context.save() },
-            summarize: { requestSummary() },
-            enhance: { showEnhanceOptions = true },
-            undoEnhance: { processing.undoEnhance(note) },
-            editSummary: { startEditingSummary() },
-            transcribeAgain: { processing.enqueue(.transcript(note.id)) },
-            copyTranscript: { Clipboard.copy(note.transcriptText()) },
-            delete: { NoteStore.trash(note, in: context); onClose() },
-            recover: { restore() }
-        ))
-        #endif
-        #if os(iOS)
         .safeAreaInset(edge: .top, spacing: 0) {
             if let onBack {
                 ChromeBar(title: barTitle, systemImage: barIcon, tint: barTint, onBack: onBack) {
@@ -179,7 +149,6 @@ struct NoteDetailView: View {
             }
         }
         .toolbar(onBack == nil ? .automatic : .hidden, for: .navigationBar)
-        #endif
         .overlay(alignment: .bottomTrailing) {
             if tab == .note, processing.stages[note.id] == nil, !note.isDeleted {
                 DictationButton(dictation: dictation) {
@@ -971,12 +940,7 @@ struct NoteDetailView: View {
 
     private func copySummary() {
         guard let summary = note.summary else { return }
-        #if os(iOS)
         UIPasteboard.general.string = summary
-        #else
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(summary, forType: .string)
-        #endif
     }
 
     private func deleteSummary() {
@@ -1029,14 +993,7 @@ struct NoteDetailView: View {
                 .padding(.horizontal, 5)
                 .padding(.top, 8)
                 .id(NotePageScroll.followedID)
-            #if os(iOS)
             preview
-            #else
-            ScrollViewReader { proxy in
-                ScrollView { preview }
-                    .onChange(of: liveText) { proxy.scrollTo(NotePageScroll.followedID, anchor: .bottom) }
-            }
-            #endif
         }
     }
 
@@ -1213,7 +1170,6 @@ private struct NotePageScroll: ViewModifier {
     let isEditing: Bool
 
     func body(content: Content) -> some View {
-        #if os(iOS)
         ScrollViewReader { proxy in
             ScrollView { content }
                 .scrollDismissesKeyboard(.interactively)
@@ -1221,9 +1177,6 @@ private struct NotePageScroll: ViewModifier {
                 .contentMargins(.bottom, isEditing ? 58 : 0, for: .scrollContent)
                 .onChange(of: following) { proxy.scrollTo(Self.followedID, anchor: .bottom) }
         }
-        #else
-        content
-        #endif
     }
 }
 
@@ -1232,10 +1185,6 @@ private struct NoteTabScroll<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        #if os(iOS)
         VStack { content }
-        #else
-        ScrollView { content }
-        #endif
     }
 }

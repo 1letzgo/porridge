@@ -35,9 +35,6 @@ struct PlaudLoginView: View {
                     }
                 }
         }
-        #if os(macOS)
-        .frame(minWidth: 720, minHeight: 640)
-        #endif
     }
 
     /// Signing out: without this the cookies of the last sign-in are still there, and the next "Sign In" would
@@ -77,11 +74,7 @@ private final class PlaudWebCoordinator: NSObject, WKUIDelegate, WKNavigationDel
         popup.customUserAgent = plaudUserAgent
         popup.uiDelegate = self
         popup.navigationDelegate = self
-        #if os(iOS)
         popup.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        #else
-        popup.autoresizingMask = [.width, .height]
-        #endif
         webView.addSubview(popup)
         return popup
     }
@@ -114,16 +107,8 @@ private func makePlaudWebView(coordinator: PlaudWebCoordinator) -> WKWebView {
     return web
 }
 
-#if os(iOS)
 private struct PlaudWebView: UIViewRepresentable {
     func makeCoordinator() -> PlaudWebCoordinator { PlaudWebCoordinator() }
     func makeUIView(context: Context) -> WKWebView { makePlaudWebView(coordinator: context.coordinator) }
     func updateUIView(_ view: WKWebView, context: Context) {}
 }
-#else
-private struct PlaudWebView: NSViewRepresentable {
-    func makeCoordinator() -> PlaudWebCoordinator { PlaudWebCoordinator() }
-    func makeNSView(context: Context) -> WKWebView { makePlaudWebView(coordinator: context.coordinator) }
-    func updateNSView(_ view: WKWebView, context: Context) {}
-}
-#endif

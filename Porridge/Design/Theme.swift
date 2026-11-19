@@ -1,9 +1,5 @@
 import SwiftUI
-#if canImport(UIKit)
 import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 extension Color {
     static let brandSky = Color("BrandSky")
@@ -43,15 +39,9 @@ extension Color {
     }
 
     // System surfaces, the same idea on iOS and macOS.
-    #if canImport(UIKit)
     static var appBackground: Color { Color(.systemBackground) }
     static var appSecondaryBackground: Color { Color(.secondarySystemBackground) }
     static var appGroupedBackground: Color { Color(.systemGroupedBackground) }
-    #else
-    static var appBackground: Color { Color(nsColor: .controlBackgroundColor) }
-    static var appSecondaryBackground: Color { Color(nsColor: .textBackgroundColor) }
-    static var appGroupedBackground: Color { Color(nsColor: .windowBackgroundColor) }
-    #endif
 
     private static let speakerPalette: [Color] = [
         .brandSky,
@@ -169,11 +159,7 @@ extension View {
 
     /// Room below the last row of a list, so it can scroll out from under the floating buttons (iOS).
     func roomForFloatingButtons() -> some View {
-        #if os(iOS)
         contentMargins(.bottom, 96, for: .scrollContent)
-        #else
-        self
-        #endif
     }
 
     /// Small capsule label (speaker chips): a wash of the color.
@@ -495,12 +481,7 @@ struct EmptyStateView: View {
 
 enum Clipboard {
     static func copy(_ text: String) {
-        #if canImport(UIKit)
         UIPasteboard.general.string = text
-        #elseif canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #endif
     }
 }
 
@@ -532,11 +513,7 @@ struct BrandToolbarItem<Content: View>: ToolbarContent {
 /// The system setting Reduce Motion: what slides elsewhere only fades in then.
 enum Motion {
     static var isReduced: Bool {
-        #if canImport(UIKit)
         UIAccessibility.isReduceMotionEnabled
-        #else
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        #endif
     }
 
     static func slide(_ transition: AnyTransition) -> AnyTransition {
@@ -549,51 +526,29 @@ enum Motion {
 extension View {
     /// Small centered navigation title (iOS); the Mac has no navigation bar title mode.
     func inlineNavigationTitle() -> some View {
-        #if os(iOS)
         navigationBarTitleDisplayMode(.inline)
-        #else
-        self
-        #endif
     }
 
     func urlFieldStyle() -> some View {
-        #if os(iOS)
         keyboardType(.URL)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
-        #else
-        autocorrectionDisabled()
-        #endif
     }
 
     func secretFieldStyle() -> some View {
-        #if os(iOS)
         textContentType(.password)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
-        #else
-        autocorrectionDisabled()
-        #endif
     }
 
     func plainFieldStyle() -> some View {
-        #if os(iOS)
         autocorrectionDisabled()
             .textInputAutocapitalization(.never)
-        #else
-        autocorrectionDisabled()
-        #endif
     }
 
     /// Full screen on iOS, a sheet on the Mac.
     func fullScreenCoverOrSheet<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {
-        #if os(iOS)
         fullScreenCover(isPresented: isPresented, content: content)
-        #else
-        sheet(isPresented: isPresented) {
-            content().frame(minWidth: 520, minHeight: 680)
-        }
-        #endif
     }
 }
 
@@ -603,7 +558,6 @@ extension View {
 
     /// A "Done" pill in glass above the keyboard, at the right. Content scrolls underneath it. (iOS)
     func keyboardDoneBar(isShown: Bool, action: @escaping () -> Void) -> some View {
-        #if os(iOS)
         overlay(alignment: .bottomTrailing) {
             if isShown {
                 Button("Done", action: action)
@@ -616,9 +570,6 @@ extension View {
                     .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity)))
             }
         }
-        #else
-        self
-        #endif
     }
 
 }
@@ -634,7 +585,6 @@ struct BarBackground: ViewModifier {
     }
 }
 
-#if os(iOS)
 // MARK: - Swipe back
 
 /// Screens with our own bar (ChromeBar) hide the system navigation bar, which also turns off the swipe
@@ -649,7 +599,6 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
         viewControllers.count > 1
     }
 }
-#endif
 
 /// Unfolds in place what a list leaves out.
 struct MoreRow: View {

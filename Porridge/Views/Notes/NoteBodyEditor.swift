@@ -1,27 +1,7 @@
 import SwiftUI
 
-/// Lets the note screen reach into the editor: cursor position, keyboard, formatting.
-@MainActor
-@Observable
-final class NoteEditorController {
-    @ObservationIgnored private weak var coordinator: NoteTextCoordinator?
-    /// The body is being edited (the format bar is showing above the keyboard).
-    var isEditing = false
-    /// Nothing typed: follows every key press, while the note hears of the text only shortly after.
-    var isEmpty = true
-
-    /// Cursor as a character offset in the note's Markdown; the end of the text when nothing is being edited.
-    var cursorOffset: Int { coordinator?.cursorOffset() ?? 0 }
-
-    func blur() { coordinator?.blur() }
-
-    func perform(_ command: NoteEditorCommand) { coordinator?.perform(command) }
-
-    func bind(_ coordinator: NoteTextCoordinator) { self.coordinator = coordinator }
-}
-
 /// The body of a note: one text view with headings, lists, checklists and bold/italic, stored as Markdown
-/// (see `NoteMarkdown`). The format bar sits above the text on the Mac and above the keyboard on iOS.
+/// (see `NoteMarkdown`). The format bar sits above the keyboard.
 struct NoteBodyEditor: View {
     @Binding var text: String
     var isEditable = true
@@ -33,18 +13,9 @@ struct NoteBodyEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            #if os(macOS)
-            if isEditable { formatBar.padding(.bottom, 6) }
-            #endif
-            #if os(iOS)
             NoteTextView(text: $text, isEditable: isEditable, controller: controller, growsWithText: growsWithText)
                 .overlay(alignment: .topLeading) { placeholderText }
-            #else
-            NoteTextView(text: $text, isEditable: isEditable, controller: controller)
-                .overlay(alignment: .topLeading) { placeholderText }
-            #endif
         }
-        #if os(iOS)
         .overlay(alignment: .bottom) {
             if controller.isEditing, isEditable, !growsWithText {
                 // The note screen has 16 pt of padding all around; the bar reaches out to 12 pt from the edge, 6 pt above the keyboard.
@@ -53,7 +24,6 @@ struct NoteBodyEditor: View {
                     .padding(.bottom, -10)
             }
         }
-        #endif
     }
 
     @ViewBuilder private var placeholderText: some View {
@@ -65,18 +35,6 @@ struct NoteBodyEditor: View {
         }
     }
 
-    // MARK: Formatting
-
-    private var formatBar: some View {
-        let buttons = NoteFormatButtons(controller: controller)
-        return HStack(spacing: 18) {
-            buttons.formatMenu
-            buttons.checklistButton
-            buttons.outdentButton
-            buttons.indentButton
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 }
 
 /// One bar over the keyboard with all the buttons, like in Notes.

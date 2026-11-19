@@ -96,8 +96,5 @@ struct SummaryOptionsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 420)
-        #endif
     }
 }

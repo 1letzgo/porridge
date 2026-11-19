@@ -53,9 +53,6 @@ struct PlaudImportSheet: View {
             .onDisappear { importer.disconnect() }
         }
         .interactiveDismissDisabled(importer.importingId != nil)
-        #if os(macOS)
-        .frame(minWidth: 460, minHeight: 540)
-        #endif
     }
 
     private var signedOut: some View {

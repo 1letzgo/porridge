@@ -183,13 +183,7 @@ struct OnboardingView: View {
     }
 
     private func openMicrophoneSettings() {
-        #if os(iOS)
         if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-        #else
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
-            NSWorkspace.shared.open(url)
-        }
-        #endif
     }
 
     private var buttonTitle: String {

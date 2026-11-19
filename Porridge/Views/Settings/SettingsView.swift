@@ -2,10 +2,6 @@ import AVFoundation
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
-#if os(macOS)
-import AppKit
-import Carbon.HIToolbox
-#endif
 
 /// The areas the settings are split into; one shows at a time, chosen with the pills on top.
 enum SettingsArea: String, CaseIterable {
@@ -38,22 +34,11 @@ struct SettingsView: View {
     @SceneStorage("settingsArea") private var area = SettingsArea.general
     @AppStorage(AppSettings.myNameKey) private var myName = ""
 
-
     @State private var defaultModel = SummaryModel.current
     @State private var externalModels = SummaryModel.external
     @State private var showAddModel = false
     @State private var inputDescription = ""
     @State private var pendingDeletion: ModelKind?
-    #if os(macOS)
-    @AppStorage(DictationSettings.enabledKey) private var dictationEnabled = true
-    @AppStorage(DictationSettings.modeKey) private var dictationMode = DictationMode.hold
-    @AppStorage(DictationSettings.soundsKey) private var dictationSounds = true
-    @AppStorage(DictationSettings.keepClipboardKey) private var keepClipboard = true
-    @AppStorage(DictationSettings.keyLabelKey) private var shortcutLabel = "Right ⌥"
-    @AppStorage(DictationSettings.modifiersKey) private var shortcutModifiers = 0
-    /// Bumped when the app comes to the front, so the permission rows re-read the system state.
-    @State private var permissionTick = 0
-    #endif
     @State private var modelError: String?
     @State private var showPlaudLogin = false
     @State private var modelToRemove: SummaryModel?
@@ -84,15 +69,10 @@ struct SettingsView: View {
 
     /// A page of the list column (iOS), under its bar: no own stack or Done button.
     var isEmbedded = false
-    /// Opens a note that was imported here; without it (Mac: a window of its own) the card says it is done.
 
-    /// The Settings window of the Mac has no bar of its own above the content: give the first section air.
+    /// Air above the first section, under the bar.
     private var settingsTopPadding: CGFloat {
-        #if os(macOS)
-        20
-        #else
         4
-        #endif
     }
 
     var body: some View {
@@ -134,27 +114,18 @@ struct SettingsView: View {
         }
         .background(Color.appBackground)
         .brandNavigationTitle("Settings")
-        #if os(iOS)
         // Pushed: our own bar (ChromeBar) replaces the system one.
         .toolbar(isEmbedded ? .hidden : .automatic, for: .navigationBar)
-        #endif
-        #if os(macOS)
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            permissionTick += 1
-        }
-        #endif
         .onAppear {
             refreshInput()
             models.refreshLLM()
             refreshSummaryModels()
         }
-        #if os(iOS)
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { note in
             let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt)
                 .flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
             if reason == .newDeviceAvailable || reason == .oldDeviceUnavailable { refreshInput() }
         }
-        #endif
         .alert(
             "Delete \(pendingDeletion?.name ?? "model")?",
             isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } })
@@ -207,9 +178,6 @@ struct SettingsView: View {
         case .general:
             youCard
             plaudCard
-            #if os(macOS)
-            dictationCard
-            #endif
         case .recording:
             transcriptionCard
             speakersCard
@@ -235,7 +203,6 @@ struct SettingsView: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
-
 
     // MARK: - Cards
 
@@ -440,41 +407,10 @@ struct SettingsView: View {
                 title: "Version",
                 value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
             )
-            #if os(macOS)
-            if AppUpdate.isEnabled { updateRow }
-            #endif
             CardDivider()
             AcknowledgementsRow()
         }
     }
-
-    #if os(macOS)
-    /// Newer versions come as GitHub releases; the app looks for them by itself and on request.
-    private var updateRow: some View {
-        let update = AppUpdate.shared
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Updates").font(.body)
-                Spacer(minLength: 12)
-                if let release = update.available {
-                    Button("Download \(release.version)") { update.download() }
-                        .buttonStyle(PillButtonStyle())
-                } else {
-                    Button(update.checking ? "Checking…" : "Check Now") {
-                        Task { await update.check(manual: true) }
-                    }
-                    .buttonStyle(PillButtonStyle())
-                    .disabled(update.checking)
-                }
-            }
-            if let result = update.lastResult {
-                Text(result)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-    #endif
 
     /// A failed download or load is shown as a warning, not only as small text in the row.
     private func reportFailure(in states: [ModelManager.State]) {
@@ -488,7 +424,6 @@ struct SettingsView: View {
 
     /// Shows which microphone would be used right now (e.g. a plugged-in DJI receiver).
     private func refreshInput() {
-        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         let isRecording = RecordingCenter.stop != nil
         if !isRecording {
@@ -505,9 +440,6 @@ struct SettingsView: View {
         } else {
             inputDescription = "Built-in Microphone"
         }
-        #else
-        inputDescription = AVCaptureDevice.default(for: .audio)?.localizedName ?? "Default Microphone"
-        #endif
     }
 }
 
@@ -809,173 +741,3 @@ extension View {
     }
 }
 
-#if os(macOS)
-// MARK: - Dictation (Mac)
-
-extension SettingsView {
-    fileprivate var dictationCard: some View {
-        let _ = permissionTick
-        return SettingsCard(title: "Dictation") {
-            Toggle("Dictate with a shortcut", isOn: $dictationEnabled)
-                .font(.body)
-                .tint(Color.brandSky)
-                .onChange(of: dictationEnabled) { DictationController.shared.reloadShortcut() }
-            CardDivider()
-            HStack {
-                Text("Shortcut").font(.body)
-                Spacer(minLength: 12)
-                ShortcutRecorderButton(
-                    text: DictationSettings.description(modifiers: UInt32(shortcutModifiers), keyLabel: shortcutLabel)
-                )
-            }
-            if DictationController.shared.shortcutUnavailable, dictationEnabled {
-                Text("Another app already uses this shortcut. Choose a different one.")
-                    .font(.caption)
-                    .foregroundStyle(Color.brandDangerText)
-            } else if DictationController.shared.shortcutNeedsAccessibility, dictationEnabled {
-                Text("A modifier key on its own needs the Accessibility permission (below).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Click, then press a key combination or a single right-hand modifier key.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            MenuRow(
-                title: "Mode",
-                selection: $dictationMode,
-                options: DictationMode.allCases.map { (value: $0, title: $0.label) }
-            )
-            Toggle("Play sounds", isOn: $dictationSounds)
-                .font(.body)
-                .tint(Color.brandSky)
-            Toggle("Restore the clipboard after pasting", isOn: $keepClipboard)
-                .font(.body)
-                .tint(Color.brandSky)
-            CardDivider()
-            PermissionRow(
-                title: "Microphone",
-                granted: AVAudioApplication.shared.recordPermission == .granted
-            ) {
-                if AVAudioApplication.shared.recordPermission == .undetermined {
-                    Task {
-                        _ = await AVAudioApplication.requestRecordPermission()
-                        permissionTick += 1
-                    }
-                } else {
-                    PermissionRow.openPrivacy("Privacy_Microphone")
-                }
-            }
-            PermissionRow(title: "Accessibility (to paste)", granted: TextInserter.canPaste) {
-                TextInserter.requestAccess()
-            }
-            if !TextInserter.canPaste {
-                Text("Switch Porridge on under Accessibility in System Settings. If it is already on there, switch it off and on again — macOS forgets the permission when the app was replaced.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        // The permissions are given outside the app: re-read them every second until they are there.
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-            guard !TextInserter.canPaste || AVAudioApplication.shared.recordPermission != .granted else { return }
-            permissionTick += 1
-        }
-        .onChange(of: permissionTick) {
-            if DictationController.shared.shortcutNeedsAccessibility, TextInserter.canPaste {
-                DictationController.shared.reloadShortcut()
-            }
-        }
-    }
-}
-
-private struct PermissionRow: View {
-    let title: String
-    let granted: Bool
-    let action: () -> Void
-
-    var body: some View {
-        HStack {
-            Text(title).font(.body)
-            Spacer(minLength: 12)
-            if granted {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(Color.brandSkyText)
-            } else {
-                Button("Allow", action: action).buttonStyle(PillButtonStyle())
-            }
-        }
-    }
-
-    static func openPrivacy(_ pane: String) {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-}
-
-/// Click, then press the new shortcut: a key with modifiers, or one of the right-hand modifier keys
-/// on its own. Escape cancels.
-private struct ShortcutRecorderButton: View {
-    let text: String
-    @State private var recording = false
-    @State private var monitor: Any?
-    @State private var flagsMonitor: Any?
-
-    var body: some View {
-        Button(recording ? "Press shortcut…" : text) {
-            recording ? stop() : start()
-        }
-        .buttonStyle(PillButtonStyle(fill: recording ? .white : .brandSky))
-        .onDisappear { stop() }
-    }
-
-    private func start() {
-        recording = true
-        // The current shortcut is pressed here to choose it again, not to dictate.
-        DictationController.shared.suspendShortcut()
-        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-            let keyCode = Int(event.keyCode)
-            guard let label = DictationSettings.modifierKeyLabels[keyCode],
-                  let mask = ModifierKeyMonitor.mask(for: keyCode),
-                  CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue)).contains(mask)
-            else { return event }
-            save(keyCode: keyCode, modifiers: 0, label: label)
-            return nil
-        }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            if Int(event.keyCode) == kVK_Escape {
-                stop()
-                return nil
-            }
-            let modifiers = DictationSettings.carbonModifiers(event.modifierFlags.intersection(.deviceIndependentFlagsMask))
-            // Plain typing keys would stop working everywhere: ask for a modifier (function keys may stand alone).
-            // Shift alone is no modifier for this: ⇧A is the capital letter.
-            guard modifiers & ~UInt32(shiftKey) != 0 || DictationSettings.isFunctionKey(Int(event.keyCode)) else {
-                NSSound.beep()
-                return nil
-            }
-            save(keyCode: Int(event.keyCode), modifiers: Int(modifiers), label: DictationSettings.label(for: event))
-            return nil
-        }
-    }
-
-    private func save(keyCode: Int, modifiers: Int, label: String) {
-        let defaults = UserDefaults.standard
-        defaults.set(keyCode, forKey: DictationSettings.keyCodeKey)
-        defaults.set(modifiers, forKey: DictationSettings.modifiersKey)
-        defaults.set(label, forKey: DictationSettings.keyLabelKey)
-        stop()
-    }
-
-    private func stop() {
-        // Back on, with the old shortcut or the new one.
-        if recording { DictationController.shared.reloadShortcut() }
-        recording = false
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
-        monitor = nil
-        flagsMonitor = nil
-    }
-}
-#endif

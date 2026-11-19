@@ -1,5 +1,5 @@
 import AppKit
-import SwiftUI
+
 
 /// The body of a note: one text view (TextKit 2) with headings, lists, checklists and bold/italic, stored as
 /// Markdown. The editing rules are the shared ones of `NoteTextCoordinator`; this view gives them an AppKit home,
@@ -43,7 +43,7 @@ final class NoteEditorView: NSView {
         setText = set
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        coordinator = NoteTextCoordinator(text: Binding(get: get, set: set), controller: controller)
+        coordinator = NoteTextCoordinator(text: NoteTextBinding(get: get, set: set), controller: controller)
 
         textView.coordinator = coordinator
         textView.delegate = coordinator

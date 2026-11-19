@@ -64,9 +64,6 @@ struct SummaryTemplatesView: View {
                 }
             }
         }
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 360)
-        #endif
     }
 }
 
@@ -103,8 +100,5 @@ private struct TemplateEditor: View {
                 }
             }
         }
-        #if os(macOS)
-        .frame(minWidth: 380, minHeight: 300)
-        #endif
     }
 }

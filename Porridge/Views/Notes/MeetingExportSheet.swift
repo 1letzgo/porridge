@@ -66,9 +66,6 @@ struct MeetingExportSheet: View {
             }
         }
         .presentationDetents([.medium])
-        #if os(macOS)
-        .frame(minWidth: 400, minHeight: 320)
-        #endif
         .task(id: choice) { await prepare() }
     }
 

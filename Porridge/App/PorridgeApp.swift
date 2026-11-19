@@ -36,11 +36,9 @@ struct PorridgeApp: App {
             RootView()
                 .environment(processing)
                 .environment(ModelManager.shared)
-                #if os(iOS)
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     Task { await ModelManager.shared.releaseLLM() }
                 }
-                #endif
                 .task {
                     await ModelManager.clearCompiledModelsAfterUpdate()
                     LiveRecording.endStale()

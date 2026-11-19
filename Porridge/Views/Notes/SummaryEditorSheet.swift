@@ -25,8 +25,5 @@ struct SummaryEditorSheet: View {
                     }
                 }
         }
-        #if os(macOS)
-        .frame(minWidth: 520, minHeight: 560)
-        #endif
     }
 }
