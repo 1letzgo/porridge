@@ -32,7 +32,8 @@ private final class SidebarNode: NSObject {
     }
 }
 
-/// The sidebar as a source list: the inbox and the chat, the buckets, then the archive and Recently Deleted.
+/// The sidebar as a source list: Up Next (the Inbox and the to-dos folder), the buckets, then More (the chat, the
+/// archive and Recently Deleted).
 /// Notes dropped on a bucket go into it; files dropped on it are brought in there.
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSTextFieldDelegate {
     private let state: WindowState
@@ -108,12 +109,14 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let buckets = library.activeProjects
         // Pinned buckets first, then by name.
         let sorted = buckets.filter(\.isPinned) + buckets.filter { !$0.isPinned }
-        var top: [SidebarNode] = [SidebarNode(.page(.inbox))]
-        // Under the Inbox the to-dos folder, while there are to-dos to show.
-        if !Todos.folder(notes).isEmpty || state.page == .todos { top.append(SidebarNode(.page(.todos))) }
-        top.append(SidebarNode(.page(.chat)))
+        // "Up Next", as the section of the home list on iOS and Android: the Inbox and, under it, the to-dos
+        // folder while there are to-dos to show.
+        var upNext: [SidebarNode] = [SidebarNode(.page(.inbox))]
+        if !Todos.folder(notes).isEmpty || state.page == .todos { upNext.append(SidebarNode(.page(.todos))) }
+        var top: [SidebarNode] = [SidebarNode(.group("Up Next"), children: upNext)]
         top.append(SidebarNode(.group("Buckets"), children: sorted.map { SidebarNode(.page(.project($0.id))) }))
-        var more: [SidebarNode] = []
+        // The chat is a place to go, not something waiting: it leads the other places under "More".
+        var more: [SidebarNode] = [SidebarNode(.page(.chat))]
         let archived = HomeList.archivedProjects(library.projects).count + HomeList.archivedNotes(notes).count
         if archived > 0 || state.page == .archive { more.append(SidebarNode(.page(.archive))) }
         if notes.contains(where: \.isDeleted) || state.page == .trash { more.append(SidebarNode(.page(.trash))) }
