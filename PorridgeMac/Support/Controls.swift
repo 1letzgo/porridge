@@ -147,6 +147,7 @@ extension NSImage {
 final class StateBadge: NSView {
     private let label = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
+    private let icon = NSImageView()
 
     init() {
         super.init(frame: .zero)
@@ -158,7 +159,8 @@ final class StateBadge: NSView {
         spinner.controlSize = .mini
         spinner.isDisplayedWhenStopped = false
         spinner.translatesAutoresizingMaskIntoConstraints = false
-        let stack = NSStackView(views: [spinner, label])
+        icon.isHidden = true
+        let stack = NSStackView(views: [spinner, icon, label])
         stack.spacing = 4
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -173,10 +175,15 @@ final class StateBadge: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ text: String?, color: NSColor = .secondaryLabelColor, spinning: Bool = false) {
+    func show(_ text: String?, color: NSColor = .secondaryLabelColor, spinning: Bool = false, symbol: String? = nil) {
         isHidden = text == nil
         label.stringValue = text ?? ""
         label.textColor = color
+        icon.isHidden = symbol == nil
+        if let symbol {
+            icon.image = .symbol(symbol, size: NSFont.smallSystemFontSize - 1, weight: .semibold)
+            icon.contentTintColor = color
+        }
         if spinning { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
     }
 }

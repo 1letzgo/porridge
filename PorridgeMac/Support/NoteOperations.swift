@@ -35,6 +35,13 @@ enum NoteOperations {
             due.submenu = DueDateMenu.make(for: todos, window: window)
             menu.addItem(due)
         }
+        // The tasks of a summary as to-dos again (never from a saved page or file).
+        if notes.count == 1, let note = notes.first, note.summary != nil, !note.isSaved, !note.isTodo {
+            menu.add("Suggest To-dos", symbol: "checklist") {
+                TodoSuggestions.suggestAgain(note, in: context)
+                state.reveal(note)
+            }
+        }
         if notes.count == 1, let note = notes.first, note.canBeTodo {
             menu.add(note.isTodo ? "Convert to Note" : "Convert to To-do", symbol: note.isTodo ? "text.alignleft" : "checklist") {
                 TodoBridge.setTodo(!note.isTodo, note)

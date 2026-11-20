@@ -56,11 +56,6 @@ enum TodoBridge {
         Todos.follow(note, from: old)
     }
 
-    /// A task line of a summary as a to-do of its own, in the same buckets.
-    static func create(fromTask task: String, of source: Note) {
-        Todos.create(fromTask: task, of: source, in: Library.shared.context)
-    }
-
     static func madeFrom(_ source: Note) -> [Note] {
         Todos.madeFrom(source, among: Library.shared.notes)
     }

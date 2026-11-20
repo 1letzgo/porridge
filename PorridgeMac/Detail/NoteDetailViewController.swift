@@ -23,6 +23,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private var tab = NoteTab.note
     private var didChooseTab = false
     private var observers: [Observing] = []
+    private var libraryToken: UUID?
     private var shownErrors = Set<String>()
     private var isFetchingAudio = false
     private var fetchAudioError: String?
@@ -52,6 +53,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private let summaryScroll = NSScrollView()
     private let summaryStack = NSStackView()
     private let summaryText = SummaryTextView()
+    private let suggestedTodos = SuggestedTodosView()
+    private let madeTodos = MadeTodosView()
     private let summaryModelLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor)
     private let summaryEmpty = NSStackView()
     private let summaryEmptyMessage = NSTextField.label(color: .secondaryLabelColor, lines: 0)
@@ -231,10 +234,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             guard let self else { return }
             SummaryTasks.toggleLine(line, of: self.note, in: self.library.context)
         }
-        summaryText.onMakeTodo = { [weak self] task in
-            guard let self else { return }
-            TodoBridge.create(fromTask: task, of: self.note)
-        }
         summaryMenuButton.isBordered = false
         summaryMenuButton.addItem(withTitle: "")
         summaryMenuButton.item(at: 0)?.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "Summary Options")
@@ -274,7 +273,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         summarizing.spacing = 14
         summarizing.edgeInsets = NSEdgeInsets(top: 24, left: 0, bottom: 24, right: 0)
 
-        summaryStack.setViews([summaryHead, summaryModelLabel, summarizing, summaryEmpty], in: .top)
+        madeTodos.onOpen = { [weak self] todo in self?.state.reveal(todo) }
+        summaryStack.setViews([suggestedTodos, summaryHead, summaryModelLabel, madeTodos, summarizing, summaryEmpty], in: .top)
+        summaryStack.setCustomSpacing(16, after: suggestedTodos)
+        summaryStack.setCustomSpacing(18, after: summaryModelLabel)
         summaryStack.orientation = .vertical
         summaryStack.alignment = .leading
         summaryStack.spacing = 12
@@ -337,6 +339,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             summaryStack.trailingAnchor.constraint(equalTo: summaryDocument.trailingAnchor, constant: -4),
             summaryStack.bottomAnchor.constraint(equalTo: summaryDocument.bottomAnchor, constant: -12),
             summaryHead.widthAnchor.constraint(equalTo: summaryStack.widthAnchor),
+            suggestedTodos.widthAnchor.constraint(equalTo: summaryStack.widthAnchor),
+            madeTodos.widthAnchor.constraint(equalTo: summaryStack.widthAnchor),
             summaryEmpty.widthAnchor.constraint(equalTo: summaryStack.widthAnchor),
             summarizing.widthAnchor.constraint(equalTo: summaryStack.widthAnchor),
             summaryEmptyMessage.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
@@ -359,6 +363,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         }
         dictation.onStopRequested = { [weak self] in Task { await self?.finishDictation() } }
         observers.append(Observing { [weak self] in self?.render() })
+        // Other notes count too: the to-dos made from this one, its buckets.
+        libraryToken = library.observe { [weak self] in self?.render() }
         observers.append(Observing { [weak self] in
             guard let self else { return }
             let time = self.player.isPlaying ? self.player.currentTime : nil
@@ -397,6 +403,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     override func removeFromParent() {
         flushEditing()
         observers.cancelAll()
+        library.stopObserving(libraryToken)
         playerBar.stopObserving()
         editor.stop()
         micTimer?.invalidate()
@@ -632,6 +639,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             summarizingDetail.stringValue = [stage, processing.summaryModels[note.id]?.label ?? SummaryService.modelLabel].compactMap { $0 }.joined(separator: "\n")
         }
         let summary = summarizingNow ? nil : note.summary
+        if summary == nil {
+            suggestedTodos.isHidden = true
+            madeTodos.isHidden = true
+        }
         summaryText.superview?.isHidden = summary == nil
         summaryModelLabel.isHidden = summary == nil || note.summaryModel == nil
         summaryEmpty.isHidden = summarizingNow || summary != nil
@@ -641,12 +652,17 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
                 guard let self else { return }
                 SummaryTasks.toggleLine(line, of: self.note, in: self.library.context)
             } : nil
-            let madeTodos = TodoBridge.available && interactive
-            summaryText.onMakeTodo = madeTodos ? { [weak self] task in
-                guard let self else { return }
-                TodoBridge.create(fromTask: task, of: self.note)
-            } : nil
-            summaryText.madeTodos = madeTodos ? Set(TodoBridge.madeFrom(note).map { $0.title.lowercased() }) : []
+            // The tasks of the summary offered as to-dos, and what became of them; never from a saved page or file.
+            let made = TodoBridge.madeFrom(note)
+            let states = TodoSuggestions.states(note.todoSuggestionsRaw)
+            summaryText.isTakenTask = note.isSaved ? nil : { text in
+                TodoSuggestions.isTaken(text, states: states, madeTitles: made.map(\.title))
+            }
+            let pending = note.isDeleted ? [] : note.pendingTodoSuggestions(made: made)
+            suggestedTodos.isHidden = pending.isEmpty
+            if !pending.isEmpty { suggestedTodos.show(pending, of: note) }
+            madeTodos.isHidden = made.isEmpty
+            if !made.isEmpty { madeTodos.show(made) }
             summaryText.show(summary)
             summaryMenuButton.isHidden = note.isDeleted
             summaryModelLabel.stringValue = note.summaryModel.map { "Created with \($0)" } ?? ""
@@ -1020,6 +1036,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             toggleDone()
         case .convertTodo:
             TodoBridge.setTodo(!TodoBridge.isTodo(note), note)
+        case .suggestTodos:
+            // The tasks of the summary as to-dos again, dismissed ones included.
+            TodoSuggestions.suggestAgain(note, in: library.context)
+            show(.summary)
         case .showSummary: show(.summary)
         case .showNote: show(.note)
         case .showTranscript: show(.transcript)
@@ -1067,6 +1087,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             item.title = TodoBridge.isTodo(note) ? "Convert to Note" : "Convert to To-do"
             item.isHidden = !TodoBridge.available
             return !deleted && TodoBridge.canBeTodo(note)
+        case .suggestTodos:
+            return !deleted && note.summary != nil && !note.isSaved && !note.isTodo && !isSummarizing
         case .showSummary: return computeTabs().contains { $0.0 == .summary }
         case .showNote: return computeTabs().contains { $0.0 == .note }
         case .showTranscript: return computeTabs().contains { $0.0 == .transcript }
@@ -1088,6 +1110,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     }
 
     #if DEBUG
+    func debugSuggestions(_ command: String) {
+        suggestedTodos.debug(command)
+    }
+
     func debugType(title: String? = nil, body: String? = nil) {
         if let title {
             titleField.stringValue = title

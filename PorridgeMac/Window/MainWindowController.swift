@@ -98,6 +98,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         // The open bucket was deleted on another device.
         if case .project(let id) = state.page, library.project(id) == nil { state.page = .inbox }
+        // A note deleted for good (here or on another device) is no longer open.
+        let kept = state.selection.filter { id in state.draft?.id == id || library.note(id) != nil }
+        if kept != state.selection { state.selection = kept }
         window?.title = windowTitle
         window?.toolbar?.validateVisibleItems()
     }

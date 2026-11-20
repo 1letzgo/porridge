@@ -96,6 +96,39 @@ enum DebugDriver {
         case "action":
             // Sends an action up the responder chain without asking whether it is enabled.
             if !NSApp.sendAction(Selector(argument), to: nil, from: nil) { _ = controller.perform(Selector(argument), with: nil) }
+        case "suggest":
+            controller.split.detail.noteDetail?.debugSuggestions(argument)
+        case "seed-meeting":
+            // A summarized meeting whose summary has three tasks (the user's, somebody else's with a date,
+            // nobody's), as the iOS test seed makes it but without a bucket.
+            let meeting = Note()
+            meeting.title = argument
+            meeting.titleIsCustom = true
+            meeting.source = .meeting
+            meeting.segments = [TranscriptSegment(start: 0, end: 5, text: "Let's wrap up.")]
+            let due = Todos.dueKey(Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date())
+            meeting.summary = """
+            ## Summary
+            The team planned the launch.
+
+            ## Action Items
+            - [ ] Send the offer to the customer – \(AppSettings.myName ?? "Me")
+            - [ ] Book the venue – Anna – \(due)
+            - [ ] Update the roadmap
+            """
+            meeting.summaryModel = "Test"
+            meeting.summarizedAt = Date()
+            TodoSuggestions.offer(meeting)
+            library.context.insert(meeting)
+            library.save()
+            state.page = .inbox
+            state.open(meeting.id)
+        case "purge-from":
+            // Removes the to-dos made from a test meeting (by its title), then the meeting.
+            for meeting in library.notes where meeting.title == argument {
+                for todo in library.notes where todo.todoSourceID == meeting.id.uuidString { NoteStore.deletePermanently(todo, in: library.context) }
+                NoteStore.deletePermanently(meeting, in: library.context)
+            }
         case "bucket-new":
             // Makes a bucket the way "New Bucket…" does once its name is given; "!" before the name pins it.
             let pinned = argument.hasPrefix("!")

@@ -16,6 +16,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     private var observers: [Observing] = []
     private var shownPage: SidebarPage?
     private var isSyncingSelection = false
+    /// Snapshots still being applied.
+    private var isApplying = 0
 
     init(state: WindowState) {
         self.state = state
@@ -141,9 +143,14 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             snapshot.appendItems(items, toSection: section)
             sectionsByID[section.id] = section
         }
-        isSyncingSelection = true
-        dataSource.apply(snapshot, animatingDifferences: !pageChanged && view.window != nil)
-        isSyncingSelection = false
+        // While rows move the table keeps its selection by row number and reports that after the animation:
+        // it is not the user's choice, so the open note stays the one of the state.
+        isApplying += 1
+        dataSource.apply(snapshot, animatingDifferences: !pageChanged && view.window != nil) { [weak self] in
+            guard let self else { return }
+            self.isApplying -= 1
+            self.syncSelection()
+        }
         header.show(page: state.page, library: library, state: state, kindCounts: built.kindCounts)
         let isEmpty = built.sections.isEmpty
         empty.isHidden = !isEmpty || state.page == .chat
@@ -183,7 +190,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard !isSyncingSelection else { return }
+        guard !isSyncingSelection, isApplying == 0 else { return }
         var ids: [UUID] = []
         for row in table.selectedRowIndexes {
             switch dataSource.itemIdentifier(forRow: row) {

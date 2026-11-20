@@ -23,4 +23,5 @@ enum NoteCommand: Int, CaseIterable {
     case showNote
     case showTranscript
     case showArticle
+    case suggestTodos
 }

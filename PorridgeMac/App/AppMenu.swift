@@ -190,6 +190,7 @@ enum AppMenu {
         item(menu, "Undo Enhance", command, "", symbol: "arrow.uturn.backward", tag: NoteCommand.undoEnhance.rawValue)
         item(menu, "Edit Summary", command, "", symbol: "pencil", tag: NoteCommand.editSummary.rawValue)
         item(menu, "Insert Summary into Note", command, "", symbol: "text.insert", tag: NoteCommand.insertSummary.rawValue)
+        item(menu, "Suggest To-dos", command, "", symbol: "checklist", tag: NoteCommand.suggestTodos.rawValue)
         menu.addItem(.separator())
         item(menu, "Dictate", command, "d", [.command, .option], symbol: "mic", tag: NoteCommand.dictate.rawValue)
         item(menu, "Continue Recording", command, "", symbol: "mic.badge.plus", tag: NoteCommand.continueRecording.rawValue)

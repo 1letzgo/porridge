@@ -11,10 +11,8 @@ extension NSAttributedString.Key {
 final class SummaryTextView: NSTextView {
     /// Called with the line index when a task's box is clicked; nil shows the boxes without a click.
     var onToggleTask: ((Int) -> Void)?
-    /// Called with a task's text to take it over as a to-do; nil offers nothing.
-    var onMakeTodo: ((String) -> Void)?
-    /// Task texts (lowercased) already taken over as to-dos.
-    var madeTodos: Set<String> = []
+    /// Whether a task line (its raw text) became a to-do: it wears the to-do symbol at its end.
+    var isTakenTask: ((String) -> Bool)?
 
     private(set) var markdown = ""
 
@@ -54,7 +52,7 @@ final class SummaryTextView: NSTextView {
 
     func show(_ markdown: String) {
         self.markdown = markdown
-        textStorage?.setAttributedString(Self.render(markdown, interactive: onToggleTask != nil, makesTodos: onMakeTodo != nil, made: madeTodos))
+        textStorage?.setAttributedString(Self.render(markdown, interactive: onToggleTask != nil, isTaken: isTakenTask))
         invalidateIntrinsicContentSize()
         setAccessibilityValue(markdown)
     }
@@ -75,7 +73,7 @@ final class SummaryTextView: NSTextView {
 
     // MARK: Rendering
 
-    static func render(_ markdown: String, interactive: Bool = false, makesTodos: Bool = false, made: Set<String> = []) -> NSAttributedString {
+    static func render(_ markdown: String, interactive: Bool = false, isTaken: ((String) -> Bool)? = nil) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let body = NSFont.preferredFont(forTextStyle: .body)
         let lines = markdown.components(separatedBy: "\n")
@@ -110,21 +108,15 @@ final class SummaryTextView: NSTextView {
                     mutable.addAttributes([.strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: NSColor.secondaryLabelColor], range: NSRange(location: 0, length: mutable.length))
                 }
                 paragraph.append(mutable)
-                if makesTodos {
-                    let title = mutable.string
-                    if made.contains(title.lowercased()) {
-                        paragraph.append(NSAttributedString(string: "  ✓ To-do", attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold), .foregroundColor: NSColor.brandTaskText]))
-                    } else {
-                        var components = URLComponents()
-                        components.scheme = "porridge-todo"
-                        components.host = "make"
-                        components.queryItems = [URLQueryItem(name: "task", value: title)]
-                        paragraph.append(NSAttributedString(string: "  "))
-                        paragraph.append(NSAttributedString(string: "Make To-do", attributes: [
-                            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold),
-                            .link: components.url as Any,
-                        ]))
-                    }
+                if let isTaken, isTaken(task.text) {
+                    let mark = NSTextAttachment()
+                    let image = NSImage.symbol("checklist", size: body.pointSize - 1, weight: .medium, label: "Taken over as a to-do").tinted(.brandTaskText)
+                    mark.image = image
+                    mark.bounds = NSRect(x: 0, y: -2, width: image.size.width, height: image.size.height)
+                    paragraph.append(NSAttributedString(string: "  ", attributes: [.font: body]))
+                    let markString = NSMutableAttributedString(attachment: mark)
+                    markString.addAttribute(.toolTip, value: "Taken over as a to-do", range: NSRange(location: 0, length: markString.length))
+                    paragraph.append(markString)
                 }
                 style.headIndent = symbol.size.width + 8
                 style.tabStops = [NSTextTab(textAlignment: .left, location: symbol.size.width + 8)]
@@ -188,15 +180,4 @@ final class SummaryTextView: NSTextView {
     }
 }
 
-extension SummaryTextView: NSTextViewDelegate {
-    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-        let url = (link as? URL) ?? (link as? String).flatMap(URL.init(string:))
-        guard let url else { return false }
-        if url.scheme == "porridge-todo" {
-            let task = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "task" }?.value ?? ""
-            if !task.isEmpty { onMakeTodo?(task) }
-            return true
-        }
-        return false
-    }
-}
+extension SummaryTextView: NSTextViewDelegate {}
