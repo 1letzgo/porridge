@@ -126,6 +126,9 @@ final class TodoFlowTests: XCTestCase {
         let entry = app.buttons["TodosFolder"]
         XCTAssertTrue(entry.waitForExistence(timeout: 15), "to-dos folder missing under the inbox")
         XCTAssertTrue(entry.label.contains("overdue"), "the folder does not say that to-dos are late: \(entry.label)")
+        // The section of Inbox and To-dos is "Up Next"; the entry itself stays "Inbox".
+        XCTAssertTrue(app.staticTexts["Up Next"].exists, "the first section is not called Up Next")
+        XCTAssertTrue(app.buttons["InboxCategory"].label.hasPrefix("Inbox"), "the inbox entry lost its name")
         screenshot("inbox-todos-folder-home", app)
         entry.tap()
 

@@ -115,7 +115,7 @@ struct InboxRow: View {
     }
 }
 
-/// The to-dos folder as an entry of the Inbox section: every open to-do, how many there are and how many are late.
+/// The to-dos folder as an entry of the "Up Next" section, under the Inbox: every open to-do, how many there are and how many are late.
 struct TodoFolderRow: View {
     let folder: Todos.Folder
     var onOpen: () -> Void

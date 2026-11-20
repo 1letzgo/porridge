@@ -314,7 +314,7 @@ enum Todos {
         return open + todos.filter(\.isDone)
     }
 
-    /// The virtual folder "To-dos" in the Inbox section of the home list: every open to-do, wherever it is filed,
+    /// The virtual folder "To-dos" in the "Up Next" section of the home list: every open to-do, wherever it is filed,
     /// in the groups of `dueGroups`, then those done today. Only a view: nothing is moved or stored.
     struct Folder {
         var groups: [(title: String, notes: [Note])]

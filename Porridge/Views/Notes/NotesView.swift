@@ -369,8 +369,8 @@ struct NotesView: View {
         let archived = HomeList.archivedProjects(projects).count + HomeList.archivedNotes(notes).count
         let isEmpty = folders.isEmpty && waiting.isEmpty
         return List(selection: $selection) {
-            // The inbox is the first category, with one entry of its name: what is new or in no bucket. Below it the
-            // to-dos folder, while there are to-dos to show: a view of every open one, wherever it is filed.
+            // "Up Next" is the first category: the Inbox (what is new or in no bucket) and below it the to-dos folder,
+            // while there are to-dos to show: a view of every open one, wherever it is filed.
             let todoFolder = Todos.folder(notes)
             Section {
                 InboxRow(waiting: waiting) { page = .inbox }
@@ -380,7 +380,7 @@ struct NotesView: View {
                         .lastInSection(true)
                 }
             } header: {
-                ListHeader(title: "Inbox", tint: .brandSky, isFirst: true)
+                ListHeader(title: "Up Next", tint: .brandSky, isFirst: true)
             }
             // The buckets as a list: the pinned and the latest few, the rest behind "More".
             if !folders.isEmpty {
@@ -1188,7 +1188,7 @@ enum ListPage: Hashable {
     case project(UUID)
     /// The inbox: what is new or in no bucket.
     case inbox
-    /// The virtual folder of every open to-do by due day (`Todos.folder`), in the Inbox section of the home list.
+    /// The virtual folder of every open to-do by due day (`Todos.folder`), in the "Up Next" section of the home list.
     case todos
     /// The chat with the notes.
     case chat
