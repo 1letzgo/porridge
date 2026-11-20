@@ -26,6 +26,8 @@ object Keys {
     const val MY_NAME = "myName"
     /** iOS: `AppSettings.summarizeIncomingKey` — Links, Bilder, Dateien, geteilter Text und importiertes Audio bekommen von selbst eine Zusammenfassung (`AutoSummary`). */
     const val SUMMARIZE_INCOMING = "summarizeIncoming"
+    /** iOS: `AppSettings.chatModelKey` — das Modell des Chats (`SummaryModel.chat`): eine `SummaryModel.id`; leer oder fehlend ist das Standardmodell. Nur auf diesem Gerät. */
+    const val CHAT_MODEL = "chatModel"
     const val MY_VOICE = "myVoice"
     const val MY_VOICE_NAME = "myVoiceName"
     const val TRANSCRIPTION_BILLING = "transcriptionBilling"

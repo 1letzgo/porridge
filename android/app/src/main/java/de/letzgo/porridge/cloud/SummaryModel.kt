@@ -32,6 +32,26 @@ sealed interface SummaryModel {
             is Cloud -> provider.label
         }
 
+    /** iOS: `SummaryModel.id` — `local:<LocalModel>` oder `cloud:<AIProvider>:<Modell-ID>`. */
+    val id: String
+        get() = when (this) {
+            is Local -> "local:${model.raw}"
+            is Cloud -> "cloud:${provider.raw}:$modelId"
+        }
+
+    /** Kann jetzt antworten: ein lokales Modell, das da ist, oder ein Cloud-Modell mit Schlüssel (oder Serveradresse). */
+    val isUsable: Boolean
+        get() = when (this) {
+            is Local -> ModelManager.isInstalled(model.pack)
+            is Cloud -> if (provider == AIProvider.CUSTOM) AIProvider.customBaseURL.isNotEmpty() else (!provider.requiresKey || provider.apiKey.isNotEmpty())
+        }
+
+    val isLocal: Boolean get() = this is Local
+
+    /** Was mit diesem Modell das Gerät verlässt, so gesagt wie in den Zusammenfassungs-Blättern; null auf dem Gerät. */
+    fun sendsHint(material: String): String? =
+        (this as? Cloud)?.let { "The $material goes to ${if (it.provider == AIProvider.CUSTOM) "your server" else it.provider.label}." }
+
     /** Im Menü, wo beides in eine Zeile muss. */
     val menuTitle: String get() = "$name · $place"
 
@@ -65,6 +85,29 @@ sealed interface SummaryModel {
                     }
                 }
             }
+
+        /**
+         * iOS: `SummaryModel.chat` — das Modell, mit dem der Chat antwortet: das für den Chat gewählte („Chat Model“), oder
+         * der Standard, wenn keins gewählt ist oder das gewählte weg ist (gelöscht, entfernt, sein Schlüssel genommen).
+         * Nur auf diesem Gerät gespeichert. Zusammenfassungen nehmen immer den Standard.
+         */
+        val chat: SummaryModel
+            get() = resolveChat(Prefs.string(Keys.CHAT_MODEL), available, { it.isUsable }, current)
+
+        /** Das für den Chat gewählte Modell; null ist „Same as Default“. */
+        var chatChoice: SummaryModel?
+            get() {
+                val stored = Prefs.string(Keys.CHAT_MODEL).orEmpty()
+                return available.firstOrNull { it.id == stored }
+            }
+            set(value) = if (value != null) Prefs.set(Keys.CHAT_MODEL, value.id) else Prefs.remove(Keys.CHAT_MODEL)
+
+        /** Das Modell des Chats aus dem Gespeicherten: das gewählte, wenn es in der Liste ist und laufen kann, sonst der Standard. */
+        fun resolveChat(stored: String?, available: List<SummaryModel>, isUsable: (SummaryModel) -> Boolean, fallback: SummaryModel): SummaryModel {
+            if (stored.isNullOrEmpty()) return fallback
+            val chosen = available.firstOrNull { it.id == stored } ?: return fallback
+            return if (isUsable(chosen)) chosen else fallback
+        }
 
         internal fun encode(models: List<SummaryModel>): String = PorridgeJson.encodeToString(
             ListSerializer(Stored.serializer()),

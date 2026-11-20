@@ -404,21 +404,39 @@ data class ChatContext(
     val isEmpty: Boolean get() = items.isEmpty()
 }
 
-/** Höchstens so viele Einträge werden für eine Frage mit Filtern aufgezählt; das Modell erfährt, wenn es mehr sind. */
-const val CHAT_LIST_LIMIT = 40
+/** iOS: `ChatBudget` (Services/ChatDocument.swift) — wie viel Zusammenhang ein Modell bekommt. Ein Cloud-Modell hat viel Platz. */
+data class ChatBudget(
+    /** Höchstens so viele Einträge werden für eine Frage mit Filtern aufgezählt; das Modell erfährt, wenn es mehr sind. */
+    val listLimit: Int,
+    /** Die Passagen der Treffer füllen den Zusammenhang bis zu so vielen Zeichen. */
+    val fillBudget: Int,
+    /** Passagen von Einträgen außerhalb der Filter, wenn kein Treffer die Wörter der Frage hat. */
+    val outsideBudget: Int,
+    /** Passagen für eine Frage ohne Filter: so viele Zeichen, höchstens [maxPassages]. */
+    val searchBudget: Int,
+    val maxPassages: Int,
+    /** Der ganze Prompt wird bei so vielen Zeichen gekürzt (`ChatLogic.user`). */
+    val promptLimit: Int,
+) {
+    companion object {
+        /** Lokale Modelle. (Das Apple-Modell mit seinen 7000 Zeichen, iOS `small`, gibt es auf Android nicht.) */
+        val STANDARD = ChatBudget(40, 6500, 3000, 6500, 10, Int.MAX_VALUE)
+        /** Cloud-Modelle: etwa dreimal so viel Platz (gut in ihren Kontextfenstern, ein paar Cent je Frage). */
+        val LARGE = ChatBudget(100, 20000, 8000, 20000, 30, 100_000)
 
-/** Die Passagen der Treffer füllen den Zusammenhang bis zu so vielen Zeichen. */
-const val CHAT_FILL_BUDGET = 6500
+        fun of(model: de.letzgo.porridge.cloud.SummaryModel): ChatBudget = if (model.isLocal) STANDARD else LARGE
+    }
+}
 
 /**
  * iOS: `ChatRetrieval.context` (Services/ChatDocument.swift) — der Zusammenhang, aus dem eine Frage beantwortet wird. Mit
- * Filtern (Art, Bucket, To-do-Stand, Zeit) wird jeder passende Eintrag aufgezählt (bis [CHAT_LIST_LIMIT]), dann die Passagen
+ * Filtern (Art, Bucket, To-do-Stand, Zeit) wird jeder passende Eintrag aufgezählt (bis [ChatBudget.listLimit]), dann die Passagen
  * der Treffer mit den Wörtern der Frage, dann weitere Passagen der ersten Treffer; hat kein Treffer die Wörter, folgen die
  * besten Passagen aller Einträge, als außerhalb markiert. Ohne Filter die besten Passagen aller Einträge (`select`).
  */
 fun ChatLogic.context(
     question: String, documents: Map<String, ChatDocument>, chunks: List<NoteChunk>, bucketNames: Map<String, String>,
-    now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault(),
+    now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault(), budget: ChatBudget = ChatBudget.STANDARD,
 ): ChatContext {
     val query = ChatQuery.parse(question, bucketNames, now, zone)
     fun item(chunk: NoteChunk, outside: Boolean = false): ChatContextItem? {
@@ -427,7 +445,7 @@ fun ChatLogic.context(
     }
 
     if (!query.isStructured) {
-        val (picked, isNewest) = selection(question, chunks, now, zone)
+        val (picked, isNewest) = selection(question, chunks, now, zone, budget.searchBudget, budget.maxPassages)
         return ChatContext(picked.mapNotNull { item(it) }, wordsNotFound = isNewest && queryWords(question).isNotEmpty(), query = query)
     }
 
@@ -447,11 +465,11 @@ fun ChatLogic.context(
     }
     if (matches.isEmpty()) {
         // Nichts ist, wonach die Filter fragen: die besten Passagen aller Einträge, so markiert.
-        return ChatContext(search(query.words, chunks).mapNotNull { item(it, outside = true) }, 0, filter, query = query)
+        return ChatContext(search(query.words, chunks, budget.searchBudget, budget.maxPassages).mapNotNull { item(it, outside = true) }, 0, filter, query = query)
     }
 
     val items = mutableListOf<ChatContextItem>()
-    for (document in matches.take(CHAT_LIST_LIMIT)) {
+    for (document in matches.take(budget.listLimit)) {
         val mention = mentions[document.noteID]?.let { (if (document.snippet.isEmpty()) "" else " — ") + "mentions: " + it.joinToString(", ") } ?: ""
         items += ChatContextItem(document.noteID, document.title, document.createdAt, document.header(bucketNames, now, zone), document.snippet + mention, isListing = true)
     }
@@ -467,7 +485,7 @@ fun ChatLogic.context(
         used += chunk.text.length
     }
     // Die Listenzeilen tragen Titel, Link, Dateien und To-do-Stand: Hier nehmen nur Passagen mit Inhalt Plätze ein.
-    val found = if (query.words.isEmpty()) emptyList() else search(query.words, inside.filter { it.part.fillsContext })
+    val found = if (query.words.isEmpty()) emptyList() else search(query.words, inside.filter { it.part.fillsContext }, budget.searchBudget, budget.maxPassages)
     found.forEach(::add)
     // Die ersten Treffer mit mehr von dem, was sie halten: wenige Einträge bekommen viele Passagen, viele Einträge wenige.
     val perEntry = if (matches.size <= 2) 12 else if (matches.size <= 5) 4 else 2
@@ -477,13 +495,13 @@ fun ChatLogic.context(
         for (chunk in byNote[document.noteID].orEmpty()) {
             if (!chunk.part.fillsContext) continue
             if (count >= perEntry) break
-            if (used + chunk.text.length > CHAT_FILL_BUDGET) break@fill
+            if (used + chunk.text.length > budget.fillBudget) break@fill
             add(chunk)
             count += 1
         }
     }
     if (query.words.isNotEmpty() && found.isEmpty()) {
-        items += search(query.words, chunks.filter { it.noteID !in ids }, budget = 3000).mapNotNull { item(it, outside = true) }
+        items += search(query.words, chunks.filter { it.noteID !in ids }, budget.outsideBudget, budget.maxPassages).mapNotNull { item(it, outside = true) }
     }
     return ChatContext(items, matched, filter, query = query)
 }

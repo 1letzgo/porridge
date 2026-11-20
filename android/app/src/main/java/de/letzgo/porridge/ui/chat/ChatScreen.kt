@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
@@ -178,6 +180,7 @@ private fun Chat(
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = state, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             // Worüber der Chat geht. Ein neuer kann noch wählen; ein gehaltener bleibt bei dem, womit er begann.
             item(key = "scope") {
+              Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Box {
                     var choosing by remember { mutableStateOf(false) }
                     AssistChip(
@@ -193,6 +196,9 @@ private fun Chat(
                         }
                     }
                 }
+                Spacer(Modifier.weight(1f))
+                ChatModelMenu()
+              }
             }
             if (entries.isEmpty()) {
                 item(key = "intro") {
@@ -247,6 +253,49 @@ private fun Bubble(entry: ChatEntry, notes: List<Note>, onOpen: (String) -> Unit
                 onClick = { onOpen(source.noteID) }, label = { Text(source.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 leadingIcon = { androidx.compose.material3.Icon(notes.firstOrNull { it.id == source.noteID }?.let { de.letzgo.porridge.ui.notes.kindIcon(it) } ?: androidx.compose.material.icons.Icons.Filled.Description, null, modifier = Modifier.size(16.dp)) },
             )
+        }
+    }
+}
+
+/**
+ * iOS: `ChatView.modelMenu` (Views/Chat/ChatView.swift) — welches Modell antwortet, und eine schnelle Wahl eines anderen:
+ * dieselbe Wahl wie „Chat Model“ in den Einstellungen.
+ */
+@Composable
+private fun ChatModelMenu() {
+    val models = remember { de.letzgo.porridge.cloud.SummaryModel.available }
+    if (models.isEmpty()) return
+    var choice by remember { mutableStateOf(de.letzgo.porridge.cloud.SummaryModel.chatChoice) }
+    var open by remember { mutableStateOf(false) }
+    // Neu gelesen, wenn sich die Wahl ändert: ein gewähltes Modell ohne Schlüssel antwortet nicht, der Standard schon.
+    val answering = remember(choice) { de.letzgo.porridge.cloud.SummaryModel.chat }
+    Box {
+        AssistChip(
+            onClick = { open = true },
+            label = { Text(answering.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            leadingIcon = {
+                Icon(if (answering.isLocal) Icons.Filled.Memory else Icons.Filled.Cloud, null, Modifier.size(16.dp), tint = Brand.readable(Brand.sky))
+            },
+            trailingIcon = { Icon(Icons.Filled.ExpandMore, "Chat Model", Modifier.size(16.dp)) },
+        )
+        DropdownMenu(open, onDismissRequest = { open = false }) {
+            fun pick(model: de.letzgo.porridge.cloud.SummaryModel?) {
+                open = false
+                choice = model
+                de.letzgo.porridge.cloud.SummaryModel.chatChoice = model
+            }
+            DropdownMenuItem(
+                text = { Text("Same as Default (${de.letzgo.porridge.cloud.SummaryModel.current.name})") },
+                trailingIcon = if (choice == null) ({ Icon(Icons.Filled.Check, null) }) else null,
+                onClick = { pick(null) },
+            )
+            for (model in models) {
+                DropdownMenuItem(
+                    text = { Text(model.menuTitle) },
+                    trailingIcon = if (choice == model) ({ Icon(Icons.Filled.Check, null) }) else null,
+                    onClick = { pick(model) },
+                )
+            }
         }
     }
 }

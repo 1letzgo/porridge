@@ -50,9 +50,13 @@ class CloudLLMTest {
     }
 
     @Test fun errorMessageFromTheProvider() = runTest {
-        answer("""{"error":{"message":"Invalid key"}}""", code = 401)
+        answer("""{"error":{"message":"Invalid key"}}""", code = 400)
         val error = runCatching { CloudLLM.complete(AIProvider.OPEN_AI, "k", "m", "s", "u") }.exceptionOrNull()
         assertEquals("OpenAI: Invalid key", error?.message)
+        // iOS: `CloudLLM.error` — ein abgelehnter Schlüssel sagt, was zu tun ist.
+        answer("""{"error":{"message":"Invalid key"}}""", code = 401)
+        val rejected = runCatching { CloudLLM.complete(AIProvider.OPEN_AI, "k", "m", "s", "u") }.exceptionOrNull()
+        assertEquals("OpenAI did not accept the API key. Check it in Settings, under AI.", rejected?.message)
     }
 
     @Test fun modelListFiltersNonChatModels() = runTest {

@@ -130,6 +130,20 @@ object CloudLLM {
         }
     }
 
+    /**
+     * iOS: `CloudLLM.error(status:message:provider:)` — eine gescheiterte Anfrage als Meldung, die sagt, was zu tun ist: ein
+     * Schlüssel, der nicht angenommen wird, eine Grenze, oder was der Dienst sagte.
+     */
+    fun error(status: Int, message: String, provider: AIProvider): SummaryException {
+        val name = if (provider == AIProvider.CUSTOM) "Your server" else provider.label
+        return SummaryException(when (status) {
+            401, 403 -> "$name did not accept the API key. Check it in Settings, under AI."
+            429 -> "$name is busy or your usage limit is reached. Try again later."
+            in 500..599 -> "$name has a problem right now ($status). Try again later."
+            else -> "$name: $message"
+        })
+    }
+
     private fun send(request: Request, provider: AIProvider, timeoutSeconds: Long): JsonObject {
         val call = client.newBuilder().readTimeout(timeoutSeconds, TimeUnit.SECONDS).callTimeout(timeoutSeconds, TimeUnit.SECONDS).build()
         call.newCall(request).execute().use { response ->
@@ -138,7 +152,7 @@ object CloudLLM {
                 val message = runCatching {
                     PorridgeJson.parseToJsonElement(text).jsonObject["error"]?.obj()?.get("message")?.str()
                 }.getOrNull() ?: "HTTP ${response.code}"
-                throw SummaryException("${provider.label}: $message")
+                throw error(response.code, message, provider)
             }
             return runCatching { PorridgeJson.parseToJsonElement(text).jsonObject }.getOrNull() ?: throw SummaryException.emptyResponse
         }

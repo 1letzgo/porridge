@@ -2,6 +2,7 @@ package de.letzgo.porridge.cloud
 
 import de.letzgo.porridge.AppGraph
 import de.letzgo.porridge.data.PorridgeJson
+import de.letzgo.porridge.logic.ChatBudget
 import de.letzgo.porridge.logic.ChatContext
 import de.letzgo.porridge.logic.ChatLogic
 import de.letzgo.porridge.logic.SummaryException
@@ -70,16 +71,18 @@ object ChatService {
             // Die Buckets beim Namen: Eine Frage kann einen nennen, und jeder Eintrag sagt, wo er liegt.
             val names = folders.associate { it.id to it.name }
             val within = thread.projectID?.let { ChatLogic.scope(it, notes).map { note -> note.id }.toSet() }
-            val found = index.context(q, within, names)
+            // Das für den Chat gewählte Modell („Chat Model“), sonst der Standard; sein Platz bestimmt, wie viel Zusammenhang es bekommt.
+            val model = SummaryModel.chat
+            val found = index.context(q, within, names, ChatBudget.of(model))
             if (found.isEmpty && found.matched == null) {
                 answer(if (thread.projectID == null) "There is nothing in your notes yet." else "There is nothing in this bucket yet.")
                 return
             }
-            val result = runCatching { complete(q, history, found, thread.projectID?.let { names[it] }) }
+            val result = runCatching { complete(q, history, found, thread.projectID?.let { names[it] }, model) }
             result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             result.fold(
                 onSuccess = { answer(it, ChatLogic.sources(it, found.items, found.wordsNotFound)) },
-                onFailure = { answer(it.message ?: "Something went wrong.", isError = true) },
+                onFailure = { answer(message(it, model), isError = true) },
             )
         } finally {
             _thinking.value = null
@@ -87,14 +90,31 @@ object ChatService {
         }
     }
 
+    /**
+     * iOS: `ChatService.message(for:model:)` — ein Fehler, wie der Chat ihn sagt: was mit welchem Dienst schiefging, und was
+     * zu tun ist.
+     */
+    fun message(error: Throwable, model: SummaryModel): String {
+        if (error is java.io.IOException) {
+            val place = if (model is SummaryModel.Cloud && model.provider == de.letzgo.porridge.cloud.AIProvider.CUSTOM) "your server" else model.place
+            return when (error) {
+                is java.net.SocketTimeoutException, is java.io.InterruptedIOException ->
+                    "${place.replaceFirstChar { it.uppercase() }} took too long to answer. Try again in a moment."
+                else -> "Could not reach $place. Check the internet connection and try again."
+            }
+        }
+        return error.message ?: "Something went wrong."
+    }
+
     private suspend fun complete(
-        question: String, history: List<Pair<Boolean, String>>, context: ChatContext, bucket: String?,
+        question: String, history: List<Pair<Boolean, String>>, context: ChatContext, bucket: String?, chosen: SummaryModel,
     ): String {
         val system = ChatLogic.system(bucket)
-        val user = ChatLogic.user(question, history, context)
-        return when (val chosen = SummaryModel.current) {
+        val user = ChatLogic.user(question, history, context, ChatBudget.of(chosen).promptLimit)
+        return when (chosen) {
             is SummaryModel.Local -> {
-                val model = TextModels.selected ?: throw SummaryException(NO_MODEL)
+                // Das Standardmodell, wie die Zusammenfassungen es laden; ein anderes für den Chat gewähltes lokales Modell eigens.
+                val model = (if (chosen == SummaryModel.current) TextModels.selected else de.letzgo.porridge.ml.LocalLLM.of(chosen.model)) ?: throw SummaryException(NO_MODEL)
                 // Eine Frage beginnt nie von sich aus einen Download von Gigabytes: Das Modell wird in den Einstellungen geholt.
                 if (!model.isInstalled) throw SummaryException(NO_MODEL)
                 model.beginUse()

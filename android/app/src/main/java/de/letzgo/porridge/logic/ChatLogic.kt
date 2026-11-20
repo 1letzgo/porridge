@@ -20,11 +20,11 @@ object ChatLogic {
     private fun length(chunk: NoteChunk) = max(chunk.frequencies.values.sum(), 1)
 
     /** Die Passagen, die am besten zu [question] passen, innerhalb von [budget] Zeichen. */
-    fun search(question: String, chunks: List<NoteChunk>, budget: Int = 6500): List<NoteChunk> =
-        search(queryWords(question), chunks, budget)
+    fun search(question: String, chunks: List<NoteChunk>, budget: Int = 6500, limit: Int = 10): List<NoteChunk> =
+        search(queryWords(question), chunks, budget, limit)
 
     /** iOS: `search(words:in:)` — [search] mit den schon aus der Frage gelesenen Wörtern (`ChatQuery.words`). */
-    fun search(words: List<String>, chunks: List<NoteChunk>, budget: Int = 6500): List<NoteChunk> {
+    fun search(words: List<String>, chunks: List<NoteChunk>, budget: Int = 6500, limit: Int = 10): List<NoteChunk> {
         val unique = words.toSet()
         if (unique.isEmpty() || chunks.isEmpty()) return emptyList()
         val average = chunks.sumOf { length(it) }.toDouble() / chunks.size
@@ -48,7 +48,7 @@ object ChatLogic {
             picked += chunk
             perNote[chunk.noteID] = (perNote[chunk.noteID] ?: 0) + 1
             used += chunk.text.length
-            if (picked.size >= 10) break
+            if (picked.size >= limit) break
         }
         return picked
     }
@@ -65,15 +65,18 @@ object ChatLogic {
         selection(question, chunks, now, zone).first
 
     /** iOS: `ChatRetrieval.selection` — [select], und ob die Passagen nur die neuesten sind, weil nichts die Wörter der Frage hatte. */
-    fun selection(question: String, chunks: List<NoteChunk>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): Pair<List<NoteChunk>, Boolean> {
+    fun selection(
+        question: String, chunks: List<NoteChunk>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault(),
+        budget: Int = 6500, limit: Int = 10,
+    ): Pair<List<NoteChunk>, Boolean> {
         var window: List<NoteChunk> = emptyList()
         val start = since(question, now, zone)
         if (start != null) {
             window = chunks.filter { it.date >= start }
-            val found = search(question, window)
+            val found = search(question, window, budget, limit)
             if (found.isNotEmpty()) return found to false
         }
-        val found = search(question, chunks)
+        val found = search(question, chunks, budget, limit)
         if (found.isNotEmpty()) return found to false
         return recent(window.ifEmpty { chunks }, now = now) to true
     }

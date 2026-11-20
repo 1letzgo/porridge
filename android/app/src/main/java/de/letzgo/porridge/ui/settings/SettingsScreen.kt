@@ -358,12 +358,14 @@ private fun SummaryCard() {
     var editTemplates by remember { mutableStateOf(false) }
     var addModel by remember { mutableStateOf(false) }
     var default by remember { mutableStateOf(SummaryModel.current) }
+    var chat by remember { mutableStateOf(SummaryModel.chatChoice) }
     var external by remember { mutableStateOf(SummaryModel.external) }
     // Ein Download, der fertig wird, oder ein gelöschtes Modell ändern, was wählbar ist.
     val states = LocalModel.entries.map { ModelManager.state(it.pack).collectAsState().value }
     fun refresh() {
         SummaryModel.repairCurrent()
         default = SummaryModel.current
+        chat = SummaryModel.chatChoice
         external = SummaryModel.external
     }
     LaunchedEffect(states) { refresh() }
@@ -378,6 +380,17 @@ private fun SummaryCard() {
             Picker("Default Model", available.map { it to it.name }, default) {
                 default = it
                 SummaryModel.current = it
+                chat = SummaryModel.chatChoice
+            }
+            HorizontalDivider()
+            // iOS: „Chat Model“ — der Chat kann mit einem anderen Modell antworten als die Zusammenfassungen („Same as Default“ ist der Standard).
+            Picker("Chat Model", listOf<Pair<SummaryModel?, String>>(null to "Same as Default") + available.map { it to it.name }, chat) {
+                chat = it
+                SummaryModel.chatChoice = it
+            }
+            val answering = remember(chat, default) { SummaryModel.chat }
+            answering.sendsHint("question and excerpts of your notes")?.let { hint ->
+                Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         HorizontalDivider()

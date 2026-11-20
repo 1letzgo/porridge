@@ -1,5 +1,6 @@
 package de.letzgo.porridge.index
 
+import de.letzgo.porridge.logic.ChatBudget
 import de.letzgo.porridge.logic.ChatContext
 import de.letzgo.porridge.logic.ChatDocument
 import de.letzgo.porridge.logic.ChatLogic
@@ -92,10 +93,10 @@ class NoteIndex(
      * iOS: `NoteIndex.context` — der Zusammenhang einer Chat-Frage (`ChatLogic.context`): die Einträge, nach denen ihre
      * Filter fragen, und die Passagen, die zu ihr passen. [within] engt auf einige Notizen ein (die eines Buckets); null ist alles.
      */
-    fun context(question: String, within: Set<String>?, bucketNames: Map<String, String>): ChatContext {
+    fun context(question: String, within: Set<String>?, bucketNames: Map<String, String>, budget: ChatBudget = ChatBudget.STANDARD): ChatContext {
         val snapshot = entries.filterKeys { within == null || it in within }
         val documents = snapshot.mapNotNull { (id, entry) -> entry.document?.let { id to it } }.toMap()
-        return ChatLogic.context(question, documents, snapshot.values.flatMap { it.chunks }, bucketNames)
+        return ChatLogic.context(question, documents, snapshot.values.flatMap { it.chunks }, bucketNames, budget = budget)
     }
 
     /** Notizen, in denen jedes Wort der Anfrage vorkommt (Wortformen zählen), für die Listensuche. Null, solange nicht geladen. */
