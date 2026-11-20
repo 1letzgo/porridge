@@ -26,7 +26,7 @@ final class DetailViewController: NSViewController {
     }
 
     override func loadView() {
-        let root = NSView()
+        let root = ImportDropView(state: state)
         root.addSubview(empty)
         empty.pinEdges(to: root)
         view = root

@@ -182,9 +182,83 @@ enum DebugDriver {
             NSApp.terminate(nil)
         case "dump":
             dump()
+        case "drop", "hover":
+            // `drop list|detail <path>|text:<words>[|<path>…]`: a drop from outside through the column's own drop
+            // methods (`ImportDropView`); `hover` stops before the drop and leaves the highlight showing.
+            let bits = argument.split(separator: " ", maxSplits: 1).map(String.init)
+            guard bits.count == 2 else { log("drop: pane and items needed"); return }
+            // `editor` is the open note's text, which hands files on to the column around it.
+            func editor(in view: NSView) -> NSView? {
+                if view is NotePlatformTextView { return view }
+                for sub in view.subviews { if let found = editor(in: sub) { return found } }
+                return nil
+            }
+            let target: NSView
+            switch bits[0] {
+            case "detail": target = controller.split.detail.view
+            case "editor":
+                guard let found = editor(in: controller.split.detail.view) else { log("drop: no editor"); return }
+                target = found
+            default: target = controller.split.content.view
+            }
+            let pasteboard = NSPasteboard(name: .init("PorridgeDebugDrop"))
+            pasteboard.clearContents()
+            let items = bits[1].split(separator: "|").map(String.init)
+            if let text = items.first, text.hasPrefix("text:") {
+                pasteboard.setString(String(text.dropFirst(5)), forType: .string)
+            } else {
+                pasteboard.writeObjects(items.map { URL(fileURLWithPath: $0) as NSURL })
+            }
+            let info = DebugDraggingInfo(pasteboard: pasteboard, window: controller.window, location: target.convert(NSPoint(x: target.bounds.midX, y: target.bounds.midY), to: nil))
+            guard let destination = target as? NSDraggingDestination else { return }
+            let operation = destination.draggingEntered?(info) ?? []
+            log("drop entered: operation=\(operation.rawValue)")
+            guard parts.first == "drop" else { return }
+            if destination.prepareForDragOperation?(info) == true {
+                log("drop performed: \(destination.performDragOperation?(info) ?? false)")
+            } else {
+                destination.draggingExited?(info)
+                log("drop refused")
+            }
+            destination.draggingEnded?(info)
+        case "dismiss":
+            // Closes the sheet on the window (a notice) with its first button.
+            if let window = controller.window, let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertFirstButtonReturn) }
+        case "hover-end":
+            for view in [controller.split.content.view, controller.split.detail.view] {
+                (view as? NSDraggingDestination)?.draggingExited?(nil)
+            }
         default:
             log("unknown command \(command)")
         }
+    }
+
+    private static var nextSequence = 1000
+
+    /// A drag that did not come from the mouse, for `drop`.
+    final class DebugDraggingInfo: NSObject, NSDraggingInfo {
+        let draggingPasteboard: NSPasteboard
+        let draggingDestinationWindow: NSWindow?
+        let draggingLocation: NSPoint
+        let draggingSequenceNumber: Int
+        @MainActor init(pasteboard: NSPasteboard, window: NSWindow?, location: NSPoint) {
+            draggingPasteboard = pasteboard
+            draggingDestinationWindow = window
+            draggingLocation = location
+            DebugDriver.nextSequence += 1
+            draggingSequenceNumber = DebugDriver.nextSequence
+        }
+        var draggingSourceOperationMask: NSDragOperation { .copy }
+        var draggedImageLocation: NSPoint { draggingLocation }
+        var draggedImage: NSImage? { nil }
+        var draggingSource: Any? { nil }
+        func slideDraggedImage(to screenPoint: NSPoint) {}
+        var draggingFormation: NSDraggingFormation = .default
+        var animatesToDestination = false
+        var numberOfValidItemsForDrop = 1
+        func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+        var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+        func resetSpringLoading() {}
     }
 
     private static func dump() {

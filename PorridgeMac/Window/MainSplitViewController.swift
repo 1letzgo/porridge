@@ -57,7 +57,7 @@ final class ContentColumnViewController: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        view = NSView()
+        view = ImportDropView(state: state)
         for child in [notes, chats] as [NSViewController] {
             addChild(child)
             view.addSubview(child.view)

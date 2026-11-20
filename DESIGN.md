@@ -114,6 +114,16 @@ A virtual folder of every open to-do, sorted by due day. It is a view, not a buc
 - **Rules** (`Todos.folder`): open = to-do, not done, not deleted, `archivedAt` nil. Done today = to-do, done, not deleted, `archivedAt` nil, `todoDoneAt` not before the start of today. Overdue count = open ones whose due day is before today (it changes at midnight). Sorting and groups as in "Due day rules" above.
 - **Test data:** debug builds read `-seedTodos <prefix>`: four open to-dos "<prefix> long overdue" (due 2000-01-01, in a new bucket named <prefix>), "<prefix> today", "<prefix> upcoming" (in five days), "<prefix> no date".
 
+## Drag and drop on the Mac
+
+Files, pictures, web links and text dragged from other apps onto the main window come in through the existing import (`PorridgeMac/Support/Intake.swift` → `ShareImport.add`, `NoteStore.importAudio`, `LinkImport.add`); there is no import logic of its own.
+
+- **Where it lands:** a bucket in the sidebar takes it into that bucket (the row lights up). Anywhere else in the sidebar the Inbox row lights up. The list and the detail column (`ImportDropView`, root of both columns) put it into the open bucket, or into the Inbox when no bucket is open (to-dos, chat, archive, trash, search). The first new entry opens; when it would not show on the open page, the window goes to its bucket or the Inbox.
+- **What it becomes:** each file is one entry. Audio and video become a recording that is transcribed. Pictures, PDFs and every other file become a file whose text is read (the same as Import File). A web address becomes a link. Text becomes a note. Nothing becomes a to-do, and links never make tasks.
+- **Highlight:** while dragging over the list or the detail, the column gets a rounded accent frame and a card such as "Add 3 files to Inbox". Folders and packages (apps, bundles) are not imported: the card names them, and after the drop a notice says so. If only folders are dragged, the frame turns red with "Can't Import" and the drop is refused. Files that can't be copied are also named in a notice.
+- **Editor and chat field:** text and links dropped onto the open note's text, or onto the chat field, are put in where they are dropped. Files and pictures dropped there go to the column's import instead (`NotePlatformTextView`, `ChatInputTextView`).
+- **Sandbox:** dropped files are copied into the app's storage during the drop, because a sandboxed app can read them only then.
+- **Check:** debug builds have `drop list|detail|editor <path>|<path>…` and `drop … text:<words>` in the debug driver. They run a drop through the column's own drop methods; `hover` shows the highlight without dropping.
 
 ## Chat data
 

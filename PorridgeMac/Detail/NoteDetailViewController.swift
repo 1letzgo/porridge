@@ -364,7 +364,12 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         dictation.onStopRequested = { [weak self] in Task { await self?.finishDictation() } }
         observers.append(Observing { [weak self] in self?.render() })
         // Other notes count too: the to-dos made from this one, its buckets.
-        libraryToken = library.observe { [weak self] in self?.render() }
+        libraryToken = library.observe { [weak self] in
+            guard let self else { return }
+            // Deleted for good (here or on another device): the window closes it; reading it now would trap.
+            guard self.note.modelContext == nil || self.library.note(self.note.id) != nil else { return }
+            self.render()
+        }
         observers.append(Observing { [weak self] in
             guard let self else { return }
             let time = self.player.isPlaying ? self.player.currentTime : nil

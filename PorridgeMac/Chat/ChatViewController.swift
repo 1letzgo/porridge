@@ -329,7 +329,7 @@ final class BubbleView: NSView {
 
 /// The chat's field: grows with its text up to a few lines, with a placeholder.
 final class ChatInputView: NSView {
-    let textView = NSTextView()
+    let textView = ChatInputTextView()
     private let scroll = NSScrollView()
     private let placeholderLabel = NSTextField.label(color: .placeholderTextColor)
     private var height: NSLayoutConstraint!
@@ -389,5 +389,45 @@ final class ChatInputView: NSView {
         manager.ensureLayout(for: container)
         let used = manager.usedRect(for: container).height + 20
         height.constant = min(max(40, used), 120)
+    }
+}
+
+/// The chat field's text view: files and pictures dragged onto it are not put in as text, they go to the detail
+/// around it, which imports them (`ImportDropView`).
+final class ChatInputTextView: NSTextView {
+    private func fileDropTarget(_ sender: NSDraggingInfo) -> NSDraggingDestination? {
+        guard sender.draggingPasteboard.availableType(from: [.fileURL, .png, .tiff]) != nil else { return nil }
+        var view = superview
+        while let current = view {
+            if current is ImportDropView { return current }
+            view = current.superview
+        }
+        return nil
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        fileDropTarget(sender)?.draggingEntered?(sender) ?? super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        fileDropTarget(sender)?.draggingUpdated?(sender) ?? super.draggingUpdated(sender)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        if let sender, let target = fileDropTarget(sender) { target.draggingExited?(sender); return }
+        super.draggingExited(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        fileDropTarget(sender)?.prepareForDragOperation?(sender) ?? super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        fileDropTarget(sender)?.performDragOperation?(sender) ?? super.performDragOperation(sender)
+    }
+
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+        if let sender, fileDropTarget(sender) != nil { return }
+        super.concludeDragOperation(sender)
     }
 }

@@ -74,7 +74,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         outline.delegate = self
         outline.autosaveExpandedItems = false
         outline.allowsEmptySelection = true
-        outline.registerForDraggedTypes([.porridgeNote, .fileURL, .URL, .string])
+        outline.registerForDraggedTypes([.porridgeNote] + Intake.pasteboardTypes)
         outline.setDraggingSourceOperationMask(.every, forLocal: false)
         outline.target = self
         outline.doubleAction = #selector(doubleClicked)
@@ -256,19 +256,21 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     // MARK: Drag and drop
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
-        guard let page = (item as? SidebarNode)?.page, index == NSOutlineViewDropOnItemIndex else { return [] }
         let pasteboard = info.draggingPasteboard
         if pasteboard.availableType(from: [.porridgeNote]) != nil {
+            guard let page = (item as? SidebarNode)?.page, index == NSOutlineViewDropOnItemIndex else { return [] }
             switch page {
             case .project, .archive, .trash, .inbox: return .move
             default: return []
             }
         }
-        // Files and links from outside: into the inbox or a bucket.
-        switch page {
-        case .inbox, .project: return .copy
-        default: return []
-        }
+        // Files, pictures, links and text from outside: into the bucket under them, anywhere else into the inbox
+        // (its row lights up). Folders alone are taken too, so the notice after the drop can say why they stay out.
+        guard let plan = Intake.plan(pasteboard), plan.canImport || !plan.skipped.isEmpty else { return [] }
+        if case .project? = (item as? SidebarNode)?.page, index == NSOutlineViewDropOnItemIndex { return .copy }
+        guard let inbox = node(for: .inbox) else { return [] }
+        outlineView.setDropItem(inbox, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        return .copy
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {

@@ -45,7 +45,6 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         table.floatsGroupRows = true
         table.delegate = self
         table.intercellSpacing = NSSize(width: 0, height: 2)
-        table.registerForDraggedTypes(Intake.pasteboardTypes)
         table.setDraggingSourceOperationMask([.move, .copy], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.target = self
@@ -90,10 +89,6 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         super.viewDidLoad()
         dataSource = NoteListDataSource(tableView: table) { [weak self] table, _, row, item in
             self?.cell(for: item, in: table) ?? NSView()
-        }
-        dataSource.onIntake = { [weak self] pasteboard in
-            guard let self else { return false }
-            return Intake.accept(pasteboard, project: self.state.projectForNew, state: self.state)
         }
         dataSource.sectionHeaderViewProvider = { [weak self] table, row, section in
             let cell = table.makeView(withIdentifier: SectionHeaderCell.identifier, owner: nil) as? SectionHeaderCell ?? SectionHeaderCell()
@@ -247,8 +242,6 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
 
 /// The rows of the list, which also drag out as notes and take files, links and text dropped on the list.
 final class NoteListDataSource: NSTableViewDiffableDataSource<ListSection, ListItem> {
-    var onIntake: ((NSPasteboard) -> Bool)?
-
     @objc func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard case .note(let id)? = itemIdentifier(forRow: row) else { return nil }
         return MainActor.assumeIsolated {
@@ -256,17 +249,7 @@ final class NoteListDataSource: NSTableViewDiffableDataSource<ListSection, ListI
             return NotePasteboard.item(for: note)
         }
     }
-
-    @objc func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        // Notes are moved onto buckets in the sidebar; here only what comes from outside is taken.
-        guard info.draggingPasteboard.availableType(from: [.porridgeNote]) == nil else { return [] }
-        tableView.setDropRow(-1, dropOperation: .on)
-        return .copy
-    }
-
-    @objc func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
-        onIntake?(info.draggingPasteboard) ?? false
-    }
+    // Drops from other apps land on the column around it (`ImportDropView`).
 }
 
 /// The table of the list: ⌘V brings in what is on the clipboard, Delete moves the selection to Recently Deleted.

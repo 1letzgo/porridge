@@ -633,6 +633,48 @@ final class NotePlatformTextView: NSTextView {
         window?.makeFirstResponder(nil)
     }
 
+    // Files and pictures dragged onto the note don't go into its text: they go to the nearest view around it that
+    // takes files (on the Mac the window's import). Text and links dragged in are still put where they are dropped.
+    private func fileDropTarget(_ sender: NSDraggingInfo) -> NSDraggingDestination? {
+        guard sender.draggingPasteboard.availableType(from: [.fileURL, .png, .tiff]) != nil else { return nil }
+        var view = superview
+        while let current = view {
+            if current.registeredDraggedTypes.contains(.fileURL) { return current }
+            view = current.superview
+        }
+        return nil
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if let target = fileDropTarget(sender) { return target.draggingEntered?(sender) ?? [] }
+        return super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if let target = fileDropTarget(sender) { return target.draggingUpdated?(sender) ?? [] }
+        return super.draggingUpdated(sender)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        if let sender, let target = fileDropTarget(sender) { target.draggingExited?(sender); return }
+        super.draggingExited(sender)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        if let target = fileDropTarget(sender) { return target.prepareForDragOperation?(sender) ?? false }
+        return super.prepareForDragOperation(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        if let target = fileDropTarget(sender) { return target.performDragOperation?(sender) ?? false }
+        return super.performDragOperation(sender)
+    }
+
+    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+        if let sender, fileDropTarget(sender) != nil { return }
+        super.concludeDragOperation(sender)
+    }
+
     func didRestyle() {
         needsDisplay = true
     }
