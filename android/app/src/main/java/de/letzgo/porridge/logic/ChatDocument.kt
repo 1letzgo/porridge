@@ -392,6 +392,11 @@ data class ChatContext(
     val matched: Int? = null,
     /** Die Filter in Worten (`ChatQuery.describe`). */
     val filter: String = "",
+    /**
+     * Die Frage hatte Wörter zum Suchen, aber keine Passage hatte sie: Die neuesten Einträge stehen ein, und eine Antwort,
+     * die keinen davon nennt, bekommt keine Quellen (`ChatLogic.sources`).
+     */
+    val wordsNotFound: Boolean = false,
     val query: ChatQuery = ChatQuery(),
 ) {
     val isEmpty: Boolean get() = items.isEmpty()
@@ -420,7 +425,8 @@ fun ChatLogic.context(
     }
 
     if (!query.isStructured) {
-        return ChatContext(select(question, chunks, now, zone).mapNotNull { item(it) }, query = query)
+        val (picked, isNewest) = selection(question, chunks, now, zone)
+        return ChatContext(picked.mapNotNull { item(it) }, wordsNotFound = isNewest && queryWords(question).isNotEmpty(), query = query)
     }
 
     val filter = query.describe(bucketNames, zone)
@@ -439,7 +445,7 @@ fun ChatLogic.context(
     }
     if (matches.isEmpty()) {
         // Nichts ist, wonach die Filter fragen: die besten Passagen aller Einträge, so markiert.
-        return ChatContext(search(query.words, chunks).mapNotNull { item(it, outside = true) }, 0, filter, query)
+        return ChatContext(search(query.words, chunks).mapNotNull { item(it, outside = true) }, 0, filter, query = query)
     }
 
     val items = mutableListOf<ChatContextItem>()
@@ -477,7 +483,7 @@ fun ChatLogic.context(
     if (query.words.isNotEmpty() && found.isEmpty()) {
         items += search(query.words, chunks.filter { it.noteID !in ids }, budget = 3000).mapNotNull { item(it, outside = true) }
     }
-    return ChatContext(items, matched, filter, query)
+    return ChatContext(items, matched, filter, query = query)
 }
 
 /**

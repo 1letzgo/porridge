@@ -61,17 +61,21 @@ object ChatLogic {
      * („der letzten Tage“, „this week“), zählen zuerst die Notizen dieser Zeit; passt dort nichts, alle. Ohne ein Wort zum
      * Suchen („Was war diese Woche?“) sind die neuesten Notizen (dieser Zeit) der Zusammenhang.
      */
-    fun select(question: String, chunks: List<NoteChunk>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): List<NoteChunk> {
+    fun select(question: String, chunks: List<NoteChunk>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): List<NoteChunk> =
+        selection(question, chunks, now, zone).first
+
+    /** iOS: `ChatRetrieval.selection` — [select], und ob die Passagen nur die neuesten sind, weil nichts die Wörter der Frage hatte. */
+    fun selection(question: String, chunks: List<NoteChunk>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): Pair<List<NoteChunk>, Boolean> {
         var window: List<NoteChunk> = emptyList()
         val start = since(question, now, zone)
         if (start != null) {
             window = chunks.filter { it.date >= start }
             val found = search(question, window)
-            if (found.isNotEmpty()) return found
+            if (found.isNotEmpty()) return found to false
         }
         val found = search(question, chunks)
-        if (found.isNotEmpty()) return found
-        return recent(window.ifEmpty { chunks }, now = now)
+        if (found.isNotEmpty()) return found to false
+        return recent(window.ifEmpty { chunks }, now = now) to true
     }
 
     /**
@@ -241,7 +245,8 @@ object ChatLogic {
                 text.append("[${start + offset + 1}] ${item.header}\n${item.text}\n\n")
             }
         }
-        block(if (context.matched == null) "Excerpts:" else "Excerpts from the matching entries:", inside, number)
+        val plain = if (context.wordsNotFound) "No entry contains the words of the question. The newest entries, only in case they answer it:" else "Excerpts:"
+        block(if (context.matched == null) plain else "Excerpts from the matching entries:", inside, number)
         block(
             if (context.matched == null) "Excerpts:" else "Excerpts from other entries (they do not match ${context.filter}; use them only if they answer the question):",
             outside, number + inside.size,
@@ -251,14 +256,16 @@ object ChatLogic {
 
     /**
      * Die Notizen hinter den Einträgen, die die Antwort als [n] nennt; ohne Nummer die ersten Passagen (nicht die Liste der
-     * Treffer, die lang sein kann).
+     * Treffer, die lang sein kann), ohne Passagen die ersten Listenzeilen. Nie die Platzhalter: Passagen außerhalb der Filter,
+     * oder die neuesten Einträge, weil nichts die Wörter der Frage hatte ([wordsNotFound]: eine Antwort „nichts gefunden“).
      */
-    fun sources(answer: String, items: List<ChatContextItem>): List<ChatSource> {
+    fun sources(answer: String, items: List<ChatContextItem>, wordsNotFound: Boolean = false): List<ChatSource> {
         val numbers = Regex("""\[([0-9, ]+)]""").findAll(answer).flatMap { match -> match.groupValues[1].split(',', ' ').mapNotNull { it.trim().toIntOrNull() } }.toList()
         var indices = numbers.filter { it in 1..items.size }.map { it - 1 }
-        if (indices.isEmpty()) {
+        if (indices.isEmpty() && !wordsNotFound) {
             val passages = items.indices.filter { !items[it].isListing && !items[it].isOutside }
-            indices = passages.ifEmpty { items.indices.toList() }.take(3)
+            val listed = items.indices.filter { items[it].isListing }
+            indices = passages.ifEmpty { listed }.take(3)
         }
         val seen = HashSet<String>()
         return indices.mapNotNull { index -> items[index].takeIf { seen.add(it.noteID) }?.let { ChatSource(it.noteID, it.title, it.date) } }

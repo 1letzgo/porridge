@@ -290,4 +290,23 @@ class ChatDataTest {
         )
         assertTrue(ChatLogic.user("?", emptyList(), many, limit = 7000).contains("the first "))
     }
+
+    // Nichts gefunden
+
+    @Test fun aQuestionWhoseWordsNoEntryHasGetsNoSources() {
+        val f = makeFixture()
+        // „Falke“ steht nur in einer gelöschten Notiz: Nichts hat die Wörter, die neuesten Einträge stehen ein.
+        val question = "Was weiß ich über den Codenamen Falke?"
+        val falcon = context(question, f)
+        assertTrue(falcon.wordsNotFound)
+        assertFalse(falcon.items.any { it.noteID == f["Geheimes Projekt"] })
+        assertEquals(emptyList<Any>(), ChatLogic.sources("Dazu habe ich nichts gefunden.", falcon.items, falcon.wordsNotFound))
+        assertTrue(ChatLogic.user(question, emptyList(), falcon).contains("No entry contains the words of the question"))
+        // Eine Frage, deren Wörter gefunden werden, behält die Ersatzquellen einer Antwort ohne Nummern.
+        val rent = context("Wie hoch ist die Kaution?", f)
+        assertFalse(rent.wordsNotFound)
+        assertEquals("Mietvertrag", ChatLogic.sources("2.400 Euro.", rent.items, rent.wordsNotFound).first().title)
+        // Ohne Wörter zum Suchen („was war diese Woche?“) sind die neuesten Einträge die Antwort, kein Ersatz.
+        assertFalse(context("Was war diese Woche?", f).wordsNotFound)
+    }
 }

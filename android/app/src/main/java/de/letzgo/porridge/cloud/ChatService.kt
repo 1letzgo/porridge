@@ -78,7 +78,7 @@ object ChatService {
             val result = runCatching { complete(q, history, found, thread.projectID?.let { names[it] }) }
             result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             result.fold(
-                onSuccess = { answer(it, ChatLogic.sources(it, found.items)) },
+                onSuccess = { answer(it, ChatLogic.sources(it, found.items, found.wordsNotFound)) },
                 onFailure = { answer(it.message ?: "Something went wrong.", isError = true) },
             )
         } finally {
