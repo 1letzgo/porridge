@@ -60,11 +60,14 @@ object ModelManager {
     fun state(pack: ModelPack): StateFlow<ModelState> = states.getValue(pack.id).asStateFlow()
     fun isInstalled(pack: ModelPack) = pack.isInstalled(root)
 
-    /** Lädt herunter (falls nötig) und lädt mit [load] in den Speicher. */
-    suspend fun ensure(pack: ModelPack, progress: (Float) -> Unit = {}, load: suspend () -> Unit) {
+    /**
+     * Lädt herunter (falls nötig) und lädt mit [load] in den Speicher. [isLoaded] sagt, ob das Modell wirklich im
+     * Speicher ist: „Bereit“ kann veraltet sein, wenn ein anderes Modell es verdrängt hat oder es gerade freigegeben wurde.
+     */
+    suspend fun ensure(pack: ModelPack, progress: (Float) -> Unit = {}, isLoaded: (() -> Boolean)? = null, load: suspend () -> Unit) {
         val state = states.getValue(pack.id)
         locks.getValue(pack.id).withLock {
-            if (state.value == ModelState.Ready) return
+            if (state.value == ModelState.Ready && isLoaded?.invoke() != false) return
             try {
                 if (!pack.isInstalled(root)) {
                     state.value = ModelState.Downloading(0f)
@@ -155,6 +158,12 @@ object ModelManager {
         }
     }
 
+    /** Ein Modell kam außerhalb von [ensure] in den Speicher (iOS: `ModelManager.llmDidLoad`). */
+    fun markLoaded(pack: ModelPack) {
+        val state = states.getValue(pack.id)
+        if (state.value == ModelState.Installed) state.value = ModelState.Ready
+    }
+
     fun markUnloaded(pack: ModelPack) {
         val state = states.getValue(pack.id)
         if (state.value == ModelState.Ready || state.value == ModelState.Loading) state.value = if (pack.isInstalled(root)) ModelState.Installed else ModelState.NotInstalled
@@ -166,35 +175,41 @@ object ModelManager {
         states.getValue(pack.id).value = ModelState.NotInstalled
     }
 
-    // Wie viele Aufgaben (Zusammenfassungen) das LLM gerade nutzen. Es wird nicht freigegeben,
-    // solange es jemand nutzt; danach nach einer kurzen Pause (eine Reihe Zusammenfassungen hält es geladen).
-    private var llmUsers = 0
-    private var idleRelease: Job? = null
-    private var pendingRelease: (suspend () -> Unit)? = null
+    // Wie viele Aufgaben (Zusammenfassungen, Chat) jedes LLM gerade nutzen, je Modell: Chat und Zusammenfassungen können
+    // verschiedene Modelle nutzen. Eines wird nicht freigegeben, solange es jemand nutzt; danach nach einer kurzen Pause
+    // (eine Reihe Zusammenfassungen hält es geladen).
+    private val llmUseCounts = HashMap<String, Int>()
+    private val idleReleases = HashMap<String, Job>()
+    private val pendingReleases = HashMap<String, suspend () -> Unit>()
 
-    @Synchronized fun beginLLMUse() {
-        llmUsers++
-        idleRelease?.cancel()
+    @Synchronized fun beginLLMUse(pack: ModelPack) {
+        llmUseCounts[pack.id] = (llmUseCounts[pack.id] ?: 0) + 1
+        idleReleases.remove(pack.id)?.cancel()
     }
 
     /** Danach bleibt das Modell eine Weile geladen, damit die nächste Zusammenfassung sofort startet (iOS: 2 Minuten). */
-    @Synchronized fun endLLMUse(release: suspend () -> Unit) {
-        llmUsers = maxOf(0, llmUsers - 1)
-        if (llmUsers > 0) return
-        pendingRelease = release
-        idleRelease?.cancel()
-        idleRelease = scope.launch {
+    @Synchronized fun endLLMUse(pack: ModelPack, release: suspend () -> Unit) {
+        val users = maxOf(0, (llmUseCounts[pack.id] ?: 0) - 1)
+        llmUseCounts[pack.id] = users
+        if (users > 0) return
+        pendingReleases[pack.id] = release
+        idleReleases.remove(pack.id)?.cancel()
+        idleReleases[pack.id] = scope.launch {
             delay(120_000)
-            if (llmUsers == 0) release()
+            if (llmUsers(pack) == 0) release()
         }
     }
 
-    /** App im Hintergrund oder Speicher knapp: Ein ungenutztes Modell wird sofort frei, sonst endet Android die App zuerst. */
+    /** Ob gerade jemand das Modell nutzt; [LocalLLM.unload] fragt das unter seiner Sperre noch einmal. */
+    @Synchronized fun llmUsers(pack: ModelPack): Int = llmUseCounts[pack.id] ?: 0
+
+    /** App im Hintergrund oder Speicher knapp: Ungenutzte Modelle werden sofort frei, sonst endet Android die App zuerst. */
     @Synchronized fun releaseIdleLLM() {
-        val release = pendingRelease ?: return
-        if (llmUsers > 0) return
-        pendingRelease = null
-        idleRelease?.cancel()
-        idleRelease = scope.launch { release() }
+        for (id in pendingReleases.keys.toList()) {
+            if ((llmUseCounts[id] ?: 0) > 0) continue
+            val release = pendingReleases.remove(id) ?: continue
+            idleReleases.remove(id)?.cancel()
+            idleReleases[id] = scope.launch { release() }
+        }
     }
 }

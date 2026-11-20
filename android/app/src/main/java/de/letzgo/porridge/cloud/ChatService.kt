@@ -14,9 +14,11 @@ import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.store.PorridgeDatabase
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 
 /**
@@ -70,10 +72,13 @@ object ChatService {
             index.refresh(notes)
             // Die Buckets beim Namen: Eine Frage kann einen nennen, und jeder Eintrag sagt, wo er liegt.
             val names = folders.associate { it.id to it.name }
-            val within = thread.projectID?.let { ChatLogic.scope(it, notes).map { note -> note.id }.toSet() }
             // Das für den Chat gewählte Modell („Chat Model“), sonst der Standard; sein Platz bestimmt, wie viel Zusammenhang es bekommt.
             val model = SummaryModel.chat
-            val found = index.context(q, within, names, ChatBudget.of(model))
+            // Alle Passagen werden bewertet: nicht auf dem Thread der Oberfläche (der Chat startet auf `AppGraph.scope`).
+            val found = withContext(Dispatchers.Default) {
+                val within = thread.projectID?.let { ChatLogic.scope(it, notes).map { note -> note.id }.toSet() }
+                index.context(q, within, names, ChatBudget.of(model))
+            }
             if (found.isEmpty && found.matched == null) {
                 answer(if (thread.projectID == null) "There is nothing in your notes yet." else "There is nothing in this bucket yet.")
                 return

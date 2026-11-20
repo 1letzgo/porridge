@@ -327,7 +327,7 @@ fun NoteDetailScreen(
                             DropdownMenuItem(text = { Text("Recover") }, onClick = { act { coroutines.launch { NoteStore().restore(note); onClose() } } })
                         } else {
                             DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { act { update { it.copy(isPinned = !it.isPinned) } } })
-                            if (note.isTodo) DropdownMenuItem(text = { Text(if (note.isDone) "Mark as Not Done" else "Mark as Done") }, onClick = { act { update { Todos.withDone(it, !it.isDone) ?: it } } })
+                            if (note.isTodo) DropdownMenuItem(text = { Text(if (note.isDone) "Mark as Not Done" else "Mark as Done") }, onClick = { val done = !note.isDone; act { update { Todos.withDone(it, done) ?: it } } })
                             if (note.canBeTodo) DropdownMenuItem(text = { Text(if (note.isTodo) "Convert to Note" else "Convert to To-do") }, onClick = { act { update { Todos.withTodo(it, !it.isTodo) ?: it } } })
                             if (opensOnSummary) DropdownMenuItem(text = { Text(if (note.summary == null) "Summarize with AI…" else "Summarize Again with AI…") }, enabled = stage == null && canSummarize(note), onClick = {
                                 act { requestSummary() }
@@ -366,7 +366,8 @@ fun NoteDetailScreen(
             Column(Modifier.weight(1f).verticalScroll(pageScroll).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Header(
                     note, onNext = { tab = NoteTab.NOTE; editor.focusStart() },
-                    onToggleDone = { update { Todos.withDone(it, !it.isDone) ?: it } },
+                    // Was die Box beim Tipp zeigte, nicht was ein noch laufendes Speichern des Texts daraus macht (iOS: `commitTyping()`).
+                    onToggleDone = { val done = !note.isDone; update { Todos.withDone(it, done) ?: it } },
                     source = todoSource, onOpenSource = onOpenNote,
                 ) { title -> update { it.copy(title = title, titleIsCustom = true) } }
                 if (note.isDeleted) Row(verticalAlignment = Alignment.CenterVertically) {

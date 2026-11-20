@@ -133,8 +133,12 @@ data class Note(
     val storedFileNames: List<String>
         get() = listOfNotNull(audioFileName, pendingAudioFileName) + audioFileNames + attachments.map { it.fileName }
 
-    /** Kam von außen (ein Link, eine geteilte Datei oder Text): etwas zum Aufheben. Daraus entstehen nie Aufgaben. */
-    val isSaved: Boolean get() = url != null || source == NoteSource.SHARE
+    /**
+     * Kam von außen (ein Link, eine geteilte Datei oder Text): etwas zum Aufheben. Daraus entstehen nie Aufgaben. Eine aus
+     * einer anderen App geteilte Aufnahme ist keins: Sie zählt wie importiertes Audio, die Aufgaben ihrer Zusammenfassung
+     * können To-dos werden. iOS: `Note.isSaved`.
+     */
+    val isSaved: Boolean get() = url != null || (source == NoteSource.SHARE && !isRecording)
 
     /** iOS: `SyncRecords.apply` — die Eingangsfelder einer anderen Notiz (für Einträge älterer Versionen, die sie nicht kennen). */
     fun withIntakeOf(other: Note) = copy(

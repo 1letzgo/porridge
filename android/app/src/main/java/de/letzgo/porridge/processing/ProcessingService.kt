@@ -215,7 +215,9 @@ object ProcessingService {
 
     private suspend fun run() {
         while (true) {
-            val job = synchronized(this) { (queue.removeFirstOrNull() ?: run { running = false; null }).also { current = it } } ?: break
+            // Das Ende meldet sich unter derselben Sperre wie `enqueue` den Anfang: Sonst könnte es nach einer neuen Arbeit
+            // kommen und den Vordergrunddienst gehen lassen, während sie läuft.
+            val job = synchronized(this) { (queue.removeFirstOrNull() ?: run { running = false; onBusyChanged(false); null }).also { current = it } } ?: break
             runCatching {
                 when (job) {
                     is Job.Transcript -> processTranscript(job.id)
@@ -239,7 +241,6 @@ object ProcessingService {
                 if (waiting.none { it is Job.Enhance }) _enhancing.update { it - job.id }
             }
         }
-        onBusyChanged(false)
     }
 
     private suspend fun save(note: Note) = db.notes().upsert(note)
@@ -461,22 +462,22 @@ object ProcessingService {
     // Links
 
     private suspend fun processLink(id: String, summarize: Boolean) {
-        var note = db.notes().get(id) ?: return
+        val note = db.notes().get(id) ?: return
         val address = note.url ?: return
         // Die Seite wird einmal geladen; „Load Page Again“ und ein neuer Link (Status recorded) laden sie.
         if (note.pageText == null || note.status == ProcessingStatus.RECORDED) {
             stage(id, "Loading page…")
+            // Während des Ladens kann der Link gelöscht, in einen Bucket gelegt oder bearbeitet worden sein: Geschrieben wird
+            // in die Notiz, wie sie jetzt ist (iOS: `guard exists(id)` und die lebende Notiz).
             try {
                 val page = LinkFetcher.fetch(address)
-                val keepTitle = !(note.title.isEmpty() || note.title == address || note.title == note.domain)
-                note = note.copy(
-                    pageText = page.text,
-                    title = if (page.title != null && !keepTitle) page.title else note.title,
-                    statusRaw = ProcessingStatus.READY.raw, errorMessage = null,
-                )
-                save(note)
+                val current = db.notes().get(id) ?: return
+                save(withLoadedPage(current, page, address))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
-                save(note.copy(statusRaw = ProcessingStatus.FAILED.raw, errorMessage = e.message))
+                val current = db.notes().get(id) ?: return
+                save(current.copy(statusRaw = ProcessingStatus.FAILED.raw, errorMessage = e.message))
                 return
             }
         }
@@ -520,4 +521,17 @@ object ProcessingService {
             _summaryErrors.update { it + (id to message) }
         }
     }
+}
+
+/**
+ * iOS: `processLink` — die geladene Seite in [current], der Notiz, wie sie nach dem Laden ist: nur Seitentext, Titel (wenn
+ * er noch die Adresse oder Domain ist), Status und Fehler; alles andere (Papierkorb, Buckets, Text) bleibt.
+ */
+internal fun withLoadedPage(current: Note, page: LinkFetcher.Page, address: String): Note {
+    val replaceTitle = current.title.isEmpty() || current.title == address || current.title == current.domain
+    return current.copy(
+        pageText = page.text,
+        title = if (page.title != null && replaceTitle) page.title else current.title,
+        statusRaw = ProcessingStatus.READY.raw, errorMessage = null,
+    )
 }

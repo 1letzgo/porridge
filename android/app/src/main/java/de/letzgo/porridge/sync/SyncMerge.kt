@@ -55,8 +55,16 @@ object SyncMerge {
      * Notiz war nie eins): Was dieses Gerät davon weiß, bleibt. Ein To-do zurück zur Notiz schreibt deshalb "none".
      */
     fun adoptNote(decoded: de.letzgo.porridge.model.Note, record: JsonObject, local: de.letzgo.porridge.model.Note?): de.letzgo.porridge.model.Note {
-        if (local == null) return decoded
-        val intake = if ("sourceRaw" !in record) decoded.withIntakeOf(local) else decoded
+        // Ein Teil, der hier aufgenommen wurde und nicht transkribiert werden konnte, wartet nur auf diesem Gerät auf „Try
+        // Again“: Die Datei wird nicht abgeglichen, also gilt, was die andere Seite dazu sagt (ihr Stand, ihr Fehler, ein
+        // Teil, den sie nennt), nicht für ihn. Ein fremder Teil wird nie übernommen; der eigene bleibt mit Stand und Fehler.
+        val ownPart = if (local?.pendingAudioFileName != null) {
+            decoded.copy(pendingAudioFileName = local.pendingAudioFileName, statusRaw = local.statusRaw, errorMessage = local.errorMessage)
+        } else {
+            decoded.copy(pendingAudioFileName = null)
+        }
+        if (local == null) return ownPart
+        val intake = if ("sourceRaw" !in record) ownPart.withIntakeOf(local) else ownPart
         val todo = if ("todoStateRaw" !in record) intake.withTodoOf(local) else intake
         // Der fällige Tag für sich: nur ein Eintrag, der ihn hat, sagt etwas darüber ("none" = entfernt).
         val due = if ("todoDueDay" !in record) todo.copy(todoDueDay = local.todoDueDay) else todo

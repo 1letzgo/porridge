@@ -81,7 +81,12 @@ object ShareImport {
                 ProcessingService.enqueue(ProcessingService.Job.Attachment(note.id))
                 first = first ?: note
             }
-            link != null -> first = LinkImport.add(link, project = project, title = shared.title)
+            link != null -> {
+                // Mit der Adresse geteilter Text bleibt am Link, außer er wiederholt sie nur (iOS: `ShareImport`, `extra`).
+                val rest = text.replace(link, "").replace(link.removePrefix("https://"), "").trim { it.isWhitespace() || it in ".,;:!?()" }
+                val extra = text.takeUnless { rest.isEmpty() || it == shared.title?.trim() }
+                first = LinkImport.add(link, project = project, title = shared.title, text = extra)
+            }
             text.isNotEmpty() -> {
                 val note = Note(title = shared.title.orEmpty().trim(), text = text, projectIDs = listOfNotNull(project), sourceRaw = NoteSource.SHARE.raw)
                 db.notes().upsert(note)

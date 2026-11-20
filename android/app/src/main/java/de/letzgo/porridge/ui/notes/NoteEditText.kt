@@ -130,8 +130,12 @@ class NoteEditText(context: Context, private val colors: Colors, private val onM
             if (near != null) {
                 val line = layout.getLineForOffset(near)
                 val x = layout.getPrimaryHorizontal(near) + totalPaddingLeft
-                if (event.x <= x + dp(28f) && layout.getLineForVertical((event.y - totalPaddingTop + scrollY).toInt()) == line) {
-                    engine.toggleCheckbox(near)
+                // Nur ein Tipp auf die Box selbst (18 dp breit, oder im Rand davor), nicht einer am Anfang des ersten
+                // Buchstabens gleich dahinter (iOS: `toggleCheckbox(near:at:)` mit dem Rahmen der Box). Sonst setzt der
+                // Tipp die Marke wie jeder andere.
+                if (event.x <= x + dp(18f) &&
+                    layout.getLineForVertical((event.y - totalPaddingTop + scrollY).toInt()) == line && engine.toggleCheckbox(near)
+                ) {
                     render()
                     return true
                 }

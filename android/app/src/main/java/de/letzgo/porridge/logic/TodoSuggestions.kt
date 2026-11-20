@@ -88,9 +88,9 @@ object TodoSuggestions {
         // Kleine Modelle kopieren den Tag des Meetings in jede Aufgabe: Er zählt nur für eine Aufgabe, die „heute“ fällig ist.
         val meetingDay = Todos.dueKey(meetingDate, zone)
         if (due == meetingDay && !saysToday(title)) due = null
-        // Eine Frist in den Worten der Aufgabe selbst („… bis zum 3. Dezember“).
+        // Eine Frist in den Worten der Aufgabe selbst („… bis zum 3. Dezember“). Streng gelesen: „Pick 2 out of 5“ ist kein Oktober.
         if (due == null) {
-            val inTitle = dueDay(title, meetingDate, zone)
+            val inTitle = dueDay(title, meetingDate, zone, strict = true)
             if (inTitle != null && (inTitle != meetingDay || saysToday(title))) due = inTitle
         }
         return Triple(title, owner, due)
@@ -121,16 +121,21 @@ object TodoSuggestions {
 
     private val iso = Regex("""\b(\d{4})-(\d{1,2})-(\d{1,2})\b""", RegexOption.IGNORE_CASE)
     private val dotted = Regex("""(?<![\d.])(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})?(?![\d])""", RegexOption.IGNORE_CASE)
-    private val dayMonth = Regex("""(?<!\d)(\d{1,2})(?:st|nd|rd|th|er|º)?\.?\s+(?:de\s+)?(\p{L}{3,})\.?(?:\s+(?:de\s+)?(\d{4}))?""", RegexOption.IGNORE_CASE)
-    private val monthDay = Regex("""(\p{L}{3,})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b,?(?:\s+(\d{4}))?""", RegexOption.IGNORE_CASE)
+    /** Tag, seine Markierung („2nd“, „2.“), Monat, Jahr. */
+    private val dayMonth = Regex("""(?<!\d)(\d{1,2})((?:st|nd|rd|th|er|º)?\.?)\s+(?:de\s+)?(\p{L}{3,})\.?(?:\s+(?:de\s+)?(\d{4}))?""", RegexOption.IGNORE_CASE)
+    /** Monat, sein Punkt, Tag, die Markierung des Tags, Jahr. */
+    private val monthDay = Regex("""(\p{L}{3,})(\.?)\s+(\d{1,2})(st|nd|rd|th)?\b,?(?:\s+(\d{4}))?""", RegexOption.IGNORE_CASE)
 
     /**
      * Der Tag, den eine Frist nennt, als "yyyy-MM-dd", nur wenn sie ein Datum ist: "2026-11-28", "28.11.2026", "28.11.",
      * "28 November", "November 28, 2026", "28. Nov". Ein Tag ohne Jahr ist der erste solche am oder nach dem Meeting.
-     * Wörter wie „next Friday“ oder „Ende des Monats“ geben nichts: Nichts wird geraten.
+     * Wörter wie „next Friday“ oder „Ende des Monats“ geben nichts: Nichts wird geraten. `strict` ist für freien Text
+     * (die eigenen Worte einer Aufgabe): Ein Monat, der auch ein gängiges Wort ist („out“, „set“, „may“, „mar“), zählt nur
+     * mit markiertem Tag („2.“, „2nd“) oder einem Jahr daneben. iOS: `TodoSuggestions.dueDay(from:meetingDate:calendar:strict:)`.
      */
-    fun dueDay(text: String, meetingDate: Long, zone: ZoneId = ZoneId.systemDefault()): String? {
+    fun dueDay(text: String, meetingDate: Long, zone: ZoneId = ZoneId.systemDefault(), strict: Boolean = false): String? {
         fun MatchResult.int(i: Int) = groups[i]?.value?.toIntOrNull()
+        fun MatchResult.marked(i: Int) = !groups[i]?.value.isNullOrEmpty()
         iso.find(text)?.let { m ->
             val y = m.int(1); val mo = m.int(2); val d = m.int(3)
             if (y != null && mo != null && d != null) return day(y, mo, d)
@@ -140,14 +145,18 @@ object TodoSuggestions {
             if (d != null && mo != null) return resolve(m.int(3)?.let { if (it < 100) 2000 + it else it }, mo, d, meetingDate, zone)
         }
         for (m in dayMonth.findAll(text)) {
+            val word = m.groupValues[3]
+            if (strict && isAmbiguousMonth(word) && !m.marked(2) && !m.marked(4)) continue
             val d = m.int(1) ?: continue
-            val mo = month(m.groupValues[2]) ?: continue
-            return resolve(m.int(3), mo, d, meetingDate, zone)
+            val mo = month(word) ?: continue
+            return resolve(m.int(4), mo, d, meetingDate, zone)
         }
         for (m in monthDay.findAll(text)) {
-            val d = m.int(2) ?: continue
-            val mo = month(m.groupValues[1]) ?: continue
-            return resolve(m.int(3), mo, d, meetingDate, zone)
+            val word = m.groupValues[1]
+            if (strict && isAmbiguousMonth(word) && !m.marked(2) && !m.marked(4) && !m.marked(5)) continue
+            val d = m.int(3) ?: continue
+            val mo = month(word) ?: continue
+            return resolve(m.int(5), mo, d, meetingDate, zone)
         }
         return null
     }
@@ -167,6 +176,11 @@ object TodoSuggestions {
         11 to listOf("november", "nov", "novembre", "noviembre", "novembro", "listopada", "listopad"),
         12 to listOf("december", "dec", "dezember", "dez", "décembre", "déc", "decembre", "diciembre", "dic", "dicembre", "dezembro", "grudnia", "grudzień"),
     )
+
+    /** Monatsnamen und Kurzformen, die in den Sprachen der Zusammenfassungen auch Alltagswörter sind. */
+    private val ambiguousMonths = setOf("out", "set", "sept", "ago", "gen", "mag", "may", "mai", "mar", "mars", "lug", "dez")
+
+    private fun isAmbiguousMonth(word: String) = word.lowercase() in ambiguousMonths
 
     private fun month(word: String): Int? {
         val lower = word.lowercase()

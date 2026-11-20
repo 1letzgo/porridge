@@ -42,6 +42,11 @@ object RecordingSession {
         private set
     /** Das Meeting, das diese Aufnahme fortsetzt. */
     private var continues: String? = null
+    /**
+     * Der Titel des Meetings (der Termin aus dem Kalender), falls einer gewählt wurde. Liegt hier, weil die Aufnahme den
+     * Bildschirm überlebt: Nach einer neu aufgebauten Activity oder beim Stopp aus der Benachrichtigung kennt ihn sonst keiner.
+     */
+    private var meetingTitle: String? = null
     /** Nur Meetings lassen sich pausieren. */
     var isMeeting = false
         private set
@@ -70,6 +75,7 @@ object RecordingSession {
         check(!isRecording) { "Already recording." }
         notes.clear()
         this.continues = continues
+        this.meetingTitle = meetingTitle
         val rec = AudioRecorder(appContext)
         rec.onInterrupted = ::requestStop
         rec.pausesForCalls = isMeeting
@@ -129,6 +135,7 @@ object RecordingSession {
     }
 
     fun cancel() {
+        meetingTitle = null
         journalNotes?.cancel()
         endJournal()
         recorder?.cancel()
@@ -158,6 +165,8 @@ object RecordingSession {
 
     /** Ein aufgenommenes Meeting wird eine Notiz, die mit Sprechern transkribiert wird. */
     suspend fun saveMeeting(result: RecordingResult, names: List<String>, liveText: String, title: String? = null, projectID: String? = null): Note {
+        val named = title ?: meetingTitle
+        meetingTitle = null
         val target = continues?.let { PorridgeDatabase.shared.notes().get(it) }
         continues = null
         if (target != null && !target.isDeleted && target.pendingAudioFileName == null) {
@@ -169,7 +178,7 @@ object RecordingSession {
             return updated
         }
         var note = Note(sourceRaw = de.letzgo.porridge.model.NoteSource.MEETING.raw,
-            title = title ?: Note.defaultMeetingTitle(System.currentTimeMillis()), titleIsCustom = title != null,
+            title = named ?: Note.defaultMeetingTitle(System.currentTimeMillis()), titleIsCustom = named != null,
             statusRaw = ProcessingStatus.RECORDED.raw, audioFileName = result.fileName, duration = result.duration,
             channelCount = result.channelCount, inputName = result.inputName,
         )

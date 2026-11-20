@@ -71,7 +71,14 @@ class NoteEditorController {
     private fun markdownOffset(v: NoteEditText): Int {
         val sel = v.selectionStart.coerceAtLeast(0)
         // Markdown des Texts vor dem Cursor; Zeichen und Marker zählen wie im Markdown.
-        return de.letzgo.porridge.logic.editor.NoteMarkdown.markdown(PrefixBuffer(v, sel)).length
+        val before = de.letzgo.porridge.logic.editor.NoteMarkdown.markdown(PrefixBuffer(v, sel)).length
+        // Am Anfang einer Überschrift oder eines Zitats endet der abgeschnittene Text vor ihrem verborgenen „# “ oder „> “:
+        // Der Cursor steht dahinter (iOS: `NoteTextCoordinator.cursorOffset`). Sonst diktiert man „Hallo # Titel“.
+        val text = v.editableText
+        if (sel >= text.length || de.letzgo.porridge.logic.editor.NoteMarkdown.paragraphRange(text, sel).first != sel) return before
+        val (kind, _) = de.letzgo.porridge.logic.editor.NoteMarkdown.kind(EditableBuffer(text).style(sel))
+        if (kind != Kind.Quote && kind.headingLevel == 0) return before
+        return before + de.letzgo.porridge.logic.editor.NoteBlock(kind).mark(1).length
     }
 
     /** Fokus an den Textanfang mit Tastatur (Return im Titel). */

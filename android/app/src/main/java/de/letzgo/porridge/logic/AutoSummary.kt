@@ -9,7 +9,8 @@ import de.letzgo.porridge.model.ProcessingStatus
 /**
  * iOS: `AutoSummary` (Services/AutoSummary.swift) — was von außen hereinkommt, bekommt von selbst eine Zusammenfassung,
  * sobald sein Inhalt da ist: ein Link, wenn seine Seite geladen ist, ein Bild oder eine Datei, wenn ihr Text gelesen ist,
- * aus einer anderen App geteilter Text, und importiertes Audio (eine Datei oder Plaud), wenn es transkribiert ist. Die
+ * aus einer anderen App geteilter Text, und importiertes Audio (eine Datei, eine aus einer anderen App geteilte Aufnahme
+ * oder Plaud), wenn es transkribiert ist. Die
  * eigenen Notizen, To-dos und Aufnahmen werden nur auf Wunsch zusammengefasst.
  *
  * Ein Gerät macht die Arbeit: das, auf dem der Eintrag hereinkam ([Origins], nur auf diesem Gerät). Ein anderes holt nach,
@@ -41,7 +42,8 @@ object AutoSummary {
         note.isTodo -> null
         note.isLink -> Kind.LINK
         note.isStored -> if (note.isImage) Kind.IMAGE else Kind.FILE
-        note.isRecording -> if (note.source == NoteSource.AUDIO_IMPORT || note.source == NoteSource.PLAUD) Kind.IMPORTED_AUDIO else null
+        // Aus einer anderen App geteiltes Audio ist auch importiertes Audio (seine Aufgaben werden To-dos, siehe `Note.isSaved`).
+        note.isRecording -> if (note.source in setOf(NoteSource.AUDIO_IMPORT, NoteSource.PLAUD, NoteSource.SHARE)) Kind.IMPORTED_AUDIO else null
         note.source == NoteSource.SHARE && note.attachmentsData == null -> Kind.SHARED_TEXT
         else -> null
     }

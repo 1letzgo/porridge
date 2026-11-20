@@ -27,6 +27,7 @@ class RecordingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lastStartId = startId
         when (intent?.action) {
             ACTION_STOP -> {
                 RecordingSession.requestStop()
@@ -69,7 +70,7 @@ class RecordingService : Service() {
                 // Vordergrund, bleibt er es mit dem alten Typ; die Arbeit geht weiter.
                 Log.w("RecordingService", "not in the foreground: $e")
                 if (foregroundType == null) {
-                    stopSelf()
+                    stopSelfResult(lastStartId)
                     return START_NOT_STICKY
                 }
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(recording))
@@ -84,10 +85,15 @@ class RecordingService : Service() {
     /** Der Typ, mit dem der Dienst gerade im Vordergrund läuft; null, wenn er es nicht tut. */
     private var foregroundType: Int? = null
 
+    /** Der zuletzt angekommene Start. */
+    private var lastStartId = 0
+
     private fun leaveForeground() {
         foregroundType = null
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        // Nur mit dem letzten Start: Wartet schon ein neuer (startForegroundService, weil wieder Arbeit da ist), bleibt der
+        // Dienst, bis der ankommt und startForeground ruft. Ein bloßes stopSelf() beendete ihn vorher, und Android die App.
+        stopSelfResult(lastStartId)
     }
 
     /**

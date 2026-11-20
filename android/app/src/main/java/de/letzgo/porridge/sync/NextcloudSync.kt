@@ -5,6 +5,7 @@ import androidx.room.InvalidationTracker
 import de.letzgo.porridge.data.Keys
 import de.letzgo.porridge.data.PorridgeJson
 import de.letzgo.porridge.data.Prefs
+import de.letzgo.porridge.data.Projects
 import de.letzgo.porridge.model.Attachment
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
@@ -75,7 +76,19 @@ object NextcloudSync {
     private val syncAgain = java.util.concurrent.atomic.AtomicBoolean(false)
     private lateinit var stateFile: File
     private lateinit var connectivity: android.net.ConnectivityManager
+    /**
+     * Wann ein Lauf zuletzt selbst in die Datenbank schrieb. Gesetzt nur, wenn er wirklich schreibt: Ein Lauf, der nichts
+     * übernimmt (die meisten), schluckt so keine Änderung, die der Nutzer kurz danach macht.
+     */
     @Volatile private var ownWriteAt = 0L
+    /**
+     * iOS: `NextcloudSync.generation` — zählt Verbinden und Trennen: Ein Lauf, der sieht, dass sie sich geändert hat,
+     * während er wartete, war für ein anderes Konto und lässt Stand, Konto und Uploads in Ruhe.
+     */
+    private val generation = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Ein Lauf, dessen Konto verbunden oder getrennt wurde, während er wartete (iOS: `CancellationError` aus `checkAccount`). */
+    private class AccountChanged : CancellationException("Nextcloud account changed during the sync")
 
     private const val FILE_NAME = "porridge-sync.json"
     private const val LAST_SYNC_KEY = "nextcloudLastSync"
@@ -86,6 +99,7 @@ object NextcloudSync {
     /** Einmal beim Start: Stand laden, auf Änderungen in der Datenbank hören, ab und zu nachsehen. */
     fun init(context: Context) {
         stateFile = File(context.filesDir, "NextcloudSync/state.json")
+        resetIfDatabaseRebuilt(context)
         connectivity = context.getSystemService(android.net.ConnectivityManager::class.java)
         _status.value = Status(account = NextcloudAccount.saved, lastSync = Prefs.long(LAST_SYNC_KEY).takeIf { it > 0 })
         PorridgeDatabase.shared.invalidationTracker.addObserver(object : InvalidationTracker.Observer(TABLES) {
@@ -103,11 +117,14 @@ object NextcloudSync {
         syncSoon(1000)
     }
 
+    // Erst das neue Konto im Status, dann die Generation: Ein Lauf liest die Generation vor dem Konto und sieht so nie
+    // die neue Generation mit dem alten Konto.
     fun connect(account: NextcloudAccount) {
         account.save()
         Prefs.set(SyncMode.KEY, SyncMode.NEXTCLOUD.raw)
         stateFile.delete()
         _status.value = Status(account = account)
+        generation.incrementAndGet()
         syncSoon(0)
     }
 
@@ -116,6 +133,29 @@ object NextcloudSync {
         stateFile.delete()
         Prefs.remove(LAST_SYNC_KEY)
         _status.value = Status()
+        generation.incrementAndGet()
+    }
+
+    /** iOS: `NextcloudSync.checkAccount` — hält einen Lauf an, dessen Konto verbunden oder getrennt wurde, während er wartete. */
+    private fun checkAccount(run: Int) {
+        if (run != generation.get()) throw AccountChanged()
+    }
+
+    /**
+     * Wurde die Datenbank seit dem letzten Lauf neu aufgebaut (`DatabaseRepair`, im schlimmsten Fall leer), gilt der
+     * gespeicherte Stand nicht mehr: Mit ihm hielte der nächste Lauf jede fehlende Notiz für hier gelöscht und löschte sie
+     * auf allen Geräten (iOS: kein `attach` bei `AppContainer.storeError`). Ohne Stand kommt alles aus der Datei zurück.
+     */
+    private fun resetIfDatabaseRebuilt(context: Context) {
+        val folder = context.getDatabasePath(PorridgeDatabase.FILE_NAME).parentFile ?: return
+        val prefix = PorridgeDatabase.FILE_NAME + ".backup-"
+        val rebuiltAt = folder.listFiles().orEmpty().mapNotNull { file ->
+            file.name.takeIf { it.startsWith(prefix) }?.removePrefix(prefix)?.takeWhile(Char::isDigit)?.toLongOrNull()
+        }.maxOrNull() ?: return
+        if (stateFile.exists() && rebuiltAt >= stateFile.lastModified()) {
+            de.letzgo.porridge.data.CrashLog.note("The database was rebuilt; the Nextcloud sync starts over without its last state.")
+            stateFile.delete()
+        }
     }
 
     /** Ein Sync gleich; Änderungen kurz nacheinander landen in einem Lauf. */
@@ -130,8 +170,7 @@ object NextcloudSync {
     }
 
     suspend fun sync() {
-        val account = _status.value.account ?: return
-        if (!isActive) return
+        if (_status.value.account == null || !isActive) return
         if (mutex.isLocked) {
             syncAgain.set(true)
             // Der laufende Sync kann gerade fertig geworden sein und die Marke nicht mehr gesehen haben.
@@ -139,28 +178,36 @@ object NextcloudSync {
             return
         }
         mutex.withLock {
+            // Die Generation vor dem Konto (siehe `connect`).
+            val run = generation.get()
+            var account = _status.value.account ?: return@withLock
             _status.update { it.copy(syncing = true) }
             try {
-                var account = account
                 if (account.userID == null) {
                     WebDAV(account).fetchUserID()?.let { id ->
+                        checkAccount(run)
                         account = account.copy(userID = id)
                         account.save()
                         _status.update { if (it.account?.loginName == account.loginName) it.copy(account = account) else it }
                     }
                 }
                 val dav = WebDAV(account)
-                val unreadable = syncFile(dav)
-                syncRecordings(dav)
+                val unreadable = syncFile(dav, run)
+                syncRecordings(dav, run)
+                checkAccount(run)
                 val now = System.currentTimeMillis()
                 Prefs.set(LAST_SYNC_KEY, now)
                 val error = if (unreadable > 0) "$unreadable synced entries could not be read. Update the app on this device." else null
                 _status.update { it.copy(syncing = false, lastSync = now, error = error) }
+            } catch (_: AccountChanged) {
+                // Verbunden oder getrennt: Der neue Status gehört dem neuen Konto, dieser Lauf hinterlässt nichts darin.
+                _status.update { it.copy(syncing = false) }
             } catch (e: CancellationException) {
                 _status.update { it.copy(syncing = false) }
                 throw e
             } catch (e: Exception) {
-                _status.update { it.copy(syncing = false, error = e.message ?: e.toString()) }
+                // Der Fehler dieses Laufs ist nicht der des neuen Kontos.
+                _status.update { if (run == generation.get()) it.copy(syncing = false, error = e.message ?: e.toString()) else it.copy(syncing = false) }
             }
         }
         if (syncAgain.compareAndSet(true, false)) syncSoon()
@@ -173,6 +220,8 @@ object NextcloudSync {
         val key: String,
         val serializer: KSerializer<T>,
         val id: (T) -> String,
+        /** Felder, die nur auf diesem Gerät gelten und nie in die Datei gehen. */
+        val localOnly: Set<String> = emptySet(),
         val frozen: (T) -> Boolean = { false },
         val load: suspend () -> List<T>,
         val save: suspend (List<T>) -> Unit,
@@ -188,7 +237,10 @@ object NextcloudSync {
             }
         }
 
-        fun record(model: T): JsonObject = PorridgeJson.encodeToJsonElement(serializer, model).jsonObject
+        fun record(model: T): JsonObject {
+            val record = PorridgeJson.encodeToJsonElement(serializer, model).jsonObject
+            return if (localOnly.none { it in record }) record else JsonObject(record - localOnly)
+        }
 
         fun decode(record: JsonObject): T = PorridgeJson.decodeFromJsonElement(serializer, record)
     }
@@ -199,11 +251,15 @@ object NextcloudSync {
             return listOf(
                 Collection(
                     "notes", Note.serializer(), { it.id }, frozen = ::isFrozen,
+                    // iOS: `SyncRecords.record` — der Teil, der auf „Try Again“ wartet, wird nie hochgeladen: Auf einem
+                    // anderen Gerät zeigte er ins Leere (und hielte dort das Weiterführen des Meetings auf).
+                    localOnly = NOTE_LOCAL_ONLY,
                     load = { db.notes().all() }, save = { db.notes().upsertAll(it) },
                     delete = { notes ->
                         notes.forEach { note ->
-                            note.storedFileNames.forEach(AudioStore::delete)
+                            // Die Dateien erst, wenn die Notiz wirklich aus der Datenbank ist.
                             db.notes().delete(note)
+                            note.storedFileNames.forEach(AudioStore::delete)
                         }
                     },
                     // iOS: `SyncRecords.apply` — ein Eintrag einer Version von vor dem Eingang kennt dessen Felder nicht (neuere
@@ -223,9 +279,20 @@ object NextcloudSync {
             )
         }
 
-    /** Eine Aufnahme auf dem Weg zum Transkript bleibt auf dem Gerät, bis sie fertig ist. */
+    /** Felder einer Notiz, die nicht in die Datei gehen (iOS: `SyncRecords.record`). */
+    internal val NOTE_LOCAL_ONLY = setOf("pendingAudioFileName")
+
+    /** iOS: `SyncRecords.record` — der Eintrag einer Notiz, wie er in die Datei geht (wie die Sammlung „notes“ ihn bildet). */
+    internal fun noteRecord(note: Note): JsonObject =
+        JsonObject(PorridgeJson.encodeToJsonElement(Note.serializer(), note).jsonObject - NOTE_LOCAL_ONLY)
+
+    /**
+     * iOS: `SyncRecords.isFrozen` — eine Aufnahme auf dem Weg zum Transkript bleibt auf dem Gerät, bis sie fertig ist. Eine,
+     * die scheiterte (`FAILED`, ihr Teil noch in `pendingAudioFileName` für „Try Again“), wird wieder abgeglichen: Eingefroren
+     * bliebe sie für immer draußen. Ihr Teil bleibt hier ([NOTE_LOCAL_ONLY], `SyncMerge.adoptNote`).
+     */
     fun isFrozen(note: Note) =
-        note.pendingAudioFileName != null || note.status == ProcessingStatus.RECORDED || note.status == ProcessingStatus.TRANSCRIBING
+        note.status == ProcessingStatus.RECORDED || note.status == ProcessingStatus.TRANSCRIBING
 
     @Serializable
     private data class State(
@@ -280,12 +347,15 @@ object NextcloudSync {
     }
 
     /** Gibt zurück, wie viele Einträge der Datei dieses Gerät nicht lesen konnte. */
-    private suspend fun syncFile(dav: WebDAV): Int {
+    private suspend fun syncFile(dav: WebDAV, run: Int): Int {
         val url = dav.file(dav.root, FILE_NAME)
+        checkAccount(run)
         val state = loadState()
         repeat(4) { attempt ->
             val remote = dav.get(url)
             if (remote == null && attempt == 0) dav.makeFolder(dav.root)
+            // Die Datenbank nimmt nichts von einem Konto, das nicht mehr das verbundene ist.
+            checkAccount(run)
             val file = remote?.let { SyncMerge.parseFile(it.data.decodeToString()) } ?: JsonObject(emptyMap())
             val tombstones = file["deleted"] as? JsonObject
             val output = SyncMerge.withoutRetired(file).toMutableMap()
@@ -294,9 +364,10 @@ object NextcloudSync {
             val deleted = SyncMerge.withoutRetired(tombstones.orEmpty()).toMutableMap()
             var unreadable = 0
             val newBase = mutableMapOf<String, MutableMap<String, SyncBase>>()
-            ownWriteAt = System.currentTimeMillis()
+            val merges = mutableMapOf<String, CollectionMerge>()
             for (collection in collections) {
                 val merge = mergeCollection(collection, file, tombstones, state)
+                merges[collection.key] = merge
                 val result = merge.result
                 unreadable += merge.unreadable.size
                 output[collection.key] = JsonArray(result.merged.keys.sorted().map { result.merged.getValue(it) })
@@ -306,7 +377,8 @@ object NextcloudSync {
                 newBase[collection.key] = result.merged.filterKeys { it !in merge.unreadable }
                     .mapValues { (id, record) -> SyncBase(merge.localHashes[id].orEmpty(), SyncMerge.hash(record), de.letzgo.porridge.logic.Todos.baseText(record)) }.toMutableMap()
             }
-            ownWriteAt = System.currentTimeMillis()
+            pruneBuckets(merges, output, newBase)
+            if (merges.values.any { it.wrote }) ownWriteAt = System.currentTimeMillis()
             output["deleted"] = JsonObject(deleted)
             val settingsBase = mergeSettings(file, output, state)
 
@@ -317,6 +389,8 @@ object NextcloudSync {
             } catch (_: SyncConflict) {
                 return@repeat
             }
+            // Inzwischen getrennt oder neu verbunden: Der Stand wurde zurückgesetzt und bleibt es.
+            checkAccount(run)
             // Erst jetzt, mit geschriebener Datei, wird der Stand zur Grundlage des nächsten Laufs.
             val referenced = referencedRecordings(output["notes"] as? JsonArray)
             val released = state.recordings.orEmpty() - referenced
@@ -330,10 +404,50 @@ object NextcloudSync {
      * [localHashes]: der Stand, den dieser Lauf gesehen oder selbst geschrieben hat, nicht ein späteres Nachlesen.
      * Was der Nutzer danach ändert, gilt so im nächsten Lauf als geändert und geht hoch.
      */
-    private class CollectionMerge(val result: SyncMerge.Result, val localHashes: Map<String, String>, val unreadable: Set<String>)
+    private class CollectionMerge(
+        val result: SyncMerge.Result,
+        val localHashes: Map<String, String>,
+        val unreadable: Set<String>,
+        /** Die Einträge, die dieser Lauf nicht anfasste ([Collection.frozen]). */
+        val frozen: Set<String>,
+        /** Ob der Lauf in die Datenbank schrieb. */
+        var wrote: Boolean,
+    )
+
+    /**
+     * iOS: der Teil von `NextcloudSync.syncFile` nach `Projects.pruneUnknown` — erst jetzt, mit jedem Bucket dieses Laufs
+     * abgeglichen, ist ein Bucket, der fehlt, wirklich weg (auf einem anderen Gerät gelöscht): Notizen verlassen ihn, hier
+     * und in der Datei, statt aus jeder Liste zu fallen.
+     */
+    private suspend fun pruneBuckets(
+        merges: Map<String, CollectionMerge>,
+        output: MutableMap<String, JsonElement>,
+        newBase: MutableMap<String, MutableMap<String, SyncBase>>,
+    ) {
+        val folders = merges["folders"] ?: return
+        val notes = merges["notes"] ?: return
+        val records = notes.result.merged.toMutableMap()
+        val pruned = Projects.pruneUnknown(PorridgeDatabase.shared.notes().all(), folders.result.merged.keys)
+            // Eine eingefrorene Notiz behält den Eintrag der Datei; sie geht hoch, wenn sie fertig ist. Eine, deren Eintrag
+            // hier nicht lesbar war, ebenso (ihr Eintrag ist neuer als die Notiz hier).
+            .filter { it.id !in notes.frozen && it.id !in notes.unreadable && it.id in records }
+        if (pruned.isEmpty()) return
+        ownWriteAt = System.currentTimeMillis()
+        PorridgeDatabase.shared.notes().upsertAll(pruned)
+        notes.wrote = true
+        val base = newBase.getOrPut("notes") { mutableMapOf() }
+        for (note in pruned) {
+            val record = noteRecord(note)
+            records[note.id] = record
+            val hash = SyncMerge.hash(record)
+            base[note.id] = SyncBase(hash, hash, de.letzgo.porridge.logic.Todos.baseText(record))
+        }
+        output["notes"] = JsonArray(records.keys.sorted().map { records.getValue(it) })
+    }
 
     private suspend fun <T> mergeCollection(collection: Collection<T>, file: JsonObject, tombstones: JsonObject?, state: State): CollectionMerge {
         val (models, locals) = collection.locals()
+        val frozen = models.filter(collection.frozen).map(collection.id).toSet()
         val remote = (file[collection.key] as? JsonArray).orEmpty().mapNotNull { element ->
             val record = element as? JsonObject ?: return@mapNotNull null
             val id = record["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
@@ -347,7 +461,7 @@ object NextcloudSync {
             remote = remote,
             tombstones = stones,
             base = state.base[collection.key].orEmpty(),
-            frozen = models.filter(collection.frozen).map(collection.id).toSet(),
+            frozen = frozen,
             now = System.currentTimeMillis(),
         )
         val localHashes = locals.mapValues { SyncMerge.hash(it.value.record) }.toMutableMap()
@@ -359,10 +473,12 @@ object NextcloudSync {
                 .onFailure { unreadable += id }
                 .getOrNull()
         }
-        if (applied.isNotEmpty()) collection.save(applied)
         val gone = models.filter { collection.id(it) in result.toDelete }
+        // Vor dem Schreiben: Die Meldung der Datenbank darüber ist die eigene und ruft keinen weiteren Lauf.
+        if (applied.isNotEmpty() || gone.isNotEmpty()) ownWriteAt = System.currentTimeMillis()
+        if (applied.isNotEmpty()) collection.save(applied)
         if (gone.isNotEmpty()) collection.delete(gone)
-        return CollectionMerge(result, localHashes, unreadable)
+        return CollectionMerge(result, localHashes, unreadable, frozen, wrote = applied.isNotEmpty() || gone.isNotEmpty())
     }
 
     // Aufnahmen
@@ -377,9 +493,10 @@ object NextcloudSync {
                 (record["audioFileNames"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } +
                 attachments.map { it.fileName }
         }
-        val frozen = PorridgeDatabase.shared.notes().all().filter(::isFrozen)
-            .flatMap { it.storedFileNames }
-        return (inFile + frozen).toSet()
+        val all = PorridgeDatabase.shared.notes().all()
+        // Ein Teil, der nicht transkribiert werden konnte, bleibt für „Try Again“ auf diesem Gerät (er geht nie in die Datei).
+        val local = all.filter(::isFrozen).flatMap { it.storedFileNames } + all.mapNotNull { it.pendingAudioFileName }
+        return (inFile + local).toSet()
     }
 
     /** Lädt eine Aufnahme, wenn sie gebraucht wird. Jedes Netz ist recht: Jemand wartet darauf. */
@@ -394,7 +511,8 @@ object NextcloudSync {
      * Aufnahmen, die das Gerät hat, gehen hoch, auf Wunsch nur im WLAN. Herunter kommen sie nur auf Anfrage ([fetchRecording]):
      * Transkript und Zusammenfassung sind ohnehin da, und nicht jedes Gerät braucht Stunden an Ton.
      */
-    private suspend fun syncRecordings(dav: WebDAV) {
+    private suspend fun syncRecordings(dav: WebDAV, run: Int) {
+        checkAccount(run)
         val all = PorridgeDatabase.shared.notes().all()
         val notes = all.filterNot(::isFrozen)
         val wanted = notes.flatMap { listOfNotNull(it.audioFileName) + it.audioFileNames + it.attachments.map { a -> a.fileName } }.toSet()
@@ -406,10 +524,13 @@ object NextcloudSync {
         if (state.orphans.isNotEmpty()) {
             val inUse = all.flatMap { it.storedFileNames }.toSet()
             val result = SyncMerge.eachFile(state.orphans.filter(AudioStore::isPlainName)) { name ->
+                // `AccountChanged` ist ein Abbruch: `eachFile` reicht ihn durch.
+                checkAccount(run)
                 if (name in remote) dav.delete(dav.file(dav.recordings, name))
                 remote -= name
                 if (name !in inUse) AudioStore.delete(name)
             }
+            checkAccount(run)
             // Was nicht gelöscht werden konnte, kommt beim nächsten Mal wieder dran.
             saveState(loadState().copy(orphans = result.failed))
             firstError = result.firstError
@@ -417,6 +538,8 @@ object NextcloudSync {
         if (wanted.isNotEmpty()) {
             if (remote.isEmpty()) dav.makeFolder(dav.recordings)
             val result = SyncMerge.eachFile(wanted.sorted().filter(AudioStore::isPlainName)) { name ->
+                // Keine Uploads mit den Zugangsdaten eines Kontos, das weg ist.
+                checkAccount(run)
                 if (AudioStore.exists(name) && name !in remote && uploadsAllowed()) {
                     dav.upload(AudioStore.file(name), dav.file(dav.recordings, name))
                     remote += name

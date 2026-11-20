@@ -30,18 +30,23 @@ object LinkImport {
 
     /**
      * Speichert den Link als Notiz im Eingang und lädt die Seite (mit Zusammenfassung). Ein schon gespeicherter Link wird
-     * nicht doppelt angelegt: Er kommt aus dem Papierkorb zurück und rückt nach oben.
+     * nicht doppelt angelegt: Er kommt aus dem Papierkorb zurück und rückt nach oben. `text` ist mitgeteilter Text: Er bleibt
+     * als Worte des Nutzers am Link (bei einem schon gespeicherten nur, wenn der noch keinen hat), nie als Aufgaben — Links
+     * geben keine To-dos. iOS: `LinkImport.save(_:title:text:date:known:context:processing:)`.
      */
-    suspend fun add(address: String, project: String? = null, title: String? = null): Note {
+    suspend fun add(address: String, project: String? = null, title: String? = null, text: String? = null): Note {
         val db = PorridgeDatabase.shared
         val key = normalized(address)
         db.notes().all().firstOrNull { it.url != null && normalized(it.url) == key }?.let { existing ->
-            val moved = existing.copy(deletedAt = null, updatedAt = System.currentTimeMillis())
+            val moved = existing.copy(
+                text = if (!text.isNullOrEmpty() && existing.text.isEmpty()) text else existing.text,
+                deletedAt = null, updatedAt = System.currentTimeMillis(),
+            )
             db.notes().upsert(moved)
             return moved
         }
         val note = Note(
-            url = address, title = title?.takeIf { it.isNotBlank() && !it.startsWith("http") } ?: address,
+            url = address, title = title?.takeIf { it.isNotBlank() && !it.startsWith("http") } ?: address, text = text.orEmpty(),
             statusRaw = ProcessingStatus.RECORDED.raw, projectIDs = listOfNotNull(project), sourceRaw = de.letzgo.porridge.model.NoteSource.LINK.raw,
         )
         db.notes().upsert(note)

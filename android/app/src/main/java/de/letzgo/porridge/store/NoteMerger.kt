@@ -36,20 +36,34 @@ class NoteMerger(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
 
     /**
      * Hängt einen später aufgenommenen Teil an [base] an. [part] ist eine Hilfsnotiz, die nie gespeichert wird; was in
-     * [base] schon steht (Namen, Korrekturen), bleibt.
+     * [base] schon steht (Namen, Korrekturen), bleibt. Das Aneinanderhängen dauert: Danach wird [base] neu gelesen, damit
+     * Änderungen aus dieser Zeit nicht verloren gehen.
      */
     suspend fun append(part: Note, base: Note) {
-        val ordered = listOf(base, part)
-        val oldAudio = ordered.mapNotNull { it.audioFileName }
+        val oldAudio = listOfNotNull(base.audioFileName, part.audioFileName)
         var merged: String? = null
         var channels: Int? = null
-        val (offsets, total) = if (ordered.all { it.hasLocalAudio }) {
+        var joinedOffsets: Pair<List<Double>, Double>? = null
+        if (base.hasLocalAudio && part.hasLocalAudio) {
             val joined = withContext(Dispatchers.IO) { concatenate(oldAudio) }
             merged = joined.fileName
             channels = joined.channels
-            joined.offsets to joined.duration
-        } else NoteMergeLogic.offsetsWithoutAudio(ordered)
-        db.notes().upsert(NoteMergeLogic.merge(base, ordered, offsets, total, merged, channels).copy(pendingAudioFileName = null, errorMessage = part.errorMessage))
+            joinedOffsets = joined.offsets to joined.duration
+        }
+        val current = db.notes().get(base.id)
+        // Inzwischen endgültig gelöscht: nichts zu schreiben.
+        if (current == null) {
+            AudioStore.delete(merged)
+            return
+        }
+        // Die Aufnahme ist nicht mehr die, die angehängt wurde: Der Teil wartet weiter (`pendingAudioFileName`).
+        if (merged != null && current.audioFileName != base.audioFileName) {
+            AudioStore.delete(merged)
+            throw IllegalStateException("The recordings could not be combined.")
+        }
+        val ordered = listOf(current, part)
+        val (offsets, total) = joinedOffsets ?: NoteMergeLogic.offsetsWithoutAudio(ordered)
+        db.notes().upsert(NoteMergeLogic.merge(current, ordered, offsets, total, merged, channels).copy(pendingAudioFileName = null, errorMessage = part.errorMessage))
         if (merged != null) oldAudio.forEach(AudioStore::delete)
     }
 
