@@ -46,6 +46,15 @@ final class TodoFlowTests: XCTestCase {
         let progress = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '1 of 2 done'")).firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 5), "ticking a subtask did not count")
         app.buttons["Done"].firstMatch.tap()
+
+        // Due today, from the chip in the row of buckets and tags.
+        let due = app.buttons["Add Due Date"]
+        XCTAssertTrue(due.waitForExistence(timeout: 5), "due date chip missing")
+        due.tap()
+        let today = app.buttons["Today"].firstMatch
+        XCTAssertTrue(today.waitForExistence(timeout: 5), "due date menu missing")
+        today.tap()
+        XCTAssertTrue(app.buttons["Due Today"].waitForExistence(timeout: 5), "due date not set")
         screenshot("todo-detail", app)
 
         app.goBack()
@@ -54,6 +63,8 @@ final class TodoFlowTests: XCTestCase {
         inbox.tap()
         let row = app.staticTexts[title]
         XCTAssertTrue(app.reveal(row), "to-do not in the inbox")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Due Today'")).firstMatch.exists,
+                      "due date missing in the row")
         screenshot("todo-list-open", app)
 
         // The box of the row ticks the to-do; it stays in the list for today.

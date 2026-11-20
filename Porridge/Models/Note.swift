@@ -61,6 +61,9 @@ final class Note {
     var todoDoneAt: Date?
     /// The note (`id` as uppercase string) whose summary task this to-do was made from.
     var todoSourceID: String?
+    /// The day the to-do is due, "yyyy-MM-dd" (a calendar day, no time, no time zone); "none" when it was taken
+    /// away; nil = never set. See `Todos.dueKey`.
+    var todoDueDay: String?
 
     init() {
         self.id = UUID()
@@ -177,7 +180,7 @@ final class Note {
         if !title.isEmpty { parts.append("# \(title)") }
         parts.append(createdAt.formatted(date: .long, time: .shortened))
         if let url { parts.append(url) }
-        if isTodo { parts.append(isDone ? "[x] To-do, done" : "[ ] To-do") }
+        if isTodo { parts.append((isDone ? "[x] To-do, done" : "[ ] To-do") + (todoDue.map { ", due " + Todos.dueText($0) } ?? "")) }
         if !text.isEmpty { parts.append(text) }
         if let summary, !summary.isEmpty { parts.append("## Summary\n\n\(summary)") }
         if !segments.isEmpty { parts.append("## Transcript\n\n\(transcriptText())") }

@@ -9,6 +9,7 @@ struct NoteListRow: View {
 
     @Environment(\.modelContext) private var context
     @Environment(ProcessingService.self) private var processing
+    @State private var pickingDue = false
 
     var body: some View {
         ListRowLink(value: note.id) {
@@ -41,7 +42,14 @@ struct NoteListRow: View {
                 Button { NoteStore.restore(note, in: context) } label: { Label("Recover", systemImage: "arrow.uturn.backward") }
                 Button(role: .destructive, action: onRemove) { Label("Delete Now", systemImage: "trash") }
             } else {
-                if note.isTodo { doneButton }
+                if note.isTodo {
+                    doneButton
+                    Menu {
+                        DueDateMenuItems(note: note) { pickingDue = true }
+                    } label: {
+                        Label(note.todoDue.map { "Due \(Todos.dueLabel($0))" } ?? "Due Date", systemImage: "calendar")
+                    }
+                }
                 if !note.isArchived {
                     Button { togglePin() } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
                 }
@@ -59,6 +67,7 @@ struct NoteListRow: View {
                 Button(role: .destructive, action: onRemove) { Label("Delete", systemImage: "trash") }
             }
         }
+        .sheet(isPresented: $pickingDue) { DueDatePickerSheet(note: note) }
     }
 
     private var archiveButton: some View {

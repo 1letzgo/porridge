@@ -90,3 +90,127 @@ struct TodoSourcePill: View {
         .accessibilityLabel("From \(source.displayTitle)")
     }
 }
+
+// MARK: - Due day
+
+extension Todos {
+    /// The color of a due day: red when an open to-do is late, green for today, otherwise quiet. A done to-do
+    /// is never marked.
+    static func dueTint(_ note: Note) -> Color {
+        guard let due = note.todoDue, !note.isDone else { return .secondary }
+        switch dueStatus(due) {
+        case .overdue?: return .brandDangerText
+        case .today?: return .brandTaskText
+        default: return .secondary
+        }
+    }
+}
+
+/// The due day in a list row: a calendar symbol and "Today", "Fri", "12 Dec".
+struct TodoDueLabel: View {
+    let note: Note
+
+    var body: some View {
+        if let due = note.todoDue {
+            let label = Todos.dueLabel(due)
+            HStack(spacing: 3) {
+                Image(systemName: note.isOverdue ? "calendar.badge.exclamationmark" : "calendar")
+                Text(label)
+            }
+            .foregroundStyle(Todos.dueTint(note))
+            .fontWeight(note.isOverdue || Todos.dueStatus(due) == .today && !note.isDone ? .semibold : nil)
+            .fixedSize()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(note.isOverdue ? "Overdue, due \(label)" : "Due \(label)")
+        }
+    }
+}
+
+/// The choices for a due day, as buttons of a menu: Today, Tomorrow, Next Week, Pick Date…, and Clear.
+struct DueDateMenuItems: View {
+    let note: Note
+    /// Opens the date picker.
+    let pickDate: () -> Void
+
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        ForEach(Todos.DueChoice.allCases, id: \.self) { choice in
+            Button {
+                withAnimation(.snappy) { Todos.setDue(Todos.dueKey(for: choice), note, in: context) }
+            } label: {
+                Label(choice.title, systemImage: choice.systemImage)
+            }
+        }
+        Button(action: pickDate) { Label("Pick Date…", systemImage: "calendar") }
+        if note.todoDue != nil {
+            Divider()
+            Button(role: .destructive) {
+                withAnimation(.snappy) { Todos.setDue(nil, note, in: context) }
+            } label: {
+                Label("Clear Due Date", systemImage: "calendar.badge.minus")
+            }
+        }
+    }
+}
+
+/// The due day on a to-do's page, in the row of its buckets and tags: a menu with the choices.
+struct DueDateChip: View {
+    let note: Note
+    @Binding var isPicking: Bool
+
+    var body: some View {
+        Menu {
+            DueDateMenuItems(note: note) { isPicking = true }
+        } label: {
+            HStack(spacing: 6) {
+                if let due = note.todoDue {
+                    Image(systemName: note.isOverdue ? "calendar.badge.exclamationmark" : "calendar")
+                    Text(Todos.dueLabel(due))
+                } else {
+                    Image(systemName: "plus")
+                    Text("Due Date")
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(note.todoDue == nil ? Color.brandNavy : note.isOverdue ? Color.brandDangerText : Color.brandTaskText)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .chunkyPill(fill: note.todoDue == nil ? .gray : note.isOverdue ? .red : .brandTask)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(note.todoDue.map { "Due \(Todos.dueLabel($0))" } ?? "Add Due Date")
+    }
+}
+
+/// The system's calendar to pick a due day, in a sheet.
+struct DueDatePickerSheet: View {
+    let note: Note
+
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @State private var day = Date()
+
+    var body: some View {
+        NavigationStack {
+            DatePicker("Due Date", selection: $day, displayedComponents: .date)
+                .datePickerStyle(.graphical)
+                .tint(.brandTask)
+                .padding()
+                .frame(maxHeight: .infinity, alignment: .top)
+                .navigationTitle("Due Date")
+                .inlineNavigationTitle()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            Todos.setDue(Todos.dueKey(day), note, in: context)
+                            dismiss()
+                        }
+                    }
+                }
+        }
+        .presentationDetents([.medium, .large])
+        .onAppear { day = note.todoDue.flatMap { Todos.dueDate($0) } ?? Date() }
+    }
+}

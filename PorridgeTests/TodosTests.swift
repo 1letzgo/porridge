@@ -290,3 +290,163 @@ extension TodosTests {
         XCTAssertFalse(ChatRetrieval.chunks(from: [Note()]).contains { $0.text.hasPrefix("To-do") })
     }
 }
+
+// MARK: - Due day
+
+extension TodosTests {
+    private var berlin: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        calendar.firstWeekday = 2
+        return calendar
+    }
+
+    private func at(_ text: String, _ calendar: Calendar) -> Date {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.date(from: text)!
+    }
+
+    private func todo(due: String?, done: Bool = false) -> Note {
+        let note = Note()
+        note.todoState = done ? .done : .open
+        note.todoDueDay = due
+        return note
+    }
+
+    func testDueKeyIsTheDayOfTheCalendarWithoutTime() {
+        let calendar = berlin
+        // Late in the evening it is still that day here, while UTC is already on the next.
+        XCTAssertEqual(Todos.dueKey(at("2026-11-20 23:30", calendar), calendar: calendar), "2026-11-20")
+        var tokyo = Calendar(identifier: .gregorian)
+        tokyo.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        // The same stored day starts at midnight wherever the device is.
+        XCTAssertEqual(Todos.dueKey(Todos.dueDate("2026-11-20", calendar: tokyo)!, calendar: tokyo), "2026-11-20")
+        XCTAssertTrue(Todos.isDueKey("2026-01-05"))
+        XCTAssertFalse(Todos.isDueKey("none"))
+        XCTAssertFalse(Todos.isDueKey(nil))
+        XCTAssertNil(Todos.dueDate("none"))
+    }
+
+    func testDueLabelsRelativeToToday() {
+        let calendar = berlin
+        let now = at("2026-11-20 10:00", calendar)  // a Friday
+        let gb = Locale(identifier: "en_GB")
+        func label(_ key: String) -> String { Todos.dueLabel(key, now: now, calendar: calendar, locale: gb) }
+        XCTAssertEqual(label("2026-11-20"), "Today")
+        XCTAssertEqual(label("2026-11-21"), "Tomorrow")
+        XCTAssertEqual(label("2026-11-19"), "Yesterday")
+        XCTAssertEqual(label("2026-11-24"), "Tue")
+        XCTAssertEqual(label("2026-11-26"), "Thu")
+        XCTAssertEqual(label("2026-11-27"), "27 Nov")
+        XCTAssertEqual(label("2026-12-12"), "12 Dec")
+        XCTAssertEqual(label("2026-11-10"), "10 Nov")
+        XCTAssertEqual(label("2027-01-05"), "5 Jan 2027")
+    }
+
+    func testOverdueStartsAtMidnightAfterTheDueDay() {
+        let calendar = berlin
+        XCTAssertEqual(Todos.dueStatus("2026-11-20", now: at("2026-11-20 23:59", calendar), calendar: calendar), .today)
+        XCTAssertEqual(Todos.dueStatus("2026-11-20", now: at("2026-11-21 00:00", calendar), calendar: calendar), .overdue)
+        XCTAssertEqual(Todos.dueStatus("2026-11-21", now: at("2026-11-20 12:00", calendar), calendar: calendar), .later)
+        XCTAssertNil(Todos.dueStatus("none"))
+    }
+
+    func testQuickChoices() {
+        let calendar = berlin
+        let now = at("2026-11-20 22:00", calendar)
+        XCTAssertEqual(Todos.dueKey(for: .today, now: now, calendar: calendar), "2026-11-20")
+        XCTAssertEqual(Todos.dueKey(for: .tomorrow, now: now, calendar: calendar), "2026-11-21")
+        // The week starts on Monday here.
+        XCTAssertEqual(Todos.dueKey(for: .nextWeek, now: now, calendar: calendar), "2026-11-23")
+    }
+
+    func testOpenTodosSortByDueUndatedLastDoneAfter() {
+        let late = todo(due: "2026-11-01"), soon = todo(due: "2026-11-25"), none = todo(due: nil)
+        let cleared = todo(due: "none"), done = todo(due: "2026-10-01", done: true)
+        let sorted = Todos.byDue([none, done, soon, cleared, late])
+        XCTAssertEqual(sorted.map(\.id), [late, soon, none, cleared, done].map(\.id))
+    }
+
+    func testOpenTodosGroupByDue() {
+        let calendar = berlin
+        let now = at("2026-11-20 10:00", calendar)
+        let overdue = todo(due: "2026-11-19"), today = todo(due: "2026-11-20"), later = todo(due: "2027-01-01"), none = todo(due: nil)
+        let groups = Todos.dueGroups([none, later, today, overdue], now: now, calendar: calendar)
+        XCTAssertEqual(groups.map(\.title), ["Overdue", "Today", "Upcoming", "No Due Date"])
+        XCTAssertEqual(groups.map { $0.notes.map(\.id) }, [[overdue.id], [today.id], [later.id], [none.id]])
+        XCTAssertEqual(Todos.dueGroups([none], now: now, calendar: calendar).map(\.title), ["No Due Date"])
+    }
+
+    func testSettingAndClearingTheDueDay() throws {
+        let context = try TestStore.context()
+        let note = todo(due: nil)
+        context.insert(note)
+        // Clearing what was never set writes nothing.
+        Todos.setDue(nil, note, in: context)
+        XCTAssertNil(note.todoDueDay)
+        Todos.setDue("2026-12-12", note, in: context)
+        XCTAssertEqual(note.todoDue, "2026-12-12")
+        Todos.setDue(nil, note, in: context)
+        XCTAssertEqual(note.todoDueDay, "none")
+        XCTAssertNil(note.todoDue)
+
+        // Turned back into a note it keeps the day without showing it.
+        Todos.setDue("2026-12-12", note, in: context)
+        Todos.setTodo(false, note, in: context)
+        XCTAssertEqual(note.todoDueDay, "2026-12-12")
+        XCTAssertNil(note.todoDue)
+        XCTAssertFalse(note.isOverdue)
+    }
+
+    func testOnlyOpenTodosAreOverdue() {
+        XCTAssertTrue(todo(due: "2000-01-01").isOverdue)
+        XCTAssertFalse(todo(due: "2000-01-01", done: true).isOverdue)
+        XCTAssertFalse(todo(due: "2999-01-01").isOverdue)
+    }
+
+    func testDueDaySyncsAndAClearWinsOverOlderRecords() throws {
+        let context = try TestStore.context()
+        let note = todo(due: "2026-12-12")
+        context.insert(note)
+        let record = SyncRecords.record(note)
+        XCTAssertEqual(record["todoDueDay"] as? String, "2026-12-12")
+        XCTAssertNil(SyncRecords.record(Note())["todoDueDay"], "a note without a due day writes no field")
+
+        let copy = Note()
+        context.insert(copy)
+        SyncRecords.apply(record, to: copy)
+        XCTAssertEqual(copy.todoDue, "2026-12-12")
+
+        // A version without due days edited the note: no field, the day stays.
+        var old = record
+        old["todoDueDay"] = nil
+        old["todoStateRaw"] = nil
+        SyncRecords.apply(old, to: copy)
+        XCTAssertEqual(copy.todoDueDay, "2026-12-12")
+
+        // Taken away elsewhere.
+        var cleared = record
+        cleared["todoDueDay"] = "none"
+        SyncRecords.apply(cleared, to: copy)
+        XCTAssertNil(copy.todoDue)
+        XCTAssertEqual(copy.todoDueDay, "none")
+    }
+
+    func testChatLineAndExportNameTheDueDay() {
+        let calendar = berlin
+        let note = todo(due: "2026-12-12")
+        note.title = "Send the offer"
+        XCTAssertEqual(ChatRetrieval.todoLine(note, now: at("2026-11-20 10:00", calendar), calendar: calendar),
+                       "To-do, open, due 12 December 2026: Send the offer")
+        XCTAssertEqual(ChatRetrieval.todoLine(note, now: at("2026-12-13 10:00", calendar), calendar: calendar),
+                       "To-do, open, due 12 December 2026, overdue: Send the offer")
+        XCTAssertTrue(note.exportText.contains("[ ] To-do, due 12 December 2026"))
+        // The passage is dated by the due day, so "what is due this week" finds it.
+        let chunk = ChatRetrieval.chunks(from: [note]).first { $0.text.hasPrefix("To-do") }
+        XCTAssertEqual(chunk.map { Todos.dueKey($0.date) }, "2026-12-12")
+    }
+}

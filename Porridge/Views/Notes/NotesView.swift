@@ -471,7 +471,10 @@ struct NotesView: View {
 
     private var searchResults: some View {
         let found = foundNotes
-        let grouped = groups(found)
+        // The open to-dos by when they are due; everything else by when it changed.
+        let grouped = searchKind == .todos
+            ? Todos.dueGroups(found).map { (title: $0.title, label: String($0.title.prefix(1)), notes: $0.notes) }
+            : groups(found)
         return List {
             ForEach(grouped, id: \.title) { group in
                 Section {
@@ -1072,6 +1075,7 @@ struct NoteRow: View {
                 .fixedSize()
         }
         if note.isTodo {
+            TodoDueLabel(note: note)
             TodoProgressLabel(progress: note.todoProgress)
         }
         if let domain = note.domain, !compact {

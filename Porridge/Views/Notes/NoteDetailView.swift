@@ -50,6 +50,7 @@ struct NoteDetailView: View {
     @State private var showSummaryEditor = false
     @State private var addingTag = false
     @State private var newTag = ""
+    @State private var pickingDue = false
     @FocusState private var focused: Bool
     /// Height of one line of the title (title2, bold), as the text field lays it out: the box stands centered on it.
     @ScaledMetric(relativeTo: .title2) private var titleLineHeight: CGFloat = 28
@@ -198,6 +199,7 @@ struct NoteDetailView: View {
             if !SyncRecords.wasJustApplied(note.id) { note.updatedAt = Date() }
             saveIfFilled()
         }
+        .sheet(isPresented: $pickingDue) { DueDatePickerSheet(note: note) }
         .sheet(isPresented: $showExport) {
             MeetingExportSheet(note: note)
         }
@@ -461,6 +463,9 @@ struct NoteDetailView: View {
                     } onDismiss: {
                         withAnimation(.snappy) { Inbox.dismissSuggestions(note, in: context) }
                     }
+                }
+                if note.isTodo, !note.isDeleted {
+                    DueDateChip(note: note, isPicking: $pickingDue)
                 }
                 ProjectPills(assigned: note.projectIDs) { project in
                     Projects.toggle(project, on: note, in: context)

@@ -44,6 +44,7 @@ enum SyncRecords {
         r["todoStateRaw"] = note.todoStateRaw
         r["todoDoneAt"] = note.todoDoneAt.map { ms($0) }
         r["todoSourceID"] = note.todoSourceID
+        r["todoDueDay"] = note.todoDueDay
         return r
     }
 
@@ -94,6 +95,8 @@ enum SyncRecords {
             note.todoDoneAt = date(r["todoDoneAt"])
             note.todoSourceID = r["todoSourceID"] as? String
         }
+        // Likewise the due day: only a record that has it says something about it ("none" = taken away).
+        if let due = r["todoDueDay"] as? String { note.todoDueDay = due }
         // A record written by a version from before the inbox has none of these fields (newer ones always write
         // `sourceRaw`): what this device knows stays.
         guard r["sourceRaw"] != nil else { return }

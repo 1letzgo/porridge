@@ -189,6 +189,148 @@ enum Todos {
         guard let doneAt else { return false }
         return doneAt < calendar.startOfDay(for: now)
     }
+
+    // MARK: Due day
+
+    /// `Note.todoDueDay` of a due date that was taken away: written so the other devices learn of it.
+    static let clearedDue = "none"
+
+    /// A due day as stored: "yyyy-MM-dd", a day of the calendar without time and time zone. It is the same day on
+    /// every device, wherever it is.
+    static func dueKey(_ date: Date, calendar: Calendar = .current) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    /// A stored due day, if it is one ("none" and anything else malformed are not).
+    static func isDueKey(_ key: String?) -> Bool {
+        guard let key, key.count == 10 else { return false }
+        let parts = key.split(separator: "-")
+        return parts.count == 3 && parts.allSatisfy { Int($0) != nil }
+    }
+
+    /// The start of the due day in `calendar`'s time zone.
+    static func dueDate(_ key: String, calendar: Calendar = .current) -> Date? {
+        guard isDueKey(key) else { return nil }
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    }
+
+    enum DueStatus: Equatable {
+        /// Before today: an open to-do that is late.
+        case overdue
+        case today
+        case later
+    }
+
+    /// Where a due day stands against today. Overdue starts at midnight after the due day.
+    static func dueStatus(_ key: String, now: Date = Date(), calendar: Calendar = .current) -> DueStatus? {
+        guard isDueKey(key) else { return nil }
+        let today = dueKey(now, calendar: calendar)
+        // Keys are zero-padded, so they compare like the days they name.
+        return key < today ? .overdue : key == today ? .today : .later
+    }
+
+    /// The due day as the list shows it: "Today", "Tomorrow", "Yesterday", a weekday for the next six days
+    /// ("Fri"), otherwise day and month ("12 Dec"), with the year when it is not this year ("12 Dec 2027").
+    static func dueLabel(_ key: String, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
+        guard let due = dueDate(key, calendar: calendar) else { return "" }
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: due).day ?? 0
+        switch days {
+        case 0: return String(localized: "Today")
+        case 1: return String(localized: "Tomorrow")
+        case -1: return String(localized: "Yesterday")
+        default: break
+        }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = locale
+        if (2...6).contains(days) {
+            formatter.setLocalizedDateFormatFromTemplate("EEE")
+        } else if calendar.component(.year, from: due) == calendar.component(.year, from: now) {
+            formatter.setLocalizedDateFormatFromTemplate("dMMM")
+        } else {
+            formatter.setLocalizedDateFormatFromTemplate("dMMMy")
+        }
+        return formatter.string(from: due)
+    }
+
+    /// "12 December 2026": the due day for the chat and the export, the same in every language.
+    static func dueText(_ key: String) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        guard let due = dueDate(key, calendar: calendar) else { return "" }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "d MMMM yyyy"
+        return formatter.string(from: due)
+    }
+
+    /// The quick choices: today, tomorrow, and the first day of next week (as the calendar counts weeks).
+    enum DueChoice: CaseIterable {
+        case today, tomorrow, nextWeek
+
+        var title: String {
+            switch self {
+            case .today: String(localized: "Today")
+            case .tomorrow: String(localized: "Tomorrow")
+            case .nextWeek: String(localized: "Next Week")
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .today: "star"
+            case .tomorrow: "sunrise"
+            case .nextWeek: "calendar.badge.clock"
+            }
+        }
+    }
+
+    static func dueKey(for choice: DueChoice, now: Date = Date(), calendar: Calendar = .current) -> String {
+        let today = calendar.startOfDay(for: now)
+        let day: Date
+        switch choice {
+        case .today: day = today
+        case .tomorrow: day = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        case .nextWeek: day = calendar.dateInterval(of: .weekOfYear, for: today)?.end ?? calendar.date(byAdding: .day, value: 7, to: today) ?? today
+        }
+        return dueKey(day, calendar: calendar)
+    }
+
+    /// Open to-dos by due day (earliest first, undated last); done ones after them. Otherwise the order stays.
+    static func byDue(_ todos: [Note]) -> [Note] {
+        let open = todos.filter { !$0.isDone }.enumerated().sorted { a, b in
+            switch (a.element.todoDue, b.element.todoDue) {
+            case let (x?, y?) where x != y: return x < y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return a.offset < b.offset
+            }
+        }.map(\.element)
+        return open + todos.filter(\.isDone)
+    }
+
+    /// Open to-dos in groups by their due day: Overdue, Today, Upcoming, No Due Date (empty groups left out),
+    /// each sorted by due day.
+    static func dueGroups(_ todos: [Note], now: Date = Date(), calendar: Calendar = .current) -> [(title: String, notes: [Note])] {
+        var overdue: [Note] = [], today: [Note] = [], later: [Note] = [], none: [Note] = []
+        for note in byDue(todos) {
+            switch note.todoDue.flatMap({ dueStatus($0, now: now, calendar: calendar) }) {
+            case .overdue?: overdue.append(note)
+            case .today?: today.append(note)
+            case .later?: later.append(note)
+            case nil: none.append(note)
+            }
+        }
+        return [
+            (String(localized: "Overdue"), overdue), (String(localized: "Today"), today),
+            (String(localized: "Upcoming"), later), (String(localized: "No Due Date"), none),
+        ].filter { !$0.1.isEmpty }
+    }
 }
 
 // MARK: - The note as a to-do
@@ -211,6 +353,15 @@ extension Note {
 
     /// Any note but a saved one (link, shared file) and a meeting can be a to-do.
     var canBeTodo: Bool { !isSaved && !isRecording }
+
+    /// The due day ("yyyy-MM-dd") while it counts: set, and the note is a to-do. A note turned back from a
+    /// to-do keeps it stored without showing it.
+    var todoDue: String? { isTodo && Todos.isDueKey(todoDueDay) ? todoDueDay : nil }
+
+    /// Open and due before today.
+    var isOverdue: Bool {
+        !isDone && todoDue.flatMap { Todos.dueStatus($0) } == .overdue
+    }
 }
 
 @MainActor
@@ -273,6 +424,15 @@ extension Todos {
     static func madeFrom(_ source: Note, among notes: [Note]) -> [Note] {
         let id = source.id.uuidString
         return notes.filter { $0.todoSourceID == id && !$0.isDeleted }
+    }
+
+    /// Sets the due day, or takes it away (nil): then "none" is stored, so that devices which had it drop it too.
+    static func setDue(_ key: String?, _ note: Note, in context: ModelContext) {
+        let value = key ?? (note.todoDueDay == nil ? nil : clearedDue)
+        guard value != note.todoDueDay else { return }
+        note.todoDueDay = value
+        note.updatedAt = Date()
+        save(note, in: context)
     }
 
     private static func save(_ note: Note, in context: ModelContext) {

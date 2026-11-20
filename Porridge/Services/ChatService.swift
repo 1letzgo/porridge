@@ -3,7 +3,7 @@ import Observation
 import SwiftData
 
 extension ChatRetrieval {
-    private static func chunk(_ note: Note, text: String) -> ChatChunk {
+    private static func chunk(_ note: Note, text: String, date: Date? = nil) -> ChatChunk {
         let words = tokens(note.displayTitle + " " + note.tags.joined(separator: " ") + " " + text)
         var frequencies: [String: Int] = [:]
         var prefixes: [String: Int] = [:]
@@ -12,7 +12,7 @@ extension ChatRetrieval {
             if let key = prefix(word) { prefixes[key, default: 0] += 1 }
         }
         return ChatChunk(
-            noteID: note.id, title: note.displayTitle, date: note.createdAt, text: text,
+            noteID: note.id, title: note.displayTitle, date: date ?? note.createdAt, text: text,
             frequencies: frequencies, prefixFrequencies: prefixes, length: max(words.count, 1)
         )
     }
@@ -34,10 +34,14 @@ extension ChatRetrieval {
         return result
     }
 
-    /// "To-do, open, 1 of 3 subtasks done: Pack" or "To-do, done on 19 Nov 2026: Pack".
-    static func todoLine(_ note: Note) -> String {
+    /// "To-do, open, due 12 December 2026, overdue, 1 of 3 subtasks done: Pack" or "To-do, done on 19 Nov 2026: Pack".
+    static func todoLine(_ note: Note, now: Date = Date(), calendar: Calendar = .current) -> String {
         var head = "To-do, " + (note.isDone ? "done" : "open")
         if note.isDone, let at = note.todoDoneAt { head += " on " + at.formatted(.dateTime.day().month(.abbreviated).year()) }
+        if let due = note.todoDue {
+            head += ", due " + Todos.dueText(due)
+            if !note.isDone, Todos.dueStatus(due, now: now, calendar: calendar) == .overdue { head += ", overdue" }
+        }
         let progress = note.todoProgress
         if progress.total > 0 { head += ", \(progress.done) of \(progress.total) subtasks done" }
         return head + ": " + note.displayTitle
@@ -62,7 +66,8 @@ extension ChatRetrieval {
             }
             // A to-do says so, and whether it is done: "what is still open?" finds it.
             if note.isTodo {
-                result.append(chunk(note, text: todoLine(note)))
+                // Dated by its due day: "what is due this week" looks at the passages of that time.
+                result.append(chunk(note, text: todoLine(note), date: note.todoDue.flatMap { Todos.dueDate($0) }))
             }
             if let summary = note.summary, !summary.isEmpty {
                 for piece in pieces(summary.components(separatedBy: "\n")) {

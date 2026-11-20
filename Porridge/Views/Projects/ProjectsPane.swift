@@ -192,7 +192,7 @@ struct ProjectPage: View {
 /// What is in a project, newest first. Archived elements are not
 /// in it: they are in the archive.
 struct ProjectContent {
-    /// Open ones first, then those done today (done earlier ones are put away, see `Note.isPutAway`).
+    /// Open ones first, by due day, then those done today (done earlier ones are put away, see `Note.isPutAway`).
     var todos: [Note] = []
     var meetings: [Note] = []
     var notes: [Note] = []
@@ -220,7 +220,7 @@ struct ProjectContent {
     }
 
     private mutating func sortTodos() {
-        todos = todos.filter { !$0.isDone } + todos.filter(\.isDone)
+        todos = Todos.byDue(todos)
     }
 
     private mutating func add(_ note: Note) {

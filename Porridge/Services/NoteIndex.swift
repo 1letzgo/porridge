@@ -200,6 +200,11 @@ extension Note {
         if let attachmentsData { hasher.update(data: attachmentsData) }
         // Links got a passage of their own (their address): their passages are cut again once.
         if url != nil { hasher.update(data: Data("link-passage".utf8)) }
+        // A to-do's passage says its state, due day and whether it is late (that changes at midnight).
+        if let todoStateRaw {
+            let state = [todoStateRaw, todoDueDay ?? "", todoDoneAt.map { "\($0.timeIntervalSince1970)" } ?? "", isOverdue ? "overdue" : ""]
+            hasher.update(data: Data(("todo|" + state.joined(separator: "|")).utf8))
+        }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }
