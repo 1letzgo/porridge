@@ -115,6 +115,43 @@ struct InboxRow: View {
     }
 }
 
+/// The to-dos folder as an entry of the Inbox section: every open to-do, how many there are and how many are late.
+struct TodoFolderRow: View {
+    let folder: Todos.Folder
+    var onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(alignment: .top, spacing: 12) {
+                ThingsRowIcon(systemImage: "checklist", tint: .brandTask)
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("To-dos")
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    HStack(spacing: 0) {
+                        Text(folder.open == 0 ? String(localized: "Nothing open") : folder.open == 1 ? String(localized: "1 open") : String(localized: "\(folder.open) open"))
+                            .foregroundStyle(.secondary)
+                        if folder.overdue > 0 {
+                            Text(" · ").foregroundStyle(.secondary)
+                            Text(String(localized: "\(folder.overdue) overdue"))
+                                .foregroundStyle(Color.brandDangerText)
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .font(.subheadline)
+                    .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .cardListRow()
+        .accessibilityIdentifier("TodosFolder")
+    }
+}
+
 /// One project opened: everything in it that is not archived (meetings, notes, links), filtered by kind.
 struct ProjectPage: View {
     let project: NoteFolder

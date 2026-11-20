@@ -4,6 +4,8 @@ import SwiftUI
 /// A note, meeting or link in a list, with its swipes and long press: pin, projects, archive, share, delete.
 struct NoteListRow: View {
     let note: Note
+    /// The names of the note's buckets, shown in its row where a list mixes buckets (the to-dos folder).
+    var buckets: [String] = []
     /// Moves the note to the trash, or deletes it when it already is there.
     var onRemove: () -> Void
 
@@ -13,7 +15,7 @@ struct NoteListRow: View {
 
     var body: some View {
         ListRowLink(value: note.id) {
-            NoteRow(note: note, stage: processing.stages[note.id])
+            NoteRow(note: note, stage: processing.stages[note.id], buckets: buckets)
         }
         .swipeActions(edge: .leading) {
             if note.isDeleted {

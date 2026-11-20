@@ -320,6 +320,8 @@ struct NotesView: View {
             }
         case .inbox:
             inboxPage
+        case .todos:
+            todosPage
         case .search:
             searchPage
         case .chat:
@@ -367,10 +369,16 @@ struct NotesView: View {
         let archived = HomeList.archivedProjects(projects).count + HomeList.archivedNotes(notes).count
         let isEmpty = folders.isEmpty && waiting.isEmpty
         return List(selection: $selection) {
-            // The inbox is the first category, with one entry of its name: what is new or in no bucket.
+            // The inbox is the first category, with one entry of its name: what is new or in no bucket. Below it the
+            // to-dos folder, while there are to-dos to show: a view of every open one, wherever it is filed.
+            let todoFolder = Todos.folder(notes)
             Section {
                 InboxRow(waiting: waiting) { page = .inbox }
-                    .lastInSection(true)
+                    .lastInSection(todoFolder.isEmpty)
+                if !todoFolder.isEmpty {
+                    TodoFolderRow(folder: todoFolder) { page = .todos }
+                        .lastInSection(true)
+                }
             } header: {
                 ListHeader(title: "Inbox", tint: .brandSky, isFirst: true)
             }
@@ -393,6 +401,46 @@ struct NotesView: View {
                     message: "Add notes, meetings, links and buckets with the plus button.",
                     systemImage: "note.text"
                 )
+            }
+        }
+    }
+
+    /// The to-dos folder opened: every open to-do by due day, grouped as the search's "Open To-dos", then those
+    /// done today. Each row names its buckets. Only a view: the to-dos stay where they are.
+    private var todosPage: some View {
+        let folder = Todos.folder(notes)
+        let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
+        func buckets(_ note: Note) -> [String] { note.projectIDs.compactMap { names[$0] } }
+        return List(selection: $selection) {
+            ForEach(Array(folder.groups.enumerated()), id: \.element.title) { index, group in
+                Section {
+                    ForEach(group.notes) { note in
+                        NoteListRow(note: note, buckets: buckets(note)) { remove(note) }
+                            .lastInSection(note.id == group.notes.last?.id)
+                    }
+                } header: {
+                    ListHeader(
+                        title: group.title, count: group.notes.count,
+                        tint: group.title == String(localized: "Overdue") ? .red : .brandTask, isFirst: index == 0
+                    )
+                }
+            }
+            if !folder.doneToday.isEmpty {
+                Section {
+                    ForEach(folder.doneToday) { note in
+                        NoteListRow(note: note, buckets: buckets(note)) { remove(note) }
+                            .lastInSection(note.id == folder.doneToday.last?.id)
+                    }
+                } header: {
+                    ListHeader(title: String(localized: "Done Today"), count: folder.doneToday.count, tint: .brandNavy, isFirst: folder.groups.isEmpty)
+                }
+            }
+        }
+        .cardList()
+        .roomForFloatingButtons()
+        .overlay {
+            if folder.isEmpty {
+                EmptyStateView(title: "Nothing to Do", message: "Open to-dos from the inbox and every bucket show up here.", systemImage: "checklist")
             }
         }
     }
@@ -613,6 +661,8 @@ struct NotesView: View {
                                     createOption("Note", systemImage: "square.and.pencil", tint: .brandSky) { addNote() }
                                 }
                                 FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
+                                    // In the to-dos folder the plus makes a to-do, without the menu.
+                                    if page == .todos, !showCreate { addNote(todo: true); return }
                                     withAnimation(.snappy) {
                                         // Signed in on another device, or the sign-in ran out.
                                         plaudSignedIn = PlaudAccount.isSignedIn
@@ -739,6 +789,7 @@ struct NotesView: View {
         case .home: "Porridge"
         case .project: project(on: shown)?.name ?? "Porridge"
         case .inbox: "Inbox"
+        case .todos: "To-dos"
         case .chat: "Chat"
         case .search: "Search"
         case .archive: "Archive"
@@ -755,6 +806,7 @@ struct NotesView: View {
         case .project: project(on: shown) == nil ? .brandSky : .brandProject
         case .archive, .chat, .search: .brandNavy
         case .trash: .red
+        case .todos: .brandTask
         default: .brandSky
         }
     }
@@ -771,6 +823,7 @@ struct NotesView: View {
         case .home: "tray.full.fill"
         case .project: project(on: shown) == nil ? "tray.full.fill" : "folder.fill"
         case .inbox: "tray.fill"
+        case .todos: "checklist"
         case .chat: "bubble.left.and.bubble.right.fill"
         case .search: "magnifyingglass"
         case .archive: "archivebox.fill"
@@ -993,6 +1046,8 @@ struct NotesView: View {
 struct NoteRow: View {
     let note: Note
     let stage: String?
+    /// Bucket names to show in the footer (a list of several buckets' notes); empty shows none.
+    var buckets: [String] = []
 
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.modelContext) private var context
@@ -1056,13 +1111,24 @@ struct NoteRow: View {
                 Image(systemName: "archivebox")
                     .accessibilityLabel("Archived")
             }
-            // "30. Oct 10:52": day and time without the "at" in between, to fit a narrow sidebar.
-            Text(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
-                .fixedSize()
+            // "30. Oct 10:52": day and time without the "at" in between, to fit a narrow sidebar. Where a to-do names
+            // its buckets (the to-dos folder) its due day says more, and the date makes room for them.
+            if buckets.isEmpty || !note.isTodo {
+                Text(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
+                    .fixedSize()
+            }
         }
         if note.isTodo {
             TodoDueLabel(note: note)
             TodoProgressLabel(progress: note.todoProgress)
+        }
+        // Where a list mixes buckets the row names its own; on a narrow row the names give way first.
+        if !buckets.isEmpty {
+            Label(buckets.joined(separator: ", "), systemImage: "folder")
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(Color.brandProject.readable)
+                .truncationMode(.tail)
+                .layoutPriority(compact ? -1 : 0)
         }
         if let domain = note.domain, !compact {
             Label(domain, systemImage: "link")
@@ -1122,6 +1188,8 @@ enum ListPage: Hashable {
     case project(UUID)
     /// The inbox: what is new or in no bucket.
     case inbox
+    /// The virtual folder of every open to-do by due day (`Todos.folder`), in the Inbox section of the home list.
+    case todos
     /// The chat with the notes.
     case chat
     /// The search through everything.

@@ -114,4 +114,40 @@ final class TodoFlowTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Book the venue"].exists, "Anna's task became a to-do without being picked")
         XCTAssertFalse(app.staticTexts["3 suggested to-dos"].exists, "the row still says that to-dos wait")
     }
+
+    /// The to-dos folder under the Inbox: every open to-do by due day, the longest overdue first; ticked there, it
+    /// stays for today under "Done Today".
+    func testTodosFolderListsOpenTodosByDueDay() throws {
+        let prefix = unique("Folder")
+        let app = XCUIApplication()
+        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
+        app.launch()
+
+        let entry = app.buttons["TodosFolder"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 15), "to-dos folder missing under the inbox")
+        XCTAssertTrue(entry.label.contains("overdue"), "the folder does not say that to-dos are late: \(entry.label)")
+        screenshot("inbox-todos-folder-home", app)
+        entry.tap()
+
+        XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "no Overdue group")
+        let first = app.staticTexts["\(prefix) long overdue"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "the longest overdue to-do is not on top")
+        // It names its bucket: the row's label holds the prefix twice, in the title and as the bucket.
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "\(prefix) long overdue, ")).firstMatch
+        XCTAssertTrue(row.exists, "row of the overdue to-do missing")
+        XCTAssertEqual(row.label.components(separatedBy: prefix).count - 1, 2, "the row does not name its bucket: \(row.label)")
+        screenshot("inbox-todos-folder", app)
+
+        // Ticked in the folder, it goes to Done Today.
+        let box = app.switches.matching(NSPredicate(format: "label == 'To-do' AND value == 'Not Done'")).firstMatch
+        XCTAssertTrue(box.waitForExistence(timeout: 5))
+        box.tap()
+        XCTAssertTrue(app.reveal(app.staticTexts["Done Today"]), "no Done Today group after ticking")
+
+        // The plus makes a to-do right here.
+        app.buttons["Create"].tap()
+        XCTAssertTrue(app.waitForTitleField(), "the plus did not make a to-do")
+        XCTAssertTrue(app.switches["To-do"].firstMatch.waitForExistence(timeout: 5), "the plus made a note, not a to-do")
+    }
 }
+

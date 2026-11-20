@@ -450,3 +450,53 @@ extension TodosTests {
         XCTAssertEqual(chunk.map { Todos.dueKey($0.date) }, "2026-12-12")
     }
 }
+
+// MARK: - The to-dos folder
+
+extension TodosTests {
+    func testFolderHoldsEveryOpenTodoByDueDayThenThoseDoneToday() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 10))!
+        func todo(_ title: String, due: String? = nil, done: Date? = nil) -> Note {
+            let note = Note()
+            note.title = title
+            note.todoState = done == nil ? .open : .done
+            note.todoDoneAt = done
+            note.todoDueDay = due
+            return note
+        }
+        let late = todo("late", due: "2026-11-19")
+        let today = todo("today", due: "2026-11-20")
+        let later = todo("later", due: "2026-12-01")
+        let undated = todo("undated")
+        let filed = todo("filed in a bucket", due: "2026-11-02")
+        filed.projectIDs = ["B1"]
+        let doneToday = todo("done today", done: calendar.date(byAdding: .hour, value: -1, to: now))
+        let doneEarlier = todo("done yesterday", done: calendar.date(byAdding: .day, value: -1, to: now))
+        let deleted = todo("deleted", due: "2026-11-01")
+        deleted.deletedAt = now
+        let archived = todo("archived")
+        archived.archivedAt = now
+        let plain = Note()
+        plain.title = "a note"
+
+        let folder = Todos.folder([undated, later, plain, doneEarlier, today, deleted, late, archived, doneToday, filed], now: now, calendar: calendar)
+        XCTAssertEqual(folder.groups.map(\.title), ["Overdue", "Today", "Upcoming", "No Due Date"])
+        XCTAssertEqual(folder.groups.map { $0.notes.map(\.title) }, [["filed in a bucket", "late"], ["today"], ["later"], ["undated"]])
+        XCTAssertEqual(folder.doneToday.map(\.title), ["done today"])
+        XCTAssertEqual(folder.open, 5)
+        XCTAssertEqual(folder.overdue, 2)
+        XCTAssertFalse(folder.isEmpty)
+
+        // At midnight what was due today is late; yesterday's done one was gone already.
+        let midnight = calendar.date(from: DateComponents(year: 2026, month: 11, day: 21))!
+        let next = Todos.folder([late, today, later, doneToday], now: midnight, calendar: calendar)
+        XCTAssertEqual(next.overdue, 2)
+        XCTAssertTrue(next.doneToday.isEmpty)
+        XCTAssertEqual(next.groups.map(\.title), ["Overdue", "Upcoming"])
+
+        XCTAssertTrue(Todos.folder([plain, doneEarlier], now: now, calendar: calendar).isEmpty)
+    }
+}
+

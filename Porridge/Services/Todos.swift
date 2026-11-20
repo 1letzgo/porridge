@@ -314,6 +314,29 @@ enum Todos {
         return open + todos.filter(\.isDone)
     }
 
+    /// The virtual folder "To-dos" in the Inbox section of the home list: every open to-do, wherever it is filed,
+    /// in the groups of `dueGroups`, then those done today. Only a view: nothing is moved or stored.
+    struct Folder {
+        var groups: [(title: String, notes: [Note])]
+        var doneToday: [Note]
+        /// Open to-dos (not done, not deleted, not archived).
+        var open: Int
+        /// Of them, those due before today.
+        var overdue: Int
+
+        var isEmpty: Bool { open == 0 && doneToday.isEmpty }
+    }
+
+    static func folder(_ notes: [Note], now: Date = Date(), calendar: Calendar = .current) -> Folder {
+        let living = notes.filter { $0.isTodo && !$0.isDeleted && $0.archivedAt == nil }
+        let open = living.filter { !$0.isDone }
+        // Done ones stay for the rest of the day they were done on, as in every list.
+        let done = living.filter { $0.isDone && !isPutAway(doneAt: $0.todoDoneAt, now: now, calendar: calendar) }
+            .sorted { ($0.todoDoneAt ?? .distantPast) > ($1.todoDoneAt ?? .distantPast) }
+        let overdue = open.filter { $0.todoDue.flatMap { dueStatus($0, now: now, calendar: calendar) } == .overdue }.count
+        return Folder(groups: dueGroups(open, now: now, calendar: calendar), doneToday: done, open: open.count, overdue: overdue)
+    }
+
     /// Open to-dos in groups by their due day: Overdue, Today, Upcoming, No Due Date (empty groups left out),
     /// each sorted by due day.
     static func dueGroups(_ todos: [Note], now: Date = Date(), calendar: Calendar = .current) -> [(title: String, notes: [Note])] {
