@@ -59,7 +59,9 @@ object SyncMerge {
         val intake = if ("sourceRaw" !in record) decoded.withIntakeOf(local) else decoded
         val todo = if ("todoStateRaw" !in record) intake.withTodoOf(local) else intake
         // Der fällige Tag für sich: nur ein Eintrag, der ihn hat, sagt etwas darüber ("none" = entfernt).
-        return if ("todoDueDay" !in record) todo.copy(todoDueDay = local.todoDueDay) else todo
+        val due = if ("todoDueDay" !in record) todo.copy(todoDueDay = local.todoDueDay) else todo
+        // Und was mit den vorgeschlagenen To-dos der Zusammenfassung geschah.
+        return if ("todoSuggestionsRaw" !in record) due.copy(todoSuggestionsRaw = local.todoSuggestionsRaw) else due
     }
 
     data class Local(val record: JsonObject, val updatedAt: Long)

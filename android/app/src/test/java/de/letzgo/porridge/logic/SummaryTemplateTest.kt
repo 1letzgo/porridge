@@ -29,7 +29,8 @@ class SummaryTemplateTest {
     @Test fun meetingPromptForbidsInventingAndAsksForOwnerAndDueDate() {
         val prompt = SummaryLogic.systemPrompt(german)
         assertTrue(prompt.contains("Only use what is in the transcript"))
-        assertTrue(prompt.contains("<owner, if known> – <due date, if named>"))
+        assertTrue(prompt.contains("<owner, if known> – <deadline as YYYY-MM-DD, if one was named>"))
+        assertTrue(prompt.contains("not the day of the meeting unless it is due that day"))
     }
 
     @Test fun onlyMeetingNotesMarkTasks() {

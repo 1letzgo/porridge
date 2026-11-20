@@ -50,6 +50,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import de.letzgo.porridge.logic.Todos
+import de.letzgo.porridge.logic.TodoSuggestions
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.automirrored.filled.Notes
@@ -657,6 +658,12 @@ internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivide
                         Text(footer.joinToString("  ·  "), style = MaterialTheme.typography.labelSmall, color = if (note.isDeleted) Brand.danger.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
                         if (note.isTodo) TodoDueLabel(note)
                         if (note.isTodo) TodoProgressLabel(note.todoProgress)
+                        // iOS: Eine Zusammenfassung mit wartenden Vorschlägen sagt es in der Zeile.
+                        val waiting = remember(note) { TodoSuggestions.pendingFor(note, emptyList()).size }
+                        if (waiting > 0) Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Checklist, null, tint = Brand.taskText, modifier = Modifier.size(13.dp))
+                            Text(if (waiting == 1) "1 suggested to-do" else "$waiting suggested to-dos", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold), color = Brand.taskText, maxLines = 1)
+                        }
                     }
                 }
                 // iOS: Die Box, die es abhakt, steht am Ende der Zeile; ein gelöschtes zeigt sie nur.

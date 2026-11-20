@@ -182,7 +182,7 @@ object SummaryLogic {
         } else {
             "You summarize a personal note. The note is written in ${language.name}. Write the whole summary in ${language.name} and in no other language, even though these instructions are in English.\nThe note may come from dictation and contain recognition mistakes; silently fix obvious ones. Only use what is in the note."
         }
-        val tasks = if (isLink) "" else "\n## ${language.headings.actionItems}\n- [ ] <a concrete task from the note>\n(omit this heading if there are none)\n"
+        val tasks = if (isLink) "" else "\n## ${language.headings.actionItems}\n- [ ] <a concrete task from the note> – <due date as YYYY-MM-DD, only if a date or deadline is named>\n(omit this heading if there are none; leave out the date when none is named)\n"
         return intro + "\n\nReply in exactly this format (Markdown), with all headings in ${language.name}:\n\n" +
             "## ${language.headings.summary}\n<1–3 sentences>\n\n" +
             "## ${language.headings.keyPoints}\n- … (omit if the ${if (isLink) "page" else "note"} is very short)\n" +
@@ -201,8 +201,8 @@ object SummaryLogic {
             "TITLE: <short, concise title, at most 6 words>\n\n" +
             "## ${language.headings.summary}\n<2–4 sentences>\n\n" +
             "$sections\n\n" +
-            "## ${language.headings.actionItems}\n- [ ] <a concrete task from the transcript> – <owner, if known> – <due date, if named>\n" +
-            "(omit this heading if there are none; a task for the person who recorded, see \"Recorded by\", gets that name as owner)\n\n" +
+            "## ${language.headings.actionItems}\n- [ ] <a concrete task from the transcript, as a short instruction that is clear on its own> – <owner, if known> – <deadline as YYYY-MM-DD, if one was named>\n" +
+            "(one line for every task a person took on (\"I'll do …\", \"can you …\" – \"yes\"), also small ones; omit this heading if there are none. The deadline is the day the task is due, worked out from the meeting's \"Date\" (\"next Friday\", \"end of the month\", \"by 3 December\"), not the day of the meeting unless it is due that day; leave out the owner or the deadline when they are not named, never write a placeholder. A task for the person who recorded, see \"Recorded by\", gets that name as owner)\n\n" +
             "TAGS: <3 to 5 short keywords in ${language.name}, separated by commas, without # signs>"
     }
 
@@ -292,6 +292,8 @@ object SummaryLogic {
         summarizedAt = summarized.summarizedAt,
         // Nur ein Vorschlag, und nur solange die Notiz noch im Eingang liegt.
         suggestedProjectIDs = if (current.isInInbox && summarized.suggestedProjectIDs.isNotEmpty()) summarized.suggestedProjectIDs else current.suggestedProjectIDs,
+        // Ihre Aufgaben werden auf der Seite als To-dos angeboten; nichts entsteht ohne Tipp (iOS: `TodoSuggestions.offer`).
+        todoSuggestionsRaw = if (current.isSaved || current.todoSuggestionsRaw != null) current.todoSuggestionsRaw else TodoSuggestions.encode(emptyMap()),
         updatedAt = now,
     )
 

@@ -140,6 +140,18 @@ class DatabaseRepairTest {
         assertTrue(backups().isEmpty())
     }
 
+    @Test
+    fun version117MigratesToSuggestionsWithoutRepair() {
+        // 1.1.7: Version 13. MIGRATION_13_14 gibt den Notizen `todoSuggestionsRaw`, leer.
+        create(13)
+        insertNote("N1", "From 1.1.7")
+
+        val notes = runBlocking { open().notes().all() }
+        assertEquals(listOf("From 1.1.7"), notes.map { it.title })
+        assertEquals(listOf<String?>(null), notes.map { it.todoSuggestionsRaw })
+        assertTrue(backups().isEmpty())
+    }
+
     // Aufbau
 
     private fun write(block: (SQLiteDatabase) -> Unit) {

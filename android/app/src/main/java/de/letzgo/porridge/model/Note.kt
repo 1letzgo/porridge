@@ -81,6 +81,11 @@ data class Note(
      * entfernt wurde; null = nie gesetzt (iOS: `Note.todoDueDay`, siehe `Todos.isDueKey`).
      */
     val todoDueDay: String? = null,
+    /**
+     * Was mit den als To-dos angebotenen Aufgaben der Zusammenfassung geschah: JSON `{"<Schlüssel>": "taken" | "dismissed"}`;
+     * null = keine Vorschläge angeboten (iOS: `Note.todoSuggestionsRaw`, siehe `logic/TodoSuggestions.kt`).
+     */
+    val todoSuggestionsRaw: String? = null,
 ) {
     val source: NoteSource get() = NoteSource.of(sourceRaw)
 

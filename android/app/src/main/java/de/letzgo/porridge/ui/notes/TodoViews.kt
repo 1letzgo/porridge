@@ -6,6 +6,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.style.TextAlign
+import de.letzgo.porridge.logic.TaskSuggestion
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Checklist
@@ -249,5 +262,135 @@ fun DueDateChip(note: Note, onSet: (String?) -> Unit) {
             }
         }
         DueDateMenu(note, open, onDismiss = { open = false }, onSet = onSet)
+    }
+}
+
+// Vorgeschlagene To-dos (iOS: `SuggestedTodosCard`, `MadeTodosList`)
+
+/**
+ * Die Aufgaben einer Zusammenfassung als To-dos angeboten, auf der Seite des Meetings: jede wählbar und im Titel
+ * änderbar; ein Knopf übernimmt die gewählten (lang gedrückt: als ein To-do mit Unteraufgaben), Dismiss verwirft alle.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun SuggestedTodosCard(
+    suggestions: List<TaskSuggestion>,
+    onTake: (chosen: List<TaskSuggestion>, rest: List<TaskSuggestion>, asOne: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var picked by remember { mutableStateOf(setOf<String>()) }
+    val titles = remember { mutableStateMapOf<String, String>() }
+    // Die Vorschläge, für die schon gewählt wurde: neue (eine neue Zusammenfassung) bekommen ihre eigene Vorauswahl.
+    val known = remember { mutableSetOf<String>() }
+    LaunchedEffect(suggestions.map { it.key }) {
+        // Vorgewählt: die eigenen und niemandes, oder alle, wenn die App den Namen des Nutzers nicht kennt.
+        val names = de.letzgo.porridge.data.Me.names
+        var next = picked
+        for (s in suggestions) if (known.add(s.key) && (names.isEmpty() || s.isMine)) next = next + s.key
+        picked = next intersect suggestions.map { it.key }.toSet()
+    }
+    fun chosen(): List<TaskSuggestion> = suggestions.filter { it.key in picked }.map { s ->
+        val title = (titles[s.key] ?: s.title).trim()
+        if (title.isEmpty()) s else s.copy(title = title)
+    }
+    var menu by remember { mutableStateOf(false) }
+    Surface(
+        shape = RoundedCornerShape(16.dp), color = Brand.task.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, Brand.task.copy(alpha = 0.35f)), modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Checklist, null, tint = Brand.taskText, modifier = Modifier.size(18.dp))
+                Text("Suggested To-dos", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Brand.taskText)
+            }
+            for (s in suggestions) {
+                val on = s.key in picked
+                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(
+                        Modifier.size(32.dp).clip(CircleShape).clickable(role = Role.Checkbox) { picked = if (on) picked - s.key else picked + s.key }
+                            .semantics { contentDescription = titles[s.key] ?: s.title; stateDescription = if (on) "Selected" else "Not Selected" },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(if (on) Icons.Filled.CheckCircle else Icons.Outlined.Circle, null, tint = if (on) Brand.taskText else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                    }
+                    Column(Modifier.weight(1f).padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        BasicTextField(
+                            value = titles[s.key] ?: s.title, onValueChange = { titles[s.key] = it.replace("\n", " ") },
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant),
+                            cursorBrush = SolidColor(Brand.task), modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (s.owner != null || s.dueDay != null) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            s.owner?.let { owner ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.Person, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                                    Text(owner, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            s.dueDay?.let { due ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.CalendarToday, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                                    Text(Todos.dueLabel(due), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                val count = picked.size
+                Box(Modifier.weight(1f)) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp), color = Brand.task.copy(alpha = if (count == 0) 0.1f else 0.25f),
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).combinedClickable(
+                            enabled = count > 0,
+                            onClick = { onTake(chosen(), suggestions.filter { it.key !in picked }, false) },
+                            onLongClick = { menu = true },
+                        ),
+                    ) {
+                        Text(
+                            if (count == 1) "Add 1 To-do" else "Add $count To-dos", textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = if (count == 0) MaterialTheme.colorScheme.onSurfaceVariant else Brand.navy,
+                            modifier = Modifier.padding(vertical = 10.dp),
+                        )
+                    }
+                    DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Add as One To-do with Subtasks") }, leadingIcon = { Icon(Icons.Filled.Checklist, null) },
+                            onClick = { menu = false; onTake(chosen(), suggestions.filter { it.key !in picked }, true) },
+                        )
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Dismiss", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
+    }
+}
+
+/** Die aus einem Meeting gemachten To-dos auf seiner Seite: dort abgehakt, mit einem Tipp geöffnet. */
+@Composable
+fun MadeTodosList(todos: List<Note>, onToggle: (Note) -> Unit, onOpen: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Checklist, null, tint = Brand.taskText, modifier = Modifier.size(18.dp))
+            Text("To-dos", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = Brand.taskText)
+        }
+        for (todo in Todos.byDue(todos)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TodoCheckbox(todo.isDone, size = 22.dp) { onToggle(todo) }
+                Row(
+                    Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { onOpen(todo.id) }.padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        todo.displayTitle, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                        color = if (todo.isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                        textDecoration = if (todo.isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                    )
+                    TodoDueLabel(todo)
+                    Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
     }
 }

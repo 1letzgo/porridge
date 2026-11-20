@@ -113,6 +113,8 @@ import de.letzgo.porridge.data.Me
 import de.letzgo.porridge.data.Prefs
 import de.letzgo.porridge.logic.ProjectsLogic
 import de.letzgo.porridge.logic.Todos
+import androidx.compose.material.icons.filled.Checklist
+import de.letzgo.porridge.logic.TodoSuggestions
 import de.letzgo.porridge.logic.editor.NoteEditorCommand
 import de.letzgo.porridge.logic.SummaryTemplate
 import de.letzgo.porridge.model.Note
@@ -198,10 +200,12 @@ fun NoteDetailScreen(
     // To-dos: die Notiz, aus der es stammt, und die To-dos, die aus der Zusammenfassung dieser Notiz übernommen wurden.
     val sourceFlow = remember(note.todoSourceID) { note.todoSourceID?.let { db.notes().observe(it) } ?: kotlinx.coroutines.flow.flowOf(null) }
     val todoSource = sourceFlow.collectAsState(initial = null).value?.takeIf { !it.isDeleted }
-    val offersTodos = note.summary != null && !note.isSaved && !note.isDeleted
+    val offersTodos = note.summary != null && !note.isSaved
     val allFlow = remember(offersTodos) { if (offersTodos) db.notes().observeAll() else kotlinx.coroutines.flow.flowOf(emptyList()) }
     val allNotes by allFlow.collectAsState(initial = emptyList())
-    val madeTodos = remember(allNotes, note.id) { Todos.madeFrom(note, allNotes).map { it.title.lowercase() }.toSet() }
+    // iOS: die aus dieser Notiz gemachten To-dos und die Aufgaben der Zusammenfassung, die noch als To-dos warten.
+    val madeTodos = remember(allNotes, note.id) { Todos.madeFrom(note, allNotes) }
+    val suggestions = remember(note, madeTodos) { TodoSuggestions.pendingFor(note, madeTodos) }
 
     val opensOnSummary = note.isRecording || note.isLink || note.isStored
     val tabs = buildList {
@@ -332,6 +336,11 @@ fun NoteDetailScreen(
                                 if (canUndoEnhance) DropdownMenuItem(text = { Text("Undo Enhance") }, onClick = { act { AppGraph.scope.launch { ProcessingService.undoEnhance(note.id) } } })
                             }
                             if (note.summary != null) DropdownMenuItem(text = { Text("Edit Summary") }, enabled = !isSummarizing, onClick = { act { tab = NoteTab.SUMMARY; editingSummary = true } })
+                            // iOS: Die Aufgaben der Zusammenfassung wieder als To-dos, verworfene eingeschlossen.
+                            if (note.summary != null && !note.isSaved && !note.isTodo) DropdownMenuItem(
+                                text = { Text("Suggest To-dos") }, leadingIcon = { Icon(Icons.Filled.Checklist, null) }, enabled = !isSummarizing,
+                                onClick = { act { update { TodoSuggestions.suggestedAgain(it) ?: it }; tab = NoteTab.SUMMARY } },
+                            )
                             HorizontalDivider()
                             if (note.hasLocalAudio) DropdownMenuItem(text = { Text("Transcribe Again") }, enabled = stage == null, onClick = { act { ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id)) } })
                             if (note.isLink) DropdownMenuItem(text = { Text("Load Page Again") }, enabled = stage == null, onClick = {
@@ -391,8 +400,23 @@ fun NoteDetailScreen(
                             onDelete = { confirmDeleteSummary = true },
                             onToggleTask = { line -> coroutines.launch { toggleSummaryTask(note, line) } },
                             // Nie aus einem gespeicherten Link oder einer Datei; es öffnet sich erst, wenn man es will.
-                            onMakeTodo = if (offersTodos) { task -> coroutines.launch { NoteStore().makeTodo(task, note) } } else null,
-                            madeTodos = madeTodos)
+                            suggestions = suggestions, made = madeTodos,
+                            onTake = { chosen, rest, asOne ->
+                                AppGraph.scope.launch {
+                                    saveLock.withLock {
+                                        val current = db.notes().get(noteID) ?: return@withLock
+                                        val (made, updated) = TodoSuggestions.take(chosen, rest, current, asOne) ?: return@withLock
+                                        for (todo in made) db.notes().upsert(todo)
+                                        db.notes().upsert(updated)
+                                    }
+                                }
+                            },
+                            onDismissSuggestions = { update { TodoSuggestions.dismissed(suggestions, it) } },
+                            onToggleTodo = { todo -> coroutines.launch { NoteStore().setDone(todo, !todo.isDone) } },
+                            onOpenNote = onOpenNote,
+                            isTakenTask = if (note.isSaved) null else { text ->
+                                TodoSuggestions.isTaken(text, TodoSuggestions.states(note.todoSuggestionsRaw), madeTodos.map { it.title })
+                            })
                         NoteTab.TRANSCRIPT -> TranscriptTab(note, player) { segment, speaker -> update { n -> n.withSegments(n.segments.map { if (it.id == segment.id) it.copy(speakerId = speaker.id) else it }) } }
                         NoteTab.ARTICLE -> ArticleTab(note, stage.takeUnless { isSummarizing }, context)
                         NoteTab.NOTE -> if (dictationPhase != InlineDictation.Phase.IDLE) {
@@ -854,7 +878,10 @@ private fun TabSwitcher(tabs: List<NoteTab>, selected: NoteTab, articleTitle: St
 private fun SummaryTab(
     note: Note, isSummarizing: Boolean, status: String?,
     onSummarize: () -> Unit, onEdit: () -> Unit, onInsert: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, onToggleTask: (Int) -> Unit,
-    onMakeTodo: ((String) -> Unit)? = null, madeTodos: Set<String> = emptySet(),
+    suggestions: List<de.letzgo.porridge.logic.TaskSuggestion> = emptyList(), made: List<Note> = emptyList(),
+    onTake: (List<de.letzgo.porridge.logic.TaskSuggestion>, List<de.letzgo.porridge.logic.TaskSuggestion>, Boolean) -> Unit = { _, _, _ -> },
+    onDismissSuggestions: () -> Unit = {}, onToggleTodo: (Note) -> Unit = {}, onOpenNote: (String) -> Unit = {},
+    isTakenTask: ((String) -> Boolean)? = null,
 ) {
     val message = when {
         note.isRecording -> "Let AI summarize this meeting – including decisions and action items."
@@ -875,8 +902,10 @@ private fun SummaryTab(
             }
             note.summary != null -> {
                 var menu by remember { mutableStateOf(false) }
+                // iOS: Die Aufgaben der Zusammenfassung als To-dos angeboten, als Erstes auf der Seite; nie bei Links oder Dateien.
+                if (suggestions.isNotEmpty()) SuggestedTodosCard(suggestions, onTake, onDismissSuggestions)
                 Row(verticalAlignment = Alignment.Top) {
-                    MarkdownText(note.summary, Modifier.weight(1f), onToggleTask = if (note.isDeleted || note.isSaved) null else onToggleTask, onMakeTodo = onMakeTodo, madeTodos = madeTodos)
+                    MarkdownText(note.summary, Modifier.weight(1f), onToggleTask = if (note.isDeleted || note.isSaved) null else onToggleTask, isTakenTask = isTakenTask)
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreHoriz, "Summary Options", tint = Brand.navy) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -889,6 +918,8 @@ private fun SummaryTab(
                     }
                 }
                 note.summaryModel?.let { Text("Created with $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                // Was daraus wurde: die aus der Notiz gemachten To-dos, dort abgehakt und geöffnet.
+                if (made.isNotEmpty()) MadeTodosList(made, onToggleTodo, onOpenNote)
             }
             else -> Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Icon(Icons.Filled.AutoAwesome, null, tint = Brand.skyText, modifier = Modifier.size(40.dp))
