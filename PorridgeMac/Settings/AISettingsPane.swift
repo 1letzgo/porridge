@@ -12,6 +12,10 @@ final class AISettingsPane: SettingsPane {
         self?.render()
     }
     private let noneLabel = NSTextField.label("None added", color: .secondaryLabelColor)
+    private lazy var summarizeIncoming = SettingsCheckbox("Summarize Incoming Entries") { on in
+        UserDefaults.standard.set(on, forKey: AppSettings.summarizeIncomingKey)
+        if on { Library.shared.processing.summarizeIncoming() }
+    }
     private var popUpRow: NSGridRow?
     private var noneRow: NSGridRow?
     private let list = NSStackView.vertical([], spacing: 12)
@@ -22,6 +26,7 @@ final class AISettingsPane: SettingsPane {
     override func build() {
         popUpRow = form.row("Default Model", defaultPopUp)
         noneRow = form.row("Default Model", noneLabel)
+        form.row("", summarizeIncoming)
         form.row("Templates", NSButton.push("Edit Custom Templates…") { [weak self] in
             self?.presentSheet(TemplatesSheetController())
         })
@@ -55,6 +60,7 @@ final class AISettingsPane: SettingsPane {
             DispatchQueue.main.async { SummaryModel.repairCurrent() }
         }
 
+        summarizeIncoming.isOn = AppSettings.summarizeIncoming
         let available = SummaryModel.available
         let current = SummaryModel.current
         let hasModels = !available.isEmpty

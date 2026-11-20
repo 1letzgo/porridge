@@ -73,6 +73,7 @@ enum ShareImport {
             note.createdAt = entry.date
             note.updatedAt = entry.date
             context.insert(note)
+            AutoSummary.markOrigin(note.id)
             notes.append(note)
         } else if let url = entry.url {
             let note = LinkImport.save(url, title: entry.title, date: entry.date, known: &known, context: context, processing: processing)
@@ -120,6 +121,8 @@ enum ShareImport {
         // Read again with the new file; until then the note is being worked on.
         note.pageText = nil
         note.statusRaw = ProcessingStatus.recorded.rawValue
+        // Shared or dropped files came in here: this device summarizes them once their text is read (`AutoSummary`).
+        if note.source == .share { AutoSummary.markOrigin(note.id) }
         processing.enqueue(.attachment(note.id))
     }
 }

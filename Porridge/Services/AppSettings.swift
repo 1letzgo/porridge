@@ -60,6 +60,8 @@ enum AppSettings {
     static let customBaseURLKey = "aiCustomBaseURL"
     /// The user's own name (and other ways it is written, comma separated): the summaries name them.
     static let myNameKey = "myName"
+    /// Links, images, files, shared text and imported audio get a summary by themselves (`AutoSummary`).
+    static let summarizeIncomingKey = "summarizeIncoming"
     /// The voice marked as the user's in the speaker list (`VoiceProfile.id`), and its name for matching.
     static let myVoiceKey = "myVoice"
     static let myVoiceNameKey = "myVoiceName"
@@ -88,12 +90,14 @@ enum AppSettings {
             voiceRecognitionKey: true,
             recordsNewNotesKey: false,
             recordingsWiFiOnlyKey: true,
+            summarizeIncomingKey: true,
             providerKey: AIProvider.openRouter.rawValue,
         ])
     }
 
     /// The names the user goes by, lowercased; empty when none is set.
     static var recordsNewNotes: Bool { UserDefaults.standard.bool(forKey: recordsNewNotesKey) }
+    static var summarizeIncoming: Bool { UserDefaults.standard.bool(forKey: summarizeIncomingKey) }
     static var recordingsWiFiOnly: Bool { UserDefaults.standard.bool(forKey: recordingsWiFiOnlyKey) }
 
     static var myNames: [String] {

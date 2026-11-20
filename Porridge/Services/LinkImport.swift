@@ -61,6 +61,8 @@ enum LinkImport {
         note.statusRaw = ProcessingStatus.recorded.rawValue
         note.source = .link
         context.insert(note)
+        // It came in here: this device summarizes it once the page is loaded (`AutoSummary`).
+        AutoSummary.markOrigin(note.id)
         processing.enqueue(.link(note.id, summarize: true))
         return note
     }

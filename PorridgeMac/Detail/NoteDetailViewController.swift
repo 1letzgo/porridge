@@ -1006,9 +1006,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         case .deleteSummary:
             Alerts.confirm("Delete Summary?", message: "Your edits and check marks in it are lost. You can write a new one at any time.", action: "Delete Summary", in: view.window) { [weak self] in
                 guard let self else { return }
-                self.note.summary = nil
-                self.note.summaryModel = nil
-                self.note.summarizedAt = nil
+                SummaryService.removeSummary(self.note)
                 self.library.save()
             }
         case .continueRecording:

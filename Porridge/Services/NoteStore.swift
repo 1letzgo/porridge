@@ -35,6 +35,8 @@ enum NoteStore {
         }
         context.insert(note)
         try? context.save()
+        // Imported here: this device summarizes it once it is transcribed (`AutoSummary`).
+        AutoSummary.markOrigin(note.id)
         processing.enqueue(.transcript(note.id))
         return note
     }

@@ -23,10 +23,12 @@ final class ProcessingService {
         case enhance(UUID, SummaryModel?)
         /// A note with attachments: read the text in its images and PDFs, then summarize it.
         case attachment(UUID)
+        /// The summary of an incoming entry nobody asked for (`AutoSummary`).
+        case autoSummary(UUID)
 
         var id: UUID {
             switch self {
-            case .transcript(let id), .note(let id), .link(let id, _), .summary(let id, _, _), .enhance(let id, _), .attachment(let id): id
+            case .transcript(let id), .note(let id), .link(let id, _), .summary(let id, _, _), .enhance(let id, _), .attachment(let id), .autoSummary(let id): id
             }
         }
 
@@ -39,6 +41,7 @@ final class ProcessingService {
             case .summary: 3
             case .enhance: 4
             case .attachment: 5
+            case .autoSummary: 6
             }
         }
     }
@@ -67,6 +70,8 @@ final class ProcessingService {
     @ObservationIgnored private var queue: [Job] = []
     @ObservationIgnored private var isRunning = false
     @ObservationIgnored private var running: Job?
+    @ObservationIgnored private var autoAttempts = AutoSummary.Attempts()
+    @ObservationIgnored private var sweepTask: Task<Void, Never>?
 
     init(container: ModelContainer) {
         self.container = container
@@ -150,10 +155,59 @@ final class ProcessingService {
             && (note.pageText == nil || note.status == .recorded) {
             enqueue(.attachment(note.id))
         }
-        // Links without a summary get one in the background, when a model is ready for it (see `processLink`).
-        for note in notes where note.isLink && !note.isDeleted && note.summary == nil && note.status != .failed
-            && (note.pageText == nil || !(note.pageText ?? "").isEmpty) {
+        // Links whose page was not loaded yet (the app was closed before it got to them).
+        for note in notes where note.isLink && !note.isDeleted && note.status != .failed && (note.pageText == nil || note.status == .recorded) {
             enqueue(.link(note.id, summarize: true))
+        }
+        AutoSummary.pruneOrigins(keeping: notes)
+        summarizeIncoming()
+    }
+
+    // MARK: - Summaries of incoming entries
+
+    /// Queues the summary of every incoming entry that is due (`AutoSummary.isDue`). Called at launch, when the app
+    /// comes to the front, and when the notes change (new entries, sync): cheap when nothing is due.
+    func summarizeIncoming() {
+        // Looked at again from time to time: a failed one is retried, another device's entry may be due to catch up,
+        // a model may have arrived.
+        if sweepTask == nil {
+            sweepTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(AutoSummary.retryDelay))
+                guard !Task.isCancelled else { return }
+                self?.sweepTask = nil
+                self?.summarizeIncoming()
+            }
+        }
+        guard AppSettings.summarizeIncoming, SummaryService.canRunWithoutAsking else { return }
+        let notes = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.summary == nil && $0.summarizedAt == nil && $0.deletedAt == nil }))) ?? []
+        let origins = AutoSummary.origins()
+        for note in notes where autoAttempts.mayTry(note.id) && AutoSummary.isDue(note, isOrigin: origins.contains(note.id.uuidString)) {
+            enqueue(.autoSummary(note.id))
+        }
+    }
+
+    /// Right after an entry's content arrived (page loaded, text read, transcript done).
+    private func summarizeIfIncoming(_ note: Note) {
+        guard AppSettings.summarizeIncoming, SummaryService.canRunWithoutAsking, autoAttempts.mayTry(note.id),
+              AutoSummary.isDue(note, isOrigin: AutoSummary.isOrigin(note.id)) else { return }
+        enqueue(.autoSummary(note.id))
+    }
+
+    private func processAutoSummary(_ id: UUID) async {
+        // Checked again: it may have been summarized, edited or deleted while it waited.
+        guard let note = fetchNote(id), SummaryService.canRunWithoutAsking,
+              AutoSummary.isDue(note, isOrigin: AutoSummary.isOrigin(id)) else { return }
+        stages[id] = "Summarizing…"
+        do {
+            try await SummaryService.summarize(note, onlyIfEmpty: true) { [weak self] status in self?.stages[id] = status }
+            autoAttempts.succeeded(id)
+            AutoSummary.clearOrigin(id)
+            save()
+        } catch is CancellationError {
+            // Gone, or summarized or edited meanwhile: nothing to do.
+        } catch {
+            // No model, no connection, no answer: quietly again later (`AutoSummary.retryDelay`).
+            autoAttempts.failed(id)
         }
     }
 
@@ -172,6 +226,7 @@ final class ProcessingService {
                     case .summary(let id, let template, let model): await processSummary(id, template: template, model: model)
                     case .enhance(let id, let model): await processEnhance(id, model: model)
                     case .attachment(let id): await processAttachments(id)
+                    case .autoSummary(let id): await processAutoSummary(id)
                     }
                 }
                 running = nil
@@ -212,6 +267,8 @@ final class ProcessingService {
             meeting.errorMessage = error.localizedDescription
         }
         save()
+        // Imported audio is summarized by itself; the user's own recordings when asked.
+        summarizeIfIncoming(meeting)
     }
 
     /// Fills `meeting` with the transcript and speakers of the recording.
@@ -393,11 +450,7 @@ final class ProcessingService {
             save()
         }
 
-        if summarize, note.summary == nil, !note.isDeleted, !(note.pageText ?? "").isEmpty, SummaryService.canRunWithoutAsking {
-            stages[id] = "Summarizing…"
-            try? await SummaryService.summarize(note) { [weak self] status in self?.stages[id] = status }
-            save()
-        }
+        if summarize { summarizeIfIncoming(note) }
     }
 
     // MARK: - Attachments
@@ -413,11 +466,7 @@ final class ProcessingService {
         note.updatedAt = Date()
         save()
 
-        if note.summary == nil, !note.isDeleted, !text.isEmpty, SummaryService.canRunWithoutAsking {
-            stages[id] = "Summarizing…"
-            try? await SummaryService.summarize(note) { [weak self] status in self?.stages[id] = status }
-            save()
-        }
+        if !text.isEmpty { summarizeIfIncoming(note) }
     }
 
     /// Reads the text of the note's files into `pageText` and returns it. A file that is only on another device is

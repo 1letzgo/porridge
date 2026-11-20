@@ -181,6 +181,8 @@ final class Library {
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled else { return }
             await NoteIndex.shared.refresh(notes)
+            // New entries and those from other devices: what came in gets its summary (`AutoSummary`).
+            self.processing.summarizeIncoming()
         }
     }
 }

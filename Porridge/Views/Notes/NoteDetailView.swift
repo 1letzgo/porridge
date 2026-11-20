@@ -922,9 +922,7 @@ struct NoteDetailView: View {
     private func finishEditingSummary() {
         let text = (note.summary ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty {
-            note.summary = nil
-            note.summaryModel = nil
-            note.summarizedAt = nil
+            SummaryService.removeSummary(note)
         } else {
             note.summary = text
         }
@@ -974,9 +972,7 @@ struct NoteDetailView: View {
     }
 
     private func deleteSummary() {
-        note.summary = nil
-        note.summaryModel = nil
-        note.summarizedAt = nil
+        SummaryService.removeSummary(note)
         try? context.save()
     }
 

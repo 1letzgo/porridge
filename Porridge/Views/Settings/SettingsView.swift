@@ -28,6 +28,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.speechEngineKey) private var engine = SpeechEngine.parakeet
     @AppStorage(AppSettings.speakerDetectionKey) private var speakerDetection = true
     @AppStorage(AppSettings.recordsNewNotesKey) private var recordsNewNotes = false
+    @AppStorage(AppSettings.summarizeIncomingKey) private var summarizeIncoming = true
     @AppStorage(AppSettings.voiceRecognitionKey) private var voiceRecognition = true
     @State private var showTemplates = false
     /// The area of the settings that shows; kept while the app runs, so coming back from a subpage finds it again.
@@ -328,6 +329,10 @@ struct SettingsView: View {
                     options: SummaryModel.available.map { (value: $0, title: $0.name) }
                 )
             }
+            CardDivider()
+
+            // Links, images, files, shared text and imported audio are summarized as they come in (`AutoSummary`).
+            Toggle("Summarize Incoming Entries", isOn: $summarizeIncoming)
             CardDivider()
 
             HStack {

@@ -80,7 +80,9 @@ enum SummaryService {
     /// Summarizes a note into `note.summary`: its transcript (a recording) and its own text together.
     /// `progress` receives short status texts ("Reading part 2 of 5…") while the work is running.
     /// A template only shapes the summary of a recording; notes and links keep their own short format.
-    static func summarize(_ note: Note, template: SummaryTemplate = .general, model: SummaryModel? = nil, progress: @escaping (String) -> Void = { _ in }) async throws {
+    /// `onlyIfEmpty` (a summary nobody asked for, `AutoSummary`): nothing is written when a summary was written or
+    /// deleted meanwhile; the call ends with `CancellationError`.
+    static func summarize(_ note: Note, template: SummaryTemplate = .general, model: SummaryModel? = nil, onlyIfEmpty: Bool = false, progress: @escaping (String) -> Void = { _ in }) async throws {
         // Without timestamps: the model does not need them, and they would take up a good part of its room.
         let transcript = note.transcriptText(timestamps: false)
         let title = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -123,6 +125,7 @@ enum SummaryService {
 
         // Deleted for good while the model was working (trash emptied, removed by sync): there is nothing to write to.
         guard !stored || note.modelContext != nil else { throw CancellationError() }
+        if onlyIfEmpty, note.summary != nil || note.summarizedAt != nil { throw CancellationError() }
         let (raw, bucket) = Inbox.splitProject(answer, projects: buckets)
         // Only a suggestion: the note stays in the inbox until the user takes it on. Not when it was filed meanwhile.
         if let bucket, note.isInInbox { note.suggestedProjectIDs = [Projects.key(bucket)] }
@@ -142,6 +145,15 @@ enum SummaryService {
         if note.labels.isEmpty { note.labels = tags }
         note.summaryModel = chosen.label
         note.summarizedAt = Date()
+        note.updatedAt = Date()
+    }
+
+    /// Takes the summary away. `summarizedAt` stays as it is: an entry whose written summary was deleted is not
+    /// summarized again by itself (`AutoSummary`), on this device or another. (An editor opened and closed on no
+    /// summary leaves it nil, so the automatic summary still comes.)
+    static func removeSummary(_ note: Note) {
+        note.summary = nil
+        note.summaryModel = nil
         note.updatedAt = Date()
     }
 

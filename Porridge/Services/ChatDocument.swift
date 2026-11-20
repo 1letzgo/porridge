@@ -63,7 +63,9 @@ struct ChatDocument: Codable, Equatable {
         let sources = [note.summary ?? "", note.text, note.pageText ?? "", note.segments.prefix(20).map(\.text).joined(separator: " ")]
         var lines: [String] = []
         for source in sources where lines.isEmpty {
-            lines = NoteText.plainLines(source).filter { !$0.hasPrefix("#") }
+            // Headings ("## Summary") are left out before the marks are taken off.
+            let withoutHeadings = source.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
+            lines = NoteText.plainLines(withoutHeadings.joined(separator: "\n"))
             // The first line of an untitled note is its title already.
             if note.title.trimmingCharacters(in: .whitespaces).isEmpty, source == note.text, lines.first == title { lines.removeFirst() }
         }

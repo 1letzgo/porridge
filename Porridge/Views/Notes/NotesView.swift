@@ -252,10 +252,13 @@ struct NotesView: View {
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled else { return }
             await NoteIndex.shared.refresh(notes)
+            // New entries and those from other devices: what came in gets its summary (`AutoSummary`).
+            processing.summarizeIncoming()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 ShareImport.importInbox(context: context, processing: processing)
+                processing.summarizeIncoming()
             }
         }
         // From a widget, a control or a shortcut; on a cold launch the action waits until the list appears.

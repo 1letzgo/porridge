@@ -301,6 +301,7 @@ final class PlaudImporter {
         try? context.save()
         // Only now: a recording marked before its note exists would never be offered again.
         markImported(audio.sessionId)
+        AutoSummary.markOrigin(note.id)
         processing.enqueue(.transcript(note.id))
     }
 
