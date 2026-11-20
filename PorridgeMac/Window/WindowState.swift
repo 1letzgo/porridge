@@ -5,6 +5,8 @@ import Observation
 enum SidebarPage: Hashable, Codable {
     /// What is new or in no bucket.
     case inbox
+    /// Every open to-do by due day, wherever it is filed: a view, not a place (`Todos.folder`).
+    case todos
     /// The chat with the buckets.
     case chat
     /// One bucket with everything in it.

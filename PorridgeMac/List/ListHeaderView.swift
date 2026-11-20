@@ -66,6 +66,7 @@ final class ListHeaderView: NSView {
     func show(page: SidebarPage, library: Library, state: WindowState, kindCounts: [KindFilter: Int]) {
         let (name, symbol, tint): (String, String, NSColor) = switch page {
         case .inbox: ("Inbox", "tray.fill", .brandSky)
+        case .todos: ("To-dos", "checklist", .brandTask)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)
         case .project(let id): (library.project(id)?.name ?? "Bucket", "folder.fill", .brandProject)
         case .archive: ("Archive", "archivebox.fill", .brandNavy)

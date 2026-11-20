@@ -108,7 +108,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let buckets = library.activeProjects
         // Pinned buckets first, then by name.
         let sorted = buckets.filter(\.isPinned) + buckets.filter { !$0.isPinned }
-        var top: [SidebarNode] = [SidebarNode(.page(.inbox)), SidebarNode(.page(.chat))]
+        var top: [SidebarNode] = [SidebarNode(.page(.inbox))]
+        // Under the Inbox the to-dos folder, while there are to-dos to show.
+        if !Todos.folder(notes).isEmpty || state.page == .todos { top.append(SidebarNode(.page(.todos))) }
+        top.append(SidebarNode(.page(.chat)))
         top.append(SidebarNode(.group("Buckets"), children: sorted.map { SidebarNode(.page(.project($0.id))) }))
         var more: [SidebarNode] = []
         let archived = HomeList.archivedProjects(library.projects).count + HomeList.archivedNotes(notes).count
@@ -217,6 +220,9 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         case .inbox:
             let count = notes.lazy.filter(\.isInInbox).count
             cell.configure(title: "Inbox", symbol: "tray.fill", tint: .brandSky, badge: count)
+        case .todos:
+            let folder = Todos.folder(notes)
+            cell.configure(title: "To-dos", symbol: "checklist", tint: .brandTask, badge: folder.open, alert: folder.overdue)
         case .chat:
             cell.configure(title: "Chat", symbol: "bubble.left.and.bubble.right.fill", tint: .brandNavy, badge: 0)
         case .project(let id):
@@ -403,6 +409,7 @@ private final class SidebarCell: NSTableCellView {
     private let title = NSTextField(labelWithString: "")
     private let badge = NSTextField(labelWithString: "")
     private let pin = NSImageView()
+    private let alertBadge = NSTextField(labelWithString: "")
 
     init() {
         super.init(frame: .zero)
@@ -425,7 +432,10 @@ private final class SidebarCell: NSTableCellView {
         // A stack leaves hidden parts out, so a hidden pin or count takes no room from the name.
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let row = NSStackView(views: [icon, title, pin, spacer, badge])
+        alertBadge.textColor = .brandDangerText
+        alertBadge.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        alertBadge.isHidden = true
+        let row = NSStackView(views: [icon, title, pin, spacer, alertBadge, badge])
         row.orientation = .horizontal
         row.spacing = 4
         row.setCustomSpacing(6, after: icon)
@@ -444,7 +454,11 @@ private final class SidebarCell: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(title: String, symbol: String, tint: NSColor, badge count: Int, pinned: Bool = false) {
+    /// `alert`: a second count in red (the to-dos that are late).
+    func configure(title: String, symbol: String, tint: NSColor, badge count: Int, pinned: Bool = false, alert: Int = 0) {
+        alertBadge.stringValue = alert > 0 ? "\(alert)" : ""
+        alertBadge.isHidden = alert == 0
+        alertBadge.setAccessibilityLabel(alert > 0 ? "\(alert) overdue" : nil)
         icon.image = .symbol(symbol, size: 14, weight: .medium)
         icon.contentTintColor = tint.readable
         self.title.stringValue = title
@@ -452,6 +466,8 @@ private final class SidebarCell: NSTableCellView {
         badge.isHidden = count == 0
         pin.isHidden = !pinned
         toolTip = title
-        setAccessibilityLabel([title, pinned ? String(localized: "Pinned") : nil, count > 0 ? "\(count)" : nil].compactMap { $0 }.joined(separator: ", "))
+        setAccessibilityLabel([
+            title, pinned ? String(localized: "Pinned") : nil, count > 0 ? "\(count)" : nil, alert > 0 ? String(localized: "\(alert) overdue") : nil,
+        ].compactMap { $0 }.joined(separator: ", "))
     }
 }

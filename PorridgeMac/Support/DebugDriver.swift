@@ -47,6 +47,7 @@ enum DebugDriver {
         case "page":
             switch argument {
             case "chat": state.page = .chat
+            case "todos": state.page = .todos
             case "archive": state.page = .archive
             case "trash": state.page = .trash
             case "search": state.page = .search
@@ -98,6 +99,30 @@ enum DebugDriver {
             if !NSApp.sendAction(Selector(argument), to: nil, from: nil) { _ = controller.perform(Selector(argument), with: nil) }
         case "suggest":
             controller.split.detail.noteDetail?.debugSuggestions(argument)
+        case "seed-todos":
+            // Four open to-dos as the iOS test seed makes them: long overdue (in a new bucket named like the
+            // prefix), today, upcoming (in five days), no date.
+            let bucket = Projects.create(argument, in: library.context)
+            let today = Date()
+            let soon = Calendar.current.date(byAdding: .day, value: 5, to: today) ?? today
+            for (name, due) in [("long overdue", "2000-01-01"), ("today", Todos.dueKey(today)), ("upcoming", Todos.dueKey(soon)), ("no date", nil)] as [(String, String?)] {
+                let todo = Note()
+                todo.title = "\(argument) \(name)"
+                todo.titleIsCustom = true
+                todo.source = .note
+                todo.todoState = .open
+                todo.todoDueDay = due
+                if due == "2000-01-01", let bucket {
+                    todo.projectIDs = [Projects.key(bucket)]
+                    todo.filedAt = today
+                }
+                library.context.insert(todo)
+            }
+            library.save()
+        case "purge-prefix":
+            // Removes the test to-dos and the bucket "seed-todos" made.
+            for note in library.notes where note.title.hasPrefix(argument + " ") { NoteStore.deletePermanently(note, in: library.context) }
+            for project in library.projects where project.name == argument { Projects.delete(project, in: library.context) }
         case "seed-meeting":
             // A summarized meeting whose summary has three tasks (the user's, somebody else's with a date,
             // nobody's), as the iOS test seed makes it but without a bucket.
@@ -152,6 +177,9 @@ enum DebugDriver {
         case "purge":
             // Removes notes made for testing, by their exact title.
             for note in library.notes where note.title == argument { NoteStore.deletePermanently(note, in: library.context) }
+        case "quit":
+            // A regular quit, so the windows' state is written for the next launch.
+            NSApp.terminate(nil)
         case "dump":
             dump()
         default:

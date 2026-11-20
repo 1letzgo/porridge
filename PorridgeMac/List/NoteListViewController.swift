@@ -165,7 +165,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         case .note(let id):
             let cell = table.makeView(withIdentifier: NoteCellView.identifier, owner: nil) as? NoteCellView ?? NoteCellView()
             if let note = library.note(id) {
-                cell.show(note, buckets: library.activeProjects, showsSuggestions: state.page == .inbox)
+                cell.show(note, buckets: library.activeProjects, showsSuggestions: state.page == .inbox, namesBuckets: state.page == .todos)
                 cell.onToggleDone = { note in TodoBridge.setDone(!TodoBridge.isDone(note), note) }
             }
             return cell
@@ -293,11 +293,12 @@ private final class SectionHeaderCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("section")
     private let title = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .bold))
     private let footnote = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor)
+    private let count = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .semibold), color: .secondaryLabelColor)
 
     init() {
         super.init(frame: .zero)
         identifier = Self.identifier
-        let stack = NSStackView.vertical([title, footnote], spacing: 2)
+        let stack = NSStackView.vertical([NSStackView.horizontal([title, count], spacing: 6), footnote], spacing: 2)
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
@@ -322,9 +323,11 @@ private final class SectionHeaderCell: NSTableCellView {
         case .task: .brandTaskText
         }
         title.isHidden = section.title.isEmpty
+        count.stringValue = section.count.map { "\($0)" } ?? ""
+        count.isHidden = section.count == nil
         footnote.stringValue = section.footnote ?? ""
         footnote.isHidden = section.footnote == nil
-        setAccessibilityLabel(section.title)
+        setAccessibilityLabel(section.count.map { "\(section.title), \($0)" } ?? section.title)
     }
 }
 

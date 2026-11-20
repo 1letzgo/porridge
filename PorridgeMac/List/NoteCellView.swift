@@ -16,6 +16,7 @@ final class NoteCellView: NSTableCellView {
     private let suggestions = NSStackView()
     private var observing: Observing?
     private(set) var noteID: UUID?
+    private var namesBuckets = false
     private var thumbnailFile: String?
 
     /// Ticks a to-do from its box in the row.
@@ -75,7 +76,9 @@ final class NoteCellView: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// Shows the note and follows it until another one is shown.
-    func show(_ note: Note, buckets: [NoteFolder], showsSuggestions: Bool) {
+    /// `namesBuckets`: the row names its buckets in place of the date (a list that mixes buckets, the to-dos folder).
+    func show(_ note: Note, buckets: [NoteFolder], showsSuggestions: Bool, namesBuckets: Bool = false) {
+        self.namesBuckets = namesBuckets
         noteID = note.id
         observing?.cancel()
         observing = Observing { [weak self, weak note] in
@@ -199,7 +202,10 @@ final class NoteCellView: NSTableCellView {
             add(left <= 1 ? String(localized: "Deleted tomorrow") : String(localized: "\(left) days left"), color: .brandDangerText)
         } else {
             if note.isArchived { add(String(localized: "Archived")) }
-            add(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
+            // A to-do that names its buckets lets its due day speak for it; the date makes room for the names.
+            if !(bucketNames(note).isEmpty == false && note.isTodo) {
+                add(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
+            }
         }
         if TodoBridge.isTodo(note) {
             // The due day: red when late, green today, quiet otherwise; a done to-do is never marked.
@@ -214,6 +220,8 @@ final class NoteCellView: NSTableCellView {
                 add(progress.label, symbol: "checkmark.circle", color: progress.isComplete ? .brandTaskText : .secondaryLabelColor)
             }
         }
+        let names = bucketNames(note)
+        if !names.isEmpty { add(names.joined(separator: ", "), symbol: "folder", color: .brandProject.readable) }
         if let domain = note.domain { add(domain) }
         if note.isRecording, note.duration > 0 {
             add(note.duration.durationText)
@@ -224,6 +232,11 @@ final class NoteCellView: NSTableCellView {
         style.lineBreakMode = .byTruncatingTail
         result.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: result.length))
         return result
+    }
+
+    private func bucketNames(_ note: Note) -> [String] {
+        guard namesBuckets else { return [] }
+        return note.projectIDs.compactMap { Library.shared.project(key: $0)?.name }
     }
 
     @objc private func fileSuggested(_ sender: NSButton) {

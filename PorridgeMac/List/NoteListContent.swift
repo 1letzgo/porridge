@@ -14,6 +14,8 @@ struct ListSection: Hashable {
     let tint: Tint
     /// A line under the header (the trash says when notes go).
     var footnote: String?
+    /// How many entries the section holds, beside its title (the to-dos folder's groups).
+    var count: Int?
 }
 
 /// What the middle column shows for a page of the sidebar: sections of notes (and archived buckets), built from
@@ -37,6 +39,22 @@ enum NoteListContent {
             return Built(
                 sections: waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })],
                 emptyTitle: "Inbox Empty", emptyMessage: "What is new or in no bucket waits here.", emptySymbol: "tray"
+            )
+        case .todos:
+            // Exactly the groups of the search's "Open To-dos", then those done today (`Todos.folder`).
+            let folder = Todos.folder(notes)
+            var sections = folder.groups.enumerated().map { index, group -> (ListSection, [ListItem]) in
+                let late = group.notes.first.flatMap { TodoBridge.dueStatus(of: $0) } == .overdue
+                return (ListSection(id: "folder-\(index)-" + group.title, title: group.title, tint: late ? .red : .task, count: group.notes.count),
+                        group.notes.map { .note($0.id) })
+            }
+            if !folder.doneToday.isEmpty {
+                sections.append((ListSection(id: "folder-done", title: String(localized: "Done Today"), tint: .navy, count: folder.doneToday.count),
+                                 folder.doneToday.map { .note($0.id) }))
+            }
+            return Built(
+                sections: sections, emptyTitle: "Nothing to Do",
+                emptyMessage: "Open to-dos from the inbox and every bucket show up here.", emptySymbol: "checklist"
             )
         case .project(let id):
             guard let project = library.project(id) else {

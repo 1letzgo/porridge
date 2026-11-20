@@ -108,6 +108,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var windowTitle: String {
         switch state.page {
         case .inbox: "Inbox"
+        case .todos: "To-dos"
         case .chat: "Chat"
         case .project(let id): library.project(id)?.name ?? "Porridge"
         case .archive: "Archive"
@@ -325,6 +326,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: Pages
 
     @objc func showInbox(_ sender: Any?) { state.page = .inbox }
+    @objc func showTodos(_ sender: Any?) { state.page = .todos }
     @objc func showChat(_ sender: Any?) { state.page = .chat }
     @objc func showArchive(_ sender: Any?) { state.page = .archive }
     @objc func showTrash(_ sender: Any?) { state.page = .trash }
@@ -345,8 +347,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func newNote(_ sender: Any?) { addNote(todo: false) }
     @objc func newTodo(_ sender: Any?) { addNote(todo: true) }
 
-    /// A new note opens at once; it is stored once it has content. In a bucket it goes into it.
-    private func addNote(todo: Bool) {
+    /// A new note opens at once; it is stored once it has content. In a bucket it goes into it; in the to-dos
+    /// folder it is a to-do, in no bucket.
+    private func addNote(todo asked: Bool) {
+        let todo = asked || state.page == .todos
         if !state.page.allowsCreating || state.page == .chat || state.page == .search { state.page = .inbox }
         let note = Note()
         note.source = .note

@@ -146,9 +146,10 @@ enum AppMenu {
     private static func viewMenu() -> NSMenu {
         let menu = NSMenu(title: "View")
         item(menu, "Inbox", #selector(MainWindowController.showInbox(_:)), "1")
-        item(menu, "Chat", #selector(MainWindowController.showChat(_:)), "2")
-        item(menu, "Archive", #selector(MainWindowController.showArchive(_:)), "3")
-        item(menu, "Recently Deleted", #selector(MainWindowController.showTrash(_:)), "4")
+        item(menu, "To-dos", #selector(MainWindowController.showTodos(_:)), "2")
+        item(menu, "Chat", #selector(MainWindowController.showChat(_:)), "3")
+        item(menu, "Archive", #selector(MainWindowController.showArchive(_:)), "4")
+        item(menu, "Recently Deleted", #selector(MainWindowController.showTrash(_:)), "5")
         menu.addItem(.separator())
         item(menu, "Summary", #selector(MainWindowController.noteCommand(_:)), "1", [.command, .control], tag: NoteCommand.showSummary.rawValue)
         item(menu, "Note", #selector(MainWindowController.noteCommand(_:)), "2", [.command, .control], tag: NoteCommand.showNote.rawValue)
