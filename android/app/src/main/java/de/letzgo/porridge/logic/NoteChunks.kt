@@ -5,16 +5,29 @@ import kotlinx.serialization.Serializable
 import java.text.BreakIterator
 import java.util.Locale
 
-/** iOS: `NoteChunk` (Services/NoteChunks.swift) — eine Passage einer Notiz oder eines Transkripts mit ihrer Wortstatistik. Liegt im Index (`index/NoteIndex.kt`). */
+/** iOS: `ChatChunk` (Services/ChunkRanking.swift) — eine Passage einer Notiz oder eines Transkripts mit ihrer Wortstatistik. Liegt im Index (`index/NoteIndex.kt`). */
 @Serializable
 data class NoteChunk(
     val noteID: String,
     val text: String,
     val frequencies: Map<String, Int>,
     val prefixFrequencies: Map<String, Int>,
-    /** Das Datum der Passage, wenn es nicht das der Notiz ist: bei einem To-do der Beginn seines fälligen Tages (ms). */
-    val date: Long? = null,
-)
+    /** Das Datum der Passage (ms): das der Notiz, bei einem To-do mit fälligem Tag der Beginn dieses Tages. */
+    val date: Long,
+    /** `Note.displayTitle`. */
+    val title: String = "",
+    /** Woher in ihrem Eintrag die Passage stammt. */
+    val part: Part = Part.TEXT,
+) {
+    /** iOS: `ChatChunk.Part`. */
+    @Serializable
+    enum class Part {
+        TITLE, LINK, FILES, TODO, SUMMARY, TEXT, PAGE, TRANSCRIPT;
+
+        /** Die Passagen mit Inhalt; Titel, Link, Dateien und To-do-Stand stehen schon im Kopf des Eintrags. */
+        val fillsContext: Boolean get() = this == SUMMARY || this == TEXT || this == PAGE || this == TRANSCRIPT
+    }
+}
 
 /** iOS: `NoteChunks` (Services/NoteChunks.swift) — schneidet Notizen in Passagen und sagt, ob ein Wort darin steht. */
 object NoteChunks {
@@ -65,7 +78,7 @@ object NoteChunks {
         return sum
     }
 
-    private fun chunk(note: Note, text: String, date: Long? = null): NoteChunk {
+    private fun chunk(note: Note, text: String, part: NoteChunk.Part, date: Long? = null): NoteChunk {
         val words = tokens(note.displayTitle + " " + note.tags.joinToString(" ") + " " + text)
         val frequencies = HashMap<String, Int>()
         val prefixes = HashMap<String, Int>()
@@ -73,7 +86,7 @@ object NoteChunks {
             frequencies.merge(word, 1, Int::plus)
             prefix(word)?.let { prefixes.merge(it, 1, Int::plus) }
         }
-        return NoteChunk(note.id, text, frequencies, prefixes, date)
+        return NoteChunk(note.id, text, frequencies, prefixes, date ?: note.createdAt, note.displayTitle, part)
     }
 
     /** Schneidet Text an Absätzen in Passagen von etwa [CHUNK_SIZE] Zeichen. */
@@ -100,31 +113,31 @@ object NoteChunks {
             val before = result.size
             // Ein gespeicherter Link ist über Adresse und Seite zu finden, auch wenn seine Seite nicht lesbar war.
             note.url?.takeIf { it.isNotEmpty() }?.let { url ->
-                result += chunk(note, "Saved link" + (note.domain?.let { " ($it)" } ?: "") + ": " + url)
+                result += chunk(note, "Saved link" + (note.domain?.let { " ($it)" } ?: "") + ": " + url, NoteChunk.Part.LINK)
             }
             // Ein Bild oder eine Datei ist über den Namen zu finden, auch wenn sich nichts daraus lesen ließ.
             val attachments = if (note.attachmentsData == null) emptyList() else note.attachments
-            if (attachments.isNotEmpty()) result += chunk(note, (if (note.isImage) "Image: " else "File: ") + attachments.joinToString(", ") { it.name })
+            if (attachments.isNotEmpty()) result += chunk(note, (if (note.isImage) "Image: " else "File: ") + attachments.joinToString(", ") { it.name }, NoteChunk.Part.FILES)
             // iOS: `ChatRetrieval.chunks` — ein To-do sagt, dass es eins ist und ob es erledigt ist: „was ist noch offen?“ findet es.
             // Datiert auf seinen fälligen Tag: „was ist diese Woche fällig“ sieht die Passagen dieser Zeit.
-            if (note.isTodo) result += chunk(note, Todos.chatLine(note), note.todoDue?.let { Todos.dueStart(it) })
+            if (note.isTodo) result += chunk(note, Todos.chatLine(note), NoteChunk.Part.TODO, note.todoDue?.let { Todos.dueStart(it) })
             note.summary?.takeIf { it.isNotEmpty() }?.let { summary ->
-                pieces(summary.split("\n")).forEach { result += chunk(note, "Summary: $it") }
+                pieces(summary.split("\n")).forEach { result += chunk(note, "Summary: $it", NoteChunk.Part.SUMMARY) }
             }
-            pieces(note.text.split("\n")).forEach { result += chunk(note, it) }
+            pieces(note.text.split("\n")).forEach { result += chunk(note, it, NoteChunk.Part.TEXT) }
             note.pageText?.takeIf { it.isNotEmpty() }?.let { page ->
                 // Woraus die Passage stammt: die Seite eines Links, oder was aus einem Bild oder einer Datei gelesen wurde.
                 val label = (if (note.isLink) "Article" + (note.domain?.let { " ($it)" } ?: "") else if (note.isImage) "Text in the image" else "Text of the file") + ": "
-                pieces(page.split("\n")).forEach { result += chunk(note, label + it) }
+                pieces(page.split("\n")).forEach { result += chunk(note, label + it, NoteChunk.Part.PAGE) }
             }
             val speakers = note.speakers
             val lines = note.segments.map { segment ->
                 val name = segment.speakerId?.let { id -> speakers.firstOrNull { it.id == id }?.name }
                 (name?.let { "$it: " } ?: "") + segment.text
             }
-            pieces(lines).forEach { result += chunk(note, "Transcript: $it") }
+            pieces(lines).forEach { result += chunk(note, "Transcript: $it", NoteChunk.Part.TRANSCRIPT) }
             // Nur ein Titel: Der Titel ist die Passage, die Notiz bleibt auffindbar.
-            if (result.size == before && note.title.isNotEmpty()) result += chunk(note, note.displayTitle)
+            if (result.size == before && note.title.isNotEmpty()) result += chunk(note, note.displayTitle, NoteChunk.Part.TITLE)
         }
         return result
     }

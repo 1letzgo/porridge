@@ -1,7 +1,11 @@
 package de.letzgo.porridge.index
 
+import de.letzgo.porridge.logic.ChatContext
+import de.letzgo.porridge.logic.ChatDocument
+import de.letzgo.porridge.logic.ChatLogic
 import de.letzgo.porridge.logic.NoteChunk
 import de.letzgo.porridge.logic.NoteChunks
+import de.letzgo.porridge.logic.context
 import de.letzgo.porridge.model.Note
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,8 +26,9 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * iOS: `NoteIndex` (Services/NoteIndex.swift) — die Passagen aller Notizen mit ihrer Wortstatistik, für die Suche. In einer
- * eigenen Datei (jederzeit aus den Notizen neu baubar); nur geänderte Notizen werden neu geschnitten.
+ * iOS: `NoteIndex` (Services/NoteIndex.swift) — je Notiz ihr Eintrag für den Chat (`ChatDocument`) und ihre Passagen mit
+ * ihrer Wortstatistik, für Suche und Chat. In einer eigenen Datei (abgeleitete Daten, nie synchronisiert, jederzeit aus den
+ * Notizen neu baubar); nur geänderte Notizen werden neu geschnitten. DESIGN.md „Chat data“.
  */
 @OptIn(ExperimentalSerializationApi::class)
 class NoteIndex(
@@ -31,7 +36,12 @@ class NoteIndex(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     @Serializable
-    internal data class IndexedNote(val hash: String, val chunks: List<NoteChunk>)
+    internal data class IndexedNote(
+        val hash: String,
+        val chunks: List<NoteChunk>,
+        /** Der Eintrag mit seinen Metadaten für die Filter des Chats. */
+        val document: ChatDocument? = null,
+    )
 
     @Serializable
     private data class Stored(val version: Int, val notes: Map<String, IndexedNote>)
@@ -63,7 +73,7 @@ class NoteIndex(
                 seen += note.id
                 val hash = indexHash(note)
                 if (next[note.id]?.hash == hash) continue
-                next[note.id] = IndexedNote(hash, NoteChunks.chunks(listOf(note)))
+                next[note.id] = IndexedNote(hash, NoteChunks.chunks(listOf(note)), ChatDocument.of(note))
                 changed = true
             }
             if (next.keys.retainAll(seen)) changed = true
@@ -77,6 +87,16 @@ class NoteIndex(
 
     /** Alle Passagen, für den Chat (`logic/ChatLogic.kt`). */
     fun chunks(): List<NoteChunk> = entries.values.flatMap { it.chunks }
+
+    /**
+     * iOS: `NoteIndex.context` — der Zusammenhang einer Chat-Frage (`ChatLogic.context`): die Einträge, nach denen ihre
+     * Filter fragen, und die Passagen, die zu ihr passen. [within] engt auf einige Notizen ein (die eines Buckets); null ist alles.
+     */
+    fun context(question: String, within: Set<String>?, bucketNames: Map<String, String>): ChatContext {
+        val snapshot = entries.filterKeys { within == null || it in within }
+        val documents = snapshot.mapNotNull { (id, entry) -> entry.document?.let { id to it } }.toMap()
+        return ChatLogic.context(question, documents, snapshot.values.flatMap { it.chunks }, bucketNames)
+    }
 
     /** Notizen, in denen jedes Wort der Anfrage vorkommt (Wortformen zählen), für die Listensuche. Null, solange nicht geladen. */
     fun noteIDs(query: String): Set<String>? {
@@ -128,7 +148,8 @@ class NoteIndex(
     }
 
     companion object {
-        private const val FILE_VERSION = 4
+        /** 5: Passagen mit Titel, Datum und Teil, dazu der Eintrag je Notiz (`ChatDocument`). */
+        private const val FILE_VERSION = 5
 
         /** Ändert sich, sobald sich etwas ändert, woraus die Passagen bestehen (SHA-256, stabil über Starts). */
         fun indexHash(note: Note): String {
@@ -146,6 +167,12 @@ class NoteIndex(
             note.todoStateRaw?.let { digest.update("todo|$it|${note.todoDueDay.orEmpty()}|${note.todoDoneAt ?: ""}|${if (note.isOverdue) "overdue" else ""}".toByteArray()) }
             // Links bekamen eine eigene Passage (ihre Adresse): ihre Passagen werden einmal neu geschnitten.
             if (note.url != null) digest.update("link-passage".toByteArray())
+            // Der Eintrag des Chats (`ChatDocument`) hält auch Kanal, Buckets und Archiv; „chat-doc-1“ schneidet jede Notiz
+            // einmal neu, als der Eintrag kam.
+            for (part in listOf("chat-doc-1", note.sourceRaw, note.projectIDs.joinToString(","), note.archivedAt?.toString().orEmpty())) {
+                digest.update(part.toByteArray())
+                digest.update(0)
+            }
             return digest.digest().joinToString("") { "%02x".format(it) }
         }
     }

@@ -2,6 +2,7 @@ package de.letzgo.porridge.cloud
 
 import de.letzgo.porridge.AppGraph
 import de.letzgo.porridge.data.PorridgeJson
+import de.letzgo.porridge.logic.ChatContext
 import de.letzgo.porridge.logic.ChatLogic
 import de.letzgo.porridge.logic.SummaryException
 import de.letzgo.porridge.ml.TextModels
@@ -18,8 +19,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.builtins.ListSerializer
 
 /**
- * iOS: `ChatService` (Services/ChatService.swift) — fragt die Notizen: findet die Passagen, die zu einer Frage passen
- * (`index/NoteIndex.kt`, `logic/ChatLogic.kt`), lässt das in den Einstellungen gewählte Modell daraus antworten und hält
+ * iOS: `ChatService` (Services/ChatService.swift) — fragt die Notizen: liest die Frage als Filter und findet die Einträge
+ * und Passagen, die zu ihr passen (`index/NoteIndex.kt`, `logic/ChatDocument.kt`, `logic/ChatLogic.kt`), lässt das in den Einstellungen gewählte Modell daraus antworten und hält
  * Frage und Antwort in ihrem Chat (`ChatThread`, `ChatEntry`).
  */
 object ChatService {
@@ -66,20 +67,18 @@ object ChatService {
             // Was seit dem letzten Blick hereinkam, wird zuerst in den Index gelesen.
             val index = AppGraph.index
             index.refresh(notes)
-            val scope = ChatLogic.scope(thread.projectID, notes).associateBy { it.id }
-            val chunks = index.chunks()
-            val passages = ChatLogic.select(q, chunks, scope)
-            if (passages.isEmpty()) {
+            // Die Buckets beim Namen: Eine Frage kann einen nennen, und jeder Eintrag sagt, wo er liegt.
+            val names = folders.associate { it.id to it.name }
+            val within = thread.projectID?.let { ChatLogic.scope(it, notes).map { note -> note.id }.toSet() }
+            val found = index.context(q, within, names)
+            if (found.isEmpty && found.matched == null) {
                 answer(if (thread.projectID == null) "There is nothing in your notes yet." else "There is nothing in this bucket yet.")
                 return
             }
-            // In welchen Buckets die Notiz einer Passage liegt: Das Modell kann nach einem Bucket beim Namen gefragt werden.
-            val names = folders.associate { it.id to it.name }
-            val buckets = scope.mapValues { (_, note) -> note.projectIDs.mapNotNull { names[it] } }
-            val result = runCatching { complete(q, history, passages, buckets, thread.projectID?.let { names[it] }) }
+            val result = runCatching { complete(q, history, found, thread.projectID?.let { names[it] }) }
             result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
             result.fold(
-                onSuccess = { answer(it, ChatLogic.sources(it, passages)) },
+                onSuccess = { answer(it, ChatLogic.sources(it, found.items)) },
                 onFailure = { answer(it.message ?: "Something went wrong.", isError = true) },
             )
         } finally {
@@ -89,10 +88,10 @@ object ChatService {
     }
 
     private suspend fun complete(
-        question: String, history: List<Pair<Boolean, String>>, passages: List<ChatLogic.Passage>, buckets: Map<String, List<String>>, bucket: String?,
+        question: String, history: List<Pair<Boolean, String>>, context: ChatContext, bucket: String?,
     ): String {
         val system = ChatLogic.system(bucket)
-        val user = ChatLogic.user(question, history, passages, buckets)
+        val user = ChatLogic.user(question, history, context)
         return when (val chosen = SummaryModel.current) {
             is SummaryModel.Local -> {
                 val model = TextModels.selected ?: throw SummaryException(NO_MODEL)

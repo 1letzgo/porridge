@@ -11,45 +11,43 @@ import kotlin.math.ln
 import kotlin.math.max
 
 /**
- * iOS: `ChatRetrieval` (Services/ChunkRanking.swift) und `ChatService.prompt` / `sources` — findet die Passagen, die
- * zu einer Frage passen (nach Wörtern, BM25), und baut daraus, was das Modell gefragt wird. Auf Android zählen nur die
- * Wörter; die Satzvektoren von iOS gibt es hier nicht.
+ * iOS: `ChatRetrieval` (Services/ChunkRanking.swift) und `ChatService.prompt` / `sources` (Services/ChatService.swift) —
+ * findet die Passagen, die zu einer Frage passen (nach Wörtern, BM25), und baut daraus, was das Modell gefragt wird. Den
+ * Zusammenhang einer Frage mit ihren Filtern baut `ChatLogic.context` (`ChatDocument.kt`, iOS: Services/ChatDocument.swift).
+ * Auf Android zählen nur die Wörter; die Satzvektoren von iOS gibt es hier nicht.
  */
 object ChatLogic {
-    /** Eine Passage mit dem, was das Modell über ihre Notiz wissen soll. */
-    data class Passage(val noteID: String, val title: String, val date: Long, val text: String)
-
     private fun length(chunk: NoteChunk) = max(chunk.frequencies.values.sum(), 1)
 
-    private fun passage(chunk: NoteChunk, notes: Map<String, Note>): Passage? =
-        notes[chunk.noteID]?.let { Passage(chunk.noteID, it.displayTitle, chunk.date ?: it.createdAt, chunk.text) }
+    /** Die Passagen, die am besten zu [question] passen, innerhalb von [budget] Zeichen. */
+    fun search(question: String, chunks: List<NoteChunk>, budget: Int = 6500): List<NoteChunk> =
+        search(queryWords(question), chunks, budget)
 
-    /** Die Passagen, die am besten zu [question] passen, innerhalb von [budget] Zeichen. [notes] sind die Notizen, über die der Chat geht. */
-    fun search(question: String, chunks: List<NoteChunk>, notes: Map<String, Note>, budget: Int = 6500): List<Passage> {
-        val pool = chunks.filter { it.noteID in notes }
-        val words = queryWords(question).toSet()
-        if (words.isEmpty() || pool.isEmpty()) return emptyList()
-        val average = pool.sumOf { length(it) }.toDouble() / pool.size
-        val scores = DoubleArray(pool.size)
-        for (word in words) {
-            val containing = pool.count { NoteChunks.frequency(word, it) > 0 }
+    /** iOS: `search(words:in:)` — [search] mit den schon aus der Frage gelesenen Wörtern (`ChatQuery.words`). */
+    fun search(words: List<String>, chunks: List<NoteChunk>, budget: Int = 6500): List<NoteChunk> {
+        val unique = words.toSet()
+        if (unique.isEmpty() || chunks.isEmpty()) return emptyList()
+        val average = chunks.sumOf { length(it) }.toDouble() / chunks.size
+        val scores = DoubleArray(chunks.size)
+        for (word in unique) {
+            val containing = chunks.count { NoteChunks.frequency(word, it) > 0 }
             if (containing == 0) continue
-            val idf = ln(1 + (pool.size - containing + 0.5) / (containing + 0.5))
-            pool.forEachIndexed { index, chunk ->
+            val idf = ln(1 + (chunks.size - containing + 0.5) / (containing + 0.5))
+            chunks.forEachIndexed { index, chunk ->
                 val tf = NoteChunks.frequency(word, chunk)
                 if (tf > 0) scores[index] += idf * tf * 2.4 / (tf + 1.4 * (1 - 0.75 + 0.75 * length(chunk) / max(average, 1.0)))
             }
         }
-        val picked = mutableListOf<Passage>()
+        val picked = mutableListOf<NoteChunk>()
         val perNote = HashMap<String, Int>()
         var used = 0
-        for (index in pool.indices.filter { scores[it] > 0 }.sortedByDescending { scores[it] }) {
-            val passage = passage(pool[index], notes) ?: continue
-            if ((perNote[passage.noteID] ?: 0) >= PASSAGES_PER_NOTE) continue
-            if (used + passage.text.length > budget && picked.isNotEmpty()) break
-            picked += passage
-            perNote[passage.noteID] = (perNote[passage.noteID] ?: 0) + 1
-            used += passage.text.length
+        for (index in chunks.indices.filter { scores[it] > 0 }.sortedByDescending { scores[it] }) {
+            val chunk = chunks[index]
+            if ((perNote[chunk.noteID] ?: 0) >= PASSAGES_PER_NOTE) continue
+            if (used + chunk.text.length > budget && picked.isNotEmpty()) break
+            picked += chunk
+            perNote[chunk.noteID] = (perNote[chunk.noteID] ?: 0) + 1
+            used += chunk.text.length
             if (picked.size >= 10) break
         }
         return picked
@@ -63,17 +61,17 @@ object ChatLogic {
      * („der letzten Tage“, „this week“), zählen zuerst die Notizen dieser Zeit; passt dort nichts, alle. Ohne ein Wort zum
      * Suchen („Was war diese Woche?“) sind die neuesten Notizen (dieser Zeit) der Zusammenhang.
      */
-    fun select(question: String, chunks: List<NoteChunk>, notes: Map<String, Note>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): List<Passage> {
-        var window: Map<String, Note> = emptyMap()
+    fun select(question: String, chunks: List<NoteChunk>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): List<NoteChunk> {
+        var window: List<NoteChunk> = emptyList()
         val start = since(question, now, zone)
         if (start != null) {
-            window = notes.filterValues { it.createdAt >= start }
-            val found = search(question, chunks, window)
+            window = chunks.filter { it.date >= start }
+            val found = search(question, window)
             if (found.isNotEmpty()) return found
         }
-        val found = search(question, chunks, notes)
+        val found = search(question, chunks)
         if (found.isNotEmpty()) return found
-        return recent(chunks, window.ifEmpty { notes })
+        return recent(window.ifEmpty { chunks }, now = now)
     }
 
     /**
@@ -101,6 +99,8 @@ object ChatLogic {
         "stelle", "stell", "stellen", "zeig", "zeige", "zeigen", "nenne", "nenn", "nennen", "gib", "geben", "sag", "sage", "sagen",
         "erzähl", "erzähle", "erzählen", "fasse", "fass", "zusammen", "zusammenfassen", "liste", "auflisten", "finde", "finden",
         "suche", "such", "erkläre", "erklär", "beschreibe", "vorstellen", "möchte", "würde", "wüsste", "weißt", "kannst", "könntest",
+        "thema", "themen", "bezug", "gespeichert", "notiert", "gemerkt", "abgelegt", "steht", "stehen", "liegt", "liegen", "drin",
+        "beschäftigt",
         "highlights", "überblick", "übersicht", "zusammenfassung", "neuigkeiten", "neues", "infos", "informationen",
         // Deutsch: Zeit (liest `since`)
         "heute", "gestern", "vorgestern", "letzte", "letzten", "letzter", "letztes", "vergangene", "vergangenen", "vergangener",
@@ -112,6 +112,7 @@ object ChatLogic {
         "i", "me", "my", "we", "us", "our", "you", "your", "he", "she", "it", "they", "them", "their", "this", "that", "these", "those",
         "what", "which", "who", "whom", "when", "where", "why", "how", "there", "here", "any", "all", "some", "please", "tell",
         "show", "give", "list", "find", "summarize", "summary", "overview", "explain", "describe", "know",
+        "topic", "topics", "saved", "stored", "kept", "noted", "regarding", "related",
         "today", "yesterday", "last", "past", "few", "days", "day", "week", "weeks", "month", "months", "recent", "recently", "lately", "latest", "new",
     )
 
@@ -160,14 +161,17 @@ object ChatLogic {
         return null
     }
 
-    /** Passt nichts („was kam diese Woche?“), sind die neuesten Notizen der Zusammenhang. */
-    fun recent(chunks: List<NoteChunk>, notes: Map<String, Note>, budget: Int = 4500): List<Passage> {
-        val picked = mutableListOf<Passage>()
+    /**
+     * Passt nichts („was kam diese Woche?“), sind die neuesten Passagen der Zusammenhang. Die Passage eines To-dos trägt
+     * seinen fälligen Tag: Eins, das nächsten Monat fällig ist, ist nicht der neueste Eintrag.
+     */
+    fun recent(chunks: List<NoteChunk>, budget: Int = 4500, now: Long = System.currentTimeMillis()): List<NoteChunk> {
+        val picked = mutableListOf<NoteChunk>()
         var used = 0
-        for (passage in chunks.mapNotNull { passage(it, notes) }.sortedByDescending { it.date }) {
-            if (used + passage.text.length > budget && picked.isNotEmpty()) break
-            picked += passage
-            used += passage.text.length
+        for (chunk in chunks.sortedByDescending { minOf(it.date, now) }) {
+            if (used + chunk.text.length > budget && picked.isNotEmpty()) break
+            picked += chunk
+            used += chunk.text.length
             if (picked.size >= 8) break
         }
         return picked
@@ -183,36 +187,80 @@ object ChatLogic {
         return if (line.length > 60) line.take(57).trim() + "…" else line
     }
 
-    fun system(bucket: String?, now: Long = System.currentTimeMillis()): String =
-        "Today is ${DateFormat.getDateInstance(DateFormat.FULL).format(Date(now))}.\n" +
-            "You are the assistant of a private notes app. Answer the question using only the excerpts below. They are taken from the user's notes, meeting transcripts, saved web links (with the text of the page), images and files (with the text read out of them)" +
+    fun system(bucket: String?, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): String =
+        "Today is ${DateFormat.getDateInstance(DateFormat.FULL).format(Date(now))} (${ChatDocument.dayText(now, zone)}).\n" +
+            "You are the assistant of a private notes app. Answer the question only from the entries and excerpts below; do not use outside knowledge and do not guess. They are taken from the user's notes, meetings (transcripts and summaries), to-dos, saved web links (with the text of the page), images and files (with the text read out of them)" +
             (bucket?.let { ", all of them filed in the bucket \"$it\"" } ?: "") + ".\n" +
-            "Every excerpt starts with a number in brackets, then the title of its note, its date and the buckets it is filed in. Name the numbers of the excerpts you used, like [2].\n" +
-            "If the excerpts do not contain the answer, say so briefly. Answer in the language of the question and be concise."
+            "Every item starts with a number in brackets and a header: «title» — kind (for a to-do its state, due day and subtasks), the day it was created, its bucket (or Inbox), tags, and for a link its address. Use the header for questions about kind, dates, buckets and to-dos.\n" +
+            "When a list of matching entries is given, it holds every entry of the kind, bucket, to-do state or time the question asks for: answer list questions from it in full and add nothing that is not in it. When the question also names a topic, take those entries of the list that are about it (they come first and say what they mention).\n" +
+            "Write the answer itself in full words: name every entry you mention by its title and give the facts the question asks for (for a to-do its due day, for a link its address, for a meeting what was said or decided). Put the numbers of the items you used after the facts, like: Hecke schneiden, due 22 November [2]. Never answer with numbers alone.\n" +
+            "If the items do not contain the answer, say plainly that you found nothing about it in the notes.\n" +
+            "Always answer in the language the question is written in (a German question gets a German answer). Be concise."
 
-    /** [history]: die letzten Nachrichten als (ist vom Nutzer, Text). [buckets]: die Namen der Buckets je Notiz. */
-    fun user(question: String, history: List<Pair<Boolean, String>>, passages: List<Passage>, buckets: Map<String, List<String>>, limit: Int = Int.MAX_VALUE): String {
+    /**
+     * iOS: `ChatService.prompt` (user part). [history]: die letzten Nachrichten als (ist vom Nutzer, Text). [limit] kürzt den
+     * Zusammenhang für ein Modell mit wenig Platz: zuerst die Liste der Treffer (das Modell erfährt, wie viele fehlen), dann
+     * die Passagen, die besten zuerst.
+     */
+    fun user(question: String, history: List<Pair<Boolean, String>>, context: ChatContext, limit: Int = Int.MAX_VALUE): String {
         val text = StringBuilder()
         if (history.isNotEmpty()) {
             text.append("Conversation so far:\n")
             for ((isUser, message) in history) text.append(if (isUser) "User: " else "Assistant: ").append(message.take(500)).append('\n')
             text.append('\n')
         }
-        text.append("Excerpts:\n")
-        passages.forEachIndexed { index, passage ->
-            if (text.length + passage.text.length > limit) return@forEachIndexed
-            val place = buckets[passage.noteID].orEmpty().ifEmpty { listOf("Inbox") }.joinToString(", ")
-            text.append("[${index + 1}] «${passage.title}» (${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(passage.date))}, $place)\n${passage.text}\n\n")
+        val items = context.items
+        var number = 0
+        context.matched?.let { matched ->
+            val listing = items.filter { it.isListing }
+            val lines = mutableListOf<String>()
+            var size = text.length
+            for (item in listing) {
+                val line = "[${number + 1}] ${item.header}" + (if (item.text.isEmpty()) "" else "\n    " + item.text)
+                if (size + line.length > limit / 2 && lines.isNotEmpty()) break
+                lines += line
+                size += line.length + 1
+                number += 1
+            }
+            if (matched == 0) {
+                text.append("No entry matches (${context.filter}).\n\n")
+            } else {
+                val shown = if (lines.size < matched) "the first ${lines.size} of $matched entries" else "all $matched entr${if (matched == 1) "y" else "ies"}"
+                text.append("Matching entries (${context.filter}): $shown.\n").append(lines.joinToString("\n")).append("\n\n")
+            }
+            // Die nicht gezeigten Einträge behalten ihre Nummern außerhalb des Prompts: Der Rest zählt von hier weiter.
+            number = listing.size
         }
+        val inside = items.filter { !it.isListing && !it.isOutside }
+        val outside = items.filter { it.isOutside }
+        fun block(title: String, list: List<ChatContextItem>, start: Int) {
+            if (list.isEmpty()) return
+            text.append(title).append('\n')
+            for ((offset, item) in list.withIndex()) {
+                if (text.length + item.text.length > limit && offset > 0) break
+                text.append("[${start + offset + 1}] ${item.header}\n${item.text}\n\n")
+            }
+        }
+        block(if (context.matched == null) "Excerpts:" else "Excerpts from the matching entries:", inside, number)
+        block(
+            if (context.matched == null) "Excerpts:" else "Excerpts from other entries (they do not match ${context.filter}; use them only if they answer the question):",
+            outside, number + inside.size,
+        )
         return text.append("Question: ").append(question).toString()
     }
 
-    /** Die Notizen hinter den Passagen, die die Antwort als [n] nennt; die besten Treffer, wenn sie keine nennt. */
-    fun sources(answer: String, passages: List<Passage>): List<ChatSource> {
+    /**
+     * Die Notizen hinter den Einträgen, die die Antwort als [n] nennt; ohne Nummer die ersten Passagen (nicht die Liste der
+     * Treffer, die lang sein kann).
+     */
+    fun sources(answer: String, items: List<ChatContextItem>): List<ChatSource> {
         val numbers = Regex("""\[([0-9, ]+)]""").findAll(answer).flatMap { match -> match.groupValues[1].split(',', ' ').mapNotNull { it.trim().toIntOrNull() } }.toList()
-        var indices = numbers.filter { it in 1..passages.size }.map { it - 1 }
-        if (indices.isEmpty()) indices = passages.indices.take(3)
+        var indices = numbers.filter { it in 1..items.size }.map { it - 1 }
+        if (indices.isEmpty()) {
+            val passages = items.indices.filter { !items[it].isListing && !items[it].isOutside }
+            indices = passages.ifEmpty { items.indices.toList() }.take(3)
+        }
         val seen = HashSet<String>()
-        return indices.mapNotNull { index -> passages[index].takeIf { seen.add(it.noteID) }?.let { ChatSource(it.noteID, it.title, it.date) } }
+        return indices.mapNotNull { index -> items[index].takeIf { seen.add(it.noteID) }?.let { ChatSource(it.noteID, it.title, it.date) } }
     }
 }

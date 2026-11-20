@@ -35,13 +35,12 @@ class ChatLogicTest {
         Note(id = "P", title = "Projekt", text = "Der Vertrag wird im März unterschrieben.", createdAt = 1, projectIDs = listOf("P2")),
     )
     private val chunks = NoteChunks.chunks(notes)
-    private val all = notes.associateBy { it.id }
 
     @Test fun aQuestionFindsThePassageWithItsWords() {
-        assertEquals("Urlaub", ChatLogic.search("Wann fährt die Fähre?", chunks, all).first().title)
-        assertEquals("word forms count", "Projekt", ChatLogic.search("Verträge", chunks, all).first().title)
-        assertTrue(ChatLogic.search("Quantencomputer", chunks, all).isEmpty())
-        assertEquals(listOf("Urlaub", "Haushalt", "Projekt"), ChatLogic.recent(chunks, all).map { it.title })
+        assertEquals("Urlaub", ChatLogic.search("Wann fährt die Fähre?", chunks).first().title)
+        assertEquals("word forms count", "Projekt", ChatLogic.search("Verträge", chunks).first().title)
+        assertTrue(ChatLogic.search("Quantencomputer", chunks).isEmpty())
+        assertEquals(listOf("Urlaub", "Haushalt", "Projekt"), ChatLogic.recent(chunks).map { it.title })
     }
 
     private val day = 86_400_000L
@@ -59,7 +58,7 @@ class ChatLogicTest {
         )
         val question = "Stelle mir die GitHub Highlights der letzten Tage vor"
         assertEquals(listOf("github"), ChatLogic.queryWords(question))
-        val titles = ChatLogic.select(question, NoteChunks.chunks(notes), notes.associateBy { it.id }, now).map { it.title }.toSet()
+        val titles = ChatLogic.select(question, NoteChunks.chunks(notes), now).map { it.title }.toSet()
         assertTrue(titles.toString(), titles.containsAll(listOf("swift-format", "ollama", "zed")))
         assertFalse("die letzten Tage zuerst", "Old repo" in titles)
         assertFalse("Fusion MV" in titles)
@@ -89,52 +88,60 @@ class ChatLogicTest {
             Note(id = "E", title = "Einkauf", text = "Milch und Brot.", createdAt = now - 3_600_000),
         )
         val chunks = NoteChunks.chunks(notes)
-        val all = notes.associateBy { it.id }
         // Diese Woche nichts zur Fähre: Die Fähre wird trotzdem gefunden.
-        assertEquals("Urlaub", ChatLogic.select("Was gab es diese Woche zur Fähre?", chunks, all, now).first().title)
+        assertEquals("Urlaub", ChatLogic.select("Was gab es diese Woche zur Fähre?", chunks, now).first().title)
         // Kein Wort zum Suchen: die neuesten Notizen dieser Zeit.
-        assertEquals(listOf("Einkauf"), ChatLogic.select("Was war heute?", chunks, all, now).map { it.title })
+        assertEquals(listOf("Einkauf"), ChatLogic.select("Was war heute?", chunks, now).map { it.title })
         // Nur Wörter, die jeder Text hat: die neuesten Notizen.
-        assertEquals("Einkauf", ChatLogic.select("Was ist das?", chunks, all, now).first().title)
+        assertEquals("Einkauf", ChatLogic.select("Was ist das?", chunks, now).first().title)
     }
 
     @Test fun oneNoteTakesAtMostThreePlaces() {
         val long = Note(id = "G", title = "Lang", text = (1..20).joinToString("\n\n" + "x".repeat(680) + "\n") { "Absatz $it über Hafer und noch mehr Hafer." })
         val short = Note(id = "K", title = "Kurz", text = "Hafer.")
         val notes = listOf(long, short)
-        val picked = ChatLogic.search("Hafer", NoteChunks.chunks(notes), notes.associateBy { it.id })
+        val picked = ChatLogic.search("Hafer", NoteChunks.chunks(notes))
         assertTrue(picked.count { it.title == "Lang" } <= ChatLogic.PASSAGES_PER_NOTE)
         assertTrue(picked.any { it.title == "Kurz" })
     }
 
     @Test fun thePromptNamesToday() {
         val now = 1_800_000_000_000L
-        assertTrue(ChatLogic.system(null, now).startsWith("Today is " + java.text.DateFormat.getDateInstance(java.text.DateFormat.FULL).format(java.util.Date(now)) + "."))
+        assertTrue(ChatLogic.system(null, now).startsWith("Today is " + java.text.DateFormat.getDateInstance(java.text.DateFormat.FULL).format(java.util.Date(now)) + " ("))
     }
 
     @Test fun aChatIsAboutAllNotesOrOneBucket() {
         val deleted = Note(id = "D", projectIDs = listOf("P1"), deletedAt = 1)
         assertEquals(listOf("U", "H", "P"), ChatLogic.scope(null, notes + deleted).map { it.id })
-        val bucket = ChatLogic.scope("P1", notes + deleted).associateBy { it.id }
-        assertEquals(setOf("U"), bucket.keys)
+        val bucket = ChatLogic.scope("P1", notes + deleted).map { it.id }.toSet()
+        assertEquals(setOf("U"), bucket)
         // Was nicht im Bucket liegt, findet der Chat über den Bucket nicht.
-        assertTrue(ChatLogic.search("Vertrag", chunks, bucket).isEmpty())
-        assertEquals(listOf("Urlaub"), ChatLogic.recent(chunks, bucket).map { it.title })
+        val inside = chunks.filter { it.noteID in bucket }
+        assertTrue(ChatLogic.search("Vertrag", inside).isEmpty())
+        assertEquals(listOf("Urlaub"), ChatLogic.recent(inside).map { it.title })
     }
 
     @Test fun thePromptNamesBucketsAndTheAnswerItsSources() {
-        val passages = ChatLogic.recent(chunks, all)
-        val user = ChatLogic.user("Wann?", listOf(true to "Hallo"), passages, mapOf("U" to listOf("Reisen")))
-        assertTrue(user.contains("[1] «Urlaub»"))
-        assertTrue(user.contains(", Reisen)"))
-        assertTrue(user.contains(", Inbox)"))
+        // iOS: `testThePromptNamesBucketsAndTheAnswerItsSources`.
+        val pair = listOf(
+            Note(id = "U", title = "Urlaub", text = "Fähre am Dienstag", createdAt = 2_000_000, projectIDs = listOf("P1")),
+            Note(id = "P", title = "Projekt", text = "Vertrag im März", createdAt = 2_000_000 - 60_000),
+        )
+        val documents = pair.associate { it.id to ChatDocument.of(it) }
+        val context = ChatLogic.context("Wann ist was?", documents, NoteChunks.chunks(pair), mapOf("P1" to "Reisen"))
+        val user = ChatLogic.user("Wann?", listOf(true to "Hallo"), context)
+        assertTrue(user, user.contains("[1] «Urlaub» — Note · created "))
+        assertTrue(user.contains(" · Bucket: Reisen"))
+        assertTrue(user.contains(" · Inbox"))
         assertTrue(user.contains("User: Hallo"))
         assertTrue(user.endsWith("Question: Wann?"))
         assertTrue(ChatLogic.system("Reisen").contains("\"Reisen\""))
 
-        assertEquals(listOf("Urlaub"), ChatLogic.sources("Am Dienstag [1].", passages).map { it.title })
-        assertEquals(listOf("Haushalt", "Urlaub"), ChatLogic.sources("Siehe [2, 1] und [9].", passages).map { it.title })
-        assertEquals(listOf("Urlaub", "Haushalt", "Projekt"), ChatLogic.sources("Keine Angabe.", passages).map { it.title })
+        val items = context.items
+        assertEquals(listOf("Urlaub"), ChatLogic.sources("Am Dienstag [1].", items).map { it.title })
+        assertEquals(listOf("Projekt", "Urlaub"), ChatLogic.sources("Siehe [2, 1] und [9].", items).map { it.title })
+        // Ohne Nummer stehen die besten Passagen ein.
+        assertEquals(listOf("Urlaub", "Projekt"), ChatLogic.sources("Keine Angabe.", items).map { it.title })
     }
 
     @Test fun aChatIsNamedAfterItsFirstQuestion() {
