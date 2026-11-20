@@ -50,6 +50,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 final class UpdateNotice {
     private var observing: Observing?
     private var shownTag: String?
+    /// The notice is on screen: a second one for the same release is not stacked on it.
+    private var isShowing = false
 
     init() {
         observing = Observing { [weak self] in
@@ -58,9 +60,11 @@ final class UpdateNotice {
         }
     }
 
-    private func show(_ release: AppUpdate.Release) {
-        guard release.tag != shownTag else { return }
+    /// `again`: the user asked (Check for Updates…), so a release shown before is shown once more.
+    func show(_ release: AppUpdate.Release, again: Bool = false) {
+        guard !isShowing, again || release.tag != shownTag else { return }
         shownTag = release.tag
+        isShowing = true
         let alert = NSAlert()
         alert.messageText = "Porridge \(release.version) Available"
         alert.informativeText = release.notes.isEmpty
@@ -70,7 +74,8 @@ final class UpdateNotice {
         alert.addButton(withTitle: "Skip This Version")
         let later = alert.addButton(withTitle: "Later")
         later.keyEquivalent = "\u{1b}"
-        let handle: (NSApplication.ModalResponse) -> Void = { response in
+        let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            self?.isShowing = false
             switch response {
             case .alertFirstButtonReturn: AppUpdate.shared.download()
             case .alertSecondButtonReturn: AppUpdate.shared.skip()

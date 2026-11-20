@@ -45,7 +45,7 @@ enum AppContainer {
                 // launch; the app starts on an empty store instead and says so. The notes stay untouched on disk.
                 storeError = error.localizedDescription
                 print("[store] could not be opened: \(error)")
-                return try! ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+                return try! ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none))
             }
         }
     }

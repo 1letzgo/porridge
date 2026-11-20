@@ -166,7 +166,27 @@ final class NoteEditorView: NSView {
     /// The note's text changed from outside (dictation, enhancing, the sync): shown unless typing is on its way.
     func reloadIfChanged() {
         let text = getText()
-        if text != coordinator.lastWritten, !coordinator.hasPendingCommit { coordinator.load(text) }
+        guard text != coordinator.lastWritten else { return }
+        if coordinator.hasPendingCommit {
+            mergeTicks(from: text)
+        } else {
+            coordinator.load(text)
+        }
+    }
+
+    /// Typing on its way is newer than a text from outside and wins. Boxes ticked or unticked outside in the
+    /// meantime (the to-do's box in the list or here, "Mark as Done" in a menu) are kept though: they go into the
+    /// editor, and the pending commit writes them back with the typing. Nothing else from outside is taken over.
+    /// After the load `lastWritten` is the merged text, so the next reload finds nothing more to merge.
+    private func mergeTicks(from outside: String) {
+        // A word being composed (marked text) would be torn apart by a reload: typing wins as before.
+        guard !textView.hasMarkedText(), let storage = textView.noteStorage else { return }
+        let typed = NoteMarkdown.markdown(from: storage)
+        let merged = Todos.mergeTicks(base: coordinator.lastWritten, winner: typed, loser: outside)
+        guard merged != typed else { return }
+        coordinator.load(merged)
+        // Written back outside the render that called this; the note's change renders again and finds it settled.
+        Task { @MainActor [weak self] in self?.flush() }
     }
 
     /// What was typed last goes to the note now.

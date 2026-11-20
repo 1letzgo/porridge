@@ -76,6 +76,31 @@ enum ShareInbox {
         try data.write(to: try folder(for: entry.id).appendingPathComponent(entryName), options: .atomic)
     }
 
+    /// Writes the entry again (a bucket chosen after the share), only while it still waits: once the app has saved
+    /// it and taken it out, nothing is written, so the folder never comes back as a second share. False then.
+    @discardableResult
+    static func update(_ entry: Entry) throws -> Bool {
+        guard let directory else { throw CocoaError(.fileNoSuchFile) }
+        let file = directory.appendingPathComponent(entry.id, isDirectory: true).appendingPathComponent(entryName)
+        guard FileManager.default.fileExists(atPath: file.path) else { return false }
+        let data = try JSONEncoder().encode(entry)
+        // Atomic and without creating the folder: if the app takes the entry out meanwhile, this fails instead.
+        do {
+            try data.write(to: file, options: .atomic)
+        } catch {
+            if !FileManager.default.fileExists(atPath: file.deletingLastPathComponent().path) { return false }
+            throw error
+        }
+        return true
+    }
+
+    /// Whether the entry still waits for the app (it has not saved it yet).
+    static func isPending(_ id: String) -> Bool {
+        guard let directory else { return false }
+        let file = directory.appendingPathComponent(id, isDirectory: true).appendingPathComponent(entryName)
+        return FileManager.default.fileExists(atPath: file.path)
+    }
+
     /// "Undo" in the share sheet, and the app once the note is saved.
     static func remove(_ id: String) {
         guard let directory else { return }

@@ -27,7 +27,8 @@ enum SyncRecords {
         r["attachmentsData"] = note.attachmentsData.flatMap { String(data: $0, encoding: .utf8) }
         r["filedAt"] = note.filedAt.map { ms($0) }
         r["errorMessage"] = note.errorMessage
-        r["pendingAudioFileName"] = note.pendingAudioFileName
+        // `pendingAudioFileName` stays on this device: the part it names is never uploaded, so on another device it
+        // would only point at nothing (and block continuing the meeting there). See `apply` and `isFrozen`.
         r["folderID"] = note.folderID?.uuidString
         r["deletedAt"] = note.deletedAt.map { ms($0) }
         r["archivedAt"] = note.archivedAt.map { ms($0) }
@@ -66,9 +67,13 @@ enum SyncRecords {
         note.text = r["text"] as? String ?? ""
         note.createdAt = date(r["createdAt"]) ?? note.createdAt
         note.updatedAt = date(r["updatedAt"]) ?? note.updatedAt
-        note.statusRaw = r["statusRaw"] as? String ?? ProcessingStatus.ready.rawValue
-        note.errorMessage = r["errorMessage"] as? String
-        note.pendingAudioFileName = r["pendingAudioFileName"] as? String
+        // A part recorded here that failed to transcribe waits for "Try Again" on this device only: the file is
+        // not synced, so whatever the other side says about it (its status, its error, no part at all) is not
+        // about this part. Its state stays as it is here; the rest of the note is taken.
+        if note.pendingAudioFileName == nil {
+            note.statusRaw = r["statusRaw"] as? String ?? ProcessingStatus.ready.rawValue
+            note.errorMessage = r["errorMessage"] as? String
+        }
         note.audioFileNames = r["audioFileNames"] as? [String] ?? []
         note.folderID = uuid(r["folderID"])
         note.isPinned = r["isPinned"] as? Bool ?? false
@@ -109,9 +114,11 @@ enum SyncRecords {
         note.suggestedProjectIDs = r["suggestedProjectIDs"] as? [String] ?? []
     }
 
-    /// A recording still on its way to a transcript stays on this device until it is done.
+    /// A recording still on its way to a transcript stays on this device until it is done. One that failed
+    /// (`.failed`, its part still in `pendingAudioFileName` for "Try Again") syncs again: frozen, it would stay out
+    /// of sync for good. Its pending part stays local (`record`, `apply`).
     static func isFrozen(_ note: Note) -> Bool {
-        note.pendingAudioFileName != nil || note.status == .recorded || note.status == .transcribing
+        note.status == .recorded || note.status == .transcribing
     }
 
     /// The files a note points at: its recordings and its attachments.

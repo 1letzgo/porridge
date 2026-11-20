@@ -129,8 +129,9 @@ final class Note {
     var isFile: Bool { isStored && !isImage }
 
     /// Came in from outside (a link, a shared file or text): something to keep, not the user's own words. Such
-    /// notes never produce tasks.
-    var isSaved: Bool { url != nil || source == .share }
+    /// notes never produce tasks. A recording shared from another app is not one: it is treated like imported
+    /// audio, its summary has tasks that can become to-dos.
+    var isSaved: Bool { url != nil || (source == .share && !isRecording) }
 
     /// Nothing in it at all: no title, text, recording, link or summary.
     var isEmptyLeftover: Bool {

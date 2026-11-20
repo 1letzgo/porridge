@@ -4,7 +4,7 @@ import SwiftData
 /// The app: the menu bar, the main windows, Settings, the dictation in the menu bar, and the update check.
 /// Closing the last window keeps Porridge running in the menu bar, so the dictation shortcut stays available.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var statusItem: StatusItemController?
     private var updates: UpdateNotice?
 
@@ -71,6 +71,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    /// Quitting during a meeting recording would cut it off: ask first, and keep what was recorded.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard RecordingWindowController.isRecording else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "A Meeting Is Being Recorded"
+        alert.informativeText = "Quitting stops the recording. What was recorded so far is kept."
+        alert.addButton(withTitle: "Stop Recording and Quit")
+        let cancel = alert.addButton(withTitle: "Cancel")
+        cancel.keyEquivalent = "\u{1b}"
+        guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        RecordingWindowController.stopAll()
+        return .terminateNow
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         for controller in MainWindowController.all { controller.split.detail.noteDetail?.flushEditing() }
         Library.shared.save()
@@ -100,8 +114,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.window?.makeKeyAndOrderFront(nil)
     }
 
+    /// Asked by the user, so the result is always told: a newer version, up to date, or what went wrong.
     @objc func checkForUpdates(_ sender: Any?) {
-        Task { await AppUpdate.shared.check(manual: true) }
+        Task { @MainActor in
+            let outcome = await AppUpdate.shared.check(manual: true)
+            let window = MainWindowController.frontIfAny?.window
+            switch outcome {
+            case .available(let release):
+                updates?.show(release, again: true)
+            case .upToDate:
+                Alerts.inform("Porridge Is Up to Date", message: "Version \(AppUpdate.currentVersion) is the newest one.", in: window)
+            case .failed(let reason):
+                Alerts.inform("Could Not Check for Updates", message: reason, in: window)
+            case .alreadyChecking:
+                Alerts.inform("Already Checking for Updates", message: "Porridge is looking for a newer version right now. Try again in a moment.", in: window)
+            }
+        }
     }
 
     /// File › New Note with no window open.

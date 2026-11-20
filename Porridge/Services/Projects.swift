@@ -35,6 +35,26 @@ enum Projects {
         try? context.save()
     }
 
+    /// Takes the notes out of buckets that are not in `known` (deleted on another device, so `delete` never ran
+    /// here): otherwise such a note is in no list, neither the inbox nor a bucket. Suggestions of such buckets go
+    /// too. `known` must be every bucket there is, i.e. taken only after the buckets of a sync run are merged.
+    /// `updatedAt` stays: leaving a bucket that is gone is no edit and must not make the note newer elsewhere.
+    /// - Returns: the notes changed.
+    @discardableResult
+    static func pruneUnknown(_ notes: [Note], known: Set<String>) -> [Note] {
+        let known = Set(known.map { $0.uppercased() })
+        var changed: [Note] = []
+        for note in notes {
+            let projects = note.projectIDs.filter { known.contains($0.uppercased()) }
+            let suggested = note.suggestedProjectIDs.filter { known.contains($0.uppercased()) }
+            guard projects.count != note.projectIDs.count || suggested.count != note.suggestedProjectIDs.count else { continue }
+            if projects.count != note.projectIDs.count { note.projectIDs = projects }
+            if suggested.count != note.suggestedProjectIDs.count { note.suggestedProjectIDs = suggested }
+            changed.append(note)
+        }
+        return changed
+    }
+
     static func toggle(_ project: NoteFolder, on note: Note, in context: ModelContext) {
         note.projectIDs = toggled(note.projectIDs, key(project))
         // Put into a bucket by hand: it has left the inbox, whatever was suggested.

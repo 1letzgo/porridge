@@ -128,6 +128,7 @@ targets:
           - Info.plist
           - PorridgeMac.entitlements
           - PorridgeMacBeta.entitlements
+          - PorridgeMacRelease.entitlements
     dependencies:
       - package: FluidAudio
       - package: MLXSwiftLM
@@ -137,6 +138,9 @@ targets:
       - package: HuggingFace
       - package: SwiftTransformers
         product: Tokenizers
+    # Local runs (Debug) use the Development CloudKit database. The GitHub build (scripts/release-mac.sh) signs with
+    # PorridgeMac/PorridgeMacRelease.entitlements (the same plus icloud-container-environment Production, kept by hand),
+    # TestFlight (scripts/testflight-mac.sh) with PorridgeMacBeta.entitlements; both reach the Production database.
     entitlements:
       path: PorridgeMac/PorridgeMac.entitlements
       properties:

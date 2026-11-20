@@ -50,9 +50,30 @@ struct NoteTextView: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.text = NoteTextBinding($text)
         textView.isEditable = isEditable
-        // Typing that is still on its way to the note is newer than a text from outside: it is written next
-        // and wins, instead of being replaced here.
-        if text != coordinator.lastWritten, !coordinator.hasPendingCommit { coordinator.load(text) }
+        guard text != coordinator.lastWritten else { return }
+        if coordinator.hasPendingCommit {
+            Self.mergeTicks(from: text, into: textView, coordinator: coordinator)
+        } else {
+            coordinator.load(text)
+        }
+    }
+
+    /// Typing that is still on its way to the note is newer than a text from outside: it is written next and
+    /// wins. Boxes ticked or unticked outside in the meantime (the to-do's box or row in the list, iPad split view)
+    /// are kept though: they go into the editor, and the pending commit writes them back with the typing.
+    /// Nothing else from outside is taken over. After the load `lastWritten` is the merged text, so the next
+    /// update finds nothing more to merge (the outside ticks equal the base then).
+    private static func mergeTicks(from outside: String, into textView: NotePlatformTextView, coordinator: NoteTextCoordinator) {
+        // A word being composed (marked text) would be torn apart by a reload: typing wins as before.
+        guard textView.markedTextRange == nil, let storage = textView.noteStorage else { return }
+        let typed = NoteMarkdown.markdown(from: storage)
+        let merged = Todos.mergeTicks(base: coordinator.lastWritten, winner: typed, loser: outside)
+        guard merged != typed else { return }
+        // Only the editor changes here; the note gets the merged text from the commit, not during this update.
+        coordinator.load(merged)
+        Task { @MainActor in
+            if coordinator.hasPendingCommit { coordinator.flush() }
+        }
     }
 
     static func dismantleUIView(_ textView: NotePlatformTextView, coordinator: NoteTextCoordinator) {

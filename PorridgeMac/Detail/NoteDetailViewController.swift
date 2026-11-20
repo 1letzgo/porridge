@@ -510,8 +510,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         enhancedBanner.isHidden = !(tab == .note && canUndo && dictation.phase == .idle)
         if canUndo {
             enhancedBanner.show(symbol: "wand.and.stars", text: "Enhanced with AI", tint: .brandSky, action: ("Undo", { [weak self] in
-                guard let self else { return }
-                self.processing.undoEnhance(self.note)
+                self?.perform(.undoEnhance)
             }))
         }
 
@@ -853,7 +852,11 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     }
 
     @objc private func toggleDone() {
-        TodoBridge.setDone(!TodoBridge.isDone(note), note)
+        // What the box showed when it was clicked, before the typing that is handed over now moves it.
+        let done = !TodoBridge.isDone(note)
+        // A commit still pending would otherwise write the unticked subtasks back over "done".
+        editor.flush()
+        TodoBridge.setDone(done, note)
     }
 
     @objc private func openSource() {
@@ -990,12 +993,17 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             editor.flush()
             NoteSheets.enhanceOptions(for: note, in: self)
         case .undoEnhance:
+            // Typing still on its way would otherwise be written over the original text afterwards. With it
+            // handed over the text is no longer the enhanced one, and the undo rightly does nothing.
+            editor.flush()
             processing.undoEnhance(note)
         case .editSummary:
             tab = .summary
             NoteSheets.editSummary(of: note, in: self)
         case .insertSummary:
             guard let summary = note.summary else { return }
+            // The typing of the last moment first: a pending commit would drop the summary again.
+            editor.flush()
             setText(note.text.isEmpty ? summary : note.text + "\n\n" + summary)
             editor.reloadIfChanged()
             library.save()
@@ -1029,6 +1037,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         case .deleteRecording:
             confirmDeleteRecording()
         case .loadPageAgain:
+            guard note.isLink else { return }
             note.status = .recorded
             processing.enqueue(.link(note.id, summarize: false))
         case .dictate:
@@ -1123,6 +1132,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: titleField))
         }
         if let body {
+            editor.flush()
             setText(note.text.isEmpty ? body : note.text + "\n" + body)
             editor.reloadIfChanged()
         }

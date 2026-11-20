@@ -63,7 +63,8 @@ final class AutoSummaryTests: XCTestCase {
         XCTAssertEqual(AutoSummary.kind(of: shared), .sharedText)
         XCTAssertTrue(due(shared))
 
-        for source in [NoteSource.audioImport, .plaud] {
+        // Audio shared from another app is imported audio as well.
+        for source in [NoteSource.audioImport, .plaud, .share] {
             let audio = entry { note in
                 note.source = source
                 note.audioFileName = "a.m4a"
@@ -71,6 +72,52 @@ final class AutoSummaryTests: XCTestCase {
             }
             XCTAssertEqual(AutoSummary.kind(of: audio), .importedAudio)
             XCTAssertTrue(due(audio))
+        }
+    }
+
+    func testSharedAudioGivesToDosLinksAndSharedTextNever() throws {
+        let context = try TestStore.context()
+        let tasks = "## Action Items\n- [ ] Angebot schicken"
+
+        let sharedAudio = entry { note in
+            note.source = .share
+            note.audioFileName = "a.m4a"
+            note.segments = [TranscriptSegment(start: 0, end: 60, text: self.page)]
+        }
+        XCTAssertFalse(sharedAudio.isSaved, "shared audio is treated like imported audio")
+        sharedAudio.summary = tasks
+        TodoSuggestions.offer(sharedAudio)
+        XCTAssertTrue(sharedAudio.offersTodoSuggestions)
+        XCTAssertNotNil(Todos.create(fromTask: "Angebot schicken", of: sharedAudio, in: context))
+
+        // Still being transcribed: already an audio entry, not shared text.
+        let transcribing = entry { note in
+            note.source = .share
+            note.audioFileName = "b.m4a"
+        }
+        XCTAssertFalse(transcribing.isSaved)
+        XCTAssertEqual(AutoSummary.kind(of: transcribing), .importedAudio)
+
+        let sharedText = entry { note in
+            note.source = .share
+            note.text = self.page
+        }
+        let sharedFile = entry { note in
+            note.source = .share
+            note.attachments = [Attachment(fileName: "a.pdf", name: "Vertrag.pdf", kindRaw: "pdf")]
+            note.pageText = self.page
+        }
+        let sharedLinkWithText = entry { note in
+            note.source = .share
+            note.url = "https://example.com/a"
+            note.text = self.page
+        }
+        for saved in [link(), sharedText, sharedFile, sharedLinkWithText] {
+            XCTAssertTrue(saved.isSaved)
+            saved.summary = tasks
+            TodoSuggestions.offer(saved)
+            XCTAssertFalse(saved.offersTodoSuggestions, "links and shared text or pages never give to-dos")
+            XCTAssertNil(Todos.create(fromTask: "Angebot schicken", of: saved, in: context))
         }
     }
 

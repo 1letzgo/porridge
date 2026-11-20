@@ -109,6 +109,13 @@ actor LocalLLM {
     private var loadedModel: LocalModel?
     private var loading: Task<ModelContainer, Error>?
     private var loadingModel: LocalModel?
+    /// Answers being written with `container` right now. The actor lets other calls in while one waits for its
+    /// answer, so another model must not take the place before these are done: both would be in memory at once.
+    private var generations = 0
+    /// Calls waiting for `generations` to reach zero, to put another model in memory.
+    private var idleWaiters: [CheckedContinuation<Void, Never>] = []
+    /// `unload()` was asked for during an answer: it happens once the last one is done.
+    private var unloadWhenIdle = false
 
     /// Every model keeps its files in its own folder in Application Support, left out of device backups.
     private static func directory(for model: LocalModel) -> URL {
@@ -168,7 +175,12 @@ actor LocalLLM {
             _ = try? await loading.value
             return try await load(model, progress: progress)
         }
-        // Only one model at a time in memory.
+        // Only one model at a time in memory. The one there may still be writing an answer (with its own reference
+        // to it, so unloading would not free it): wait for that, then look again, since anything may have changed.
+        if loadedModel != model, generations > 0 {
+            await withCheckedContinuation { idleWaiters.append($0) }
+            return try await load(model, progress: progress)
+        }
         if loadedModel != model { unload() }
 
         let task = Task<ModelContainer, Error> {
@@ -193,6 +205,7 @@ actor LocalLLM {
             loadedModel = model
             loading = nil
             loadingModel = nil
+            Task { @MainActor in ModelManager.shared.llmDidLoad(model) }
             return container
         } catch {
             loading = nil
@@ -211,6 +224,9 @@ actor LocalLLM {
         do {
             answer = try await ForegroundWork.retrying {
                 let container = try await load(model, progress: nil)
+                // From here until the answer is done, no other model takes this one's place (see `load`).
+                beginGeneration()
+                defer { endGeneration() }
                 let session = ChatSession(
                     container,
                     instructions: system,
@@ -227,6 +243,24 @@ actor LocalLLM {
         let text = Self.withoutThinking(answer)
         guard !text.isEmpty else { throw LocalLLMError.emptyResponse }
         return text
+    }
+
+    private func beginGeneration() {
+        generations += 1
+    }
+
+    private func endGeneration() {
+        generations = max(0, generations - 1)
+        guard generations == 0 else { return }
+        if unloadWhenIdle { unload() }
+        let waiters = idleWaiters
+        idleWaiters = []
+        for waiter in waiters { waiter.resume() }
+    }
+
+    /// Whether this model is in memory right now.
+    func isLoaded(_ model: LocalModel) -> Bool {
+        container != nil && loadedModel == model
     }
 
     private static func logFailure(_ message: String) {
@@ -260,9 +294,16 @@ actor LocalLLM {
     }
 
     /// Frees the memory the model uses.
+    /// While an answer is being written, the model is freed once it is done: clearing the cache under a running
+    /// generation ends the app, and the answer's own reference would keep the weights in memory anyway.
     func unload() {
         // Nothing loaded: nothing to free (and the simulator has no Metal device to ask).
         guard container != nil || loadedModel != nil || loading != nil else { return }
+        guard generations == 0 else {
+            unloadWhenIdle = true
+            return
+        }
+        unloadWhenIdle = false
         container = nil
         loadedModel = nil
         Memory.clearCache()

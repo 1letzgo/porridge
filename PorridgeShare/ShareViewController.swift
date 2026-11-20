@@ -214,14 +214,23 @@ final class ShareViewController: UIViewController {
     private func change(_ edit: (inout ShareInbox.Entry) -> Void) {
         guard var entry else { return }
         edit(&entry)
-        try? ShareInbox.add(entry)
+        // The app (on an iPad next to the sheet) has saved the share already: nothing to change any more.
+        guard (try? ShareInbox.update(entry)) == true else { return showAlreadySaved() }
         self.entry = entry
         updateButtons()
         closeSoon(after: 1.2)
     }
 
+    /// The app took the share in while the card was open: it is saved as it was, the buttons go.
+    private func showAlreadySaved() {
+        label.text = "✓  Saved to Porridge"
+        buttons.isHidden = true
+        closeSoon(after: 1.2)
+    }
+
     private func undo() {
         closing?.cancel()
+        if let entry, !ShareInbox.isPending(entry.id) { return showAlreadySaved() }
         if let entry { ShareInbox.remove(entry.id) }
         entry = nil
         buttons.isHidden = true

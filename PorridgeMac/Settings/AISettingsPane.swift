@@ -28,7 +28,8 @@ final class AISettingsPane: SettingsPane {
     private var noneRow: NSGridRow?
     private let list = NSStackView.vertical([], spacing: 12)
     private var rows: [String: ModelStateRow] = [:]
-    private var listIDs: [String] = []
+    /// nil until the list is first drawn, so an empty list also gets its footnote.
+    private var listIDs: [String]?
     private var lastLLM: [LocalModel: ModelManager.State] = [:]
 
     override func build() {

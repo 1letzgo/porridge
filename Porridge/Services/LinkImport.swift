@@ -44,11 +44,12 @@ enum LinkImport {
     }
 
     static func save(
-        _ address: String, title: String?, date: Date, known: inout [String: Note],
+        _ address: String, title: String?, text: String? = nil, date: Date, known: inout [String: Note],
         context: ModelContext, processing: ProcessingService
     ) -> Note {
         if let existing = known[normalized(address)] {
-            // Saved before: it moves to the top of the timeline.
+            // Saved before: it moves to the top of the timeline. Text shared along goes on it if it has none yet.
+            if let text, !text.isEmpty, existing.text.isEmpty { existing.text = text }
             existing.deletedAt = nil
             existing.updatedAt = Date()
             return existing
@@ -56,6 +57,8 @@ enum LinkImport {
         let note = Note()
         note.url = address
         note.title = title ?? ""
+        // Text shared along stays the user's words on the link (never tasks: links make no to-dos).
+        note.text = text ?? ""
         note.createdAt = date
         note.updatedAt = date
         note.statusRaw = ProcessingStatus.recorded.rawValue

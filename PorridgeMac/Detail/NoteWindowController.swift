@@ -1,7 +1,7 @@
 import AppKit
 
 /// A note in a window of its own (double-click in the list, File › Open Note in New Window).
-final class NoteWindowController: NSWindowController, NSWindowDelegate {
+final class NoteWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
     private static var open: [UUID: NoteWindowController] = [:]
     private let detail: NoteDetailViewController
 

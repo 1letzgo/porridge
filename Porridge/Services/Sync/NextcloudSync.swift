@@ -52,7 +52,12 @@ final class NextcloudSync {
     /// Something asked for a sync while one was running: another one follows it.
     private var syncAgain = false
     private var applying = false
-    private var ownSaveAt = Date.distantPast
+    /// When a run saved the store and its notification has not come yet. Only that one notification is skipped:
+    /// an edit saved right after it still asks for a run.
+    private var ownSaveAt: Date?
+    /// Counts connecting and disconnecting: a run that sees it changed while it waited was for another account and
+    /// leaves the state, the keychain and the uploads alone.
+    private var generation = 0
     private var observer: NSObjectProtocol?
 
     private static let fileName = "porridge-sync.json"
@@ -65,8 +70,13 @@ final class NextcloudSync {
         self.container = container
         observer = NotificationCenter.default.addObserver(forName: ModelContext.didSave, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                // Not for the save of a run itself.
-                guard let self, !self.applying, Date().timeIntervalSince(self.ownSaveAt) > 2 else { return }
+                guard let self else { return }
+                // Not for the save of a run itself (whether its notification comes at once or a moment later).
+                if let at = self.ownSaveAt {
+                    self.ownSaveAt = nil
+                    if Date().timeIntervalSince(at) < 5 { return }
+                }
+                guard !self.applying else { return }
                 self.syncSoon()
             }
         }
@@ -81,6 +91,7 @@ final class NextcloudSync {
     }
 
     func connect(_ account: NextcloudAccount) {
+        generation += 1
         account.save()
         self.account = account
         State.reset()
@@ -89,6 +100,7 @@ final class NextcloudSync {
     }
 
     func disconnect() {
+        generation += 1
         Task { await RecordingUploads.shared.cancelAll() }
         NextcloudAccount.remove()
         account = nil
@@ -117,6 +129,7 @@ final class NextcloudSync {
     func sync() async {
         guard isActive, !isSyncing, let account, let container else { return }
         isSyncing = true
+        let run = generation
         defer {
             isSyncing = false
             if syncAgain {
@@ -127,19 +140,27 @@ final class NextcloudSync {
         do {
             var account = account
             if account.userID == nil, let id = await WebDAV(account: account).fetchUserID() {
+                try checkAccount(run)
                 account.userID = id
                 account.save()
                 if self.account?.loginName == account.loginName { self.account = account }
             }
             let dav = WebDAV(account: account)
-            try await syncFile(dav, context: container.mainContext)
-            try await syncRecordings(dav, context: container.mainContext)
+            try await syncFile(dav, context: container.mainContext, generation: run)
+            try await syncRecordings(dav, context: container.mainContext, generation: run)
+            try checkAccount(run)
             lastSync = Date()
             lastError = nil
             UserDefaults.standard.set(lastSync, forKey: "nextcloudLastSync")
         } catch {
-            lastError = error.localizedDescription
+            // Connected or disconnected meanwhile: this run's error is not the new account's.
+            if run == generation { lastError = error.localizedDescription }
         }
+    }
+
+    /// Stops a run whose account was connected or disconnected while it waited.
+    private func checkAccount(_ generation: Int) throws {
+        guard generation == self.generation else { throw CancellationError() }
     }
 
     // MARK: The file
@@ -150,12 +171,15 @@ final class NextcloudSync {
         let frozen: Set<String>
     }
 
-    private func syncFile(_ dav: WebDAV, context: ModelContext) async throws {
+    private func syncFile(_ dav: WebDAV, context: ModelContext, generation: Int) async throws {
         let url = dav.root.appending(path: Self.fileName)
+        try checkAccount(generation)
         var state = State.load()
         for attempt in 0..<4 {
             let remote = try await dav.get(url)
             if remote == nil && attempt == 0 { try await dav.makeFolder(dav.root) }
+            // The store takes nothing from an account that is no longer the one connected.
+            try checkAccount(generation)
             let file = try remote.map { try SyncMerge.parseFile($0.data) } ?? [:]
             let tombstones = file["deleted"] as? [String: [String: NSNumber]] ?? [:]
 
@@ -167,6 +191,10 @@ final class NextcloudSync {
             var deleted = tombstones.mapValues { $0.mapValues(\.int64Value) }
             deleted["actionItems"] = nil
             var newBase: [String: [String: SyncBase]] = [:]
+            var noteRecords: [String: SyncRecord] = [:]
+            var frozenNotes: Set<String> = []
+            var folderIDs: Set<String>?
+            var filesToDelete: [String] = []
             applying = true
             defer { applying = false }
             for collection in try collections(context) {
@@ -181,22 +209,51 @@ final class NextcloudSync {
                     frozen: collection.frozen,
                     now: SyncRecords.ms(Date())
                 )
-                try apply(result, collection: collection.key, context: context)
+                filesToDelete += try apply(result, collection: collection.key, context: context)
                 output[collection.key] = result.merged.keys.sorted().compactMap { result.merged[$0] }
                 deleted[collection.key] = result.tombstones
                 newBase[collection.key] = result.merged.reduce(into: [:]) { base, entry in
-                    base[entry.key] = SyncBase(
-                        local: "", remote: SyncMerge.hash(entry.value),
-                        text: Todos.isTodoRecord(entry.value) ? entry.value["text"] as? String : nil
-                    )
+                    base[entry.key] = Self.base(of: entry.value)
                 }
+                switch collection.key {
+                case "notes":
+                    noteRecords = result.merged
+                    frozenNotes = collection.frozen
+                case "folders":
+                    folderIDs = Set(result.merged.keys)
+                default:
+                    break
+                }
+            }
+            // Only now, with every folder of this run merged, is a bucket that is not there really gone (deleted
+            // on another device): notes leave it, here and in the file, instead of dropping out of every list.
+            if let folderIDs {
+                let notes = try context.fetch(FetchDescriptor<Note>())
+                var pruned = false
+                for note in Projects.pruneUnknown(notes, known: folderIDs) {
+                    let id = note.id.uuidString
+                    // A frozen note keeps the file's record; it goes up once it is done.
+                    guard !frozenNotes.contains(id), noteRecords[id] != nil else { continue }
+                    let record = SyncRecords.record(note)
+                    noteRecords[id] = record
+                    newBase["notes"]?[id] = Self.base(of: record)
+                    pruned = true
+                }
+                if pruned { output["notes"] = noteRecords.keys.sorted().compactMap { noteRecords[$0] } }
             }
             output["deleted"] = deleted
             let settingsBase = mergeSettings(file, into: &output, base: state.settings ?? [:])
             if context.hasChanges {
-                try context.save()
                 ownSaveAt = Date()
+                do {
+                    try context.save()
+                } catch {
+                    ownSaveAt = nil
+                    throw error
+                }
             }
+            // The files of notes deleted elsewhere go only once their deletion is saved.
+            filesToDelete.forEach(AudioStore.delete)
             // Taken before the upload: an edit made during it counts as a change in the next run. Saves from
             // here on are the user's and ask for that run.
             applying = false
@@ -213,6 +270,8 @@ final class NextcloudSync {
             } catch NextcloudError.conflict {
                 continue
             }
+            // Disconnected meanwhile: the state was reset and stays so.
+            try checkAccount(generation)
             // Only now, with the file written, does the merged state become the base of the next run.
             state.base = newBase
             state.settings = settingsBase
@@ -224,6 +283,11 @@ final class NextcloudSync {
             return
         }
         throw NextcloudError.conflict
+    }
+
+    /// The base of a record as it was written to the file.
+    private static func base(of record: SyncRecord) -> SyncBase {
+        SyncBase(local: "", remote: SyncMerge.hash(record), text: Todos.isTodoRecord(record) ? record["text"] as? String : nil)
     }
 
     /// This device's records of every collection in the file.
@@ -244,8 +308,10 @@ final class NextcloudSync {
         ]
     }
 
-    private func apply(_ result: SyncMerge.Result, collection: String, context: ModelContext) throws {
-        guard !result.toApply.isEmpty || !result.toDelete.isEmpty else { return }
+    /// - Returns: the files of the notes deleted, to be deleted once the store is saved.
+    private func apply(_ result: SyncMerge.Result, collection: String, context: ModelContext) throws -> [String] {
+        guard !result.toApply.isEmpty || !result.toDelete.isEmpty else { return [] }
+        var files: [String] = []
         switch collection {
         case "notes":
             let all = try context.fetch(FetchDescriptor<Note>())
@@ -261,7 +327,7 @@ final class NextcloudSync {
             }
             for id in result.toDelete {
                 guard let note = byID[id] else { continue }
-                note.storedFileNames.forEach(AudioStore.delete)
+                files += note.storedFileNames
                 context.delete(note)
             }
         case "folders":
@@ -291,6 +357,7 @@ final class NextcloudSync {
         default:
             break
         }
+        return files
     }
 
     // MARK: Settings
@@ -326,9 +393,10 @@ final class NextcloudSync {
 
     /// The recordings of the notes in the file and of the notes here still being processed.
     private func referencedRecordings(_ notes: [SyncRecord], context: ModelContext) throws -> Set<String> {
-        let frozen = try context.fetch(FetchDescriptor<Note>()).filter(SyncRecords.isFrozen)
-            .flatMap(\.storedFileNames)
-        return Set(notes.flatMap(SyncRecords.audioFiles) + frozen)
+        let all = try context.fetch(FetchDescriptor<Note>())
+        // A part that failed to transcribe stays on this device for "Try Again" (it never goes into the file).
+        let local = all.filter(SyncRecords.isFrozen).flatMap(\.storedFileNames) + all.compactMap(\.pendingAudioFileName)
+        return Set(notes.flatMap(SyncRecords.audioFiles) + local)
     }
 
     /// Loads a recording when it is asked for. Any network will do: somebody is waiting for it.
@@ -352,7 +420,8 @@ final class NextcloudSync {
 
     /// Recordings this device has go up. The other way they come only when asked for (`fetchRecording`):
     /// transcript and summary are there anyway, and not every device needs hours of audio.
-    private func syncRecordings(_ dav: WebDAV, context: ModelContext) async throws {
+    private func syncRecordings(_ dav: WebDAV, context: ModelContext, generation: Int) async throws {
+        try checkAccount(generation)
         let all = try context.fetch(FetchDescriptor<Note>())
         let notes = all.filter { !SyncRecords.isFrozen($0) }
         let wanted = Set(notes.flatMap { [$0.audioFileName].compactMap { $0 } + $0.audioFileNames + $0.attachments.map(\.fileName) })
@@ -366,10 +435,12 @@ final class NextcloudSync {
             await RecordingUploads.shared.cancel(Set(orphans))
             let inUse = Set(all.flatMap(\.storedFileNames))
             let result = await SyncMerge.eachFile(orphans.filter(AudioStore.isPlainName)) { name in
+                try self.checkAccount(generation)
                 if remote.contains(name) { try await dav.delete(dav.recordings.appending(path: name)) }
                 remote.remove(name)
                 if !inUse.contains(name) { AudioStore.delete(name) }
             }
+            try checkAccount(generation)
             // What could not be deleted is tried again next time.
             state.orphans = result.failed
             state.save()
@@ -378,6 +449,8 @@ final class NextcloudSync {
         if !wanted.isEmpty {
             if remote.isEmpty { try await dav.makeFolder(dav.recordings) }
             let running = await RecordingUploads.shared.running()
+            // No uploads with the credentials of an account that is gone.
+            try checkAccount(generation)
             for name in wanted.sorted().filter(AudioStore.isPlainName)
             where AudioStore.exists(name) && !remote.contains(name) && !running.contains(name) {
                 let request = dav.uploadRequest(to: dav.recordings.appending(path: name), wifiOnly: AppSettings.recordingsWiFiOnly)

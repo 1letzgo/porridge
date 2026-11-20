@@ -129,8 +129,14 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         super.removeFromParent()
     }
 
+    /// The chat started by the last question, until the lists are fetched again: a second question sent at once
+    /// goes into it instead of starting another one.
+    private var newThread: ChatThread?
+
     private var thread: ChatThread? {
-        state.chatID.flatMap { id in library.threads.first { $0.id == id } }
+        guard let id = state.chatID else { return nil }
+        if let thread = library.threads.first(where: { $0.id == id }) { return thread }
+        return newThread?.id == id && newThread?.modelContext != nil ? newThread : nil
     }
 
     private var entries: [ChatEntry] {
@@ -313,6 +319,7 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
             chat = ChatThread(projectID: state.chatScope)
             library.context.insert(chat)
             library.save()
+            newThread = chat
             state.chatID = chat.id
         }
         let notes = library.notes

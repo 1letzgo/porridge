@@ -69,7 +69,8 @@ final class DictationController {
         modifierKey.stop()
         permissionWatch?.cancel()
         keyIsDown = false
-        if state == .recording, DictationSettings.mode == .hold { discardRecording() }
+        // Only a recording held by the key: one from the menu runs on until the menu or the shortcut ends it.
+        if state == .recording, DictationSettings.mode == .hold, heldByKey { discardRecording() }
     }
 
     /// The permission is given in System Settings, outside the app: look every few seconds and start

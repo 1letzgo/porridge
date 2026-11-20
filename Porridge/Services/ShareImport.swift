@@ -12,7 +12,6 @@ enum ShareImport {
         guard !entries.isEmpty else { return }
         let folders = Set(((try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []).map(\.id.uuidString))
         var known = LinkImport.knownAddresses(in: context)
-        var saved: [ShareInbox.Entry] = []
         for entry in entries {
             // A bucket deleted since the share: the note waits in the inbox instead.
             let project = entry.projectID.flatMap { folders.contains($0) ? $0 : nil }
@@ -23,14 +22,15 @@ enum ShareImport {
                     note.filedAt = note.filedAt ?? Date()
                 }
             }
-            saved.append(entry)
-        }
-        // Not saved: everything stays in the inbox for the next time (a link saved twice only moves to the top).
-        do {
-            try context.save()
-            saved.forEach(ShareInbox.finish)
-        } catch {
-            print("[share] not saved, kept in the inbox: \(error)")
+            // Each share leaves the inbox once its notes are saved, so nothing comes in twice. Not saved: it and
+            // the ones after it stay in the inbox for the next time (a link saved twice only moves to the top).
+            do {
+                try context.save()
+                ShareInbox.finish(entry)
+            } catch {
+                print("[share] not saved, kept in the inbox: \(error)")
+                return
+            }
         }
     }
 
@@ -44,7 +44,7 @@ enum ShareImport {
         for file in entry.files {
             guard let source = ShareInbox.url(of: file, in: entry), FileManager.default.fileExists(atPath: source.path) else { continue }
             if file.kind == .audio {
-                if let note = try? NoteStore.importAudio(from: source, title: file.name, source: .share, context: context, processing: processing) {
+                if let note = try? NoteStore.importAudio(from: source, title: file.name, source: .share, save: false, context: context, processing: processing) {
                     notes.append(note)
                 }
             } else if let attachment = try? AttachmentStore.add(source, name: file.name) {
@@ -76,7 +76,9 @@ enum ShareImport {
             AutoSummary.markOrigin(note.id)
             notes.append(note)
         } else if let url = entry.url {
-            let note = LinkImport.save(url, title: entry.title, date: entry.date, known: &known, context: context, processing: processing)
+            // Text shared along with the address (audio and a link, say) is kept on the link unless it only repeats it.
+            let extra = text.isEmpty || text == entry.title || text == url ? nil : text
+            let note = LinkImport.save(url, title: entry.title, text: extra, date: entry.date, known: &known, context: context, processing: processing)
             known[LinkImport.normalized(url)] = note
             notes.append(note)
         }

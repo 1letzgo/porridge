@@ -51,6 +51,8 @@ struct NoteDetailView: View {
     @State private var addingTag = false
     @State private var newTag = ""
     @State private var pickingDue = false
+    /// The screen was shown before: coming back (from Quick Look, a sheet) keeps the open tab.
+    @State private var didAppear = false
     @FocusState private var focused: Bool
     /// Height of one line of the title (title2, bold), as the text field lays it out: the box stands centered on it.
     @ScaledMetric(relativeTo: .title2) private var titleLineHeight: CGFloat = 28
@@ -163,9 +165,12 @@ struct NoteDetailView: View {
             }
         }
         .onAppear {
+            // Loading the same file again keeps the player where it was.
+            if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
+            guard !didAppear else { return }
+            didAppear = true
             // Load the speech model right away so the first piece is transcribed without delay.
             Task { try? await ModelManager.shared.ensureASR() }
-            if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
             tab = opensOnSummary || isSummarizing ? .summary : .note
         }
         .task {
@@ -182,6 +187,10 @@ struct NoteDetailView: View {
             if dictation.phase == .recording {
                 Task { await finishDictation() }
             }
+            // Typing of the last moment reaches the note now: once this screen is gone, `onChange(of: note.text)`
+            // no longer runs, and a new note that was never stored would be dropped by the list.
+            commitTyping()
+            saveIfFilled()
             try? context.save()
         }
         .onReceive(NotificationCenter.default.publisher(for: .porridgeStopRecording)) { _ in
@@ -222,8 +231,9 @@ struct NoteDetailView: View {
             player.stop()
             if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
         }
-        .sheet(isPresented: $showSummaryEditor, onDismiss: finishEditingSummary) {
-            SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 }))
+        .sheet(isPresented: $showSummaryEditor) {
+            // Cleaned up from the sheet itself, once its editor has handed over the last typing.
+            SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 }), onFinish: finishEditingSummary)
         }
         .sheet(isPresented: $showMerge) {
             MergeNotesSheet(base: note) {
@@ -297,7 +307,10 @@ struct NoteDetailView: View {
             HStack(alignment: .top, spacing: 10) {
                 if note.isTodo {
                     TodoCheckbox(isDone: note.isDone, size: 26) {
-                        withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) }
+                        // What the box showed when it was tapped, before the typing that is handed over now moves it.
+                        let done = !note.isDone
+                        commitTyping()
+                        withAnimation(.snappy) { Todos.setDone(done, note, in: context) }
                     }
                     .disabled(note.isDeleted)
                     .frame(minHeight: titleLineHeight)
@@ -557,7 +570,12 @@ struct NoteDetailView: View {
                     Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
                 }
                 if note.isTodo {
-                    Button { withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) } } label: {
+                    Button {
+                        // What the box showed when it was tapped, before the typing that is handed over now moves it.
+                        let done = !note.isDone
+                        commitTyping()
+                        withAnimation(.snappy) { Todos.setDone(done, note, in: context) }
+                    } label: {
                         Label(note.isDone ? "Mark as Not Done" : "Mark as Done", systemImage: note.isDone ? "square" : "checkmark.square")
                     }
                 }
@@ -579,7 +597,10 @@ struct NoteDetailView: View {
                     }
                     .disabled(!canEnhance)
                     if processing.canUndoEnhance(note) {
-                        Button { processing.undoEnhance(note) } label: {
+                        Button {
+                            commitTyping()
+                            processing.undoEnhance(note)
+                        } label: {
                             Label("Undo Enhance", systemImage: "arrow.uturn.backward")
                         }
                     }
@@ -708,8 +729,11 @@ struct NoteDetailView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.brandNavy)
             Spacer(minLength: 0)
-            Button("Undo") { processing.undoEnhance(note) }
-                .buttonStyle(PillButtonStyle())
+            Button("Undo") {
+                commitTyping()
+                processing.undoEnhance(note)
+            }
+            .buttonStyle(PillButtonStyle())
         }
         .flatPanel()
     }
@@ -961,6 +985,7 @@ struct NoteDetailView: View {
 
     private func insertSummary() {
         guard let summary = note.summary else { return }
+        commitTyping()
         note.text = note.text.isEmpty ? summary : note.text + "\n\n" + summary
         note.updatedAt = Date()
         try? context.save()
@@ -1051,6 +1076,17 @@ struct NoteDetailView: View {
         liveText = ""
         saveIfFilled()
         try? context.save()
+    }
+
+    /// Hands typing that is still on its way (see `NoteTextCoordinator.commit`) to the note. Called before the
+    /// note's text is changed from here (a to-do ticked, an enhance undone): a commit still pending would otherwise
+    /// write the older text back over that change. Changes made by the flush itself get what `onChange` gives them.
+    private func commitTyping() {
+        let old = note.text
+        editor.blur()
+        guard note.text != old else { return }
+        note.updatedAt = Date()
+        Todos.follow(note, from: old)
     }
 
     /// Stores a new note the first time it has a title or text.

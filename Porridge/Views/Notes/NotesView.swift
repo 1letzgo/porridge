@@ -219,17 +219,17 @@ struct NotesView: View {
             }
         }
         .confirmationDialog(
-            "Delete “\(deletingProject?.name ?? "")”?", isPresented: .constant(deletingProject != nil), titleVisibility: .visible
-        ) {
+            "Delete “\(deletingProject?.name ?? "")”?", isPresented: Binding(get: { deletingProject != nil }, set: { if !$0 { deletingProject = nil } }),
+            titleVisibility: .visible, presenting: deletingProject
+        ) { project in
+            // The bucket comes with the dialog: closing it may clear `deletingProject` before this runs.
             Button("Delete Bucket", role: .destructive) {
-                if let deletingProject {
-                    if page == .project(deletingProject.id) { page = .home }
-                    Projects.delete(deletingProject, in: context)
-                }
+                if page == .project(project.id) { page = .home }
+                Projects.delete(project, in: context)
                 deletingProject = nil
             }
             Button("Cancel", role: .cancel) { deletingProject = nil }
-        } message: {
+        } message: { _ in
             Text("Its meetings, notes and links stay.")
         }
         .task {
@@ -871,7 +871,8 @@ struct NotesView: View {
             let title: String
             let label: String
             let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
-            if calendar.isDateInToday(date) {
+            // A date ahead (another device's clock) counts as today, so no heading comes twice.
+            if calendar.isDateInToday(date) || days < 0 {
                 title = String(localized: "Today"); label = "T"
             } else if calendar.isDateInYesterday(date) {
                 title = String(localized: "Yesterday"); label = "Y"

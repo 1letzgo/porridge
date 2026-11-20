@@ -16,6 +16,11 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
     /// A recording is running somewhere: only one at a time.
     static var isRecording: Bool { !running.isEmpty }
 
+    /// Ends the running recording as Stop does, so the meeting is kept (before quitting).
+    static func stopAll() {
+        for controller in running { controller.stop() }
+    }
+
     private let meetingTitle: String?
     private let continues: UUID?
     private let onFinish: (Finished) -> Void

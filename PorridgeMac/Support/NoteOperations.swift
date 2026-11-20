@@ -110,7 +110,12 @@ enum NoteOperations {
     }
 
     static func setPinned(_ pinned: Bool, _ notes: [Note]) {
-        notes.forEach { $0.isPinned = pinned }
+        // A change like any other: the sync otherwise lets an older copy of the note win over the pin.
+        let now = Date()
+        for note in notes where note.isPinned != pinned {
+            note.isPinned = pinned
+            note.updatedAt = now
+        }
         library.save()
     }
 

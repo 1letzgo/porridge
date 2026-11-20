@@ -61,9 +61,18 @@ final class AppUpdate {
         }
     }
 
+    /// What a check found; the menu command reports it.
+    enum Outcome {
+        case alreadyChecking
+        case upToDate
+        case available(Release)
+        case failed(String)
+    }
+
     /// `manual`: asked by the user, so a skipped version counts again and the result is reported either way.
-    func check(manual: Bool) async {
-        guard !checking else { return }
+    @discardableResult
+    func check(manual: Bool) async -> Outcome {
+        guard !checking else { return .alreadyChecking }
         checking = true
         defer { checking = false }
         do {
@@ -76,12 +85,15 @@ final class AppUpdate {
             if let newer, newer.tag != UserDefaults.standard.string(forKey: Self.skippedKey) {
                 available = newer
                 lastResult = "Version \(newer.version) is available."
+                return .available(newer)
             } else {
                 available = nil
                 lastResult = "Porridge \(Self.currentVersion) is up to date."
+                return .upToDate
             }
         } catch {
             lastResult = "Could not check: \(error.localizedDescription)"
+            return .failed(error.localizedDescription)
         }
     }
 
@@ -114,7 +126,7 @@ final class AppUpdate {
     }
 
     private static func fetchReleases() async throws -> [Release] {
-        var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=20")!)
+        var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=100")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Porridge-mac/\(currentVersion)", forHTTPHeaderField: "User-Agent")
         request.cachePolicy = .reloadIgnoringLocalCacheData

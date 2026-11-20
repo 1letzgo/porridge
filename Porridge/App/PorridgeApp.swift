@@ -28,7 +28,8 @@ struct PorridgeApp: App {
         let container = AppContainer.make()
         self.container = container
         _processing = State(initialValue: ProcessingService(container: container))
-        NextcloudSync.shared.attach(container)
+        // On the empty fallback store the sync would take every note as deleted here and delete it everywhere.
+        if AppContainer.storeError == nil { NextcloudSync.shared.attach(container) }
         #if DEBUG
         MainActor.assumeIsolated { TestSeed.run(container) }
         #endif

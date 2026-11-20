@@ -67,14 +67,22 @@ fi
 
 echo "Building $SCHEME $VERSION ($BUILD) …"
 rm -rf "$DERIVED/Build/Products/Release"
+# PorridgeMacRelease.entitlements: the Production CloudKit database, the one TestFlight on iPhone and Mac uses,
+# also with Apple Development signing (its profile allows both environments). Debug runs keep Development.
+ENTITLEMENTS=PorridgeMac/PorridgeMacRelease.entitlements
 xcodebuild -scheme "$SCHEME" -configuration Release -destination 'platform=macOS' \
-  -derivedDataPath "$DERIVED" "${SIGN_ARGS[@]}" build 2>&1 \
+  -derivedDataPath "$DERIVED" CODE_SIGN_ENTITLEMENTS="$ENTITLEMENTS" "${SIGN_ARGS[@]}" build 2>&1 \
   | { grep -E '^\*\* BUILD|^/.* error:' || true; }
 # The build's own result, not grep's: an app from an earlier build must not be released as this one.
 (( pipestatus[1] == 0 )) || { echo "Build failed." >&2; exit 1; }
 APP="$DERIVED/Build/Products/Release/Porridge.app"
 [[ -d $APP ]] || { echo "Build failed: $APP missing" >&2; exit 1; }
 codesign --verify --deep --strict "$APP"
+# Without this entitlement the app would sync with the Development database and never see the iPhone's notes.
+if [[ $(codesign -d --entitlements :- "$APP" 2>/dev/null | plutil -extract 'com\.apple\.developer\.icloud-container-environment' raw -o - - 2>/dev/null) != Production ]]; then
+  echo "The app is not signed for the Production CloudKit environment ($ENTITLEMENTS)." >&2
+  exit 1
+fi
 BUILT=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
 if [[ $BUILT != "$VERSION" ]]; then
   echo "The app says version $BUILT, the tag would say $VERSION. Run xcodegen generate and try again." >&2

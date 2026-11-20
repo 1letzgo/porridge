@@ -24,11 +24,20 @@ final class RecordingUploads: NSObject, URLSessionTaskDelegate, @unchecked Senda
         DispatchQueue.main.async { handler?() }
     }
 
-    private lazy var session: URLSession = {
-        let configuration = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
-        configuration.isDiscretionary = false
-        return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-    }()
+    private var made: URLSession?
+
+    /// Made once, under the lock: the app delegate and the sync reach it from different threads, and two
+    /// background sessions with the same identifier would lose the events of one.
+    private var session: URLSession {
+        lock.withLock {
+            if let made { return made }
+            let configuration = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
+            configuration.isDiscretionary = false
+            let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+            made = session
+            return session
+        }
+    }
 
     /// The recordings on their way up, also from before the app was restarted.
     func running() async -> Set<String> {

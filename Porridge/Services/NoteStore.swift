@@ -15,11 +15,13 @@ enum NoteStore {
         try? context.save()
     }
 
-    /// An audio or video file from outside becomes a meeting that is transcribed.
+    /// An audio or video file from outside becomes a meeting that is transcribed. `save: false` leaves saving to
+    /// the caller (the share import saves once per share, then takes it out of the inbox).
     @discardableResult
     @MainActor
     static func importAudio(
-        from url: URL, title: String? = nil, source: NoteSource = .audioImport, context: ModelContext, processing: ProcessingService
+        from url: URL, title: String? = nil, source: NoteSource = .audioImport, save: Bool = true,
+        context: ModelContext, processing: ProcessingService
     ) throws -> Note {
         let fileName = try AudioStore.importFile(from: url)
         let note = Note()
@@ -34,7 +36,7 @@ enum NoteStore {
             note.channelCount = info.channels
         }
         context.insert(note)
-        try? context.save()
+        if save { try? context.save() }
         // Imported here: this device summarizes it once it is transcribed (`AutoSummary`).
         AutoSummary.markOrigin(note.id)
         processing.enqueue(.transcript(note.id))

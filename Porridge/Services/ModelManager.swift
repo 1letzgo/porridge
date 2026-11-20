@@ -138,7 +138,8 @@ final class ModelManager {
 
     /// Downloads (if needed) and loads a summary model. Call `releaseLLM()` when done to free memory.
     func ensureLLM(_ model: LocalModel, onProgress: (@MainActor (Double) -> Void)? = nil) async throws {
-        if llmState(model) == .ready { return }
+        // Chat and summaries may use different models, and only one fits in memory: "ready" may be out of date.
+        if llmState(model) == .ready, await LocalLLM.shared.isLoaded(model) { return }
         if model == .apple {
             // Nothing to fetch or load: the system holds this model.
             guard model.isInstalled else { throw AppleLLMError.unavailable }
@@ -240,6 +241,14 @@ final class ModelManager {
             try? await Task.sleep(for: .seconds(120))
             if !Task.isCancelled { await releaseLLM() }
         }
+    }
+
+    /// `LocalLLM` put this model in memory, in place of whichever was there before.
+    func llmDidLoad(_ model: LocalModel) {
+        for other in LocalModel.downloadable where other != model && llmState(other) == .ready {
+            llm[other] = .installed
+        }
+        if llmState(model) == .installed { llm[model] = .ready }
     }
 
     func releaseLLM() async {

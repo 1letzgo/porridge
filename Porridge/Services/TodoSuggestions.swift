@@ -68,8 +68,9 @@ enum TodoSuggestions {
         // Small models copy the meeting's own date into every task: that day counts only for a task due "today".
         let meetingDay = Todos.dueKey(meetingDate, calendar: calendar)
         if due == meetingDay, !saysToday(title) { due = nil }
-        // A deadline in the task's own words ("… bis zum 3. Dezember").
-        if due == nil, let inTitle = dueDay(from: title, meetingDate: meetingDate, calendar: calendar), inTitle != meetingDay || saysToday(title) {
+        // A deadline in the task's own words ("… bis zum 3. Dezember"). Read strictly: "Pick 2 out of 5" is no October.
+        if due == nil, let inTitle = dueDay(from: title, meetingDate: meetingDate, calendar: calendar, strict: true),
+           inTitle != meetingDay || saysToday(title) {
             due = inTitle
         }
         return (title, owner, due)
@@ -105,8 +106,9 @@ enum TodoSuggestions {
     /// The day a due date names, as "yyyy-MM-dd", only when it is a date: "2026-11-28", "28.11.2026", "28.11.",
     /// "28 November", "November 28, 2026", "28. Nov". A day without a year is the first such day on or after the
     /// meeting. Words like "next Friday" or "end of the month" give nothing: the summary is asked to write them as
-    /// dates, and nothing is guessed.
-    static func dueDay(from text: String, meetingDate: Date, calendar: Calendar = .current) -> String? {
+    /// dates, and nothing is guessed. `strict` is for free text (a task's own words): a month that is also a common
+    /// word ("out", "set", "may", "mar") counts only with a marked day ("2.", "2nd") or a year next to it.
+    static func dueDay(from text: String, meetingDate: Date, calendar: Calendar = .current, strict: Bool = false) -> String? {
         let ns = text as NSString
         let whole = NSRange(location: 0, length: ns.length)
         func int(_ m: NSTextCheckingResult, _ i: Int) -> Int? {
@@ -120,14 +122,19 @@ enum TodoSuggestions {
             let y = int(m, 3).map { $0 < 100 ? 2000 + $0 : $0 }
             return resolve(year: y, month: mo, day: d, meetingDate: meetingDate, calendar: calendar)
         }
+        func marked(_ m: NSTextCheckingResult, _ i: Int) -> Bool { m.range(at: i).length > 0 }
         for m in dayMonth.matches(in: text, range: whole) {
-            if let d = int(m, 1), let mo = month(ns.substring(with: m.range(at: 2))) {
-                return resolve(year: int(m, 3), month: mo, day: d, meetingDate: meetingDate, calendar: calendar)
+            let word = ns.substring(with: m.range(at: 3))
+            if strict, isAmbiguousMonth(word), !marked(m, 2), !marked(m, 4) { continue }
+            if let d = int(m, 1), let mo = month(word) {
+                return resolve(year: int(m, 4), month: mo, day: d, meetingDate: meetingDate, calendar: calendar)
             }
         }
         for m in monthDay.matches(in: text, range: whole) {
-            if let d = int(m, 2), let mo = month(ns.substring(with: m.range(at: 1))) {
-                return resolve(year: int(m, 3), month: mo, day: d, meetingDate: meetingDate, calendar: calendar)
+            let word = ns.substring(with: m.range(at: 1))
+            if strict, isAmbiguousMonth(word), !marked(m, 2), !marked(m, 4), !marked(m, 5) { continue }
+            if let d = int(m, 3), let mo = month(word) {
+                return resolve(year: int(m, 5), month: mo, day: d, meetingDate: meetingDate, calendar: calendar)
             }
         }
         return nil
@@ -136,8 +143,10 @@ enum TodoSuggestions {
     private static func re(_ pattern: String) -> NSRegularExpression { try! NSRegularExpression(pattern: pattern, options: .caseInsensitive) }
     private static let iso = re(#"\b(\d{4})-(\d{1,2})-(\d{1,2})\b"#)
     private static let dotted = re(#"(?<![\d.])(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})?(?![\d])"#)
-    private static let dayMonth = re(#"(?<!\d)(\d{1,2})(?:st|nd|rd|th|er|º)?\.?\s+(?:de\s+)?(\p{L}{3,})\.?(?:\s+(?:de\s+)?(\d{4}))?"#)
-    private static let monthDay = re(#"(\p{L}{3,})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b,?(?:\s+(\d{4}))?"#)
+    /// Day, its mark ("2nd", "2."), month, year.
+    private static let dayMonth = re(#"(?<!\d)(\d{1,2})((?:st|nd|rd|th|er|º)?\.?)\s+(?:de\s+)?(\p{L}{3,})\.?(?:\s+(?:de\s+)?(\d{4}))?"#)
+    /// Month, its dot, day, the day's mark, year.
+    private static let monthDay = re(#"(\p{L}{3,})(\.?)\s+(\d{1,2})(st|nd|rd|th)?\b,?(?:\s+(\d{4}))?"#)
 
     /// Month names and their usual short forms in the languages of the summaries.
     private static let months: [(Int, [String])] = [
@@ -154,6 +163,11 @@ enum TodoSuggestions {
         (11, ["november", "nov", "novembre", "noviembre", "novembro", "listopada", "listopad"]),
         (12, ["december", "dec", "dezember", "dez", "décembre", "déc", "decembre", "diciembre", "dic", "dicembre", "dezembro", "grudnia", "grudzień"]),
     ]
+
+    /// Month names and short forms that are also everyday words in the summaries' languages.
+    private static let ambiguousMonths: Set<String> = ["out", "set", "sept", "ago", "gen", "mag", "may", "mai", "mar", "mars", "lug", "dez"]
+
+    private static func isAmbiguousMonth(_ word: String) -> Bool { ambiguousMonths.contains(word.lowercased()) }
 
     private static func month(_ word: String) -> Int? {
         let lower = word.lowercased()

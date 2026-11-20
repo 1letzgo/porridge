@@ -122,7 +122,13 @@ final class NoteTextCoordinator: NSObject {
         guard let textView, let storage = textView.noteStorage else { return text.wrappedValue.count }
         let location = controller.isEditing ? min(textView.selectedRange.location, storage.length) : storage.length
         if location == storage.length { return NoteMarkdown.markdown(from: storage).count }
-        return NoteMarkdown.markdown(from: storage.attributedSubstring(from: NSRange(location: 0, length: location)), openEnded: true).count
+        let before = NoteMarkdown.markdown(from: storage.attributedSubstring(from: NSRange(location: 0, length: location)), openEnded: true).count
+        // At the start of a heading or quote the cut-off text ends before its hidden "# " or "> ": the cursor is after it.
+        let paragraph = paragraphRange(at: location)
+        guard location == paragraph.location else { return before }
+        let (kind, _) = kind(of: paragraph)
+        guard kind == .quote || kind.headingLevel > 0 else { return before }
+        return before + NoteBlock(kind: kind, indent: 0, text: "").mark(number: 1).count
     }
 
     func blur() {
@@ -463,11 +469,15 @@ final class NoteTextCoordinator: NSObject {
         resetTypingAttributes()
     }
 
-    /// A click on a checkbox ticks it.
-    func toggleCheckbox(near index: Int) -> Bool {
+    /// A click on a checkbox ticks it. `index` is the insertion point nearest the click (either side of the box),
+    /// `point` the click in text container coordinates: only a click on the box itself counts, not one at the
+    /// start of the item's first letter.
+    func toggleCheckbox(near index: Int, at point: CGPoint) -> Bool {
         guard let storage, textView?.isEditable == true else { return false }
         for candidate in [index, index - 1] where candidate >= 0 && candidate < storage.length {
             guard storage.attribute(.attachment, at: candidate, effectiveRange: nil) != nil else { continue }
+            // Without a layout to ask (never with TextKit 2) the nearest box counts, as before.
+            if let box = frame(ofCharacterAt: candidate), !box.contains(point) { continue }
             let checked = storage.attribute(.noteChecked, at: candidate, effectiveRange: nil) as? Bool ?? false
             let paragraph = paragraphRange(at: candidate)
             let (_, indent) = kind(of: paragraph)
@@ -476,6 +486,20 @@ final class NoteTextCoordinator: NSObject {
             return true
         }
         return false
+    }
+
+    /// Where one character is laid out, in text container coordinates (the line's height, the glyph's width).
+    private func frame(ofCharacterAt location: Int) -> CGRect? {
+        guard let layout = textView?.textLayoutManager, let content = layout.textContentManager,
+              let start = content.location(content.documentRange.location, offsetBy: location),
+              let end = content.location(start, offsetBy: 1),
+              let range = NSTextRange(location: start, end: end) else { return nil }
+        var frame: CGRect?
+        layout.enumerateTextSegments(in: range, type: .standard, options: []) { _, segment, _, _ in
+            frame = frame.map { $0.union(segment) } ?? segment
+            return true
+        }
+        return frame
     }
 
     // MARK: Commands
@@ -625,7 +649,8 @@ final class NotePlatformTextView: NSTextView {
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let index = characterIndexForInsertion(at: point)
-        if let coordinator, coordinator.toggleCheckbox(near: index) { return }
+        let inContainer = CGPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        if let coordinator, coordinator.toggleCheckbox(near: index, at: inContainer) { return }
         super.mouseDown(with: event)
     }
 
@@ -749,7 +774,8 @@ final class NotePlatformTextView: UITextView {
         let point = gesture.location(in: self)
         guard let position = closestPosition(to: point) else { return }
         let index = offset(from: beginningOfDocument, to: position)
-        _ = coordinator?.toggleCheckbox(near: index)
+        let inContainer = CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top)
+        _ = coordinator?.toggleCheckbox(near: index, at: inContainer)
     }
 }
 
