@@ -182,7 +182,7 @@ final class ChatService {
             ) { [weak self] status in
                 self?.status = status
             }
-            answer(text, sources: Self.sources(in: text, items: found.items))
+            answer(text, sources: Self.sources(in: text, items: found.items, wordsNotFound: found.wordsNotFound))
         } catch {
             answer(error.localizedDescription, isError: true)
         }
@@ -190,7 +190,7 @@ final class ChatService {
 
     /// The notes behind the items the answer quotes as [n]; without a number, the first passages (not the list of
     /// matches, which may be long).
-    static func sources(in answer: String, items: [ChatContextItem]) -> [ChatSource] {
+    static func sources(in answer: String, items: [ChatContextItem], wordsNotFound: Bool = false) -> [ChatSource] {
         var numbers: [Int] = []
         var rest = Substring(answer)
         while let open = rest.firstIndex(of: "[") {
@@ -200,9 +200,12 @@ final class ChatService {
             rest = rest[rest.index(after: close)...]
         }
         var indices = numbers.compactMap { $0 >= 1 && $0 <= items.count ? $0 - 1 : nil }
-        if indices.isEmpty {
+        // An answer without numbers gets the first passages that fit, never the stand-ins: entries outside the
+        // filters, or the newest ones offered because nothing had the question's words ("nothing found").
+        if indices.isEmpty, !wordsNotFound {
             let passages = items.indices.filter { !items[$0].isListing && !items[$0].isOutside }
-            indices = Array((passages.isEmpty ? Array(items.indices) : passages).prefix(3))
+            let listed = items.indices.filter { items[$0].isListing }
+            indices = Array((passages.isEmpty ? listed : passages).prefix(3))
         }
         var seen = Set<UUID>()
         return indices.compactMap { index in
@@ -269,7 +272,8 @@ final class ChatService {
                 user += "[\(start + offset + 1)] \(item.header)\n\(item.text)\n\n"
             }
         }
-        block(context.matched == nil ? "Excerpts:" : "Excerpts from the matching entries:", inside, start: number)
+        let plain = context.wordsNotFound ? "No entry contains the words of the question. The newest entries, only in case they answer it:" : "Excerpts:"
+        block(context.matched == nil ? plain : "Excerpts from the matching entries:", inside, start: number)
         block(context.matched == nil ? "Excerpts:" : "Excerpts from other entries (they do not match \(context.filter); use them only if they answer the question):", outside, start: number + inside.count)
         user += "Question: \(question)"
         return (system, user)

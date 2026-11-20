@@ -313,4 +313,22 @@ final class ChatDataTests: XCTestCase {
         )
         XCTAssertTrue(ChatService.prompt(question: "?", history: [], context: many, bucket: nil, limit: 7000, now: now).user.contains("the first "))
     }
+
+    // MARK: - Nothing found
+
+    func testAQuestionWhoseWordsNoEntryHasGetsNoSources() {
+        let f = makeFixture()
+        // "Falke" is only in a deleted note: nothing has the words, the newest entries stand in.
+        let falcon = context("Was weiß ich über den Codenamen Falke?", f)
+        XCTAssertTrue(falcon.wordsNotFound)
+        XCTAssertFalse(falcon.items.contains { $0.noteID == f["Geheimes Projekt"] })
+        XCTAssertEqual(ChatService.sources(in: "Dazu habe ich nichts gefunden.", items: falcon.items, wordsNotFound: falcon.wordsNotFound), [])
+        XCTAssertTrue(ChatService.prompt(question: "Was weiß ich über den Codenamen Falke?", history: [], context: falcon, bucket: nil).user.contains("No entry contains the words of the question"))
+        // A question with words that are found keeps the fallback sources of an answer without numbers.
+        let rent = context("Wie hoch ist die Kaution?", f)
+        XCTAssertFalse(rent.wordsNotFound)
+        XCTAssertEqual(ChatService.sources(in: "2.400 Euro.", items: rent.items, wordsNotFound: rent.wordsNotFound).first?.title, "Mietvertrag")
+        // Without words to search for ("what was this week?") the newest entries are the answer, not a stand-in.
+        XCTAssertFalse(context("Was war diese Woche?", f).wordsNotFound)
+    }
 }

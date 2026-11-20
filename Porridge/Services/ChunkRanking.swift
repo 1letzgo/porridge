@@ -183,15 +183,23 @@ enum ChatRetrieval {
         _ question: String, in chunks: [ChatChunk], queryVector: [Float]? = nil,
         now: Date = Date(), calendar: Calendar = .current, budget: Int = 6500, recentBudget: Int = 4500
     ) -> [ChatChunk] {
+        selection(question, in: chunks, queryVector: queryVector, now: now, calendar: calendar, budget: budget, recentBudget: recentBudget).chunks
+    }
+
+    /// `select`, and whether the passages are only the newest ones because nothing had the question's words.
+    static func selection(
+        _ question: String, in chunks: [ChatChunk], queryVector: [Float]? = nil,
+        now: Date = Date(), calendar: Calendar = .current, budget: Int = 6500, recentBudget: Int = 4500
+    ) -> (chunks: [ChatChunk], isNewest: Bool) {
         var window: [ChatChunk] = []
         if let start = since(in: question, now: now, calendar: calendar) {
             window = chunks.filter { $0.date >= start }
             let found = search(question, in: window, queryVector: queryVector, budget: budget)
-            if !found.isEmpty { return found }
+            if !found.isEmpty { return (found, false) }
         }
         let found = search(question, in: chunks, queryVector: queryVector, budget: budget)
-        if !found.isEmpty { return found }
-        return recent(from: window.isEmpty ? chunks : window, budget: recentBudget)
+        if !found.isEmpty { return (found, false) }
+        return (recent(from: window.isEmpty ? chunks : window, budget: recentBudget), true)
     }
 
     // MARK: - The question

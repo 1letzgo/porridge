@@ -36,7 +36,7 @@ final class NoteIndex {
     private static let fileVersion = 3
 
     nonisolated private static var fileURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let base = DataLocation.applicationSupport
         let folder = base.appendingPathComponent("Porridge", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appendingPathComponent("note-index.plist")

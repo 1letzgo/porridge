@@ -1,4 +1,25 @@
+import Foundation
 import SwiftData
+
+/// Where the app keeps its files (Application Support). Debug builds started with the environment variable
+/// `PORRIDGE_TEST_DATA=<folder>` keep everything there instead (store, recordings, files, chat index) and never sync,
+/// so a test run never touches the real notes.
+enum DataLocation {
+    static let testFolder: URL? = {
+        #if DEBUG
+        guard let path = ProcessInfo.processInfo.environment["PORRIDGE_TEST_DATA"], !path.isEmpty else { return nil }
+        let url = URL(fileURLWithPath: path, isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+        #else
+        return nil
+        #endif
+    }()
+
+    static var applicationSupport: URL {
+        testFolder ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    }
+}
 
 enum AppContainer {
     /// Set when the notes could not be opened and the app runs on an empty store in memory (see `make`).
@@ -8,6 +29,10 @@ enum AppContainer {
     /// iCloud is the chosen sync; otherwise local (Nextcloud syncs on its own, see `NextcloudSync`).
     static func make() -> ModelContainer {
         let schema = Schema([Meeting.self, Note.self, NoteFolder.self, VoiceProfile.self, ChatThread.self, ChatEntry.self])
+        if let folder = DataLocation.testFolder {
+            let url = folder.appendingPathComponent("test.store")
+            return try! ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none))
+        }
         do {
             let cloud: ModelConfiguration.CloudKitDatabase = SyncMode.active == .iCloud ? .automatic : .none
             return try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, cloudKitDatabase: cloud))

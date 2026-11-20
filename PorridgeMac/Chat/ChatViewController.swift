@@ -265,7 +265,7 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         state.reveal(note)
     }
 
-    private func ask(_ text: String) {
+    func ask(_ text: String) {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty, service.thinking == nil else { return }
         input.textView.string = ""

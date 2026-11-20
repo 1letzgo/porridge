@@ -26,8 +26,8 @@ enum SyncMode: String, CaseIterable, Identifiable {
         UserDefaults.standard.string(forKey: key).flatMap(SyncMode.init(rawValue:)) ?? .iCloud
     }
 
-    /// The mode the app was started with.
-    static let active = chosen
+    /// The mode the app was started with; off on test data (`DataLocation.testFolder`).
+    static let active = DataLocation.testFolder == nil ? chosen : .off
 }
 
 /// Sync through a Nextcloud: one file `Porridge/porridge-sync.json` with all notes, folders and voices,

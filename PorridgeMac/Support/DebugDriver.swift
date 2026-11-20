@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import SwiftData
 
 /// Lets a developer drive the app from the command line in a debug build, for checking the interface without
 /// clicking: with PORRIDGE_DEBUG_DRIVER set, commands written to `commandFile` are run. Not part of release builds.
@@ -221,6 +222,45 @@ enum DebugDriver {
                 log("drop refused")
             }
             destination.draggingEnded?(info)
+        case "seed-chat":
+            // The chat test entries (`TestSeed.seedChat`); only on test data.
+            TestSeed.seedChat(library.context)
+            library.setNeedsReload()
+        case "ask":
+            // Asks the open chat (a new one when none is open), as typing the question and Return does.
+            state.page = .chat
+            DispatchQueue.main.async {
+                let chat = controller.split.detail.children.compactMap { $0 as? ChatViewController }.first
+                if chat == nil { log("ask: no chat") }
+                chat?.ask(argument)
+                log("model: \(SummaryModel.current)")
+            }
+        case "new-chat":
+            state.chatID = nil
+        case "chat-dump":
+            // The open chat's questions and answers with their sources, in order.
+            guard let id = state.chatID else { log("chat-dump: no chat"); return }
+            let entries = ((try? library.context.fetch(FetchDescriptor<ChatEntry>())) ?? [])
+                .filter { $0.threadID == id }.sorted { $0.createdAt < $1.createdAt }
+            for entry in entries {
+                log("[\(entry.role.rawValue)\(entry.isError ? " ERROR" : "")] \(entry.text)")
+                for source in entry.sources { log("   source: \(source.title) \(source.noteID)") }
+            }
+            log("--")
+        case "chat-source":
+            // Clicks the n-th source button (0 = first) of the open chat, as a click on it does.
+            func buttons(in view: NSView) -> [NSButton] {
+                var found: [NSButton] = []
+                if let button = view as? NSButton, button.identifier.flatMap({ UUID(uuidString: $0.rawValue) }) != nil { found.append(button) }
+                for sub in view.subviews { found += buttons(in: sub) }
+                return found
+            }
+            let all = buttons(in: controller.split.detail.view)
+            let index = Int(argument) ?? 0
+            guard index < all.count else { log("chat-source: \(all.count) sources"); return }
+            log("chat-source: \(all[index].title)")
+            all[index].performClick(nil)
+            DispatchQueue.main.async { log("page=\(state.page) open=\(state.openNoteID.flatMap { library.note($0)?.title } ?? "none")") }
         case "dismiss":
             // Closes the sheet on the window (a notice) with its first button.
             if let window = controller.window, let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertFirstButtonReturn) }

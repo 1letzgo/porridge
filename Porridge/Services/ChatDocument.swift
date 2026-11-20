@@ -375,6 +375,9 @@ struct ChatContext {
     var matched: Int?
     /// The filters in words (`ChatQuery.describe`).
     var filter = ""
+    /// The question had words to search for, but no passage had them: the newest entries stand in, and an answer
+    /// that cites none of them gets no sources (`ChatService.sources`).
+    var wordsNotFound = false
     var query = ChatQuery()
 
     var isEmpty: Bool { items.isEmpty }
@@ -406,8 +409,9 @@ extension ChatRetrieval {
         }
 
         guard query.isStructured else {
-            let picked = select(question, in: chunks, queryVector: queryVector, now: now, calendar: calendar)
-            context.items = picked.compactMap { item($0) }
+            let picked = selection(question, in: chunks, queryVector: queryVector, now: now, calendar: calendar)
+            context.items = picked.chunks.compactMap { item($0) }
+            context.wordsNotFound = picked.isNewest && !queryWords(question).isEmpty
             return context
         }
 
