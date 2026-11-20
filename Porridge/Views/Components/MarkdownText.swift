@@ -5,10 +5,8 @@ struct MarkdownText: View {
     let markdown: String
     /// Called with the line index when a checkbox is tapped; nil shows the checkboxes without a tap.
     var onToggleTask: ((Int) -> Void)?
-    /// Called with the text of a task line to take it over as a to-do of its own; nil offers nothing.
-    var onMakeTodo: ((String) -> Void)?
-    /// Task texts (lowercased) already taken over as to-dos: they show that instead of the offer.
-    var madeTodos: Set<String> = []
+    /// Whether a task line (its text) was taken over as a to-do: it wears a green mark at its end.
+    var isTakenTask: ((String) -> Bool)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -81,40 +79,17 @@ struct MarkdownText: View {
                     .strikethrough(done, color: .secondary)
                     .foregroundStyle(done ? .secondary : .primary)
                     .accessibilityHidden(onToggleTask != nil)
-                if let onMakeTodo {
+                if let isTakenTask, isTakenTask(text) {
                     Spacer(minLength: 4)
-                    let title = plain(text)
-                    if madeTodos.contains(title.lowercased()) {
-                        Image(systemName: "checkmark.square.on.square")
-                            .font(.subheadline)
-                            .foregroundStyle(Color.brandTaskText)
-                            .accessibilityLabel("Taken over as a to-do")
-                    } else {
-                        Button { onMakeTodo(title) } label: {
-                            Image(systemName: "plus.square.on.square")
-                                .font(.subheadline)
-                                .foregroundStyle(Color.brandTaskText)
-                                .contentShape(Rectangle().inset(by: -10))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Make To-do")
-                        .help("Make To-do")
-                    }
-                }
-            }
-            .contextMenu {
-                if let onMakeTodo, !madeTodos.contains(plain(text).lowercased()) {
-                    Button { onMakeTodo(plain(text)) } label: { Label("Make To-do", systemImage: "checklist") }
+                    Image(systemName: "checklist")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.brandTaskText)
+                        .accessibilityLabel("Taken over as a to-do")
                 }
             }
         case .paragraph(let text):
             Text(inline(text))
         }
-    }
-
-    /// The task without its inline marks, as the title of a to-do.
-    private func plain(_ text: String) -> String {
-        String(inline(text).characters).trimmingCharacters(in: .whitespaces)
     }
 
     private func inline(_ text: String) -> AttributedString {

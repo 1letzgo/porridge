@@ -1085,6 +1085,9 @@ struct NoteRow: View {
                 StatusBadge(text: "Failed", color: .red)
             } else if [.recorded, .transcribing].contains(note.status) && note.isRecording {
                 StatusBadge(text: note.hasLocalAudio ? "Waiting for transcription" : "Processing on another device")
+            } else if case let waiting = note.pendingTodoSuggestions(made: []).count, waiting > 0 {
+                // A summary with to-dos waiting to be taken on says so instead of "Summarized".
+                StatusBadge(text: waiting == 1 ? "1 suggested to-do" : "\(waiting) suggested to-dos", color: .brandTaskText)
             } else if note.summary != nil {
                 StatusBadge(text: "Summarized", color: .accentColor)
             }

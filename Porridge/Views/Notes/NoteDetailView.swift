@@ -587,6 +587,16 @@ struct NoteDetailView: View {
                 if note.summary != nil {
                     Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
                         .disabled(isSummarizing)
+                    // The tasks of the summary as to-dos again, dismissed ones included.
+                    if !note.isSaved, !note.isTodo {
+                        Button {
+                            withAnimation(.snappy) { TodoSuggestions.suggestAgain(note, in: context) }
+                            tab = .summary
+                        } label: {
+                            Label("Suggest To-dos", systemImage: "checklist")
+                        }
+                        .disabled(isSummarizing)
+                    }
                 }
                 Divider()
                 if note.hasLocalAudio {
@@ -821,15 +831,21 @@ struct NoteDetailView: View {
             if isSummarizing {
                 SummarizingCard(message: summarizeMessage, status: processing.stages[note.id], model: processing.summaryModels[note.id]?.label ?? SummaryService.modelLabel)
             } else if let summary = note.summary {
+                let made = Todos.madeFrom(note, among: allNotes)
+                let suggestions = note.pendingTodoSuggestions(made: made)
                 VStack(spacing: 16) {
+                    // The tasks of the summary offered as to-dos, first thing on the page; never from a saved page.
+                    if !suggestions.isEmpty {
+                        SuggestedTodosCard(note: note, suggestions: suggestions)
+                    }
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
                             MarkdownText(
                                 markdown: summary,
                                 onToggleTask: note.isDeleted || note.isSaved ? nil : { toggleSummaryTask(line: $0) },
-                                // Never from a saved link or file.
-                                onMakeTodo: note.isDeleted || note.isSaved ? nil : { makeTodo(from: $0) },
-                                madeTodos: Set(Todos.madeFrom(note, among: allNotes).map { $0.title.lowercased() })
+                                isTakenTask: note.isSaved ? nil : { text in
+                                    TodoSuggestions.isTaken(text, states: TodoSuggestions.states(note.todoSuggestionsRaw), madeTitles: made.map(\.title))
+                                }
                             )
                             if !note.isDeleted {
                                 Menu {
@@ -853,6 +869,11 @@ struct NoteDetailView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
+                    }
+                    // What became of it: the to-dos made from this note, ticked and opened from here.
+                    if !made.isEmpty {
+                        MadeTodosList(todos: made)
+                            .padding(.top, 4)
                     }
                 }
             } else {
@@ -961,11 +982,6 @@ struct NoteDetailView: View {
 
     private func toggleSummaryTask(line: Int) {
         SummaryTasks.toggleLine(line, of: note, in: context)
-    }
-
-    /// A task line of the summary becomes a to-do of its own, in the same buckets; it opens only when asked to.
-    private func makeTodo(from task: String) {
-        Todos.create(fromTask: task, of: note, in: context)
     }
 
     /// The note this to-do was taken from, while it is there.

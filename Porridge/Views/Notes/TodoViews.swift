@@ -217,3 +217,162 @@ struct DueDatePickerSheet: View {
         .onAppear { day = note.todoDue.flatMap { Todos.dueDate($0) } ?? Date() }
     }
 }
+
+// MARK: - Suggested to-dos
+
+/// The tasks of a summary offered as to-dos, on the page of the meeting (or note): each can be picked and its
+/// title changed; one button takes the picked ones on, Dismiss lets them all go. Nothing is made without a tap.
+struct SuggestedTodosCard: View {
+    let note: Note
+    let suggestions: [TaskSuggestion]
+
+    @Environment(\.modelContext) private var context
+    @State private var picked: Set<String> = []
+    @State private var titles: [String: String] = [:]
+    /// The suggestions the picks were made for: new ones (a new summary) get their own preselection.
+    @State private var known: Set<String> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "checklist")
+                Text("Suggested To-dos")
+            }
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(Color.brandTaskText)
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(suggestions) { s in row(s) }
+            }
+
+            HStack(spacing: 12) {
+                Menu {
+                    Button { take(asOne: true) } label: {
+                        Label("Add as One To-do with Subtasks", systemImage: "checklist")
+                    }
+                } label: {
+                    Text(picked.count == 1 ? "Add 1 To-do" : "Add \(picked.count) To-dos")
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .foregroundStyle(Color.brandNavy)
+                        .background(Color.brandTask.opacity(picked.isEmpty ? 0.1 : 0.25), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } primaryAction: {
+                    take(asOne: false)
+                }
+                .disabled(picked.isEmpty)
+                .accessibilityIdentifier("AddSuggestedTodos")
+
+                Button("Dismiss") {
+                    withAnimation(.snappy) { TodoSuggestions.dismiss(suggestions, from: note, in: context) }
+                }
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+            }
+        }
+        .padding(14)
+        .background(Color.brandTask.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.brandTask.opacity(0.35), lineWidth: 1))
+        .onAppear(perform: preselect)
+        .onChange(of: suggestions.map(\.key)) { preselect() }
+    }
+
+    private func row(_ s: TaskSuggestion) -> some View {
+        let isOn = picked.contains(s.key)
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Button {
+                if isOn { picked.remove(s.key) } else { picked.insert(s.key) }
+            } label: {
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isOn ? Color.brandTaskText : .secondary)
+                    .contentShape(Rectangle().inset(by: -10))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(titles[s.key] ?? s.title))
+            .accessibilityValue(isOn ? "Selected" : "Not Selected")
+            .accessibilityAddTraits(.isToggle)
+            .accessibilityIdentifier("Suggestion")
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("To-do", text: Binding(get: { titles[s.key] ?? s.title }, set: { titles[s.key] = $0 }), axis: .vertical)
+                    .foregroundStyle(isOn ? .primary : .secondary)
+                if s.owner != nil || s.dueDay != nil {
+                    HStack(spacing: 8) {
+                        if let owner = s.owner {
+                            Label(owner, systemImage: "person").labelStyle(.titleAndIcon)
+                        }
+                        if let due = s.dueDay {
+                            Label(Todos.dueLabel(due), systemImage: "calendar").labelStyle(.titleAndIcon)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// Picked at first: the user's own tasks and nobody's, or all when the app does not know the user's name.
+    private func preselect() {
+        let names = AppSettings.myNames
+        for s in suggestions where !known.contains(s.key) {
+            known.insert(s.key)
+            if names.isEmpty || s.isMine { picked.insert(s.key) }
+        }
+        picked.formIntersection(Set(suggestions.map(\.key)))
+    }
+
+    private func take(asOne: Bool) {
+        let chosen = suggestions.filter { picked.contains($0.key) }.map { s -> TaskSuggestion in
+            var s = s
+            let title = (titles[s.key] ?? s.title).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { s.title = title }
+            return s
+        }
+        let rest = suggestions.filter { !picked.contains($0.key) }
+        withAnimation(.snappy) {
+            TodoSuggestions.take(chosen, dismissing: rest, from: note, asOne: asOne, in: context)
+        }
+    }
+}
+
+/// The to-dos made from a meeting, on its page: ticked right there, opened with a tap.
+struct MadeTodosList: View {
+    let todos: [Note]
+
+    @Environment(\.modelContext) private var context
+    @Environment(\.openNote) private var openNote
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "checklist")
+                Text("To-dos")
+            }
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(Color.brandTaskText)
+            ForEach(Todos.byDue(todos)) { todo in
+                HStack(spacing: 10) {
+                    TodoCheckbox(isDone: todo.isDone, size: 22) {
+                        withAnimation(.snappy) { Todos.setDone(!todo.isDone, todo, in: context) }
+                    }
+                    Button { openNote(todo.id) } label: {
+                        HStack(spacing: 8) {
+                            Text(todo.displayTitle)
+                                .strikethrough(todo.isDone, color: .secondary)
+                                .foregroundStyle(todo.isDone ? .secondary : .primary)
+                                .lineLimit(2)
+                            Spacer(minLength: 4)
+                            TodoDueLabel(note: todo).font(.caption)
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}

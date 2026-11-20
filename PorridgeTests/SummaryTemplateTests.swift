@@ -33,7 +33,8 @@ final class SummaryTemplateTests: XCTestCase {
     func testMeetingPromptForbidsInventingAndAsksForOwnerAndDueDate() {
         let prompt = SummaryService.systemPrompt(german, template: .general)
         XCTAssertTrue(prompt.contains("Only use what is in the transcript"))
-        XCTAssertTrue(prompt.contains("<owner, if known> – <due date, if named>"))
+        XCTAssertTrue(prompt.contains("<owner, if known> – <deadline as YYYY-MM-DD, if one was named>"))
+        XCTAssertTrue(prompt.contains("not the day of the meeting unless it is due that day"))
     }
 
     func testNewTemplatesKeepClearOfTheTaskHeadings() throws {

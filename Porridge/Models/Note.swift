@@ -64,6 +64,9 @@ final class Note {
     /// The day the to-do is due, "yyyy-MM-dd" (a calendar day, no time, no time zone); "none" when it was taken
     /// away; nil = never set. See `Todos.dueKey`.
     var todoDueDay: String?
+    /// What happened to the tasks of the summary offered as to-dos: JSON `{"<task key>": "taken" | "dismissed"}`;
+    /// nil = no suggestions offered (`TodoSuggestions`).
+    var todoSuggestionsRaw: String?
 
     init() {
         self.id = UUID()

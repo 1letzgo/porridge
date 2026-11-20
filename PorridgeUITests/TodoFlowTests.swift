@@ -76,4 +76,42 @@ final class TodoFlowTests: XCTestCase {
         XCTAssertTrue(row.exists, "a to-do done today left the list")
         screenshot("todo-list-done", app)
     }
+
+    /// A summarized meeting offers its tasks as to-dos: the user's and nobody's are picked, Anna's is not; taking
+    /// them on makes two to-dos in the meeting's bucket, and the suggestions are gone.
+    func testSuggestedTodosFromAMeetingAreTakenOn() throws {
+        let title = unique("Launch")
+        let app = XCUIApplication()
+        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO",
+                                "-myName", "Me", "-seedMeetingWithTasks", title]
+        app.launch()
+
+        let bucket = app.staticTexts[title].firstMatch
+        XCTAssertTrue(app.reveal(bucket), "bucket of the meeting missing")
+        bucket.tap()
+        let hint = app.staticTexts["3 suggested to-dos"].firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 10), "the meeting row does not say that to-dos wait")
+        screenshot("meeting-suggested-todos-row", app)
+        hint.tap()
+
+        XCTAssertTrue(app.staticTexts["Suggested To-dos"].waitForExistence(timeout: 10), "no suggestions on the meeting's page")
+        let add = app.buttons["AddSuggestedTodos"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        XCTAssertEqual(add.label, "Add 2 To-dos", "the user's and nobody's tasks are not the ones picked")
+        screenshot("meeting-suggested-todos", app)
+        add.tap()
+
+        XCTAssertTrue(app.staticTexts["Suggested To-dos"].waitForNonExistence(timeout: 5), "suggestions stay after taking them on")
+        XCTAssertTrue(app.buttons["Send the offer to the customer"].waitForExistence(timeout: 5)
+                      || app.staticTexts["Send the offer to the customer"].exists, "made to-do missing on the meeting's page")
+        XCTAssertEqual(app.images.matching(identifier: "Taken over as a to-do").count, 2, "taken tasks are not marked in the summary")
+        screenshot("meeting-suggested-todos-taken", app)
+
+        app.buttons["Back"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["To-dos"].firstMatch.waitForExistence(timeout: 10), "no to-dos in the bucket")
+        XCTAssertTrue(app.staticTexts["Send the offer to the customer"].exists, "the user's task is not a to-do")
+        XCTAssertTrue(app.staticTexts["Update the roadmap"].exists, "nobody's task is not a to-do")
+        XCTAssertFalse(app.staticTexts["Book the venue"].exists, "Anna's task became a to-do without being picked")
+        XCTAssertFalse(app.staticTexts["3 suggested to-dos"].exists, "the row still says that to-dos wait")
+    }
 }

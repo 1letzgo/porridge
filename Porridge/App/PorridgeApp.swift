@@ -29,6 +29,9 @@ struct PorridgeApp: App {
         self.container = container
         _processing = State(initialValue: ProcessingService(container: container))
         NextcloudSync.shared.attach(container)
+        #if DEBUG
+        MainActor.assumeIsolated { TestSeed.run(container) }
+        #endif
     }
 
     var body: some Scene {

@@ -136,6 +136,8 @@ enum SummaryService {
         }
         let (summary, tags) = splitTags(body)
         note.summary = withListMarks(summary)
+        // Its tasks are offered as to-dos on the page; nothing is made without a tap.
+        TodoSuggestions.offer(note)
         // Suggested tags only fill an empty tag field; tags you set yourself stay as they are.
         if note.labels.isEmpty { note.labels = tags }
         note.summaryModel = chosen.label
@@ -282,8 +284,8 @@ enum SummaryService {
         let tasks = isLink ? "" : """
 
         ## \(language.headings.actionItems)
-        - [ ] <a concrete task from the note>
-        (omit this heading if there are none)
+        - [ ] <a concrete task from the note> – <due date as YYYY-MM-DD, only if a date or deadline is named>
+        (omit this heading if there are none; leave out the date when none is named)
 
         """
         return """
@@ -324,8 +326,8 @@ enum SummaryService {
         \(sections)
 
         ## \(language.headings.actionItems)
-        - [ ] <a concrete task from the transcript> – <owner, if known> – <due date, if named>
-        (omit this heading if there are none; a task for the person who recorded, see "Recorded by", gets that name as owner)
+        - [ ] <a concrete task from the transcript, as a short instruction that is clear on its own> – <owner, if known> – <deadline as YYYY-MM-DD, if one was named>
+        (one line for every task a person took on ("I'll do …", "can you …" – "yes"), also small ones; omit this heading if there are none. The deadline is the day the task is due, worked out from the meeting's "Date" ("next Friday", "end of the month", "by 3 December"), not the day of the meeting unless it is due that day; leave out the owner or the deadline when they are not named, never write a placeholder. A task for the person who recorded, see "Recorded by", gets that name as owner)
 
         TAGS: <3 to 5 short keywords in \(language.name), separated by commas, without # signs>
         """
