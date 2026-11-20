@@ -144,6 +144,21 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         }
     }
 
+    #if DEBUG
+    /// The rows as drawn, for the debug driver: "name" or "[group]", with a "+" when a group is expanded.
+    var debugRows: [String] {
+        (0..<outline.numberOfRows).compactMap { row in
+            guard let node = outline.item(atRow: row) as? SidebarNode else { return nil }
+            switch node.kind {
+            case .group(let name): return "[\(name)\(outline.isItemExpanded(node) ? "+" : "-")]"
+            case .page(let page):
+                if case .project(let id) = page { return library.project(id)?.name ?? "?" }
+                return "\(page)"
+            }
+        }
+    }
+    #endif
+
     // MARK: Data source
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
@@ -206,7 +221,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             cell.configure(title: "Chat", symbol: "bubble.left.and.bubble.right.fill", tint: .brandNavy, badge: 0)
         case .project(let id):
             let project = library.project(id)
-            cell.configure(title: project?.name ?? "Bucket", symbol: "folder.fill", tint: .brandProject, badge: 0, pinned: project?.isPinned == true)
+            // What is in the bucket and not archived or deleted, as the bucket's page lists it.
+            let key = project.map(Projects.key)
+            let count = key.map { key in notes.lazy.filter { !$0.isDeleted && !$0.isArchived && $0.projectIDs.contains(key) }.count } ?? 0
+            cell.configure(title: project?.name ?? "Bucket", symbol: "folder.fill", tint: .brandProject, badge: count, pinned: project?.isPinned == true)
         case .archive:
             cell.configure(title: "Archive", symbol: "archivebox.fill", tint: .brandNavy, badge: 0)
         case .trash:
@@ -401,23 +419,25 @@ private final class SidebarCell: NSTableCellView {
         badge.setContentCompressionResistancePriority(.required, for: .horizontal)
         pin.image = .symbol("pin.fill", size: 9, weight: .semibold, label: "Pinned")
         pin.contentTintColor = .tertiaryLabelColor
-        addSubview(icon)
-        addSubview(title)
-        addSubview(badge)
-        addSubview(pin)
+        // A long name is cut, not the pin.
+        pin.setContentCompressionResistancePriority(.required, for: .horizontal)
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // A stack leaves hidden parts out, so a hidden pin or count takes no room from the name.
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        let row = NSStackView(views: [icon, title, pin, spacer, badge])
+        row.orientation = .horizontal
+        row.spacing = 4
+        row.setCustomSpacing(6, after: icon)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
         imageView = icon
         textField = title
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 18),
-            title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
-            title.centerYAnchor.constraint(equalTo: centerYAnchor),
-            pin.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 4),
-            pin.centerYAnchor.constraint(equalTo: centerYAnchor),
-            badge.leadingAnchor.constraint(greaterThanOrEqualTo: pin.trailingAnchor, constant: 4),
-            badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
-            badge.centerYAnchor.constraint(equalTo: centerYAnchor),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            row.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
 
@@ -429,7 +449,9 @@ private final class SidebarCell: NSTableCellView {
         icon.contentTintColor = tint.readable
         self.title.stringValue = title
         badge.stringValue = count > 0 ? "\(count)" : ""
+        badge.isHidden = count == 0
         pin.isHidden = !pinned
-        setAccessibilityLabel(count > 0 ? "\(title), \(count)" : title)
+        toolTip = title
+        setAccessibilityLabel([title, pinned ? String(localized: "Pinned") : nil, count > 0 ? "\(count)" : nil].compactMap { $0 }.joined(separator: ", "))
     }
 }

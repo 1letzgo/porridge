@@ -96,6 +96,17 @@ enum DebugDriver {
         case "action":
             // Sends an action up the responder chain without asking whether it is enabled.
             if !NSApp.sendAction(Selector(argument), to: nil, from: nil) { _ = controller.perform(Selector(argument), with: nil) }
+        case "bucket-new":
+            // Makes a bucket the way "New Bucket…" does once its name is given; "!" before the name pins it.
+            let pinned = argument.hasPrefix("!")
+            if let project = Projects.create(pinned ? String(argument.dropFirst()) : argument, in: library.context), pinned {
+                project.isPinned = true
+                library.save()
+            }
+        case "bucket-delete":
+            for project in library.projects where project.name == argument { Projects.delete(project, in: library.context) }
+        case "sidebar":
+            log("sidebar: " + controller.split.sidebar.debugRows.joined(separator: " | "))
         case "filter":
             state.kindFilter = KindFilter(rawValue: argument)
         case "due":
