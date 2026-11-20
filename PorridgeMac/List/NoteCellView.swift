@@ -44,24 +44,20 @@ final class NoteCellView: NSTableCellView {
         suggestions.spacing = 6
         suggestions.translatesAutoresizingMaskIntoConstraints = false
         let text = NSStackView.vertical([titleLabel, previewLabel, footer, suggestions], spacing: 3)
+        // The text takes the width of the row; the box and the picture keep theirs at the end.
+        text.setHuggingPriority(.init(1), for: .horizontal)
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         text.setCustomSpacing(5, after: previewLabel)
         text.setCustomSpacing(8, after: footer)
-        let leading = NSView()
-        leading.translatesAutoresizingMaskIntoConstraints = false
-        leading.addSubview(icon)
-        leading.addSubview(todoBox)
+        // A to-do keeps the icon of its kind; the box that ticks it stands apart, at the end of the row.
         todoBox.translatesAutoresizingMaskIntoConstraints = false
-        let row = NSStackView.horizontal([leading, text, thumbnail], spacing: 12, alignment: .top)
+        let row = NSStackView.horizontal([icon, text, thumbnail, todoBox], spacing: 12, alignment: .top)
+        row.setCustomSpacing(10, after: thumbnail)
+        row.distribution = .fill
         addSubview(row)
         NSLayoutConstraint.activate([
-            leading.widthAnchor.constraint(equalToConstant: 36),
-            leading.heightAnchor.constraint(equalToConstant: 36),
-            icon.topAnchor.constraint(equalTo: leading.topAnchor),
-            icon.leadingAnchor.constraint(equalTo: leading.leadingAnchor),
-            todoBox.centerXAnchor.constraint(equalTo: leading.centerXAnchor),
-            todoBox.centerYAnchor.constraint(equalTo: leading.centerYAnchor),
-            todoBox.widthAnchor.constraint(equalToConstant: 26),
-            todoBox.heightAnchor.constraint(equalToConstant: 26),
+            todoBox.widthAnchor.constraint(equalToConstant: 30),
+            todoBox.heightAnchor.constraint(equalToConstant: 30),
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             row.topAnchor.constraint(equalTo: topAnchor, constant: 9),
@@ -98,20 +94,20 @@ final class NoteCellView: NSTableCellView {
     private func render(_ note: Note, buckets: [NoteFolder], showsSuggestions: Bool) {
         let processing = Library.shared.processing
         let isTodo = TodoBridge.isTodo(note)
-        icon.isHidden = isTodo
+        icon.symbol = NoteKindStyle.symbol(for: note)
+        icon.tint = NoteKindStyle.tint(for: note)
+        icon.isPinned = note.isPinned
         todoBox.isHidden = !isTodo
         if isTodo {
             todoBox.isDone = TodoBridge.isDone(note)
-            todoBox.isPinned = note.isPinned
             todoBox.isEnabled = !note.isDeleted
-        } else {
-            icon.symbol = NoteKindStyle.symbol(for: note)
-            icon.tint = NoteKindStyle.tint(for: note)
-            icon.isPinned = note.isPinned
         }
         // A done to-do is struck through and grey.
         let done = isTodo && TodoBridge.isDone(note)
+        let titleStyle = NSMutableParagraphStyle()
+        titleStyle.lineBreakMode = .byTruncatingTail
         titleLabel.attributedStringValue = NSAttributedString(string: note.displayTitle, attributes: [
+            .paragraphStyle: titleStyle,
             .font: titleLabel.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize + 1, weight: .medium),
             .foregroundColor: done ? NSColor.secondaryLabelColor : NSColor.labelColor,
             .strikethroughStyle: done ? NSUnderlineStyle.single.rawValue : 0,
@@ -119,7 +115,7 @@ final class NoteCellView: NSTableCellView {
         let preview = note.preview
         previewLabel.stringValue = preview
         previewLabel.isHidden = preview.isEmpty
-        footerLabel.stringValue = footer(note)
+        footerLabel.attributedStringValue = footer(note)
 
         let stage = processing.stages[note.id]
         if let stage {
@@ -174,29 +170,57 @@ final class NoteCellView: NSTableCellView {
             suggestions.addArrangedSubview(dismiss)
         }
 
-        setAccessibilityLabel([isTodo ? (done ? "Done To-do" : "To-do") : NoteKindStyle.name(for: note), note.displayTitle, preview, footerLabel.stringValue].filter { !$0.isEmpty }.joined(separator: ", "))
+        setAccessibilityLabel([isTodo ? (done ? "Done To-do" : "To-do") : NoteKindStyle.name(for: note), note.displayTitle, preview, TodoBridge.dueAccessibility(of: note), footerLabel.stringValue].filter { !$0.isEmpty }.joined(separator: ", "))
     }
 
-    private func footer(_ note: Note) -> String {
-        var parts: [String] = []
+    /// Date, progress, due day, site, length: one line, the due day colored by where it stands.
+    private func footer(_ note: Note) -> NSAttributedString {
+        let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let result = NSMutableAttributedString()
+        func add(_ text: String, symbol: String? = nil, color: NSColor = .secondaryLabelColor, bold: Bool = false) {
+            if result.length > 0 { result.append(NSAttributedString(string: " · ", attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor])) }
+            let partFont = bold ? NSFont.systemFont(ofSize: font.pointSize, weight: .semibold) : font
+            if let symbol {
+                let attachment = NSTextAttachment()
+                let image = NSImage.symbol(symbol, size: font.pointSize, weight: bold ? .semibold : .regular).tinted(color)
+                attachment.image = image
+                attachment.bounds = NSRect(x: 0, y: -2, width: image.size.width, height: image.size.height)
+                result.append(NSAttributedString(attachment: attachment))
+                result.append(NSAttributedString(string: " ", attributes: [.font: partFont]))
+            }
+            result.append(NSAttributedString(string: text, attributes: [.font: partFont, .foregroundColor: color]))
+        }
         if let deletedAt = note.deletedAt {
             let passed = Calendar.current.dateComponents([.day], from: deletedAt, to: Date()).day ?? 0
             let left = max(0, NoteStore.trashDays - passed)
-            parts.append(left <= 1 ? String(localized: "Deleted tomorrow") : String(localized: "\(left) days left"))
+            add(left <= 1 ? String(localized: "Deleted tomorrow") : String(localized: "\(left) days left"), color: .brandDangerText)
         } else {
-            if note.isArchived { parts.append(String(localized: "Archived")) }
-            parts.append(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
+            if note.isArchived { add(String(localized: "Archived")) }
+            add(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
         }
         if TodoBridge.isTodo(note) {
+            // The due day: red when late, green today, quiet otherwise; a done to-do is never marked.
+            if let due = TodoBridge.due(of: note) {
+                let status = TodoBridge.dueStatus(of: note)
+                add(TodoBridge.dueLabel(due), symbol: status == .overdue ? "calendar.badge.exclamationmark" : "calendar",
+                    color: status == .overdue ? .brandDangerText : status == .today ? .brandTaskText : .secondaryLabelColor,
+                    bold: status == .overdue || status == .today)
+            }
             let progress = TodoBridge.progress(of: note)
-            if progress.total > 0 { parts.append("☑︎ " + progress.label) }
+            if progress.total > 0 {
+                add(progress.label, symbol: "checkmark.circle", color: progress.isComplete ? .brandTaskText : .secondaryLabelColor)
+            }
         }
-        if let domain = note.domain { parts.append(domain) }
+        if let domain = note.domain { add(domain) }
         if note.isRecording, note.duration > 0 {
-            parts.append(note.duration.durationText)
-            if note.speakers.count > 1 { parts.append(String(localized: "\(note.speakers.count) speakers")) }
+            add(note.duration.durationText)
+            if note.speakers.count > 1 { add(String(localized: "\(note.speakers.count) speakers")) }
         }
-        return parts.joined(separator: " · ")
+        // One line, cut at the end (an attributed text would wrap by default).
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingTail
+        result.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: result.length))
+        return result
     }
 
     @objc private func fileSuggested(_ sender: NSButton) {

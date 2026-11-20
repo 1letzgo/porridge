@@ -266,7 +266,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let menu = NSMenu()
         let entries: [(String, String, Selector, NSColor)] = [
             ("New Note", "square.and.pencil", #selector(newNote(_:)), .brandSky),
-            ("New To-do", "checkmark.square", #selector(newTodo(_:)), .brandTask),
+            ("New To-do", "checklist", #selector(newTodo(_:)), .brandTask),
             ("Record Meeting", "mic.fill", #selector(recordMeeting(_:)), .brandNavy),
             ("Add Link…", "link", #selector(addLink(_:)), .brandLink),
             ("New Bucket…", "folder.badge.plus", #selector(newBucket(_:)), .brandProject),
@@ -456,6 +456,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         NSPasteboard.general.setString(note.transcriptText(), forType: .string)
     }
 
+    /// Note › Due Date: today, tomorrow, next week, a picked day, or none, for the selected to-dos.
+    @objc func setDueDate(_ sender: Any?) {
+        let todos = selectedNotes.filter { $0.isTodo && $0.modelContext != nil && !$0.isDeleted }
+        guard !todos.isEmpty, let item = sender as? NSMenuItem else { return }
+        switch item.tag {
+        case 0: TodoBridge.setDue(Todos.dueKey(for: .today), todos)
+        case 1: TodoBridge.setDue(Todos.dueKey(for: .tomorrow), todos)
+        case 2: TodoBridge.setDue(Todos.dueKey(for: .nextWeek), todos)
+        case 3: DueDatePicker.present(for: todos, anchor: nil, window: window)
+        default: TodoBridge.setDue(nil, todos)
+        }
+    }
+
     @objc func transcribeAgain(_ sender: Any?) {
         guard let note = openNote else { return }
         library.processing.enqueue(.transcript(note.id))
@@ -504,6 +517,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(noteCommand(_:)):
             guard let command = NoteCommand(rawValue: item.tag), let detail = split.detail.noteDetail else { return false }
             return detail.validate(command, item: item)
+        case #selector(setDueDate(_:)):
+            let todos = notes.filter { $0.isTodo && $0.modelContext != nil && !$0.isDeleted }
+            if item.tag == 4 { return todos.contains { $0.todoDue != nil } }
+            return !todos.isEmpty
         case #selector(showArchive(_:)):
             return true
         case #selector(pasteAsNote(_:)):

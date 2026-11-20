@@ -12,6 +12,7 @@
 		01528762ABBA57FEA7E93C81 /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB2150AC1E2D50129B73B9 /* SummaryService.swift */; };
 		01E0FFCBAB683091E75D4B06 /* SummaryEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2A5616AFD8592E91EE7A9D4 /* SummaryEditorSheet.swift */; };
 		03DCEEDB98E0E488018ABD31 /* NoteBodyEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8931C85DA151D7EA0E959CA /* NoteBodyEditor.swift */; };
+		047FC43377F644CCEFDCB572 /* DueDateMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6B2367455E40FE33850B71 /* DueDateMenu.swift */; };
 		04B5CDE91376E2D1CC5C5886 /* PlaudAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50D5387B8FDB2327EE19DAAC /* PlaudAccount.swift */; };
 		04F1B5AFB8AC04370C0C1467 /* LiveRecording.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07FDF58B6FB80F0BA8223760 /* LiveRecording.swift */; };
 		054F125B4691AF7E195C7C59 /* SummaryTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B340339B5F4B0D022E9A042 /* SummaryTemplate.swift */; };
@@ -476,6 +477,7 @@
 		987A111F4ACA578E340E5A7E /* AppleSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeech.swift; sourceTree = "<group>"; };
 		990B254429F49AE3C45A70F4 /* NextcloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextcloudSync.swift; sourceTree = "<group>"; };
 		99A027F964ABF9D4B96589D2 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		9D6B2367455E40FE33850B71 /* DueDateMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DueDateMenu.swift; sourceTree = "<group>"; };
 		A07E0454189B07BF9A51DD1C /* NoteBlocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteBlocks.swift; sourceTree = "<group>"; };
 		A2630D6BCF2C50A4166E3C6F /* AcknowledgementsSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcknowledgementsSheetController.swift; sourceTree = "<group>"; };
 		A2EF8775CF439144C3EC58B2 /* NoteStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteStoreTests.swift; sourceTree = "<group>"; };
@@ -786,6 +788,7 @@
 			isa = PBXGroup;
 			children = (
 				8FF900DBD894022247A76252 /* DetailViewController.swift */,
+				9D6B2367455E40FE33850B71 /* DueDateMenu.swift */,
 				CD8FC56F7053AA9A965E2B10 /* NoteChipsView.swift */,
 				74C1E402B8027F34C87067F4 /* NoteCommand.swift */,
 				95ECCF408E170696A24132B0 /* NoteDetailViewController.swift */,
@@ -1456,6 +1459,7 @@
 				3429A25D4EF65DA7B58F988C /* DictationSettings.swift in Sources */,
 				A3816FC73735757FBE2A1728 /* DictationSettingsPane.swift in Sources */,
 				577CFEDCF38591CB827311CE /* DocumentText.swift in Sources */,
+				047FC43377F644CCEFDCB572 /* DueDateMenu.swift in Sources */,
 				5A8F2671AA290930D46AF5A5 /* ForegroundWork.swift in Sources */,
 				17E1E410955958F38BE985B9 /* GeneralSettingsPane.swift in Sources */,
 				FE2EF42824495C546C8435CB /* GlobalHotKey.swift in Sources */,

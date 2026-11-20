@@ -29,8 +29,14 @@ enum NoteOperations {
                 todos.forEach { TodoBridge.setDone(!done, $0) }
             }
         }
+        if !todos.isEmpty, todos.count == notes.count {
+            let due = NSMenuItem(title: "Due Date", action: nil, keyEquivalent: "")
+            due.image = NSImage(systemSymbolName: "calendar", accessibilityDescription: nil)
+            due.submenu = DueDateMenu.make(for: todos, window: window)
+            menu.addItem(due)
+        }
         if notes.count == 1, let note = notes.first, note.canBeTodo {
-            menu.add(note.isTodo ? "Convert to Note" : "Convert to To-do", symbol: note.isTodo ? "text.alignleft" : "checkmark.square") {
+            menu.add(note.isTodo ? "Convert to Note" : "Convert to To-do", symbol: note.isTodo ? "text.alignleft" : "checklist") {
                 TodoBridge.setTodo(!note.isTodo, note)
             }
         }

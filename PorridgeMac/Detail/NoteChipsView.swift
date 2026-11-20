@@ -5,8 +5,9 @@ import QuickLookUI
 /// buttons to add a bucket or a tag. It wraps into lines when the column is narrow.
 final class NoteChipsView: NSView {
     private let flow = FlowView()
+    private let dueChip = DueDateChip()
     private var note: Note?
-    weak var hostWindow: NSWindow?
+    weak var hostWindow: NSWindow? { didSet { dueChip.hostWindow = hostWindow } }
     var onAddTag: (() -> Void)?
 
     init() {
@@ -23,6 +24,11 @@ final class NoteChipsView: NSView {
     func show(_ note: Note, library: Library) {
         self.note = note
         var views: [NSView] = []
+        // A to-do's due day comes first.
+        if note.isTodo {
+            dueChip.show(note)
+            views.append(dueChip)
+        }
         // The bucket suggested for a note in the inbox: a click files it there, the cross drops the suggestion.
         if note.isInInbox {
             for id in note.suggestedProjectIDs {

@@ -472,6 +472,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         if let source = TodoBridge.source(of: note) {
             sourcePill.isHidden = false
             sourcePill.title = source.displayTitle
+            sourcePill.image = .symbol(source.kindSymbol, size: 11, weight: .semibold)
             sourcePill.setAccessibilityLabel("From \(source.displayTitle)")
         } else {
             sourcePill.isHidden = true

@@ -230,7 +230,9 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
                 let flow = FlowView()
                 flow.translatesAutoresizingMaskIntoConstraints = false
                 flow.setViews(sources.map { source in
-                    let pill = PillButton(title: source.title, symbol: "doc.text", tint: .brandSky, target: self, action: #selector(openSource(_:)))
+                    // The source wears the symbol of its kind, as in the lists.
+                    let symbol = library.note(source.noteID)?.kindSymbol ?? "doc.text"
+                    let pill = PillButton(title: source.title, symbol: symbol, tint: .brandSky, target: self, action: #selector(openSource(_:)))
                     pill.identifier = .init(source.noteID.uuidString)
                     pill.setAccessibilityHelp("Opens the note")
                     return pill

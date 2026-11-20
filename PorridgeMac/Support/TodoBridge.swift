@@ -22,6 +22,30 @@ enum TodoBridge {
         Todos.setTodo(isTodo, note, in: Library.shared.context)
     }
 
+    // MARK: Due day (the rules and labels are the shared ones of `Todos`)
+
+    /// The due day ("yyyy-MM-dd") while it counts.
+    static func due(of note: Note) -> String? { note.todoDue }
+
+    /// Where an open to-do's due day stands; nil for a done one (never marked) or without a day.
+    static func dueStatus(of note: Note) -> Todos.DueStatus? {
+        guard let due = note.todoDue, !note.isDone else { return nil }
+        return Todos.dueStatus(due)
+    }
+
+    static func dueLabel(_ key: String) -> String { Todos.dueLabel(key) }
+
+    /// "Overdue, due Fri" / "Due Today", for VoiceOver.
+    static func dueAccessibility(of note: Note) -> String {
+        guard let due = note.todoDue else { return "" }
+        let label = Todos.dueLabel(due)
+        return note.isOverdue ? "Overdue, due \(label)" : "Due \(label)"
+    }
+
+    static func setDue(_ key: String?, _ notes: [Note]) {
+        notes.forEach { Todos.setDue(key, $0, in: Library.shared.context) }
+    }
+
     /// Makes a new, unsaved note a to-do.
     static func makeTodo(_ note: Note) {
         note.todoState = .open

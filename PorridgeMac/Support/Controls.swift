@@ -75,9 +75,11 @@ final class KindIconView: NSView {
 }
 
 /// A capsule button: a wash of its color with a navy label (the "main buttons" of `DESIGN.md`), or a full fill.
-final class PillButton: NSButton {
+class PillButton: NSButton {
     var tint: NSColor = .brandSky { didSet { needsDisplay = true } }
     var isFilled = false { didSet { needsDisplay = true } }
+    /// The label's color on a wash; navy when nil.
+    var labelColor: NSColor? { didSet { needsDisplay = true } }
 
     convenience init(title: String, symbol: String? = nil, tint: NSColor = .brandSky, target: AnyObject?, action: Selector?) {
         self.init(frame: .zero)
@@ -106,7 +108,7 @@ final class PillButton: NSButton {
         let alpha: CGFloat = isEnabled ? 1 : 0.4
         (isFilled ? tint : tint.withAlphaComponent(isHighlighted ? 0.32 : 0.18)).withAlphaComponent(isFilled ? alpha : (isHighlighted ? 0.32 : 0.18) * alpha).setFill()
         path.fill()
-        let color = (isFilled ? tint.onFill : NSColor.brandNavy).withAlphaComponent(alpha)
+        let color = (isFilled ? tint.onFill : labelColor ?? NSColor.brandNavy).withAlphaComponent(alpha)
         let attributes: [NSAttributedString.Key: Any] = [.font: font ?? .systemFont(ofSize: 12), .foregroundColor: color]
         let text = NSAttributedString(string: title, attributes: attributes)
         let textSize = text.size()

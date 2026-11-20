@@ -70,8 +70,14 @@ enum DebugDriver {
             for (index, title) in path.enumerated() {
                 guard let item = menu?.items.first(where: { $0.title == title }) else { log("no menu item \(title)"); return }
                 if index == path.count - 1 {
-                    menu?.update()
-                    if let menu, let i = menu.items.firstIndex(of: item) { menu.performActionForItem(at: i) }
+                    // Through the window's responder chain, also while the app is in the background.
+                    if item.target == nil, let action = item.action, let responder = controller.window?.firstResponder {
+                        let ok = controller.validateMenuItem(item)
+                        log("menu item \(title) enabled=\(ok)")
+                        if ok, !responder.tryToPerform(action, with: item) { _ = controller.tryToPerform(action, with: item) }
+                    } else if let menu, let i = menu.items.firstIndex(of: item) {
+                        menu.performActionForItem(at: i)
+                    }
                 } else {
                     menu = item.submenu
                     menu?.update()
@@ -90,6 +96,11 @@ enum DebugDriver {
         case "action":
             // Sends an action up the responder chain without asking whether it is enabled.
             if !NSApp.sendAction(Selector(argument), to: nil, from: nil) { _ = controller.perform(Selector(argument), with: nil) }
+        case "filter":
+            state.kindFilter = KindFilter(rawValue: argument)
+        case "due":
+            // Sets the due day ("yyyy-MM-dd", or "clear") of the selected to-dos.
+            TodoBridge.setDue(argument == "clear" ? nil : argument, controller.selectedNotes)
         case "appearance":
             NSApp.appearance = argument == "dark" ? NSAppearance(named: .darkAqua) : argument == "light" ? NSAppearance(named: .aqua) : nil
         case "settings":

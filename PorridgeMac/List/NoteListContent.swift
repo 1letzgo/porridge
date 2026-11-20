@@ -55,8 +55,8 @@ enum NoteListContent {
             var sections: [(ListSection, [ListItem])] = []
             for (kind, tint) in order where state.kindFilter == nil || state.kindFilter == kind {
                 guard let list = byKind[kind], !list.isEmpty else { continue }
-                // To-dos: open ones first, then those done today.
-                let sorted = kind == .todos ? list.filter { !$0.isDone } + list.filter(\.isDone) : pinnedFirst(list)
+                // To-dos: open ones by due day (earliest first, undated after them), then those done today.
+                let sorted = kind == .todos ? Todos.byDue(list) : pinnedFirst(list)
                 sections.append((ListSection(id: kind.rawValue, title: kind.title, tint: tint), sorted.map { .note($0.id) }))
             }
             return Built(
@@ -89,7 +89,8 @@ enum NoteListContent {
             let found = search(notes, state: state)
             let query = state.searchText.isEmpty ? state.searchTags.map { "#" + $0 }.joined(separator: " ") : state.searchText
             return Built(
-                sections: state.hasSearch ? dateSections(found) : [],
+                // The open to-dos by when they are due; everything else by when it changed.
+                sections: !state.hasSearch ? [] : state.kindFilter == .todos ? dueSections(found) : dateSections(found),
                 emptyTitle: state.hasSearch ? "No Results for “\(query)”" : "Search",
                 emptyMessage: state.hasSearch ? "Check the spelling or try a new search." : "Type a word to search your notes, meetings and links, or pick a tag.",
                 emptySymbol: "magnifyingglass"
@@ -127,6 +128,18 @@ enum NoteListContent {
             }
         }
         return result.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// Open to-dos under Overdue, Today, Upcoming and No Due Date (the shared grouping of `Todos.dueGroups`).
+    static func dueSections(_ list: [Note]) -> [(ListSection, [ListItem])] {
+        Todos.dueGroups(list).enumerated().map { index, group in
+            let tint: ListSection.Tint = switch group.notes.first.flatMap({ TodoBridge.dueStatus(of: $0) }) {
+            case .overdue?: .red
+            case .today?: .task
+            default: .navy
+            }
+            return (ListSection(id: "due-\(index)-" + group.title, title: group.title, tint: tint), group.notes.map { .note($0.id) })
+        }
     }
 
     /// Notes under headings like Today, Yesterday, Previous 7 Days, months and years.

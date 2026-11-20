@@ -64,7 +64,7 @@ enum AppMenu {
     private static func fileMenu() -> NSMenu {
         let menu = NSMenu(title: "File")
         item(menu, "New Note", #selector(MainWindowController.newNote(_:)), "n")
-        item(menu, "New To-do", #selector(MainWindowController.newTodo(_:)), "n", [.command, .shift])
+        item(menu, "New To-do", #selector(MainWindowController.newTodo(_:)), "n", [.command, .shift], symbol: "checklist")
         item(menu, "Record Meeting", #selector(MainWindowController.recordMeeting(_:)), "r")
         item(menu, "Add Link…", #selector(MainWindowController.addLink(_:)), "l")
         item(menu, "New Bucket…", #selector(MainWindowController.newBucket(_:)), "n", [.command, .control])
@@ -171,6 +171,16 @@ enum AppMenu {
         item(menu, "Pin", #selector(MainWindowController.togglePin(_:)), "p", [.command, .shift], symbol: "pin")
         item(menu, "Mark as Done", command, "d", [.command, .shift], symbol: "checkmark.square", tag: NoteCommand.toggleTodo.rawValue)
         item(menu, "Make To-do", command, "", symbol: "checklist", tag: NoteCommand.convertTodo.rawValue)
+        // The due day of the selected to-dos.
+        let due = NSMenu(title: "Due Date")
+        let dueAction = #selector(MainWindowController.setDueDate(_:))
+        item(due, "Today", dueAction, "t", [.command, .control], symbol: "star", tag: 0)
+        item(due, "Tomorrow", dueAction, "m", [.command, .control], symbol: "sunrise", tag: 1)
+        item(due, "Next Week", dueAction, "w", [.command, .control], symbol: "calendar.badge.clock", tag: 2)
+        item(due, "Pick Date…", dueAction, "p", [.command, .control], symbol: "calendar", tag: 3)
+        due.addItem(.separator())
+        item(due, "Clear Due Date", dueAction, "\u{8}", [.command, .control], symbol: "calendar.badge.minus", tag: 4)
+        item(menu, "Due Date", nil, symbol: "calendar").submenu = due
         item(menu, "Add Tag…", command, "t", [.command, .shift], symbol: "number", tag: NoteCommand.addTag.rawValue)
         let buckets = item(menu, "Buckets", nil, symbol: "folder")
         buckets.submenu = BucketsMenu.make()

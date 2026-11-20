@@ -62,29 +62,16 @@ extension NSColor {
 
 /// What a note is, for its icon and color: meetings navy, notes sky, links orange, images and files navy.
 enum NoteKindStyle {
-    static func symbol(for note: Note) -> String {
-        if note.isTodo { return "checkmark.square" }
-        if note.isLink { return "link" }
-        if note.isStored {
-            switch note.attachments.first?.kind {
-            case .image: return "photo"
-            case .pdf: return "doc.richtext"
-            default: return "doc"
-            }
-        }
-        if note.isRecording { return "waveform" }
-        return note.attachmentsData != nil ? "paperclip" : "text.alignleft"
-    }
+    /// The shared symbol of the note's kind (`Note.kindSymbol`).
+    static func symbol(for note: Note) -> String { note.kindSymbol }
 
     static func tint(for note: Note) -> NSColor {
         if note.isTodo { return .brandTask }
         return note.isLink ? .brandLink : (note.isRecording || note.isStored ? .brandNavy : .brandSky)
     }
 
-    static func name(for note: Note) -> String {
-        if note.isTodo { return "To-do" }
-        return note.isLink ? "Link" : note.isImage ? "Image" : note.isFile ? "File" : note.isRecording ? "Meeting" : "Note"
-    }
+    static func name(for note: Note) -> String { note.kindName }
+
 }
 
 extension NSImage {
