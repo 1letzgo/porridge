@@ -63,20 +63,15 @@ enum NoteListContent {
             let key = Projects.key(project)
             let content = notes.filter { !$0.isDeleted && !$0.isArchived && $0.projectIDs.contains(key) }
             var counts: [KindFilter: Int] = [:]
-            var byKind: [KindFilter: [Note]] = [:]
+            var shown: [Note] = []
             for note in content {
                 guard let kind = KindFilter.allCases.first(where: { $0.matches(note) }) else { continue }
                 counts[kind, default: 0] += 1
-                byKind[kind, default: []].append(note)
+                if state.kindFilter == nil || state.kindFilter == kind { shown.append(note) }
             }
-            let order: [(KindFilter, ListSection.Tint)] = [(.todos, .task), (.meetings, .navy), (.notes, .sky), (.links, .link), (.images, .navy), (.files, .navy)]
-            var sections: [(ListSection, [ListItem])] = []
-            for (kind, tint) in order where state.kindFilter == nil || state.kindFilter == kind {
-                guard let list = byKind[kind], !list.isEmpty else { continue }
-                // To-dos: open ones by due day (earliest first, undated after them), then those done today.
-                let sorted = kind == .todos ? Todos.byDue(list) : pinnedFirst(list)
-                sections.append((ListSection(id: kind.rawValue, title: kind.title, tint: tint), sorted.map { .note($0.id) }))
-            }
+            // One flat list without headers: pinned first, then by last change; the To-dos filter by due day.
+            let sorted = Projects.ordered(shown, byDue: state.kindFilter == .todos)
+            let sections: [(ListSection, [ListItem])] = sorted.isEmpty ? [] : [(ListSection(id: "bucket", title: "", tint: .sky), sorted.map { .note($0.id) })]
             return Built(
                 sections: sections, emptyTitle: "Nothing Here Yet",
                 emptyMessage: "Add meetings, notes and links to the bucket, or drop them on it in the sidebar.",
@@ -116,10 +111,6 @@ enum NoteListContent {
         case .chat:
             return Built(sections: [], emptyTitle: "", emptyMessage: "", emptySymbol: "bubble.left.and.bubble.right")
         }
-    }
-
-    private static func pinnedFirst(_ notes: [Note]) -> [Note] {
-        notes.filter(\.isPinned) + notes.filter { !$0.isPinned }
     }
 
     /// What the search finds among the notes, archived ones included; strictly a timeline.

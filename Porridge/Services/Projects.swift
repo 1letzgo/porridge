@@ -6,6 +6,16 @@ import SwiftData
 enum Projects {
     static func key(_ project: NoteFolder) -> String { project.id.uuidString }
 
+    /// The order of a bucket's list (iOS and Mac, every filter): one flat list, pinned notes first, each part by last
+    /// change (newest first). `byDue` (the To-dos filter): within each part open to-dos by due day, then done ones
+    /// (`Todos.byDue`), ties by last change. Android's `Projects.ordered` mirrors this.
+    static func ordered(_ notes: [Note], byDue: Bool = false) -> [Note] {
+        let newest = notes.sorted { $0.updatedAt > $1.updatedAt }
+        let pinned = newest.filter(\.isPinned)
+        let rest = newest.filter { !$0.isPinned }
+        return byDue ? Todos.byDue(pinned) + Todos.byDue(rest) : pinned + rest
+    }
+
     @discardableResult
     static func create(_ name: String, in context: ModelContext) -> NoteFolder? {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)

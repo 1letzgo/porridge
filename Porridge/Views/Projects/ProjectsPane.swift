@@ -164,6 +164,8 @@ struct ProjectPage: View {
 
     var body: some View {
         let content = ProjectContent(of: project, notes: notes)
+        // One flat list without headers: pinned first, then by last change; the To-dos filter by due day.
+        let list = content.list(filter)
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -176,12 +178,12 @@ struct ProjectPage: View {
             }
             .padding(.bottom, Look.headerGap)
             List(selection: $selection) {
-                section("To-dos", content.todos, kind: .todos, tint: .brandTask, isFirst: true)
-                section("Meetings", content.meetings, kind: .meetings, tint: .brandNavy, isFirst: content.todos.isEmpty || !filter.shows(.todos))
-                section("Notes", content.notes, kind: .notes, tint: .brandSky, isFirst: false)
-                section("Links", content.links, kind: .links, tint: .brandLink, isFirst: false)
-                section("Images", content.images, kind: .images, tint: .brandNavy, isFirst: false)
-                section("Files", content.files, kind: .files, tint: .brandNavy, isFirst: false)
+                Section {
+                    ForEach(list) { note in
+                        NoteListRow(note: note) { onRemove(note) }
+                            .lastInSection(note.id == list.last?.id)
+                    }
+                }
             }
             .cardList()
             .roomForFloatingButtons()
@@ -194,18 +196,6 @@ struct ProjectPage: View {
                     )
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private func section(_ title: String, _ list: [Note], kind: ProjectFilter, tint: Color, isFirst: Bool) -> some View {
-        if filter.shows(kind), !list.isEmpty {
-            Section {
-                ForEach(list) { note in
-                    NoteListRow(note: note) { onRemove(note) }
-                        .lastInSection(note.id == list.last?.id)
-                }
-            } header: { ListHeader(title: title, tint: tint, isFirst: isFirst) }
         }
     }
 
@@ -226,10 +216,9 @@ struct ProjectPage: View {
     }
 }
 
-/// What is in a project, newest first. Archived elements are not
-/// in it: they are in the archive.
+/// What is in a project, by kind (in the order of the notes given). Archived elements are not
+/// in it: they are in the archive. `list` gives the order the bucket shows.
 struct ProjectContent {
-    /// Open ones first, by due day, then those done today (done earlier ones are put away, see `Note.isPutAway`).
     var todos: [Note] = []
     var meetings: [Note] = []
     var notes: [Note] = []
@@ -242,7 +231,6 @@ struct ProjectContent {
     init(of project: NoteFolder, notes all: [Note]) {
         let id = Projects.key(project)
         for note in all where !note.isDeleted && !note.isArchived && note.projectIDs.contains(id) { add(note) }
-        sortTodos()
     }
 
     /// The content of every bucket in one pass over the notes, by the bucket's key (`Projects.key`). For lists of
@@ -252,12 +240,20 @@ struct ProjectContent {
         for note in all where !note.isDeleted && !note.isArchived {
             for id in note.projectIDs { contents[id, default: ProjectContent()].add(note) }
         }
-        for key in contents.keys { contents[key]?.sortTodos() }
         return contents
     }
 
-    private mutating func sortTodos() {
-        todos = Todos.byDue(todos)
+    /// What the bucket shows under the filter, in its order (`Projects.ordered`).
+    func list(_ filter: ProjectFilter) -> [Note] {
+        switch filter {
+        case .all: Projects.ordered(todos + meetings + notes + links + images + files)
+        case .todos: Projects.ordered(todos, byDue: true)
+        case .meetings: Projects.ordered(meetings)
+        case .notes: Projects.ordered(notes)
+        case .links: Projects.ordered(links)
+        case .images: Projects.ordered(images)
+        case .files: Projects.ordered(files)
+        }
     }
 
     private mutating func add(_ note: Note) {
@@ -319,6 +315,4 @@ enum ProjectFilter: CaseIterable {
         case .files: "Files"
         }
     }
-
-    func shows(_ kind: ProjectFilter) -> Bool { self == .all || self == kind }
 }
