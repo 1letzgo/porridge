@@ -13,13 +13,27 @@ final class TodoFlowTests: XCTestCase {
         add(attachment)
     }
 
+    /// The box's middle is the middle of the title's first line (`lineHeight`: the empty, one-line field).
+    private func assertBox(_ box: CGRect, centeredOn titleTop: CGFloat, lineHeight: CGFloat, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(box.midY, titleTop + lineHeight / 2, accuracy: 3, "box not on the first line of the title", file: file, line: line)
+    }
+
     func testATodoWithSubtasksIsTickedInItsPageAndInTheList() throws {
         let app = launchApp()
         let title = unique("Pack")
         app.create("To-do")
         XCTAssertTrue(app.waitForTitleField(), "to-do did not open")
+        // The box stands on the first line of the title, and the title does not move when typing starts
+        // (an empty field once sat a line lower than the box).
+        let pageBox = app.switches["To-do"].firstMatch
+        XCTAssertTrue(pageBox.waitForExistence(timeout: 5), "box missing on the page")
+        let empty = app.titleField.frame
+        assertBox(pageBox.frame, centeredOn: empty.minY, lineHeight: empty.height)
         app.titleField.tap()
         app.titleField.typeText(title)
+        let typed = app.titleField.frame
+        XCTAssertEqual(typed.minY, empty.minY, accuracy: 1, "the title moved when typing started")
+        assertBox(pageBox.frame, centeredOn: typed.minY, lineHeight: empty.height)
 
         // Two subtasks: "Add Subtask" puts the cursor into a new checklist line, Return makes the next one.
         let add = app.buttons["Add Subtask"]

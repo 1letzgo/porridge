@@ -51,6 +51,8 @@ struct NoteDetailView: View {
     @State private var addingTag = false
     @State private var newTag = ""
     @FocusState private var focused: Bool
+    /// Height of one line of the title (title2, bold), as the text field lays it out: the box stands centered on it.
+    @ScaledMetric(relativeTo: .title2) private var titleLineHeight: CGFloat = 28
 
     /// The tabs of this note: a recording has a transcript and no text field of its own (unless it has text).
     private var opensOnSummary: Bool { note.isRecording || note.isLink || note.isStored }
@@ -288,13 +290,15 @@ struct NoteDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            // Top-aligned, the box centered on the first line: an empty title field has no text baseline, so
+            // aligning by baseline dropped the placeholder a line below the box until the first letter was typed.
+            HStack(alignment: .top, spacing: 10) {
                 if note.isTodo {
                     TodoCheckbox(isDone: note.isDone, size: 26) {
                         withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) }
                     }
                     .disabled(note.isDeleted)
-                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 8 }
+                    .frame(minHeight: titleLineHeight)
                 }
                 TextField(note.isTodo ? "To-do" : "Title", text: Binding(
                     get: { note.title },

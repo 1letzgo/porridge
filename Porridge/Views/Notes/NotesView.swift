@@ -5,6 +5,7 @@ import UserNotifications
 struct NotesView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(ProcessingService.self) private var processing
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
@@ -656,7 +657,8 @@ struct NotesView: View {
             .padding(.leading, 16)
             .padding(.trailing, 20)
             .frame(minHeight: 48)
-            .background(Color.appBackground, in: Capsule())
+            // In dark mode the page is black: the pill takes the raised surface, or it vanishes into the list.
+            .background(colorScheme == .dark ? Color.appSecondaryBackground : Color.appBackground, in: Capsule())
             .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
             .contentShape(Capsule())
         }
