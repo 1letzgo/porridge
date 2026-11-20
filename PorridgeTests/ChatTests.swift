@@ -128,8 +128,8 @@ final class ChatTests: XCTestCase {
 
     func testThePromptNamesToday() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let prompt = ChatService.prompt(question: "?", history: [], passages: [], buckets: [:], bucket: nil, now: now)
-        XCTAssertTrue(prompt.system.hasPrefix("Today is \(now.formatted(date: .complete, time: .omitted))."))
+        let prompt = ChatService.prompt(question: "?", history: [], context: ChatContext(), bucket: nil, now: now)
+        XCTAssertTrue(prompt.system.hasPrefix("Today is \(now.formatted(date: .complete, time: .omitted)) ("))
     }
 
     func testAChatIsAboutAllNotesOrOneBucket() {
@@ -142,23 +142,23 @@ final class ChatTests: XCTestCase {
     }
 
     func testThePromptNamesBucketsAndTheAnswerItsSources() {
-        let notes = [note("Urlaub", text: "Fähre am Dienstag"), note("Projekt", text: "Vertrag im März")]
-        let chunks = ChatRetrieval.chunks(from: notes)
-        let prompt = ChatService.prompt(
-            question: "Wann?", history: [(role: .user, text: "Hallo")], passages: chunks,
-            buckets: [notes[0].id: ["Reisen"]], bucket: nil
-        )
-        XCTAssertTrue(prompt.user.contains("[1] «Urlaub»"))
-        XCTAssertTrue(prompt.user.contains(", Reisen)"))
-        XCTAssertTrue(prompt.user.contains(", Inbox)"))
+        let notes = [note("Urlaub", text: "Fähre am Dienstag", buckets: ["P1"]), note("Projekt", text: "Vertrag im März")]
+        notes[1].createdAt = notes[0].createdAt.addingTimeInterval(-60)
+        let documents = Dictionary(uniqueKeysWithValues: notes.map { ($0.id, ChatDocument(note: $0)) })
+        let context = ChatRetrieval.context("Wann ist was?", documents: documents, chunks: ChatRetrieval.chunks(from: notes), bucketNames: ["P1": "Reisen"])
+        let prompt = ChatService.prompt(question: "Wann?", history: [(role: .user, text: "Hallo")], context: context, bucket: nil)
+        XCTAssertTrue(prompt.user.contains("[1] «Urlaub» — Note · created "), prompt.user)
+        XCTAssertTrue(prompt.user.contains(" · Bucket: Reisen"))
+        XCTAssertTrue(prompt.user.contains(" · Inbox"))
         XCTAssertTrue(prompt.user.contains("User: Hallo"))
         XCTAssertTrue(prompt.user.hasSuffix("Question: Wann?"))
-        XCTAssertTrue(ChatService.prompt(question: "?", history: [], passages: chunks, buckets: [:], bucket: "Reisen").system.contains("\"Reisen\""))
+        XCTAssertTrue(ChatService.prompt(question: "?", history: [], context: context, bucket: "Reisen").system.contains("\"Reisen\""))
 
-        XCTAssertEqual(ChatService.sources(in: "Am Dienstag [1].", passages: chunks).map(\.title), ["Urlaub"])
-        XCTAssertEqual(ChatService.sources(in: "Siehe [2, 1] und [9].", passages: chunks).map(\.title), ["Projekt", "Urlaub"])
+        let items = context.items
+        XCTAssertEqual(ChatService.sources(in: "Am Dienstag [1].", items: items).map(\.title), ["Urlaub"])
+        XCTAssertEqual(ChatService.sources(in: "Siehe [2, 1] und [9].", items: items).map(\.title), ["Projekt", "Urlaub"])
         // Without a number the best passages stand in.
-        XCTAssertEqual(ChatService.sources(in: "Keine Angabe.", passages: chunks).map(\.title), ["Urlaub", "Projekt"])
+        XCTAssertEqual(ChatService.sources(in: "Keine Angabe.", items: items).map(\.title), ["Urlaub", "Projekt"])
     }
 
     func testChatsAndTheirMessagesAreKept() throws {

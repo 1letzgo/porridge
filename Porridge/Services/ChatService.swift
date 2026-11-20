@@ -3,7 +3,7 @@ import Observation
 import SwiftData
 
 extension ChatRetrieval {
-    private static func chunk(_ note: Note, text: String, date: Date? = nil) -> ChatChunk {
+    private static func chunk(_ note: Note, text: String, part: ChatChunk.Part, date: Date? = nil) -> ChatChunk {
         let words = tokens(note.displayTitle + " " + note.tags.joined(separator: " ") + " " + text)
         var frequencies: [String: Int] = [:]
         var prefixes: [String: Int] = [:]
@@ -13,7 +13,7 @@ extension ChatRetrieval {
         }
         return ChatChunk(
             noteID: note.id, title: note.displayTitle, date: date ?? note.createdAt, text: text,
-            frequencies: frequencies, prefixFrequencies: prefixes, length: max(words.count, 1)
+            frequencies: frequencies, prefixFrequencies: prefixes, length: max(words.count, 1), part: part
         )
     }
 
@@ -54,34 +54,34 @@ extension ChatRetrieval {
         for note in notes where !note.isDeleted {
             let before = result.count
             // With nothing but a title, the title is the passage: the note is still there to be found.
-            defer { if result.count == before, !note.title.isEmpty { result.append(chunk(note, text: note.displayTitle)) } }
+            defer { if result.count == before, !note.title.isEmpty { result.append(chunk(note, text: note.displayTitle, part: .title)) } }
             // A saved link is found by its address and site, even when its page could not be read.
             if let url = note.url, !url.isEmpty {
-                result.append(chunk(note, text: "Saved link" + (note.domain.map { " (\($0))" } ?? "") + ": " + url))
+                result.append(chunk(note, text: "Saved link" + (note.domain.map { " (\($0))" } ?? "") + ": " + url, part: .link))
             }
             // An image or a file is found by its name, even when nothing could be read out of it.
             let attachments = note.attachmentsData == nil ? [] : note.attachments
             if !attachments.isEmpty {
-                result.append(chunk(note, text: (note.isImage ? "Image: " : "File: ") + attachments.map(\.name).joined(separator: ", ")))
+                result.append(chunk(note, text: (note.isImage ? "Image: " : "File: ") + attachments.map(\.name).joined(separator: ", "), part: .files))
             }
             // A to-do says so, and whether it is done: "what is still open?" finds it.
             if note.isTodo {
                 // Dated by its due day: "what is due this week" looks at the passages of that time.
-                result.append(chunk(note, text: todoLine(note), date: note.todoDue.flatMap { Todos.dueDate($0) }))
+                result.append(chunk(note, text: todoLine(note), part: .todo, date: note.todoDue.flatMap { Todos.dueDate($0) }))
             }
             if let summary = note.summary, !summary.isEmpty {
                 for piece in pieces(summary.components(separatedBy: "\n")) {
-                    result.append(chunk(note, text: "Summary: " + piece))
+                    result.append(chunk(note, text: "Summary: " + piece, part: .summary))
                 }
             }
             for piece in pieces(note.text.components(separatedBy: "\n")) {
-                result.append(chunk(note, text: piece))
+                result.append(chunk(note, text: piece, part: .text))
             }
             if let page = note.pageText, !page.isEmpty {
                 // What the passage is from: the page of a link, or what was read out of an image or a file.
                 let label = note.isLink ? "Article" + (note.domain.map { " (\($0))" } ?? "") : note.isImage ? "Text in the image" : "Text of the file"
                 for piece in pieces(page.components(separatedBy: "\n")) {
-                    result.append(chunk(note, text: label + ": " + piece))
+                    result.append(chunk(note, text: label + ": " + piece, part: .page))
                 }
             }
             let speakers = note.speakers
@@ -90,7 +90,7 @@ extension ChatRetrieval {
                 return (name.map { $0 + ": " } ?? "") + segment.text
             }
             for piece in pieces(lines) {
-                result.append(chunk(note, text: "Transcript: " + piece))
+                result.append(chunk(note, text: "Transcript: " + piece, part: .transcript))
             }
         }
         return result
@@ -165,32 +165,32 @@ final class ChatService {
         await index.refresh(notes)
         let scope = Self.scope(of: thread, notes: notes)
         let within = thread.projectID == nil ? nil : Set(scope.map(\.id))
-        let passages = await index.search(question, within: within)
-        guard !passages.isEmpty else {
+        // The buckets by name: a question may name one, and every entry says where it is filed.
+        let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { first, _ in first })
+        let found = await index.context(for: question, within: within, bucketNames: names)
+        guard !found.isEmpty || found.matched != nil else {
             answer(thread.projectID == nil ? "There is nothing in your notes yet." : "There is nothing in this bucket yet.")
             return
         }
 
-        // Which buckets a passage's note is in: the model may be asked about a bucket by name.
-        let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { first, _ in first })
-        let buckets = Dictionary(scope.map { note in (note.id, note.projectIDs.compactMap { names[$0] }) }, uniquingKeysWith: { first, _ in first })
         do {
             let model = SummaryModel.current
             if case .local = model { usedLocalModel = true }
             let text = try await Self.complete(
-                question: question, history: history, passages: passages, buckets: buckets,
+                question: question, history: history, context: found,
                 bucket: thread.projectID.flatMap { names[$0] }, model: model
             ) { [weak self] status in
                 self?.status = status
             }
-            answer(text, sources: Self.sources(in: text, passages: passages))
+            answer(text, sources: Self.sources(in: text, items: found.items))
         } catch {
             answer(error.localizedDescription, isError: true)
         }
     }
 
-    /// The notes behind the passages the answer quotes as [n]; the best matches when it quotes none.
-    static func sources(in answer: String, passages: [ChatChunk]) -> [ChatSource] {
+    /// The notes behind the items the answer quotes as [n]; without a number, the first passages (not the list of
+    /// matches, which may be long).
+    static func sources(in answer: String, items: [ChatContextItem]) -> [ChatSource] {
         var numbers: [Int] = []
         var rest = Substring(answer)
         while let open = rest.firstIndex(of: "[") {
@@ -199,28 +199,35 @@ final class ChatService {
             numbers += rest[afterOpen..<close].split(whereSeparator: { ", ".contains($0) }).compactMap { Int($0) }
             rest = rest[rest.index(after: close)...]
         }
-        var indices = numbers.compactMap { $0 >= 1 && $0 <= passages.count ? $0 - 1 : nil }
-        if indices.isEmpty { indices = Array(passages.indices.prefix(3)) }
+        var indices = numbers.compactMap { $0 >= 1 && $0 <= items.count ? $0 - 1 : nil }
+        if indices.isEmpty {
+            let passages = items.indices.filter { !items[$0].isListing && !items[$0].isOutside }
+            indices = Array((passages.isEmpty ? Array(items.indices) : passages).prefix(3))
+        }
         var seen = Set<UUID>()
         return indices.compactMap { index in
-            let chunk = passages[index]
-            guard seen.insert(chunk.noteID).inserted else { return nil }
-            return ChatSource(noteID: chunk.noteID, title: chunk.title, date: chunk.date)
+            let item = items[index]
+            guard seen.insert(item.noteID).inserted else { return nil }
+            return ChatSource(noteID: item.noteID, title: item.title, date: item.date)
         }
     }
 
     static let noModel = "No model is ready for the chat. Download or add one in Settings, under AI."
 
-    /// What the model is told and asked. `limit` cuts the excerpts for a model with little room; the best come first.
+    /// What the model is told and asked. `limit` cuts the context for a model with little room: the list of
+    /// matches first (the model is told how many were left out), then the passages, the best first.
     static func prompt(
-        question: String, history: [(role: ChatEntry.Role, text: String)], passages: [ChatChunk],
-        buckets: [UUID: [String]], bucket: String?, limit: Int = .max, now: Date = Date()
+        question: String, history: [(role: ChatEntry.Role, text: String)], context: ChatContext,
+        bucket: String?, limit: Int = .max, now: Date = Date()
     ) -> (system: String, user: String) {
         let system = """
-        Today is \(now.formatted(date: .complete, time: .omitted)).
-        You are the assistant of a private notes app. Answer the question using only the excerpts below. They are taken from the user's notes, meeting transcripts, saved web links (with the text of the page), images and files (with the text read out of them)\(bucket.map { ", all of them filed in the bucket \"\($0)\"" } ?? "").
-        Every excerpt starts with a number in brackets, then the title of its note, its date and the buckets it is filed in. Name the numbers of the excerpts you used, like [2].
-        If the excerpts do not contain the answer, say so briefly. Answer in the language of the question and be concise.
+        Today is \(now.formatted(date: .complete, time: .omitted)) (\(ChatDocument.dayText(now))).
+        You are the assistant of a private notes app. Answer the question only from the entries and excerpts below; do not use outside knowledge and do not guess. They are taken from the user's notes, meetings (transcripts and summaries), to-dos, saved web links (with the text of the page), images and files (with the text read out of them)\(bucket.map { ", all of them filed in the bucket \"\($0)\"" } ?? "").
+        Every item starts with a number in brackets and a header: «title» — kind (for a to-do its state, due day and subtasks), the day it was created, its bucket (or Inbox), tags, and for a link its address. Use the header for questions about kind, dates, buckets and to-dos.
+        When a list of matching entries is given, it holds every entry of the kind, bucket, to-do state or time the question asks for: answer list questions from it in full and add nothing that is not in it. When the question also names a topic, take those entries of the list that are about it (they come first and say what they mention).
+        Write the answer itself in full words: name every entry you mention by its title and give the facts the question asks for (for a to-do its due day, for a link its address, for a meeting what was said or decided). Put the numbers of the items you used after the facts, like: Hecke schneiden, due 22 November [2]. Never answer with numbers alone.
+        If the items do not contain the answer, say plainly that you found nothing about it in the notes.
+        Always answer in the language the question is written in (a German question gets a German answer). Be concise.
         """
         var user = ""
         if !history.isEmpty {
@@ -230,25 +237,52 @@ final class ChatService {
             }
             user += "\n"
         }
-        user += "Excerpts:\n"
-        for (index, chunk) in passages.enumerated() {
-            if user.count + chunk.text.count > limit { break }
-            let filed = buckets[chunk.noteID] ?? []
-            let place = filed.isEmpty ? "Inbox" : filed.joined(separator: ", ")
-            user += "[\(index + 1)] «\(chunk.title)» (\(chunk.date.formatted(date: .abbreviated, time: .omitted)), \(place))\n\(chunk.text)\n\n"
+        let items = context.items
+        var number = 0
+        if let matched = context.matched {
+            let listing = items.filter(\.isListing)
+            var lines: [String] = []
+            var size = user.count
+            for item in listing {
+                let line = "[\(number + 1)] \(item.header)" + (item.text.isEmpty ? "" : "\n    " + item.text)
+                if size + line.count > limit / 2, !lines.isEmpty { break }
+                lines.append(line)
+                size += line.count + 1
+                number += 1
+            }
+            if matched == 0 {
+                user += "No entry matches (\(context.filter)).\n\n"
+            } else {
+                let shown = lines.count < matched ? "the first \(lines.count) of \(matched) entries" : "all \(matched) entr\(matched == 1 ? "y" : "ies")"
+                user += "Matching entries (\(context.filter)): \(shown).\n" + lines.joined(separator: "\n") + "\n\n"
+            }
+            // The items not shown keep their numbers out of the prompt: the rest counts on from here.
+            number = listing.count
         }
+        let inside = items.filter { !$0.isListing && !$0.isOutside }
+        let outside = items.filter(\.isOutside)
+        func block(_ title: String, _ list: [ChatContextItem], start: Int) {
+            guard !list.isEmpty else { return }
+            user += title + "\n"
+            for (offset, item) in list.enumerated() {
+                if user.count + item.text.count > limit, offset > 0 { break }
+                user += "[\(start + offset + 1)] \(item.header)\n\(item.text)\n\n"
+            }
+        }
+        block(context.matched == nil ? "Excerpts:" : "Excerpts from the matching entries:", inside, start: number)
+        block(context.matched == nil ? "Excerpts:" : "Excerpts from other entries (they do not match \(context.filter); use them only if they answer the question):", outside, start: number + inside.count)
         user += "Question: \(question)"
         return (system, user)
     }
 
     private static func complete(
-        question: String, history: [(role: ChatEntry.Role, text: String)], passages: [ChatChunk],
-        buckets: [UUID: [String]], bucket: String?, model: SummaryModel, progress: @escaping (String) -> Void
+        question: String, history: [(role: ChatEntry.Role, text: String)], context: ChatContext,
+        bucket: String?, model: SummaryModel, progress: @escaping (String) -> Void
     ) async throws -> String {
         switch model {
         case .local(let local):
             // The Apple model has room for far fewer excerpts.
-            let prompt = prompt(question: question, history: history, passages: passages, buckets: buckets, bucket: bucket, limit: local == .apple ? 7_000 : .max)
+            let prompt = prompt(question: question, history: history, context: context, bucket: bucket, limit: local == .apple ? 7_000 : .max)
             // A question never starts a download of gigabytes on its own: the model is fetched in Settings.
             guard local.isInstalled else { throw SummaryError.provider(Self.noModel) }
             ModelManager.shared.beginLLMUse()
@@ -258,7 +292,7 @@ final class ChatService {
             progress("Thinking…")
             return try await LocalLLM.shared.generate(model: local, system: prompt.system, user: prompt.user, maxTokens: 700)
         case .cloud(let provider, let id):
-            let prompt = prompt(question: question, history: history, passages: passages, buckets: buckets, bucket: bucket)
+            let prompt = prompt(question: question, history: history, context: context, bucket: bucket)
             let key = provider.apiKey
             if provider.requiresKey, key.isEmpty { throw SummaryError.missingAPIKey(provider.label) }
             progress("Thinking…")

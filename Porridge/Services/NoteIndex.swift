@@ -24,6 +24,8 @@ final class NoteIndex {
     struct IndexedNote: Codable {
         var hash: String
         var chunks: [ChatChunk]
+        /// The entry with its metadata for the chat's filters; nil in files from before it (cut again then).
+        var document: ChatDocument?
     }
 
     private struct File: Codable {
@@ -61,7 +63,7 @@ final class NoteIndex {
                 var chunk = chunk
                 chunk.embedding = known[chunk.text]
                 return chunk
-            })
+            }, document: ChatDocument(note: note))
             changed = true
         }
         for id in entries.keys where !seen.contains(id) {
@@ -135,6 +137,17 @@ final class NoteIndex {
         return ChatRetrieval.select(question, in: passages(within: notes), queryVector: vector)
     }
 
+    /// The context of a chat question (`ChatRetrieval.context`): the entries its filters ask for and the passages
+    /// that fit it. `within` narrows it to some notes (those of a bucket); nil is everything.
+    func context(for question: String, within notes: Set<UUID>? = nil, bucketNames: [String: String]) async -> ChatContext {
+        let vector = await TextEmbedder.shared.vector(for: question)
+        var documents: [UUID: ChatDocument] = [:]
+        for (id, entry) in entries where notes?.contains(id) ?? true {
+            if let document = entry.document { documents[id] = document }
+        }
+        return ChatRetrieval.context(question, documents: documents, chunks: passages(within: notes), bucketNames: bucketNames, queryVector: vector)
+    }
+
     private func passages(within notes: Set<UUID>?) -> [ChatChunk] {
         guard let notes else { return flat }
         return flat.filter { notes.contains($0.noteID) }
@@ -190,7 +203,10 @@ extension Note {
     /// Changes whenever anything the passages are made of changes. Stable across launches (SHA-256).
     var indexHash: String {
         var hasher = SHA256()
-        for part in [title, text, summary ?? "", pageText ?? "", url ?? "", labels.joined(separator: ","), String(createdAt.timeIntervalSince1970)] {
+        // The chat's entry (`ChatDocument`) holds the buckets and the archive state too; "chat-doc-1" cuts every
+        // note again once when the entry came (the vectors of unchanged passages are kept).
+        let entry = ["chat-doc-1", sourceRaw, projectIDs.joined(separator: ","), archivedAt.map { "\($0.timeIntervalSince1970)" } ?? ""]
+        for part in [title, text, summary ?? "", pageText ?? "", url ?? "", labels.joined(separator: ","), String(createdAt.timeIntervalSince1970)] + entry {
             hasher.update(data: Data(part.utf8))
             hasher.update(data: Data([0]))
         }

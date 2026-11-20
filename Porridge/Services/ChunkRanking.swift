@@ -4,6 +4,14 @@ import NaturalLanguage
 /// A passage of a note or a meeting transcript the chat can quote. Stored in the index (`NoteIndex`)
 /// with its word statistics and, once computed, its sentence vector.
 struct ChatChunk: Codable {
+    /// Where in its entry a passage comes from.
+    enum Part: String, Codable {
+        case title, link, files, todo, summary, text, page, transcript
+
+        /// The passages that hold content; title, link, files and to-do state are in the entry's header already.
+        var fillsContext: Bool { [.summary, .text, .page, .transcript].contains(self) }
+    }
+
     let noteID: UUID
     let title: String
     let date: Date
@@ -11,14 +19,15 @@ struct ChatChunk: Codable {
     let frequencies: [String: Int]
     let prefixFrequencies: [String: Int]
     let length: Int
+    var part: Part = .text
     /// Normalized sentence vector (`TextEmbedder`); nil until it was computed.
     var embedding: [Float]?
 
     enum CodingKeys: String, CodingKey {
-        case noteID, title, date, text, frequencies, prefixFrequencies, length, embeddingData
+        case noteID, title, date, text, frequencies, prefixFrequencies, length, embeddingData, part
     }
 
-    init(noteID: UUID, title: String, date: Date, text: String, frequencies: [String: Int], prefixFrequencies: [String: Int], length: Int, embedding: [Float]? = nil) {
+    init(noteID: UUID, title: String, date: Date, text: String, frequencies: [String: Int], prefixFrequencies: [String: Int], length: Int, part: Part = .text, embedding: [Float]? = nil) {
         self.noteID = noteID
         self.title = title
         self.date = date
@@ -26,6 +35,7 @@ struct ChatChunk: Codable {
         self.frequencies = frequencies
         self.prefixFrequencies = prefixFrequencies
         self.length = length
+        self.part = part
         self.embedding = embedding
     }
 
@@ -38,6 +48,7 @@ struct ChatChunk: Codable {
         frequencies = try container.decode([String: Int].self, forKey: .frequencies)
         prefixFrequencies = try container.decode([String: Int].self, forKey: .prefixFrequencies)
         length = try container.decode(Int.self, forKey: .length)
+        part = (try? container.decodeIfPresent(Part.self, forKey: .part)) ?? .text
         // The vector as raw Float32 bytes: a fraction of the size of a list of numbers.
         embedding = try container.decodeIfPresent(Data.self, forKey: .embeddingData).map { data in
             data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
@@ -53,6 +64,7 @@ struct ChatChunk: Codable {
         try container.encode(frequencies, forKey: .frequencies)
         try container.encode(prefixFrequencies, forKey: .prefixFrequencies)
         try container.encode(length, forKey: .length)
+        try container.encode(part, forKey: .part)
         if let embedding {
             try container.encode(embedding.withUnsafeBufferPointer { Data(buffer: $0) }, forKey: .embeddingData)
         }
@@ -95,7 +107,12 @@ enum ChatRetrieval {
     static let passagesPerNote = 3
 
     static func search(_ query: String, in chunks: [ChatChunk], queryVector: [Float]? = nil, budget: Int = 6500) -> [ChatChunk] {
-        let words = Array(Set(queryWords(query)))
+        search(words: queryWords(query), in: chunks, queryVector: queryVector, budget: budget)
+    }
+
+    /// `search` with the words already read from the question (`ChatQuery.words`).
+    static func search(words: [String], in chunks: [ChatChunk], queryVector: [Float]? = nil, budget: Int = 6500) -> [ChatChunk] {
+        let words = Array(Set(words))
         guard !words.isEmpty, !chunks.isEmpty else { return [] }
 
         let average = Double(chunks.reduce(0) { $0 + $1.length }) / Double(chunks.count)
@@ -204,6 +221,8 @@ enum ChatRetrieval {
         "stelle", "stell", "stellen", "zeig", "zeige", "zeigen", "nenne", "nenn", "nennen", "gib", "geben", "sag", "sage", "sagen",
         "erzähl", "erzähle", "erzählen", "fasse", "fass", "zusammen", "zusammenfassen", "liste", "auflisten", "finde", "finden",
         "suche", "such", "erkläre", "erklär", "beschreibe", "vorstellen", "möchte", "würde", "wüsste", "weißt", "kannst", "könntest",
+        "thema", "themen", "bezug", "gespeichert", "notiert", "gemerkt", "abgelegt", "steht", "stehen", "liegt", "liegen", "drin",
+        "beschäftigt",
         "highlights", "überblick", "übersicht", "zusammenfassung", "neuigkeiten", "neues", "infos", "informationen",
         // German: time (read by `since`)
         "heute", "gestern", "vorgestern", "letzte", "letzten", "letzter", "letztes", "vergangene", "vergangenen", "vergangener",
@@ -215,6 +234,7 @@ enum ChatRetrieval {
         "i", "me", "my", "we", "us", "our", "you", "your", "he", "she", "it", "they", "them", "their", "this", "that", "these", "those",
         "what", "which", "who", "whom", "when", "where", "why", "how", "there", "here", "any", "all", "some", "please", "tell",
         "show", "give", "list", "find", "summarize", "summary", "overview", "explain", "describe", "know",
+        "topic", "topics", "saved", "stored", "kept", "noted", "regarding", "related",
         "today", "yesterday", "last", "past", "few", "days", "day", "week", "weeks", "month", "months", "recent", "recently", "lately", "latest", "new",
     ]
 
@@ -269,7 +289,9 @@ enum ChatRetrieval {
     static func recent(from chunks: [ChatChunk], budget: Int = 4500) -> [ChatChunk] {
         var picked: [ChatChunk] = []
         var used = 0
-        for chunk in chunks.sorted(by: { $0.date > $1.date }) {
+        // A to-do's passage is dated by its due day: one due next month is not the newest entry.
+        let now = Date()
+        for chunk in chunks.sorted(by: { min($0.date, now) > min($1.date, now) }) {
             if used + chunk.text.count > budget, !picked.isEmpty { break }
             picked.append(chunk)
             used += chunk.text.count
