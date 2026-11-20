@@ -414,7 +414,7 @@ object Todos {
     // Der To-do-Ordner (iOS: `Todos.Folder`, `Todos.folder`)
 
     /**
-     * Der virtuelle Ordner „To-dos“ im Eingangsbereich der Startseite: jedes offene To-do, wo es auch abgelegt ist, in den
+     * Der virtuelle Ordner „To-dos“ im Abschnitt „Up Next“ der Startseite: jedes offene To-do, wo es auch abgelegt ist, in den
      * Gruppen von [dueGroups], danach die heute erledigten. Nur eine Sicht: Nichts wird verschoben oder gespeichert.
      */
     data class Folder(

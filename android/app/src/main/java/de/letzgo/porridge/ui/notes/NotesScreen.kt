@@ -381,7 +381,8 @@ private fun HomeList(
     val todoFolder = remember(notes) { Todos.folder(notes) }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
         // Der Eingang ist die erste Kategorie, mit einem Eintrag seines Namens: was neu ist oder in keinem Bucket liegt.
-        item(key = "h-inbox") { SectionHeader("Inbox", color = Brand.sky) }
+        // Der erste Abschnitt heißt „Up Next“: Er hält den Eingang und den To-do-Ordner; der Eintrag selbst bleibt „Inbox“.
+        item(key = "h-inbox") { SectionHeader("Up Next", color = Brand.sky) }
         item(key = "row-inbox") { InboxRow(waiting) { list.page = ListPage.Inbox } }
         // Darunter der To-do-Ordner, solange es To-dos zu zeigen gibt: eine Sicht auf jedes offene, wo es auch liegt.
         if (!todoFolder.isEmpty) item(key = "row-todos") { TodoFolderRow(todoFolder) { list.page = ListPage.Todos } }
@@ -835,7 +836,7 @@ private fun InboxRow(waiting: List<Note>, onOpen: () -> Unit) {
     }
 }
 
-/** iOS: `TodoFolderRow` — der To-do-Ordner als Eintrag im Eingangsbereich: wie viele offen sind und wie viele zu spät. */
+/** iOS: `TodoFolderRow` — der To-do-Ordner als Eintrag im Abschnitt „Up Next“: wie viele offen sind und wie viele zu spät. */
 @Composable
 private fun TodoFolderRow(folder: Todos.Folder, onOpen: () -> Unit) {
     Row(
