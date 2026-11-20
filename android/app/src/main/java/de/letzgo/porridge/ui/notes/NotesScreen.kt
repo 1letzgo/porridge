@@ -267,6 +267,7 @@ fun NotesScreen(
                 ListPage.Archive -> "Archive"
                 ListPage.Trash -> "Recently Deleted"
                 ListPage.Inbox -> "Inbox"
+                ListPage.Todos -> "To-dos"
                 ListPage.Chat -> "Chat"
                 ListPage.Search -> "Search"
             }
@@ -276,6 +277,7 @@ fun NotesScreen(
                 ListPage.Archive -> Icons.Filled.Archive
                 ListPage.Trash -> Icons.Filled.Delete
                 ListPage.Inbox -> Icons.Filled.MoveToInbox
+                ListPage.Todos -> Icons.Filled.Checklist
                 ListPage.Chat -> Icons.Filled.Chat
                 ListPage.Search -> Icons.Filled.Search
             }
@@ -285,6 +287,7 @@ fun NotesScreen(
                 ListPage.Archive -> Brand.navy
                 ListPage.Trash -> Brand.danger
                 ListPage.Inbox -> Brand.sky
+                ListPage.Todos -> Brand.task
                 ListPage.Chat -> Brand.navy
                 ListPage.Search -> Brand.navy
             }
@@ -317,6 +320,7 @@ fun NotesScreen(
                 shown == ListPage.Search -> Box(listModifier.imePadding()) { SearchPanel(list, notes, stages, indexVersion, onOpen) }
                 shown == ListPage.Chat -> de.letzgo.porridge.ui.chat.ChatPage(notes, folders, chatNavigation, onOpen, listModifier.imePadding().navigationBarsPadding())
                 shown == ListPage.Inbox -> InboxList(notes, folders, stages, onOpen, scroll, listModifier)
+                shown == ListPage.Todos -> TodosFolderList(notes, folders, stages, onOpen, scroll, listModifier)
                 shown == ListPage.Archive -> ArchiveList(notes, folders, stages, onOpen, { list.page = ListPage.Project(it) }, scroll, listModifier)
                 else -> TrashList(trash, stages, onOpen, scroll, listModifier)
             }
@@ -331,6 +335,8 @@ fun NotesScreen(
             onProject = if (page == ListPage.Home) ({ creatingProject = true }) else null,
             onNote = { onNewNote(projectForNew, false) },
             onTodo = { onNewNote(projectForNew, true) },
+            // iOS: Im To-do-Ordner legt das Plus gleich ein To-do an, ohne Menü.
+            makesTodo = page == ListPage.Todos,
             onMeeting = onRecord, onLink = { showAddLink = true },
             onSearch = { chatReturn = page; list.page = ListPage.Search },
             // iOS: `openChat` — der Chat öffnet seine eigene Seite; aus einem Bucket geht er über diesen Bucket.
@@ -372,10 +378,13 @@ private fun HomeList(
     val archiveCount = remember(folders, notes) { HomeListLogic.archiveCount(folders, notes) }
     // iOS: `InboxRow` unter der Kopfzeile „Inbox“ in `NotesView.home`.
     val waiting = remember(notes) { InboxLogic.notes(notes) }
+    val todoFolder = remember(notes) { Todos.folder(notes) }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
         // Der Eingang ist die erste Kategorie, mit einem Eintrag seines Namens: was neu ist oder in keinem Bucket liegt.
         item(key = "h-inbox") { SectionHeader("Inbox", color = Brand.sky) }
         item(key = "row-inbox") { InboxRow(waiting) { list.page = ListPage.Inbox } }
+        // Darunter der To-do-Ordner, solange es To-dos zu zeigen gibt: eine Sicht auf jedes offene, wo es auch liegt.
+        if (!todoFolder.isEmpty) item(key = "row-todos") { TodoFolderRow(todoFolder) { list.page = ListPage.Todos } }
         // Die Buckets als Liste: die angepinnten und die zuletzt geänderten, der Rest hinter „More“.
         if (projects.shown.isNotEmpty()) {
             item(key = "h-projects") { SectionHeader("Buckets", color = Brand.project) }
@@ -518,7 +527,7 @@ private fun PageRow(title: String, count: Int?, color: Color, onClick: () -> Uni
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, projectID: String? = null, showsDivider: Boolean = true) {
+internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, projectID: String? = null, showsDivider: Boolean = true, buckets: List<String> = emptyList()) {
     val coroutines = rememberCoroutineScope()
     val store = remember { NoteStore() }
     // Der Zustand des Wischens behält seinen ersten Callback; so sieht er immer den aktuellen Stand.
@@ -575,7 +584,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
         },
     ) {
         Box {
-            NoteRow(note, stage, Modifier.combinedClickable(onClick = { onOpen(note.id) }, onLongClick = { menu = true }), showsDivider)
+            NoteRow(note, stage, Modifier.combinedClickable(onClick = { onOpen(note.id) }, onLongClick = { menu = true }), showsDivider, buckets)
             DueDateMenu(note, dueMenu, onDismiss = { dueMenu = false }) { key -> coroutines.launch { store.setDue(note, key) } }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (note.isDeleted) {
@@ -607,7 +616,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
 
 /** iOS: `NoteRow` — Notizen in Sky, Meetings in Navy, Links in Orange. */
 @Composable
-internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivider: Boolean = true) {
+internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivider: Boolean = true, buckets: List<String> = emptyList()) {
     val (icon, tint) = when {
         note.isTodo -> kindIcon(note) to Brand.task
         note.isLink -> Icons.Filled.Link to LinkOrange
@@ -649,15 +658,22 @@ internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivide
                         if (deletedAt != null) {
                             val left = NoteStore.TRASH_DAYS - TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - deletedAt).toInt()
                             add(if (left <= 1) "Deleted tomorrow" else "$left days left")
-                        } else add(SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(note.updatedAt)))
+                        // Wo ein To-do seine Buckets nennt (der To-do-Ordner), sagt seine Fälligkeit mehr: Das Datum macht ihnen Platz.
+                        } else if (buckets.isEmpty() || !note.isTodo) add(SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(Date(note.updatedAt)))
                         note.domain?.let { add(it) }
                         if (note.isRecording && note.duration > 0) add(note.duration.durationText)
                         stage?.let { add(it) } ?: if (note.status == ProcessingStatus.FAILED) add("Failed") else Unit
                     }
                     Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(footer.joinToString("  ·  "), style = MaterialTheme.typography.labelSmall, color = if (note.isDeleted) Brand.danger.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        // Leer (ein To-do im To-do-Ordner nennt kein Datum): kein leerer Text, der die Zeile einrückt.
+                        if (footer.isNotEmpty()) Text(footer.joinToString("  ·  "), style = MaterialTheme.typography.labelSmall, color = if (note.isDeleted) Brand.danger.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
                         if (note.isTodo) TodoDueLabel(note)
                         if (note.isTodo) TodoProgressLabel(note.todoProgress)
+                        // Wo eine Liste Buckets mischt, nennt die Zeile ihre; auf schmaler Zeile weichen die Namen zuerst.
+                        if (buckets.isNotEmpty()) Row(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Folder, null, tint = Brand.readable(Brand.project), modifier = Modifier.size(13.dp))
+                            Text(buckets.joinToString(", "), style = MaterialTheme.typography.labelSmall, color = Brand.readable(Brand.project), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                         // iOS: Eine Zusammenfassung mit wartenden Vorschlägen sagt es in der Zeile.
                         val waiting = remember(note) { TodoSuggestions.pendingFor(note, emptyList()).size }
                         if (waiting > 0) Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -713,6 +729,7 @@ private fun groups(list: List<Note>): List<Pair<String, List<Note>>> {
 private fun CreateMenu(
     open: Boolean, onOpen: (Boolean) -> Unit, showsPlus: Boolean, onProject: (() -> Unit)?,
     onNote: () -> Unit, onTodo: () -> Unit, onMeeting: () -> Unit, onLink: () -> Unit,
+    makesTodo: Boolean = false,
     /** Die Wahl für die lange Liste; null, wo es den Knopf nicht gibt. */
     onSearch: () -> Unit, onChat: () -> Unit,
 ) {
@@ -736,7 +753,9 @@ private fun CreateMenu(
                     CreateOption("Note", Icons.Outlined.EditNote, Brand.sky) { onOpen(false); onNote() }
                 }
             }
-            SkyFab(Icons.Filled.Add, if (open) "Close" else "Create", Modifier.rotate(if (open) 45f else 0f)) { onOpen(!open) }
+            SkyFab(Icons.Filled.Add, if (open) "Close" else if (makesTodo) "New To-do" else "Create", Modifier.rotate(if (open) 45f else 0f)) {
+                if (makesTodo && !open) onTodo() else onOpen(!open)
+            }
         }
     }
 }
@@ -812,6 +831,59 @@ private fun InboxRow(waiting: List<Note>, onOpen: () -> Unit) {
                 if (waiting.isEmpty()) "Nothing waiting" else "${waiting.size} waiting",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
             )
+        }
+    }
+}
+
+/** iOS: `TodoFolderRow` — der To-do-Ordner als Eintrag im Eingangsbereich: wie viele offen sind und wie viele zu spät. */
+@Composable
+private fun TodoFolderRow(folder: Todos.Folder, onOpen: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RowIcon(Icons.Filled.Checklist, Brand.task)
+        Column(Modifier.weight(1f)) {
+            Text("To-dos", style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+            Row {
+                Text(
+                    if (folder.open == 0) "Nothing open" else "${folder.open} open",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                )
+                if (folder.overdue > 0) {
+                    Text(" · ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${folder.overdue} overdue", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold), color = Brand.dangerText, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * iOS: `NotesView.todosPage` — der To-do-Ordner geöffnet: jedes offene To-do nach Fälligkeit, gruppiert wie „Open To-dos“
+ * der Suche, dann die heute erledigten. Jede Zeile nennt ihre Buckets. Nur eine Sicht: Die To-dos bleiben, wo sie sind.
+ */
+@Composable
+private fun TodosFolderList(
+    notes: List<Note>, folders: List<NoteFolder>, stages: Map<String, String>, onOpen: (String) -> Unit, state: LazyListState, modifier: Modifier,
+) {
+    val folder = remember(notes) { Todos.folder(notes) }
+    val names = remember(folders) { folders.associate { it.id to it.name } }
+    fun buckets(note: Note) = note.projectIDs.mapNotNull { names[it]?.ifEmpty { "Untitled Bucket" } }
+    if (folder.isEmpty) {
+        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            EmptyState("Nothing to Do", "Open to-dos from the inbox and every bucket show up here.", Icons.Filled.Checklist)
+        }
+        return
+    }
+    LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
+        for ((title, group) in folder.groups) {
+            item(key = "h-$title") { SectionHeader(title, group.size, color = if (title == "Overdue") Brand.dangerText else Brand.task) }
+            itemsIndexed(group, key = { _, it -> "n-" + it.id }) { index, note -> NoteSwipeRow(note, stages[note.id], onOpen, showsDivider = index < group.lastIndex, buckets = buckets(note)) }
+        }
+        if (folder.doneToday.isNotEmpty()) {
+            item(key = "h-done") { SectionHeader("Done Today", folder.doneToday.size, color = Brand.navy) }
+            itemsIndexed(folder.doneToday, key = { _, it -> "d-" + it.id }) { index, note -> NoteSwipeRow(note, stages[note.id], onOpen, showsDivider = index < folder.doneToday.lastIndex, buckets = buckets(note)) }
         }
     }
 }

@@ -410,4 +410,32 @@ object Todos {
         if (value == note.todoDueDay) return null
         return note.copy(todoDueDay = value)
     }
+
+    // Der To-do-Ordner (iOS: `Todos.Folder`, `Todos.folder`)
+
+    /**
+     * Der virtuelle Ordner „To-dos“ im Eingangsbereich der Startseite: jedes offene To-do, wo es auch abgelegt ist, in den
+     * Gruppen von [dueGroups], danach die heute erledigten. Nur eine Sicht: Nichts wird verschoben oder gespeichert.
+     */
+    data class Folder(
+        val groups: List<Pair<String, List<Note>>>,
+        val doneToday: List<Note>,
+        /** Offene To-dos (nicht erledigt, nicht gelöscht, nicht archiviert). */
+        val open: Int,
+        /** Davon die, die vor heute fällig waren. */
+        val overdue: Int,
+    ) {
+        val isEmpty: Boolean get() = open == 0 && doneToday.isEmpty()
+    }
+
+    fun folder(notes: List<Note>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): Folder {
+        val living = notes.filter { it.isTodo && !it.isDeleted && it.archivedAt == null }
+        val open = living.filter { !it.isDone }
+        // Erledigte bleiben für den Rest des Tages, an dem sie erledigt wurden, wie in jeder Liste.
+        val startOfDay = Instant.ofEpochMilli(now).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
+        val done = living.filter { it.isDone && (it.todoDoneAt ?: Long.MIN_VALUE) >= startOfDay }
+            .sortedByDescending { it.todoDoneAt ?: Long.MIN_VALUE }
+        val overdue = open.count { n -> n.todoDue?.let { dueStatus(it, now, zone) } == DueStatus.OVERDUE }
+        return Folder(dueGroups(open, now, zone), done, open.size, overdue)
+    }
 }

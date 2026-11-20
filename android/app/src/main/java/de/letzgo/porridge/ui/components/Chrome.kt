@@ -77,6 +77,8 @@ sealed interface ListPage {
     data class Project(val id: String) : ListPage
     /** Der Eingang: alles Neue und alles ohne Bucket. */
     data object Inbox : ListPage
+    /** iOS: `ListPage.todos` — der virtuelle Ordner aller offenen To-dos nach Fälligkeit (`Todos.folder`). */
+    data object Todos : ListPage
     /** iOS: `ListPage.chat` — der Chat mit den Notizen. */
     data object Chat : ListPage
     /** iOS: `ListPage.search` — die Suche durch alles. */
