@@ -5,6 +5,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import de.letzgo.porridge.data.ShareImport
 import de.letzgo.porridge.ui.AppRoot
 import de.letzgo.porridge.ui.PorridgeTheme
@@ -17,6 +19,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         handle(intent)
         setContent { PorridgeTheme { AppRoot() } }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // iOS: `scenePhase == .active` — was inzwischen hereinkam oder fällig wurde, bekommt seine Zusammenfassung (`AutoSummary`).
+        lifecycleScope.launch { runCatching { de.letzgo.porridge.processing.ProcessingService.summarizeIncoming() } }
     }
 
     override fun onNewIntent(intent: Intent) {

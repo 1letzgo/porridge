@@ -284,6 +284,13 @@ object SummaryLogic {
      * Das Ergebnis einer Zusammenfassung auf dem frischen Stand [current] der Notiz: Sie läuft lange, und was in der
      * Zeit an der Notiz geschah, bleibt. [before] ist der Stand, aus dem [summarized] entstand.
      */
+    /**
+     * iOS: `SummaryService.removeSummary` — nimmt die Zusammenfassung weg. `summarizedAt` bleibt: Ein Eintrag, dessen
+     * geschriebene Zusammenfassung gelöscht wurde, wird nicht von selbst wieder zusammengefasst (`AutoSummary`), hier und auf
+     * anderen Geräten. Ein Editor, der auf keiner Zusammenfassung geöffnet und geschlossen wurde, lässt es null.
+     */
+    fun removeSummary(note: Note, now: Long = System.currentTimeMillis()): Note = note.copy(summary = null, summaryModel = null, updatedAt = now)
+
     fun carryOver(summarized: Note, before: Note, current: Note, now: Long = System.currentTimeMillis()): Note = current.copy(
         title = if (summarized.title != before.title && !current.titleIsCustom) summarized.title else current.title,
         summary = summarized.summary,

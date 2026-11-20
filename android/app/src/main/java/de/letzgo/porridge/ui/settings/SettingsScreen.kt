@@ -381,6 +381,9 @@ private fun SummaryCard() {
             }
         }
         HorizontalDivider()
+        // iOS: `summarizeIncoming` — Links, Bilder, Dateien, geteilter Text und importiertes Audio werden beim Hereinkommen zusammengefasst (`AutoSummary`).
+        ToggleRow("Summarize Incoming Entries", Keys.SUMMARIZE_INCOMING)
+        HorizontalDivider()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Custom Templates", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
             Pill("Edit", { editTemplates = true })

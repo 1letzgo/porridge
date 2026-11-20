@@ -45,6 +45,8 @@ object LinkImport {
             statusRaw = ProcessingStatus.RECORDED.raw, projectIDs = listOfNotNull(project), sourceRaw = de.letzgo.porridge.model.NoteSource.LINK.raw,
         )
         db.notes().upsert(note)
+        // Hier hereingekommen: Dieses Gerät fasst ihn zusammen, sobald die Seite geladen ist (`AutoSummary`).
+        de.letzgo.porridge.logic.AutoSummary.origins.mark(note.id)
         ProcessingService.enqueue(ProcessingService.Job.Link(note.id, summarize = true))
         return note
     }

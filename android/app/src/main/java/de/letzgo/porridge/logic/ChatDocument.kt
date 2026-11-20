@@ -94,7 +94,9 @@ data class ChatDocument(
             var lines: List<String> = emptyList()
             for (source in sources) {
                 if (lines.isNotEmpty()) break
-                lines = NoteText.plainLines(source).filter { !it.startsWith("#") }
+                // Überschriften („## Summary“) fallen weg, bevor die Zeichen abgenommen werden.
+                val withoutHeadings = source.split("\n").filter { !it.trim(' ', '\t').startsWith("#") }
+                lines = NoteText.plainLines(withoutHeadings.joinToString("\n"))
                 // Die erste Zeile einer Notiz ohne Titel ist schon ihr Titel.
                 if (note.title.trim().isEmpty() && source == note.text && lines.firstOrNull() == title) lines = lines.drop(1)
             }

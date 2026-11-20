@@ -580,7 +580,7 @@ fun NoteDetailScreen(
     if (confirmDeleteSummary) AlertDialog(
         onDismissRequest = { confirmDeleteSummary = false },
         title = { Text("Delete Summary?") }, text = { Text("Your edits and check marks in it are lost. You can write a new one at any time.") },
-        confirmButton = { TextButton(onClick = { confirmDeleteSummary = false; coroutines.launch { NoteStore().update(note.id) { it.copy(summary = null, summaryModel = null, summarizedAt = null) } } }) { Text("Delete Summary", color = Brand.dangerText) } },
+        confirmButton = { TextButton(onClick = { confirmDeleteSummary = false; coroutines.launch { NoteStore().update(note.id) { de.letzgo.porridge.logic.SummaryLogic.removeSummary(it) } } }) { Text("Delete Summary", color = Brand.dangerText) } },
         dismissButton = { TextButton(onClick = { confirmDeleteSummary = false }) { Text("Cancel") } },
     )
     if (confirmDeleteAudio) AlertDialog(
@@ -596,7 +596,7 @@ fun NoteDetailScreen(
         editingSummary = false
         coroutines.launch {
             val trimmed = text.trim()
-            NoteStore().update(note.id) { if (trimmed.isEmpty()) it.copy(summary = null, summaryModel = null, summarizedAt = null) else it.copy(summary = trimmed) }
+            NoteStore().update(note.id) { if (trimmed.isEmpty()) de.letzgo.porridge.logic.SummaryLogic.removeSummary(it) else it.copy(summary = trimmed) }
         }
     }
     if (showMerge) MergeNotesSheet(note, onDismiss = { showMerge = false }) { player.stop(); tab = NoteTab.TRANSCRIPT }

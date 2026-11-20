@@ -233,6 +233,8 @@ fun NotesScreen(
         val current = loadedNotes ?: return@LaunchedEffect
         delay(800)
         AppGraph.index.refresh(current)
+        // Neue Einträge und die anderer Geräte: Was hereinkam, bekommt seine Zusammenfassung (`AutoSummary`).
+        ProcessingService.summarizeIncoming()
     }
     // Das offene Projekt ist weg (anderswo gelöscht): zurück zum Anfang. Gefragt wird die Datenbank, weil ein gerade
     // angelegtes Projekt in der Beobachtung noch fehlen kann.
@@ -778,6 +780,8 @@ private suspend fun importAudio(context: android.content.Context, uri: android.n
         projectIDs = listOfNotNull(projectID), sourceRaw = de.letzgo.porridge.model.NoteSource.AUDIO_IMPORT.raw,
     )
     PorridgeDatabase.shared.notes().upsert(note)
+    // Hier importiert: Dieses Gerät fasst es zusammen, sobald es transkribiert ist (`AutoSummary`).
+    de.letzgo.porridge.logic.AutoSummary.origins.mark(note.id)
     ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
     return note
 }

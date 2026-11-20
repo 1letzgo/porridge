@@ -24,6 +24,8 @@ object Keys {
     const val CUSTOM_BASE_URL = "aiCustomBaseURL"
     /** Eigener Name (weitere Schreibweisen mit Komma): seine Aufgaben stehen unter „Mine“ (iOS: `myName`). */
     const val MY_NAME = "myName"
+    /** iOS: `AppSettings.summarizeIncomingKey` — Links, Bilder, Dateien, geteilter Text und importiertes Audio bekommen von selbst eine Zusammenfassung (`AutoSummary`). */
+    const val SUMMARIZE_INCOMING = "summarizeIncoming"
     const val MY_VOICE = "myVoice"
     const val MY_VOICE_NAME = "myVoiceName"
     const val TRANSCRIPTION_BILLING = "transcriptionBilling"
@@ -76,6 +78,7 @@ object Prefs {
         Keys.RECORDINGS_WIFI_ONLY to true,
         Keys.SPEAKER_DETECTION to true,
         Keys.RECORDS_NEW_NOTES to false,
+        Keys.SUMMARIZE_INCOMING to true,
         Keys.BILLING to SummaryBilling.LOCAL.raw,
         Keys.LOCAL_MODEL to "qwen3",
         Keys.VOICE_RECOGNITION to true,

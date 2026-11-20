@@ -253,6 +253,7 @@ class PlaudImporter(context: Context) {
             PorridgeDatabase.shared.notes().upsert(if (projectID != null) note.copy(projectIDs = listOf(projectID)) else note)
             // Erst jetzt: Eine Aufnahme, die vor ihrer Notiz als erledigt gilt, würde nie wieder angeboten.
             markImported(audio.sessionId)
+            de.letzgo.porridge.logic.AutoSummary.origins.mark(note.id)
             ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
             note
         }

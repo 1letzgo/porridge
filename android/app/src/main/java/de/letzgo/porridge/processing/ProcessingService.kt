@@ -32,7 +32,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** iOS: `ProcessingService` (Services/ProcessingService.swift) — serielle Warteschlange, die Aufnahmen zu Transkripten macht. */
+/**
+ * iOS: `ProcessingService` (Services/ProcessingService.swift) — serielle Warteschlange, die Aufnahmen zu Transkripten macht,
+ * Seiten lädt, Text aus Dateien liest und hereingekommene Einträge zusammenfasst (`logic/AutoSummary.kt`).
+ */
 object ProcessingService {
     sealed interface Job {
         val id: String
@@ -48,6 +51,8 @@ object ProcessingService {
         data class Enhance(override val id: String, val model: SummaryModel? = null) : Job
         /** Eine Notiz mit Anhängen: den Text ihrer Bilder und PDFs lesen, dann zusammenfassen. */
         data class Attachment(override val id: String) : Job
+        /** Die Zusammenfassung eines hereingekommenen Eintrags, um die niemand bat (`AutoSummary`). */
+        data class AutoSummary(override val id: String) : Job
     }
 
     private val db get() = PorridgeDatabase.shared
@@ -56,6 +61,8 @@ object ProcessingService {
     private var running = false
     /** Die Arbeit, die gerade läuft. */
     private var current: Job? = null
+    private val autoAttempts = de.letzgo.porridge.logic.AutoSummary.Attempts()
+    private var sweep: kotlinx.coroutines.Job? = null
 
     /** Lesbarer Fortschritt je Notiz-ID. */
     private val _stages = MutableStateFlow<Map<String, String>>(emptyMap())
@@ -145,11 +152,64 @@ object ProcessingService {
                 ),
             )
         }
-        // Links ohne Zusammenfassung bekommen eine im Hintergrund, wenn ein Modell dafür bereit ist.
+        // Links, deren Seite noch nicht geladen ist (die App wurde vorher geschlossen).
         for (note in notes) {
-            if (note.isLink && !note.isDeleted && note.summary == null && note.status != ProcessingStatus.FAILED && (note.pageText == null || note.pageText.isNotEmpty())) {
+            if (note.isLink && !note.isDeleted && note.status != ProcessingStatus.FAILED && (note.pageText == null || note.status == ProcessingStatus.RECORDED)) {
                 enqueue(Job.Link(note.id, summarize = true))
             }
+        }
+        de.letzgo.porridge.logic.AutoSummary.origins.prune(db.notes().all())
+        summarizeIncoming()
+    }
+
+    // Zusammenfassungen hereingekommener Einträge
+
+    /**
+     * iOS: `summarizeIncoming` — reiht die Zusammenfassung jedes hereingekommenen Eintrags ein, der fällig ist
+     * (`AutoSummary.isDue`). Gerufen beim Start, wenn die App nach vorn kommt und wenn sich die Notizen ändern (neue
+     * Einträge, Sync): billig, wenn nichts fällig ist.
+     */
+    suspend fun summarizeIncoming() {
+        // Von Zeit zu Zeit wieder angesehen: Ein gescheiterter wird wieder versucht, der Eintrag eines anderen Geräts kann
+        // zum Nachholen fällig sein, ein Modell kann gekommen sein.
+        synchronized(this) {
+            if (sweep == null) sweep = scope.launch {
+                kotlinx.coroutines.delay(de.letzgo.porridge.logic.AutoSummary.RETRY_DELAY)
+                synchronized(this@ProcessingService) { sweep = null }
+                summarizeIncoming()
+            }
+        }
+        if (!de.letzgo.porridge.logic.AutoSummary.enabled || !SummaryService.canRunWithoutAsking) return
+        val origins = de.letzgo.porridge.logic.AutoSummary.origins.all()
+        for (note in db.notes().all()) {
+            if (note.summary != null || note.summarizedAt != null || note.isDeleted) continue
+            if (autoAttempts.mayTry(note.id) && de.letzgo.porridge.logic.AutoSummary.isDue(note, isOrigin = note.id in origins)) enqueue(Job.AutoSummary(note.id))
+        }
+    }
+
+    /** Gleich nachdem der Inhalt eines Eintrags kam (Seite geladen, Text gelesen, Transkript fertig). */
+    private fun summarizeIfIncoming(note: Note) {
+        if (!de.letzgo.porridge.logic.AutoSummary.enabled || !SummaryService.canRunWithoutAsking || !autoAttempts.mayTry(note.id)) return
+        if (!de.letzgo.porridge.logic.AutoSummary.isDue(note, isOrigin = de.letzgo.porridge.logic.AutoSummary.origins.contains(note.id))) return
+        enqueue(Job.AutoSummary(note.id))
+    }
+
+    private suspend fun processAutoSummary(id: String) {
+        // Noch einmal geprüft: Sie kann inzwischen zusammengefasst, bearbeitet oder gelöscht worden sein.
+        val auto = de.letzgo.porridge.logic.AutoSummary
+        val note = db.notes().get(id) ?: return
+        if (!SummaryService.canRunWithoutAsking || !auto.isDue(note, isOrigin = auto.origins.contains(id))) return
+        stage(id, "Summarizing…")
+        try {
+            val summarized = SummaryService.summarize(note) { stage(id, it) }
+            saveSummary(note, summarized, onlyIfEmpty = true)
+            autoAttempts.succeeded(id)
+            auto.origins.clear(id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Kein Modell, keine Verbindung, keine Antwort: still später wieder (`AutoSummary.RETRY_DELAY`).
+            autoAttempts.failed(id)
         }
     }
 
@@ -164,6 +224,7 @@ object ProcessingService {
                     is Job.Summary -> processSummary(job.id, job.template, job.model)
                     is Job.Enhance -> processEnhance(job.id, job.model)
                     is Job.Attachment -> processAttachments(job.id)
+                    is Job.AutoSummary -> processAutoSummary(job.id)
                 }
             }
             synchronized(this) {
@@ -183,9 +244,13 @@ object ProcessingService {
 
     private suspend fun save(note: Note) = db.notes().upsert(note)
 
-    /** Eine inzwischen gelöschte Notiz bleibt gelöscht. */
-    private suspend fun saveSummary(before: Note, summarized: Note) {
+    /**
+     * Eine inzwischen gelöschte Notiz bleibt gelöscht. [onlyIfEmpty] (eine Zusammenfassung, um die niemand bat): Nichts wird
+     * geschrieben, wenn inzwischen eine geschrieben, bearbeitet oder gelöscht wurde (iOS: `summarize(onlyIfEmpty:)`).
+     */
+    private suspend fun saveSummary(before: Note, summarized: Note, onlyIfEmpty: Boolean = false) {
         val current = db.notes().get(before.id) ?: return
+        if (onlyIfEmpty && (current.summary != null || current.summarizedAt != null || current.isDeleted)) return
         val updated = SummaryLogic.carryOver(summarized, before, current)
         save(updated)
     }
@@ -196,10 +261,7 @@ object ProcessingService {
         stage(id, "Reading text…")
         val text = readAttachments(note)
         val read = de.letzgo.porridge.store.NoteStore(db).update(id) { it.copy(statusRaw = ProcessingStatus.READY.raw, errorMessage = null) } ?: return
-        if (read.summary == null && !read.isDeleted && text.isNotEmpty() && SummaryService.canRunWithoutAsking) {
-            stage(id, "Summarizing…")
-            runCatching { SummaryService.summarize(read) { stage(id, it) } }.onSuccess { saveSummary(read, it) }
-        }
+        if (text.isNotEmpty()) summarizeIfIncoming(read)
     }
 
     /**
@@ -232,12 +294,13 @@ object ProcessingService {
         try {
             val result = recognize(id, fileName, meeting.speakerMode, meeting.speakers)
             val current = db.notes().get(id) ?: return
-            save(
-                current.copy(
-                    speakerModeRaw = result.mode.raw, errorMessage = result.diagnostics, duration = result.duration,
-                    statusRaw = ProcessingStatus.READY.raw, updatedAt = System.currentTimeMillis(),
-                ).withSegments(result.segments).withSpeakers(result.speakers),
-            )
+            val done = current.copy(
+                speakerModeRaw = result.mode.raw, errorMessage = result.diagnostics, duration = result.duration,
+                statusRaw = ProcessingStatus.READY.raw, updatedAt = System.currentTimeMillis(),
+            ).withSegments(result.segments).withSpeakers(result.speakers)
+            save(done)
+            // Importiertes Audio wird von selbst zusammengefasst; die eigenen Aufnahmen auf Wunsch.
+            summarizeIfIncoming(done)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -417,10 +480,7 @@ object ProcessingService {
                 return
             }
         }
-        if (summarize && note.summary == null && !note.isDeleted && !note.pageText.isNullOrEmpty() && SummaryService.canRunWithoutAsking) {
-            stage(id, "Summarizing…")
-            runCatching { SummaryService.summarize(note) { stage(id, it) } }.onSuccess { saveSummary(note, it) }
-        }
+        if (summarize) db.notes().get(id)?.let { summarizeIfIncoming(it) }
     }
 
     /** iOS: `processEnhance` — schreibt den Text einer einfachen Notiz um; der alte Text bleibt für Rückgängig. */

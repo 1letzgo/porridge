@@ -59,6 +59,7 @@ object ShareImport {
                     projectIDs = listOfNotNull(project), sourceRaw = NoteSource.SHARE.raw,
                 )
                 db.notes().upsert(note)
+                de.letzgo.porridge.logic.AutoSummary.origins.mark(note.id)
                 ProcessingService.enqueue(ProcessingService.Job.Transcript(note.id))
                 first = first ?: note
             } else {
@@ -75,6 +76,8 @@ object ShareImport {
                     text = if (index == 0) text else "", statusRaw = ProcessingStatus.RECORDED.raw, projectIDs = listOfNotNull(project), sourceRaw = NoteSource.SHARE.raw,
                 ).withAttachments(listOf(attachment))
                 db.notes().upsert(note)
+                // Geteilte Dateien kamen hier herein: Dieses Gerät fasst sie zusammen, sobald ihr Text gelesen ist (`AutoSummary`).
+                de.letzgo.porridge.logic.AutoSummary.origins.mark(note.id)
                 ProcessingService.enqueue(ProcessingService.Job.Attachment(note.id))
                 first = first ?: note
             }
@@ -82,6 +85,8 @@ object ShareImport {
             text.isNotEmpty() -> {
                 val note = Note(title = shared.title.orEmpty().trim(), text = text, projectIDs = listOfNotNull(project), sourceRaw = NoteSource.SHARE.raw)
                 db.notes().upsert(note)
+                de.letzgo.porridge.logic.AutoSummary.origins.mark(note.id)
+                ProcessingService.summarizeIncoming()
                 first = note
             }
         }
