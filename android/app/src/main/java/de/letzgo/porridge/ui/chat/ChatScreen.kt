@@ -54,6 +54,7 @@ import de.letzgo.porridge.AppGraph
 import de.letzgo.porridge.cloud.ChatService
 import de.letzgo.porridge.model.ChatEntry
 import de.letzgo.porridge.model.ChatThread
+import androidx.compose.material.icons.filled.Description
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.store.PorridgeDatabase
@@ -211,7 +212,7 @@ private fun Chat(
                     )
                 }
             }
-            items(entries, key = { it.id }) { entry -> Bubble(entry, onOpen) }
+            items(entries, key = { it.id }) { entry -> Bubble(entry, notes, onOpen) }
             if (isThinking) item(key = "thinking") {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -230,7 +231,7 @@ private fun Chat(
 }
 
 @Composable
-private fun Bubble(entry: ChatEntry, onOpen: (String) -> Unit) {
+private fun Bubble(entry: ChatEntry, notes: List<Note>, onOpen: (String) -> Unit) {
     if (entry.isUser) {
         Box(Modifier.fillMaxWidth().padding(start = 48.dp), contentAlignment = Alignment.CenterEnd) {
             Text(entry.text, modifier = Modifier.background(Brand.sky.copy(alpha = 0.18f), RoundedCornerShape(16.dp)).padding(12.dp))
@@ -241,7 +242,11 @@ private fun Bubble(entry: ChatEntry, onOpen: (String) -> Unit) {
         if (entry.isError) Text(entry.text, color = Brand.dangerText) else MarkdownText(entry.text)
         val sources = remember(entry.sourcesData) { ChatService.sources(entry) }
         if (sources.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (source in sources) AssistChip(onClick = { onOpen(source.noteID) }, label = { Text(source.title, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+            // iOS: das Symbol der Art der Notiz, aus der die Stelle stammt (eine Seite, wenn sie weg ist).
+            for (source in sources) AssistChip(
+                onClick = { onOpen(source.noteID) }, label = { Text(source.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingIcon = { androidx.compose.material3.Icon(notes.firstOrNull { it.id == source.noteID }?.let { de.letzgo.porridge.ui.notes.kindIcon(it) } ?: androidx.compose.material.icons.Icons.Filled.Description, null, modifier = Modifier.size(16.dp)) },
+            )
         }
     }
 }

@@ -76,6 +76,11 @@ data class Note(
     val todoDoneAt: Long? = null,
     /** Die Notiz (`id`), aus deren Zusammenfassung das To-do stammt. */
     val todoSourceID: String? = null,
+    /**
+     * Der Tag, an dem das To-do fällig ist, "yyyy-MM-dd" (ein Kalendertag ohne Zeit und Zeitzone); "none", wenn er
+     * entfernt wurde; null = nie gesetzt (iOS: `Note.todoDueDay`, siehe `Todos.isDueKey`).
+     */
+    val todoDueDay: String? = null,
 ) {
     val source: NoteSource get() = NoteSource.of(sourceRaw)
 
@@ -105,6 +110,13 @@ data class Note(
 
     /** Ein To-do, das vor heute erledigt wurde: aus den Listen wie eine archivierte Notiz. */
     val isPutAway: Boolean get() = isDone && de.letzgo.porridge.logic.Todos.isPutAway(todoDoneAt)
+
+    /** Der fällige Tag, solange er gilt: gesetzt und die Notiz ist ein To-do. Wieder zur Notiz gemacht bleibt er gespeichert, ungezeigt. */
+    val todoDue: String? get() = if (isTodo && de.letzgo.porridge.logic.Todos.isDueKey(todoDueDay)) todoDueDay else null
+
+    /** Offen und vor heute fällig. */
+    val isOverdue: Boolean
+        get() = !isDone && todoDue?.let { de.letzgo.porridge.logic.Todos.dueStatus(it) } == de.letzgo.porridge.logic.Todos.DueStatus.OVERDUE
 
     /** Jede Notiz außer einer gespeicherten (Link, geteilte Datei) und einem Meeting kann ein To-do sein. */
     val canBeTodo: Boolean get() = !isSaved && !isRecording
@@ -191,7 +203,7 @@ data class Note(
             if (title.isNotEmpty()) parts += "# $title"
             parts += DateFormat.getDateTimeInstance(DateFormat.LONG, DateFormat.SHORT).format(Date(createdAt))
             url?.let { parts += it }
-            if (isTodo) parts += if (isDone) "[x] To-do, done" else "[ ] To-do"
+            if (isTodo) parts += (if (isDone) "[x] To-do, done" else "[ ] To-do") + (todoDue?.let { ", due " + de.letzgo.porridge.logic.Todos.dueText(it) } ?: "")
             if (text.isNotEmpty()) parts += text
             if (!summary.isNullOrEmpty()) parts += "## Summary\n\n$summary"
             if (segmentsData != null && segments.isNotEmpty()) parts += "## Transcript\n\n${transcriptText()}"

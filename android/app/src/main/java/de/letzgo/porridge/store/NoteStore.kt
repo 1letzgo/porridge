@@ -61,6 +61,9 @@ class NoteStore(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
     /** Hakt das To-do ab (mit allen Unteraufgaben) oder öffnet es wieder. */
     suspend fun setDone(note: Note, done: Boolean) = update(note.id) { Todos.withDone(it, done) ?: it }
 
+    /** Setzt den fälligen Tag ("yyyy-MM-dd") oder nimmt ihn weg (null, dann "none"). */
+    suspend fun setDue(note: Note, key: String?) = update(note.id) { Todos.withDue(it, key) ?: it }
+
     /** Hakt eine Unteraufgabe ab oder ab; das To-do folgt. */
     suspend fun toggleSubtask(note: Note, line: Int) = update(note.id) { Todos.withToggledSubtask(it, line) }
 

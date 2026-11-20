@@ -24,13 +24,13 @@ object ProjectsLogic {
         notes.filter { !it.isDeleted && !it.isArchived && projectID in it.projectIDs }.sortedByDescending { it.updatedAt }
 
     /**
-     * iOS: `ProjectContent` — die Einträge eines Buckets nach Art, To-dos zuerst; unter ihnen die offenen vor denen, die
-     * heute erledigt wurden (früher erledigte sind weggeräumt, siehe `Note.isPutAway`).
+     * iOS: `ProjectContent` — die Einträge eines Buckets nach Art, To-dos zuerst; unter ihnen die offenen nach fälligem Tag
+     * (ohne Tag danach), dann die heute erledigten (früher erledigte sind weggeräumt, siehe `Note.isPutAway`).
      */
     fun sections(elements: List<Note>): List<Pair<Kind, List<Note>>> =
         Kind.entries.mapNotNull { kind ->
             val items = elements.filter { kind(it) == kind }
-            val sorted = if (kind == Kind.TODO) items.filter { !it.isDone } + items.filter { it.isDone } else items
+            val sorted = if (kind == Kind.TODO) Todos.byDue(items) else items
             if (sorted.isEmpty()) null else kind to sorted
         }
 

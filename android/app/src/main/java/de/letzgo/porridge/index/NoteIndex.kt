@@ -128,7 +128,7 @@ class NoteIndex(
     }
 
     companion object {
-        private const val FILE_VERSION = 3
+        private const val FILE_VERSION = 4
 
         /** Ändert sich, sobald sich etwas ändert, woraus die Passagen bestehen (SHA-256, stabil über Starts). */
         fun indexHash(note: Note): String {
@@ -142,7 +142,8 @@ class NoteIndex(
             // Die Namen ihrer Dateien sind auch eine Passage.
             note.attachmentsData?.let { digest.update(it.toByteArray()) }
             // Der Stand eines To-dos steht in seiner Passage (`Todos.chatLine`).
-            note.todoStateRaw?.let { digest.update("todo:$it:${note.todoDoneAt}".toByteArray()) }
+            // Sie ändert sich mit Stand, fälligem Tag, Erledigt-Zeit und ob es überfällig ist (das auch um Mitternacht).
+            note.todoStateRaw?.let { digest.update("todo|$it|${note.todoDueDay.orEmpty()}|${note.todoDoneAt ?: ""}|${if (note.isOverdue) "overdue" else ""}".toByteArray()) }
             // Links bekamen eine eigene Passage (ihre Adresse): ihre Passagen werden einmal neu geschnitten.
             if (note.url != null) digest.update("link-passage".toByteArray())
             return digest.digest().joinToString("") { "%02x".format(it) }

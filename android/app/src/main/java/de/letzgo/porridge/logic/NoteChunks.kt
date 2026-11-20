@@ -12,6 +12,8 @@ data class NoteChunk(
     val text: String,
     val frequencies: Map<String, Int>,
     val prefixFrequencies: Map<String, Int>,
+    /** Das Datum der Passage, wenn es nicht das der Notiz ist: bei einem To-do der Beginn seines fälligen Tages (ms). */
+    val date: Long? = null,
 )
 
 /** iOS: `NoteChunks` (Services/NoteChunks.swift) — schneidet Notizen in Passagen und sagt, ob ein Wort darin steht. */
@@ -63,7 +65,7 @@ object NoteChunks {
         return sum
     }
 
-    private fun chunk(note: Note, text: String): NoteChunk {
+    private fun chunk(note: Note, text: String, date: Long? = null): NoteChunk {
         val words = tokens(note.displayTitle + " " + note.tags.joinToString(" ") + " " + text)
         val frequencies = HashMap<String, Int>()
         val prefixes = HashMap<String, Int>()
@@ -71,7 +73,7 @@ object NoteChunks {
             frequencies.merge(word, 1, Int::plus)
             prefix(word)?.let { prefixes.merge(it, 1, Int::plus) }
         }
-        return NoteChunk(note.id, text, frequencies, prefixes)
+        return NoteChunk(note.id, text, frequencies, prefixes, date)
     }
 
     /** Schneidet Text an Absätzen in Passagen von etwa [CHUNK_SIZE] Zeichen. */
@@ -104,7 +106,8 @@ object NoteChunks {
             val attachments = if (note.attachmentsData == null) emptyList() else note.attachments
             if (attachments.isNotEmpty()) result += chunk(note, (if (note.isImage) "Image: " else "File: ") + attachments.joinToString(", ") { it.name })
             // iOS: `ChatRetrieval.chunks` — ein To-do sagt, dass es eins ist und ob es erledigt ist: „was ist noch offen?“ findet es.
-            if (note.isTodo) result += chunk(note, Todos.chatLine(note))
+            // Datiert auf seinen fälligen Tag: „was ist diese Woche fällig“ sieht die Passagen dieser Zeit.
+            if (note.isTodo) result += chunk(note, Todos.chatLine(note), note.todoDue?.let { Todos.dueStart(it) })
             note.summary?.takeIf { it.isNotEmpty() }?.let { summary ->
                 pieces(summary.split("\n")).forEach { result += chunk(note, "Summary: $it") }
             }

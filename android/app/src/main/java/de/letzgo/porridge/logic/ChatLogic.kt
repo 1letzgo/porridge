@@ -22,7 +22,7 @@ object ChatLogic {
     private fun length(chunk: NoteChunk) = max(chunk.frequencies.values.sum(), 1)
 
     private fun passage(chunk: NoteChunk, notes: Map<String, Note>): Passage? =
-        notes[chunk.noteID]?.let { Passage(chunk.noteID, it.displayTitle, it.createdAt, chunk.text) }
+        notes[chunk.noteID]?.let { Passage(chunk.noteID, it.displayTitle, chunk.date ?: it.createdAt, chunk.text) }
 
     /** Die Passagen, die am besten zu [question] passen, innerhalb von [budget] Zeichen. [notes] sind die Notizen, über die der Chat geht. */
     fun search(question: String, chunks: List<NoteChunk>, notes: Map<String, Note>, budget: Int = 6500): List<Passage> {

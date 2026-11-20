@@ -6,7 +6,16 @@ import de.letzgo.porridge.model.TodoState
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import java.time.temporal.TemporalAdjusters
+import java.time.temporal.WeekFields
 import java.util.Calendar
+import java.util.Locale
 
 /**
  * iOS: `Todos` (Services/Todos.swift) — die Regeln der To-dos, ohne Oberfläche. Ein To-do ist eine gewöhnliche Notiz
@@ -256,13 +265,149 @@ object Todos {
     /** Die To-dos aus den Aufgabenzeilen der Zusammenfassung einer Notiz. */
     fun madeFrom(source: Note, notes: List<Note>): List<Note> = notes.filter { it.todoSourceID == source.id && !it.isDeleted }
 
-    /** iOS: `ChatRetrieval.todoLine` — "To-do, open, 1 of 3 subtasks done: Pack" oder "To-do, done on 19 Nov 2026: Pack". */
-    fun chatLine(note: Note): String {
+    /**
+     * iOS: `ChatRetrieval.todoLine` — "To-do, open, due 12 December 2026, overdue, 1 of 3 subtasks done: Pack" oder
+     * "To-do, done on 19 Nov 2026: Pack".
+     */
+    fun chatLine(note: Note, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): String {
         var head = "To-do, " + if (note.isDone) "done" else "open"
         val at = note.todoDoneAt
         if (note.isDone && at != null) head += " on " + java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(at))
+        note.todoDue?.let { due ->
+            head += ", due " + dueText(due)
+            if (!note.isDone && dueStatus(due, now, zone) == DueStatus.OVERDUE) head += ", overdue"
+        }
         val progress = note.todoProgress
         if (progress.total > 0) head += ", ${progress.done} of ${progress.total} subtasks done"
         return head + ": " + note.displayTitle
+    }
+
+    // Fälliger Tag (iOS: `Todos` „MARK: Due day“)
+
+    /** `Note.todoDueDay` eines entfernten fälligen Tages: geschrieben, damit die anderen Geräte davon erfahren. */
+    const val CLEARED_DUE = "none"
+
+    /** Ein fälliger Tag, wie er gespeichert wird: "yyyy-MM-dd", ein Kalendertag ohne Zeit und Zeitzone, auf jedem Gerät derselbe. */
+    fun dueKey(day: LocalDate): String = "%04d-%02d-%02d".format(Locale.ROOT, day.year, day.monthValue, day.dayOfMonth)
+
+    /** Der Tag von [now] in [zone] als Schlüssel. */
+    fun dueKey(now: Long, zone: ZoneId = ZoneId.systemDefault()): String = dueKey(Instant.ofEpochMilli(now).atZone(zone).toLocalDate())
+
+    /** Ein gespeicherter fälliger Tag, wenn er einer ist ("none" und alles andere Kaputte nicht): zehn Zeichen, drei Zahlen. */
+    fun isDueKey(key: String?): Boolean {
+        if (key == null || key.length != 10) return false
+        val parts = key.split("-")
+        return parts.size == 3 && parts.all { it.toIntOrNull() != null }
+    }
+
+    /** Der Tag eines Schlüssels, oder null. */
+    fun dueDay(key: String): LocalDate? {
+        if (!isDueKey(key)) return null
+        val (y, m, d) = key.split("-").map { it.toInt() }
+        // Wie Calendar auf iOS: ein 31. eines kürzeren Monats rollt weiter, statt zu scheitern.
+        return runCatching { LocalDate.of(y, 1, 1).plusMonths((m - 1).toLong()).plusDays((d - 1).toLong()) }.getOrNull()
+    }
+
+    /** Der Beginn des fälligen Tages in [zone] (ms). */
+    fun dueStart(key: String, zone: ZoneId = ZoneId.systemDefault()): Long? = dueDay(key)?.atStartOfDay(zone)?.toInstant()?.toEpochMilli()
+
+    enum class DueStatus {
+        /** Vor heute: ein offenes To-do ist spät dran. */
+        OVERDUE,
+        TODAY,
+        LATER,
+    }
+
+    /** Wo ein fälliger Tag gegenüber heute steht. Überfällig ab Mitternacht nach dem Tag. */
+    fun dueStatus(key: String, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): DueStatus? {
+        if (!isDueKey(key)) return null
+        val today = dueKey(now, zone)
+        // Die Schlüssel sind mit Nullen aufgefüllt: Sie vergleichen sich wie die Tage, die sie nennen.
+        return if (key < today) DueStatus.OVERDUE else if (key == today) DueStatus.TODAY else DueStatus.LATER
+    }
+
+    /**
+     * Der fällige Tag, wie die Liste ihn zeigt: "Today", "Tomorrow", "Yesterday", ein Wochentag für die nächsten sechs Tage
+     * ("Fri"), sonst Tag und Monat ("12 Dec"), mit Jahr, wenn es nicht dieses ist ("5 Jan 2027"), im Format von [locale].
+     */
+    fun dueLabel(key: String, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault(), locale: Locale = Locale.getDefault()): String {
+        val due = dueDay(key) ?: return ""
+        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        val days = ChronoUnit.DAYS.between(today, due)
+        when (days) {
+            0L -> return "Today"
+            1L -> return "Tomorrow"
+            -1L -> return "Yesterday"
+        }
+        val skeleton = if (days in 2..6) "EEE" else if (due.year == today.year) "dMMM" else "dMMMy"
+        return DateTimeFormatter.ofPattern(localPattern(skeleton, locale), locale).format(due)
+    }
+
+    /** Das Muster des Gerätes zu einer Vorlage (iOS: `setLocalizedDateFormatFromTemplate`); in Unit-Tests ohne Android eine feste Form. */
+    private fun localPattern(skeleton: String, locale: Locale): String {
+        val best = runCatching { android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton) }.getOrNull()
+        return best?.takeIf { it.isNotEmpty() } ?: when (skeleton) {
+            "EEE" -> "EEE"
+            "dMMM" -> "d MMM"
+            else -> "d MMM yyyy"
+        }
+    }
+
+    /** "12 December 2026": der fällige Tag für Chat und Export, in jeder Sprache gleich. */
+    fun dueText(key: String): String = dueDay(key)?.let { DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US).format(it) } ?: ""
+
+    /** Die schnelle Wahl: heute, morgen und der erste Tag der nächsten Woche (wie der Kalender Wochen zählt). */
+    enum class DueChoice(val title: String) { TODAY("Today"), TOMORROW("Tomorrow"), NEXT_WEEK("Next Week") }
+
+    fun dueKey(choice: DueChoice, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault(), locale: Locale = Locale.getDefault()): String {
+        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        val day = when (choice) {
+            DueChoice.TODAY -> today
+            DueChoice.TOMORROW -> today.plusDays(1)
+            DueChoice.NEXT_WEEK -> {
+                val first: DayOfWeek = WeekFields.of(locale).firstDayOfWeek
+                today.with(TemporalAdjusters.previousOrSame(first)).plusWeeks(1)
+            }
+        }
+        return dueKey(day)
+    }
+
+    /** Offene To-dos nach fälligem Tag (früheste zuerst, ohne Tag danach in ihrer Reihenfolge), erledigte dahinter. */
+    fun byDue(todos: List<Note>): List<Note> {
+        val open = todos.filter { !it.isDone }.withIndex().sortedWith { a, b ->
+            val x = a.value.todoDue
+            val y = b.value.todoDue
+            when {
+                x != null && y != null && x != y -> x.compareTo(y)
+                x != null && y == null -> -1
+                x == null && y != null -> 1
+                else -> a.index.compareTo(b.index)
+            }
+        }.map { it.value }
+        return open + todos.filter { it.isDone }
+    }
+
+    /** Offene To-dos in Gruppen nach ihrem fälligen Tag: Overdue, Today, Upcoming, No Due Date (leere fallen weg), je nach Tag sortiert. */
+    fun dueGroups(todos: List<Note>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): List<Pair<String, List<Note>>> {
+        val overdue = mutableListOf<Note>()
+        val today = mutableListOf<Note>()
+        val later = mutableListOf<Note>()
+        val none = mutableListOf<Note>()
+        for (note in byDue(todos)) {
+            when (note.todoDue?.let { dueStatus(it, now, zone) }) {
+                DueStatus.OVERDUE -> overdue += note
+                DueStatus.TODAY -> today += note
+                DueStatus.LATER -> later += note
+                null -> none += note
+            }
+        }
+        return listOf("Overdue" to overdue, "Today" to today, "Upcoming" to later, "No Due Date" to none).filter { it.second.isNotEmpty() }
+    }
+
+    /** Setzt den fälligen Tag oder nimmt ihn weg (null): dann wird "none" gespeichert, nur wenn vorher einer da war. Null: nichts zu tun. */
+    fun withDue(note: Note, key: String?): Note? {
+        val value = key ?: if (note.todoDueDay == null) null else CLEARED_DUE
+        if (value == note.todoDueDay) return null
+        return note.copy(todoDueDay = value)
     }
 }

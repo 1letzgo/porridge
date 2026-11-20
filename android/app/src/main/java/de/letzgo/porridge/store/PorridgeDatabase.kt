@@ -17,7 +17,7 @@ import de.letzgo.porridge.model.VoiceProfile
  * iOS: `AppContainer` (SwiftData). Auf Android eine lokale Room-Datenbank; der Abgleich läuft über `sync/NextcloudSync.kt`,
  * die Sicherung über `data/Backup.kt`. Schema in `app/schemas/` (Migrationen ab Version 2 dort prüfen).
  */
-@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class, ChatThread::class, ChatEntry::class], version = 12, exportSchema = true)
+@Database(entities = [Note::class, NoteFolder::class, VoiceProfile::class, ChatThread::class, ChatEntry::class], version = 13, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class PorridgeDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
@@ -45,7 +45,7 @@ abstract class PorridgeDatabase : RoomDatabase() {
         /** Alle Migrationen; auch für Tests und den Neuaufbau in [DatabaseRepair]. */
         fun builder(context: Context, name: String): RoomDatabase.Builder<PorridgeDatabase> =
             Room.databaseBuilder(context, PorridgeDatabase::class.java, name)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
 
         /** Aufgaben bekommen eigenen Text, ihre Ursprungszeile und einen Änderungszeitpunkt (iOS da54c01). */
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -185,6 +185,13 @@ abstract class PorridgeDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE notes ADD COLUMN todoStateRaw TEXT")
                 db.execSQL("ALTER TABLE notes ADD COLUMN todoDoneAt INTEGER")
                 db.execSQL("ALTER TABLE notes ADD COLUMN todoSourceID TEXT")
+            }
+        }
+
+        /** Fällige Tage der To-dos (iOS: `Note.todoDueDay`), leer bei allen bestehenden Notizen. */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN todoDueDay TEXT")
             }
         }
 

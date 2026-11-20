@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -307,8 +308,8 @@ fun NoteDetailScreen(
         Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
             // Leiste: zurück, Art der Notiz, teilen, mehr.
             ChromeBar(
-                title = if (note.isTodo) "To-do" else if (note.isLink) "Link" else if (note.isImage) "Image" else if (note.isFile) "File" else if (note.isRecording) "Meeting" else "Note",
-                icon = if (note.isTodo) Icons.Outlined.CheckBox else if (note.isLink) Icons.Filled.Link else if (note.isImage) Icons.Filled.Image else if (note.isFile) Icons.Filled.Description else if (note.isRecording) Icons.Filled.GraphicEq else Icons.AutoMirrored.Filled.Notes,
+                title = kindName(note),
+                icon = if (note.isTodo) kindIcon(note) else if (note.isLink) Icons.Filled.Link else if (note.isImage) Icons.Filled.Image else if (note.isFile) Icons.Filled.Description else if (note.isRecording) Icons.Filled.GraphicEq else Icons.AutoMirrored.Filled.Notes,
                 tint = if (note.isTodo) Brand.task else if (note.isLink) LinkOrange else if (note.isRecording || note.isStored) Brand.navy else Brand.sky,
                 onBack = onClose,
             ) {
@@ -365,6 +366,8 @@ fun NoteDetailScreen(
                 }
                 else TagRow(
                     note, onAdd = { addingTag = true },
+                    // iOS: der fällige Tag als erster Chip, nur bei einem To-do.
+                    onDue = if (note.isTodo) { key -> update { Todos.withDue(it, key) ?: it } } else null,
                     onProject = { id ->
                         update { n ->
                             val ids = ProjectsLogic.toggled(n.projectIDs, id)
@@ -714,8 +717,9 @@ private fun Header(
         val sent = remember(note.id) { mutableSetOf(note.title) }
         LaunchedEffect(note.title) { if (note.title !in sent && note.title != title) { title = note.title; sent += title } }
         // iOS: Bei einem To-do steht die Box vor dem Titel; ein erledigtes ist grau und durchgestrichen.
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (note.isTodo) TodoCheckbox(note.isDone, size = 26.dp, enabled = !note.isDeleted, onToggle = onToggleDone)
+        // Die Box zeichnet 26 dp in 48 dp zum Tippen: um den Rand verschoben steht sie bündig mit dem Text darunter.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+        if (note.isTodo) Box(Modifier.offset(x = (-11).dp).padding(end = 0.dp)) { TodoCheckbox(note.isDone, size = 26.dp, enabled = !note.isDeleted, onToggle = onToggleDone) }
         Box(Modifier.weight(1f)) {
             if (title.isEmpty()) Text(if (note.isTodo) "To-do" else "Title", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
             BasicTextField(
@@ -756,9 +760,10 @@ private fun Header(
 
 @OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun TagRow(note: Note, onAdd: () -> Unit, onProject: (String) -> Unit, onRemove: (String) -> Unit) {
+private fun TagRow(note: Note, onAdd: () -> Unit, onDue: ((String?) -> Unit)? = null, onProject: (String) -> Unit, onRemove: (String) -> Unit) {
     // Antippbare Chips sind wegen der Mindestgröße fürs Tippen höher als ihre Fläche: Mittig liegen alle auf einer Linie.
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        onDue?.let { DueDateChip(note, it) }
         // Projekte vor den Tags.
         ProjectPills(note.projectIDs, onProject)
         for (tag in note.tags) {

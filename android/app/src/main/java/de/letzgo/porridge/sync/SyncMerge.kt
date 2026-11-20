@@ -57,7 +57,9 @@ object SyncMerge {
     fun adoptNote(decoded: de.letzgo.porridge.model.Note, record: JsonObject, local: de.letzgo.porridge.model.Note?): de.letzgo.porridge.model.Note {
         if (local == null) return decoded
         val intake = if ("sourceRaw" !in record) decoded.withIntakeOf(local) else decoded
-        return if ("todoStateRaw" !in record) intake.withTodoOf(local) else intake
+        val todo = if ("todoStateRaw" !in record) intake.withTodoOf(local) else intake
+        // Der fällige Tag für sich: nur ein Eintrag, der ihn hat, sagt etwas darüber ("none" = entfernt).
+        return if ("todoDueDay" !in record) todo.copy(todoDueDay = local.todoDueDay) else todo
     }
 
     data class Local(val record: JsonObject, val updatedAt: Long)

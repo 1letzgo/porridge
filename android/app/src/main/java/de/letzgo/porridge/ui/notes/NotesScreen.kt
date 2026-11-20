@@ -49,6 +49,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import de.letzgo.porridge.logic.Todos
+import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
@@ -461,7 +464,13 @@ private fun SearchResults(
         return
     }
     LazyColumn(modifier.fillMaxWidth(), state = rememberLazyListState(), contentPadding = PaddingValues(bottom = 16.dp)) {
-        dateGroups(foundNotes, stages, onOpen)
+        // iOS: Die offenen To-dos nach ihrer Fälligkeit, alles andere nach der letzten Änderung.
+        if (kind == ProjectsLogic.Kind.TODO) {
+            for ((title, group) in Todos.dueGroups(foundNotes)) {
+                item(key = "h-$title") { SectionHeader(title, color = if (title == "Overdue") Brand.dangerText else Brand.task) }
+                noteRows(group, stages, onOpen)
+            }
+        } else dateGroups(foundNotes, stages, onOpen)
     }
 }
 
@@ -542,6 +551,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
         }
     })
     var menu by remember { mutableStateOf(false) }
+    var dueMenu by remember { mutableStateOf(false) }
     var choosing by remember { mutableStateOf(false) }
     if (confirmDeleteNow) AlertDialog(
         onDismissRequest = { confirmDeleteNow = false },
@@ -565,6 +575,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
     ) {
         Box {
             NoteRow(note, stage, Modifier.combinedClickable(onClick = { onOpen(note.id) }, onLongClick = { menu = true }), showsDivider)
+            DueDateMenu(note, dueMenu, onDismiss = { dueMenu = false }) { key -> coroutines.launch { store.setDue(note, key) } }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (note.isDeleted) {
                     DropdownMenuItem(text = { Text("Recover") }, onClick = { menu = false; coroutines.launch { store.restore(note) } })
@@ -572,6 +583,11 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
                 } else {
                     // iOS: das lange Drücken eines To-dos hat „Mark as Done“ und das Umwandeln.
                     if (note.isTodo) DropdownMenuItem(text = { Text(if (note.isDone) "Mark as Not Done" else "Mark as Done") }, onClick = { menu = false; coroutines.launch { store.setDone(note, !note.isDone) } })
+                    if (note.isTodo) DropdownMenuItem(
+                        text = { Text(note.todoDue?.let { "Due ${Todos.dueLabel(it)}" } ?: "Due Date") },
+                        leadingIcon = { Icon(Icons.Outlined.CalendarToday, null) },
+                        onClick = { menu = false; dueMenu = true },
+                    )
                     if (!archived) DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { NoteStore().update(note.id, touch = false) { it.copy(isPinned = !it.isPinned) } } })
                     if (note.canBeTodo) DropdownMenuItem(text = { Text(if (note.isTodo) "Convert to Note" else "Convert to To-do") }, onClick = { menu = false; coroutines.launch { store.setTodo(note, !note.isTodo) } })
                     // Ein To-do, das an einem früheren Tag erledigt wurde, ist von selbst weggeräumt: Herausholen ist hier
@@ -592,6 +608,7 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
 @Composable
 internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivider: Boolean = true) {
     val (icon, tint) = when {
+        note.isTodo -> kindIcon(note) to Brand.task
         note.isLink -> Icons.Filled.Link to LinkOrange
         note.isImage -> Icons.Filled.Image to Brand.navy
         note.isFile -> Icons.Filled.Description to Brand.navy
@@ -617,10 +634,8 @@ internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivide
     Surface(color = MaterialTheme.colorScheme.background, modifier = modifier) {
         Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Ein To-do trägt seine grüne Box statt des Symbols und wird gleich in der Liste abgehakt; ein gelöschtes nur gezeigt.
-                if (note.isTodo) TodoCheckbox(note.isDone, isPinned = note.isPinned, enabled = !note.isDeleted) {
-                    coroutines.launch { NoteStore().setDone(note, !note.isDone) }
-                } else RowIcon(icon, tint, isPinned = note.isPinned)
+                // Jede Notiz trägt das Symbol ihrer Art; ein To-do grün mit `checklist`, gleich ob offen, erledigt oder spät.
+                RowIcon(icon, tint, isPinned = note.isPinned)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         note.displayTitle, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -640,8 +655,13 @@ internal fun NoteRow(note: Note, stage: String?, modifier: Modifier, showsDivide
                     }
                     Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(footer.joinToString("  ·  "), style = MaterialTheme.typography.labelSmall, color = if (note.isDeleted) Brand.danger.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        if (note.isTodo) TodoDueLabel(note)
                         if (note.isTodo) TodoProgressLabel(note.todoProgress)
                     }
+                }
+                // iOS: Die Box, die es abhakt, steht am Ende der Zeile; ein gelöschtes zeigt sie nur.
+                if (note.isTodo) Box(Modifier.align(Alignment.CenterVertically)) {
+                    TodoCheckbox(note.isDone, enabled = !note.isDeleted) { coroutines.launch { NoteStore().setDone(note, !note.isDone) } }
                 }
                 picture?.let { bitmap ->
                     androidx.compose.foundation.Image(
@@ -705,7 +725,7 @@ private fun CreateMenu(
 
                     CreateOption("Link", Icons.Filled.Link, LinkOrange) { onOpen(false); onLink() }
                     CreateOption("Meeting", Icons.Filled.Mic, Brand.navy) { onOpen(false); onMeeting() }
-                    CreateOption("To-do", Icons.Outlined.CheckBox, Brand.task) { onOpen(false); onTodo() }
+                    CreateOption("To-do", Icons.Filled.Checklist, Brand.task) { onOpen(false); onTodo() }
                     CreateOption("Note", Icons.Outlined.EditNote, Brand.sky) { onOpen(false); onNote() }
                 }
             }

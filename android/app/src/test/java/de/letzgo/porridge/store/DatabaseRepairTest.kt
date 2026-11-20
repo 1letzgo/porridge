@@ -128,6 +128,18 @@ class DatabaseRepairTest {
         assertTrue(backups().isEmpty())
     }
 
+    @Test
+    fun version116MigratesToDueDaysWithoutRepair() {
+        // 1.1.6: Version 12. MIGRATION_12_13 gibt den Notizen `todoDueDay`, leer.
+        create(12)
+        insertNote("N1", "From 1.1.6")
+
+        val notes = runBlocking { open().notes().all() }
+        assertEquals(listOf("From 1.1.6"), notes.map { it.title })
+        assertEquals(listOf<String?>(null), notes.map { it.todoDueDay })
+        assertTrue(backups().isEmpty())
+    }
+
     // Aufbau
 
     private fun write(block: (SQLiteDatabase) -> Unit) {
