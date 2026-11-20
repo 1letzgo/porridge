@@ -57,7 +57,6 @@ import de.letzgo.porridge.model.NoteFolder
 import de.letzgo.porridge.ui.Brand
 import de.letzgo.porridge.ui.components.EmptyState
 import de.letzgo.porridge.ui.components.RowIcon
-import de.letzgo.porridge.ui.components.SectionHeader
 import de.letzgo.porridge.ui.notes.NoteSwipeRow
 import de.letzgo.porridge.ui.notes.TextPrompt
 import kotlinx.coroutines.launch
@@ -148,7 +147,7 @@ internal fun ProjectDetail(
     var filter by remember { mutableStateOf<ProjectsLogic.Kind?>(null) }
     LaunchedEffect(project.id) { filter = null }
     val all = remember(project.id, notes) { ProjectsLogic.elements(project.id, notes) }
-    val shown = filter?.let { k -> all.filter { ProjectsLogic.kind(it) == k } } ?: all
+    val shown = remember(all, filter) { ProjectsLogic.ordered(all, filter) }
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val chips = listOf<ProjectsLogic.Kind?>(null) + ProjectsLogic.Kind.entries
@@ -172,13 +171,9 @@ internal fun ProjectDetail(
             }
             return@Column
         }
-        // iOS: `ProjectsPane` — Abschnitte nach Art, To-dos zuerst (offene vor heute erledigten); gefiltert eine Art allein.
-        val sections = remember(shown) { ProjectsLogic.sections(shown) }
+        // iOS: `ProjectContent` — eine flache Liste ohne Überschriften, angeheftete oben (Reihenfolge: `ProjectsLogic.ordered`).
         LazyColumn(Modifier.fillMaxSize(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
-            for ((kind, items) in sections) {
-                if (filter == null && sections.size > 1) item(key = "h-" + kind.name) { SectionHeader(kind.title, color = if (kind == ProjectsLogic.Kind.TODO) Brand.task else Brand.project) }
-                itemsIndexed(items, key = { _, it -> it.id }) { index, note -> NoteSwipeRow(note, stages[note.id], onOpen, projectID = project.id, showsDivider = index < items.lastIndex) }
-            }
+            itemsIndexed(shown, key = { _, it -> it.id }) { index, note -> NoteSwipeRow(note, stages[note.id], onOpen, projectID = project.id, showsDivider = index < shown.lastIndex) }
         }
     }
 }

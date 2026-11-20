@@ -152,7 +152,7 @@ class TodoDueTest {
         val undated = Note(title = "undated", todoStateRaw = "open", projectIDs = listOf("B"), updatedAt = now)
         val soon = Note(title = "soon", todoStateRaw = "open", todoDueDay = "2999-01-01", projectIDs = listOf("B"), updatedAt = now - 10)
         val late = Note(title = "late", todoStateRaw = "open", todoDueDay = "2000-01-01", projectIDs = listOf("B"), updatedAt = now - 20)
-        val sections = ProjectsLogic.sections(ProjectsLogic.elements("B", listOf(undated, soon, late)))
-        assertEquals(listOf("late", "soon", "undated"), sections.first().second.map { it.title })
+        val todos = ProjectsLogic.ordered(ProjectsLogic.elements("B", listOf(undated, soon, late)), ProjectsLogic.Kind.TODO)
+        assertEquals(listOf("late", "soon", "undated"), todos.map { it.title })
     }
 }

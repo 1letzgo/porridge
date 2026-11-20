@@ -200,9 +200,10 @@ class TodosTest {
         val done = Note(title = "done", todoStateRaw = "done", todoDoneAt = now, projectIDs = listOf("B"), updatedAt = now)
         val open = Note(title = "open", todoStateRaw = "open", projectIDs = listOf("B"), updatedAt = now - 10)
         val plain = Note(title = "plain", projectIDs = listOf("B"), updatedAt = now - 5)
-        val sections = ProjectsLogic.sections(ProjectsLogic.elements("B", listOf(done, open, plain)))
-        assertEquals(listOf(ProjectsLogic.Kind.TODO, ProjectsLogic.Kind.NOTE), sections.map { it.first })
-        assertEquals(listOf("open", "done"), sections.first().second.map { it.title })
+        val elements = ProjectsLogic.elements("B", listOf(done, open, plain))
+        // Chip „To-dos“: offene vor erledigten; „All“: flach nach letzter Änderung, das erledigte ordnet sich normal ein.
+        assertEquals(listOf("open", "done"), ProjectsLogic.ordered(elements, ProjectsLogic.Kind.TODO).map { it.title })
+        assertEquals(listOf("done", "plain", "open"), ProjectsLogic.ordered(elements).map { it.title })
         assertEquals(1, ProjectsLogic.openTodos("B", listOf(done, open, plain)))
     }
 

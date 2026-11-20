@@ -11,7 +11,7 @@ import org.junit.Test
 class ProjectsLogicTest {
     private val p = "P1"
 
-        @Test fun elementsExcludeDeletedNotesAndSortNewestFirst() {
+    @Test fun elementsExcludeDeletedNotesAndSortNewestFirst() {
         val note = Note(id = "A", projectIDs = listOf(p), updatedAt = 100)
         val meeting = Note(id = "M", projectIDs = listOf(p), audioFileName = "a.m4a", updatedAt = 300)
         val link = Note(id = "L", projectIDs = listOf(p), url = "https://example.com", updatedAt = 200)
@@ -22,6 +22,34 @@ class ProjectsLogicTest {
         assertEquals(listOf("M", "L", "A"), elements.map { it.id })
         assertEquals(listOf(ProjectsLogic.Kind.MEETING, ProjectsLogic.Kind.LINK, ProjectsLogic.Kind.NOTE), elements.map(ProjectsLogic::kind))
         assertEquals(mapOf(p to 3, "empty" to 0), ProjectsLogic.counts(listOf(p, "empty"), all))
+    }
+
+    @Test fun allIsOneFlatListNewestFirstWithPinnedOnTop() {
+        val todo = Note(id = "T", projectIDs = listOf(p), todoStateRaw = "open", updatedAt = 400)
+        val meeting = Note(id = "M", projectIDs = listOf(p), audioFileName = "a.m4a", updatedAt = 300)
+        val link = Note(id = "L", projectIDs = listOf(p), url = "https://example.com", updatedAt = 200)
+        val oldPinned = Note(id = "P", projectIDs = listOf(p), isPinned = true, updatedAt = 10)
+        val newPinned = Note(id = "Q", projectIDs = listOf(p), url = "https://example.org", isPinned = true, updatedAt = 50)
+        val elements = ProjectsLogic.elements(p, listOf(link, oldPinned, todo, meeting, newPinned))
+        assertEquals(listOf("Q", "P", "T", "M", "L"), ProjectsLogic.ordered(elements).map { it.id })
+        // Andere Chips: nur ihre Art, angeheftete oben, sonst neueste zuerst.
+        val older = Note(id = "O", projectIDs = listOf(p), url = "https://example.net", updatedAt = 100)
+        assertEquals(listOf("Q", "L", "O"), ProjectsLogic.ordered(elements + older, ProjectsLogic.Kind.LINK).map { it.id })
+        assertEquals(listOf("P"), ProjectsLogic.ordered(elements, ProjectsLogic.Kind.NOTE).map { it.id })
+    }
+
+    @Test fun todoChipKeepsDueOrderWithPinnedFirst() {
+        val late = Note(id = "late", projectIDs = listOf(p), todoStateRaw = "open", todoDueDay = "2000-01-01", updatedAt = 1)
+        val soon = Note(id = "soon", projectIDs = listOf(p), todoStateRaw = "open", todoDueDay = "2999-01-01", updatedAt = 2)
+        val undated = Note(id = "undated", projectIDs = listOf(p), todoStateRaw = "open", updatedAt = 3)
+        val pinnedSoon = Note(id = "pinnedSoon", projectIDs = listOf(p), todoStateRaw = "open", todoDueDay = "2999-01-01", isPinned = true, updatedAt = 4)
+        val pinnedLate = Note(id = "pinnedLate", projectIDs = listOf(p), todoStateRaw = "open", todoDueDay = "2000-01-01", isPinned = true, updatedAt = 0)
+        val note = Note(id = "note", projectIDs = listOf(p), updatedAt = 9)
+        val elements = ProjectsLogic.elements(p, listOf(late, soon, undated, pinnedSoon, pinnedLate, note))
+        assertEquals(
+            listOf("pinnedLate", "pinnedSoon", "late", "soon", "undated"),
+            ProjectsLogic.ordered(elements, ProjectsLogic.Kind.TODO).map { it.id },
+        )
     }
 
     @Test fun deleteRemovesIDsButKeepsElements() {

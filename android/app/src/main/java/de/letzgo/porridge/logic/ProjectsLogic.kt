@@ -24,15 +24,17 @@ object ProjectsLogic {
         notes.filter { !it.isDeleted && !it.isArchived && projectID in it.projectIDs }.sortedByDescending { it.updatedAt }
 
     /**
-     * iOS: `ProjectContent` — die Einträge eines Buckets nach Art, To-dos zuerst; unter ihnen die offenen nach fälligem Tag
-     * (ohne Tag danach), dann die heute erledigten (früher erledigte sind weggeräumt, siehe `Note.isPutAway`).
+     * iOS: `ProjectContent` — die Liste eines Buckets, flach und ohne Abschnitte. [filter] null („All“): alle Arten
+     * gemischt, neueste Änderung zuerst (erledigte To-dos ordnen sich normal ein). Chip „To-dos“: nach fälligem Tag
+     * ([Todos.byDue]). Andere Chips: neueste Änderung zuerst. Überall stehen angeheftete Notizen oben, unter sich
+     * genauso sortiert.
      */
-    fun sections(elements: List<Note>): List<Pair<Kind, List<Note>>> =
-        Kind.entries.mapNotNull { kind ->
-            val items = elements.filter { kind(it) == kind }
-            val sorted = if (kind == Kind.TODO) Todos.byDue(items) else items
-            if (sorted.isEmpty()) null else kind to sorted
-        }
+    fun ordered(elements: List<Note>, filter: Kind? = null): List<Note> {
+        val shown = elements.filter { filter == null || kind(it) == filter }
+        fun sort(group: List<Note>) = if (filter == Kind.TODO) Todos.byDue(group.sortedByDescending { it.updatedAt }) else group.sortedByDescending { it.updatedAt }
+        val (pinned, rest) = shown.partition { it.isPinned }
+        return sort(pinned) + sort(rest)
+    }
 
     /** Offene To-dos eines Buckets, für seine Zeile. */
     fun openTodos(projectID: String, notes: List<Note>): Int = elements(projectID, notes).count { it.isTodo && !it.isDone }
