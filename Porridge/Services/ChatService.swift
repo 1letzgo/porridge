@@ -167,14 +167,15 @@ final class ChatService {
         let within = thread.projectID == nil ? nil : Set(scope.map(\.id))
         // The buckets by name: a question may name one, and every entry says where it is filed.
         let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { first, _ in first })
-        let found = await index.context(for: question, within: within, bucketNames: names)
+        // The model chosen for the chat ("Chat Model"), else the default; its room decides how much context it gets.
+        let model = SummaryModel.chat
+        let found = await index.context(for: question, within: within, bucketNames: names, budget: .for(model))
         guard !found.isEmpty || found.matched != nil else {
             answer(thread.projectID == nil ? "There is nothing in your notes yet." : "There is nothing in this bucket yet.")
             return
         }
 
         do {
-            let model = SummaryModel.current
             if case .local = model { usedLocalModel = true }
             let text = try await Self.complete(
                 question: question, history: history, context: found,
@@ -184,8 +185,22 @@ final class ChatService {
             }
             answer(text, sources: Self.sources(in: text, items: found.items, wordsNotFound: found.wordsNotFound))
         } catch {
-            answer(error.localizedDescription, isError: true)
+            answer(Self.message(for: error, model: model), isError: true)
         }
+    }
+
+    /// An error as the chat says it: what went wrong with which service, and what to do.
+    static func message(for error: Error, model: SummaryModel) -> String {
+        if let error = error as? URLError {
+            var place = model.place
+            if case .cloud(.custom, _) = model { place = "your server" }
+            switch error.code {
+            case .timedOut: return "\(place.prefix(1).uppercased() + place.dropFirst()) took too long to answer. Try again in a moment."
+            case .cancelled: return "The question was cancelled."
+            default: return "Could not reach \(place). Check the internet connection and try again."
+            }
+        }
+        return error.localizedDescription
     }
 
     /// The notes behind the items the answer quotes as [n]; without a number, the first passages (not the list of
@@ -286,7 +301,7 @@ final class ChatService {
         switch model {
         case .local(let local):
             // The Apple model has room for far fewer excerpts.
-            let prompt = prompt(question: question, history: history, context: context, bucket: bucket, limit: local == .apple ? 7_000 : .max)
+            let prompt = prompt(question: question, history: history, context: context, bucket: bucket, limit: ChatBudget.for(model).promptLimit)
             // A question never starts a download of gigabytes on its own: the model is fetched in Settings.
             guard local.isInstalled else { throw SummaryError.provider(Self.noModel) }
             ModelManager.shared.beginLLMUse()
@@ -296,7 +311,7 @@ final class ChatService {
             progress("Thinking…")
             return try await LocalLLM.shared.generate(model: local, system: prompt.system, user: prompt.user, maxTokens: 700)
         case .cloud(let provider, let id):
-            let prompt = prompt(question: question, history: history, context: context, bucket: bucket)
+            let prompt = prompt(question: question, history: history, context: context, bucket: bucket, limit: ChatBudget.for(model).promptLimit)
             let key = provider.apiKey
             if provider.requiresKey, key.isEmpty { throw SummaryError.missingAPIKey(provider.label) }
             progress("Thinking…")

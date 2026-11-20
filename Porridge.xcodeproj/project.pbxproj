@@ -253,6 +253,7 @@
 		D27B72D61365263EE5DF92B3 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A027F964ABF9D4B96589D2 /* ChatView.swift */; };
 		D484A5140AC294E5C2683844 /* ChatListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7FAA9C850963F5D3FD344E /* ChatListViewController.swift */; };
 		D4C2148E15E3035B7B32D447 /* AttachmentStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE91145DD729AA591C619B47 /* AttachmentStrip.swift */; };
+		D4E99A698DF7393E5659B0EE /* ChatModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3589CEAD998764D9D461E6 /* ChatModelTests.swift */; };
 		D7E536A3D5CFEE0C6A218C48 /* AttachmentText.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E49FB1B40E76B0AE2F1219 /* AttachmentText.swift */; };
 		D8538F472A63388E0207249B /* NoteFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 536E6D547A46DCF6768AE6C5 /* NoteFolder.swift */; };
 		D9049BB1247F9D188B44D1A2 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E56BE573144212F81BA70AC /* AppSettings.swift */; };
@@ -422,6 +423,7 @@
 		4E56BE573144212F81BA70AC /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		4E639258A983029655F3B803 /* Projects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Projects.swift; sourceTree = "<group>"; };
 		4E8A0999059F5027B73034FC /* MeetingExportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingExportSheet.swift; sourceTree = "<group>"; };
+		4F3589CEAD998764D9D461E6 /* ChatModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModelTests.swift; sourceTree = "<group>"; };
 		50396E878D361D57D9F258E3 /* SettingsForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsForm.swift; sourceTree = "<group>"; };
 		50D5387B8FDB2327EE19DAAC /* PlaudAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudAccount.swift; sourceTree = "<group>"; };
 		52C78A4C0BCA055F861C25B4 /* NoteKindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteKindTests.swift; sourceTree = "<group>"; };
@@ -790,6 +792,7 @@
 				AC82EC350B85940475F85526 /* AutoSummaryTests.swift */,
 				3B2A18F9D126F4EDB31CE827 /* BrandContrastTests.swift */,
 				F7266962A43ED5C714064E64 /* ChatDataTests.swift */,
+				4F3589CEAD998764D9D461E6 /* ChatModelTests.swift */,
 				1D296BEE8976CC9807A1CF95 /* ChatTests.swift */,
 				626752232CFE16964C150FE6 /* DocumentTextTests.swift */,
 				CBB038AA5CA73FAFCB022177 /* InboxTests.swift */,
@@ -1629,6 +1632,7 @@
 				7858B39FC06FB932D97B8FE6 /* AutoSummaryTests.swift in Sources */,
 				85E6B23E43152A25B309EAA0 /* BrandContrastTests.swift in Sources */,
 				0EEE5BCF1FE9AE0AAFC20327 /* ChatDataTests.swift in Sources */,
+				D4E99A698DF7393E5659B0EE /* ChatModelTests.swift in Sources */,
 				BDB5349022D49714148DCD26 /* ChatTests.swift in Sources */,
 				0937C1931F2BF054FB62960C /* DocumentTextTests.swift in Sources */,
 				F8C811CA5FFCA8A1BD440F07 /* InboxTests.swift in Sources */,

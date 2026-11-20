@@ -36,6 +36,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.myNameKey) private var myName = ""
 
     @State private var defaultModel = SummaryModel.current
+    @State private var chatModel = SummaryModel.chatChoice
     @State private var externalModels = SummaryModel.external
     @State private var showAddModel = false
     @State private var inputDescription = ""
@@ -328,6 +329,20 @@ struct SettingsView: View {
                     }),
                     options: SummaryModel.available.map { (value: $0, title: $0.name) }
                 )
+                CardDivider()
+                // The chat may answer with another model than the summaries ("Same as Default" is the default).
+                MenuRow(
+                    title: "Chat Model",
+                    selection: Binding(get: { chatModel }, set: {
+                        chatModel = $0
+                        SummaryModel.chatChoice = $0
+                    }),
+                    options: [(value: SummaryModel?.none, title: "Same as Default")]
+                        + SummaryModel.available.map { (value: Optional($0), title: $0.name) }
+                )
+                if let hint = SummaryModel.chat.sendsHint("question and excerpts of your notes") {
+                    Text(hint).font(.footnote).foregroundStyle(.secondary)
+                }
             }
             CardDivider()
 
@@ -400,6 +415,7 @@ struct SettingsView: View {
     private func refreshSummaryModels() {
         SummaryModel.repairCurrent()
         defaultModel = SummaryModel.current
+        chatModel = SummaryModel.chatChoice
         externalModels = SummaryModel.external
     }
 

@@ -62,6 +62,8 @@ enum AppSettings {
     static let myNameKey = "myName"
     /// Links, images, files, shared text and imported audio get a summary by themselves (`AutoSummary`).
     static let summarizeIncomingKey = "summarizeIncoming"
+    /// The model the chat answers with (`SummaryModel.chat`): a `SummaryModel.id`; empty or missing is the default model.
+    static let chatModelKey = "chatModel"
     /// The voice marked as the user's in the speaker list (`VoiceProfile.id`), and its name for matching.
     static let myVoiceKey = "myVoice"
     static let myVoiceNameKey = "myVoiceName"

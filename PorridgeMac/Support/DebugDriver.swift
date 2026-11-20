@@ -233,8 +233,13 @@ enum DebugDriver {
                 let chat = controller.split.detail.children.compactMap { $0 as? ChatViewController }.first
                 if chat == nil { log("ask: no chat") }
                 chat?.ask(argument)
-                log("model: \(SummaryModel.current)")
+                log("model: \(SummaryModel.chat)")
             }
+        case "chat-model":
+            // `chat-model <SummaryModel.id>|default`: the chat's own model, as the menu in the chat sets it; logs the list.
+            SummaryModel.chatChoice = SummaryModel.available.first { $0.id == argument }
+            log("models: \(SummaryModel.available.map(\.id).joined(separator: ", "))")
+            log("default: \(SummaryModel.current.id) chat: \(SummaryModel.chat.id)")
         case "new-chat":
             state.chatID = nil
         case "chat-dump":

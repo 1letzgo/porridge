@@ -106,12 +106,12 @@ enum ChatRetrieval {
     /// At most this many passages of one note: a long note must not take all the places.
     static let passagesPerNote = 3
 
-    static func search(_ query: String, in chunks: [ChatChunk], queryVector: [Float]? = nil, budget: Int = 6500) -> [ChatChunk] {
-        search(words: queryWords(query), in: chunks, queryVector: queryVector, budget: budget)
+    static func search(_ query: String, in chunks: [ChatChunk], queryVector: [Float]? = nil, budget: Int = 6500, limit: Int = 10) -> [ChatChunk] {
+        search(words: queryWords(query), in: chunks, queryVector: queryVector, budget: budget, limit: limit)
     }
 
     /// `search` with the words already read from the question (`ChatQuery.words`).
-    static func search(words: [String], in chunks: [ChatChunk], queryVector: [Float]? = nil, budget: Int = 6500) -> [ChatChunk] {
+    static func search(words: [String], in chunks: [ChatChunk], queryVector: [Float]? = nil, budget: Int = 6500, limit: Int = 10) -> [ChatChunk] {
         let words = Array(Set(words))
         guard !words.isEmpty, !chunks.isEmpty else { return [] }
 
@@ -171,7 +171,7 @@ enum ChatRetrieval {
             picked.append(chunk)
             perNote[chunk.noteID, default: 0] += 1
             used += chunk.text.count
-            if picked.count >= 10 { break }
+            if picked.count >= limit { break }
         }
         return picked
     }
@@ -189,15 +189,15 @@ enum ChatRetrieval {
     /// `select`, and whether the passages are only the newest ones because nothing had the question's words.
     static func selection(
         _ question: String, in chunks: [ChatChunk], queryVector: [Float]? = nil,
-        now: Date = Date(), calendar: Calendar = .current, budget: Int = 6500, recentBudget: Int = 4500
+        now: Date = Date(), calendar: Calendar = .current, budget: Int = 6500, recentBudget: Int = 4500, limit: Int = 10
     ) -> (chunks: [ChatChunk], isNewest: Bool) {
         var window: [ChatChunk] = []
         if let start = since(in: question, now: now, calendar: calendar) {
             window = chunks.filter { $0.date >= start }
-            let found = search(question, in: window, queryVector: queryVector, budget: budget)
+            let found = search(question, in: window, queryVector: queryVector, budget: budget, limit: limit)
             if !found.isEmpty { return (found, false) }
         }
-        let found = search(question, in: chunks, queryVector: queryVector, budget: budget)
+        let found = search(question, in: chunks, queryVector: queryVector, budget: budget, limit: limit)
         if !found.isEmpty { return (found, false) }
         return (recent(from: window.isEmpty ? chunks : window, budget: recentBudget), true)
     }

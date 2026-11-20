@@ -385,19 +385,43 @@ struct ChatContext {
     var isEmpty: Bool { items.isEmpty }
 }
 
-extension ChatRetrieval {
+/// How much context a model gets. The Apple model has little room; a cloud model has a lot.
+struct ChatBudget: Equatable {
     /// At most this many entries are listed for a question with filters; the model is told when there are more.
-    static let listLimit = 40
+    var listLimit: Int
     /// Passages of the matching entries fill the context up to this many characters.
-    static let fillBudget = 6500
+    var fillBudget: Int
+    /// Passages of entries outside the filters, when no match has the question's words.
+    var outsideBudget: Int
+    /// Passages for a question without filters: this many characters, at most `maxPassages`.
+    var searchBudget: Int
+    var maxPassages: Int
+    /// The whole prompt is cut at this many characters (`ChatService.prompt`).
+    var promptLimit: Int
 
+    /// On-device models other than Apple's.
+    static let standard = ChatBudget(listLimit: 40, fillBudget: 6500, outsideBudget: 3000, searchBudget: 6500, maxPassages: 10, promptLimit: .max)
+    /// The Apple model: the same passages, the prompt cut at 7000 characters.
+    static let small = ChatBudget(listLimit: 40, fillBudget: 6500, outsideBudget: 3000, searchBudget: 6500, maxPassages: 10, promptLimit: 7000)
+    /// Cloud models: about three times the room (well within their context windows, and a few cents per question).
+    static let large = ChatBudget(listLimit: 100, fillBudget: 20000, outsideBudget: 8000, searchBudget: 20000, maxPassages: 30, promptLimit: 100_000)
+
+    static func `for`(_ model: SummaryModel) -> ChatBudget {
+        switch model {
+        case .local(let local): local == .apple ? .small : .standard
+        case .cloud: .large
+        }
+    }
+}
+
+extension ChatRetrieval {
     /// The context a question is answered from. With filters (a kind, a bucket, a to-do state, a time), every
     /// matching entry is listed (up to `listLimit`), then the passages of the matches that have the question's
     /// words, then further passages of the first matches; when no match has the words, the best passages of all
     /// entries follow, marked as outside. Without filters, the best passages of all entries (`select`).
     static func context(
         _ question: String, documents: [UUID: ChatDocument], chunks: [ChatChunk], bucketNames: [String: String],
-        queryVector: [Float]? = nil, now: Date = Date(), calendar: Calendar = .current
+        queryVector: [Float]? = nil, now: Date = Date(), calendar: Calendar = .current, budget: ChatBudget = .standard
     ) -> ChatContext {
         let query = ChatQuery.parse(question, buckets: bucketNames, now: now, calendar: calendar)
         var context = ChatContext(query: query)
@@ -411,7 +435,7 @@ extension ChatRetrieval {
         }
 
         guard query.isStructured else {
-            let picked = selection(question, in: chunks, queryVector: queryVector, now: now, calendar: calendar)
+            let picked = selection(question, in: chunks, queryVector: queryVector, now: now, calendar: calendar, budget: budget.searchBudget, limit: budget.maxPassages)
             context.items = picked.chunks.compactMap { item($0) }
             context.wordsNotFound = picked.isNewest && !queryWords(question).isEmpty
             return context
@@ -437,12 +461,12 @@ extension ChatRetrieval {
         }
         guard !matches.isEmpty else {
             // Nothing is what the filters ask: the best passages of all entries, marked so.
-            let picked = search(words: query.words, in: chunks, queryVector: queryVector)
+            let picked = search(words: query.words, in: chunks, queryVector: queryVector, budget: budget.searchBudget, limit: budget.maxPassages)
             context.items = picked.compactMap { item($0, outside: true) }
             return context
         }
 
-        for document in matches.prefix(listLimit) {
+        for document in matches.prefix(budget.listLimit) {
             context.items.append(ChatContextItem(
                 noteID: document.noteID, title: document.title, date: document.createdAt,
                 header: document.header(bucketNames: bucketNames, now: now, calendar: calendar),
@@ -461,7 +485,7 @@ extension ChatRetrieval {
             used += chunk.text.count
         }
         // The list lines carry title, link, files and to-do state: only passages with content take places here.
-        let found = query.words.isEmpty ? [] : search(words: query.words, in: inside.filter(\.part.fillsContext), queryVector: queryVector)
+        let found = query.words.isEmpty ? [] : search(words: query.words, in: inside.filter(\.part.fillsContext), queryVector: queryVector, budget: budget.searchBudget, limit: budget.maxPassages)
         found.forEach(add)
         // The first matches with more of what they hold: a few entries get many passages, many entries a few.
         let perEntry = matches.count <= 2 ? 12 : matches.count <= 5 ? 4 : 2
@@ -470,13 +494,13 @@ extension ChatRetrieval {
             var count = 0
             for chunk in byNote[document.noteID] ?? [] where chunk.part.fillsContext {
                 if count >= perEntry { break }
-                if used + chunk.text.count > fillBudget { break fill }
+                if used + chunk.text.count > budget.fillBudget { break fill }
                 add(chunk)
                 count += 1
             }
         }
         if !query.words.isEmpty, found.isEmpty {
-            let outside = search(words: query.words, in: chunks.filter { !ids.contains($0.noteID) }, queryVector: queryVector, budget: 3000)
+            let outside = search(words: query.words, in: chunks.filter { !ids.contains($0.noteID) }, queryVector: queryVector, budget: budget.outsideBudget, limit: budget.maxPassages)
             context.items += outside.compactMap { item($0, outside: true) }
         }
         return context

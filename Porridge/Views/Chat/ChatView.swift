@@ -148,6 +148,8 @@ struct ChatView: View {
     let projects: [NoteFolder]
     /// What a new chat is about.
     @Binding var scope: String?
+    /// The model the chat answers with ("Chat Model" in Settings); nil is the default model.
+    @State private var chatModel = SummaryModel.chatChoice
     var onOpen: (UUID) -> Void
     /// A new chat was made.
     var onCreate: (ChatThread) -> Void
@@ -236,6 +238,43 @@ struct ChatView: View {
                 .accessibilityLabel("Chat About")
             }
             Spacer(minLength: 0)
+            modelMenu
+        }
+    }
+
+    /// Which model answers, and a quick way to choose another: the same choice as "Chat Model" in Settings.
+    @ViewBuilder private var modelMenu: some View {
+        let models = SummaryModel.available
+        if !models.isEmpty {
+            Menu {
+                Picker("Chat Model", selection: Binding(get: { chatModel }, set: {
+                    chatModel = $0
+                    SummaryModel.chatChoice = $0
+                })) {
+                    Text("Same as Default (\(SummaryModel.current.name))").tag(SummaryModel?.none)
+                    ForEach(models) { model in
+                        Text(model.menuTitle).tag(Optional(model))
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: SummaryModel.chat.isLocal ? "cpu" : "cloud").font(.caption.weight(.bold))
+                    Text(SummaryModel.chat.name).lineLimit(1)
+                    Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.brandSky.readable)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.brandSky.opacity(0.14), in: Capsule())
+                .id(chatModel?.id ?? "default")
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Chat Model")
+            .accessibilityValue(SummaryModel.chat.name)
         }
     }
 

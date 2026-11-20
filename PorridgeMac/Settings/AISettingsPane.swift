@@ -12,6 +12,14 @@ final class AISettingsPane: SettingsPane {
         self?.render()
     }
     private let noneLabel = NSTextField.label("None added", color: .secondaryLabelColor)
+    /// "Same as Default", then the models of the list: the chat may answer with another model than the summaries.
+    private lazy var chatPopUp = SettingsPopUp { [weak self] index in
+        let available = SummaryModel.available
+        SummaryModel.chatChoice = index > 0 && index <= available.count ? available[index - 1] : nil
+        self?.render()
+    }
+    private let chatHint = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor, lines: 0)
+    private var chatRows: [NSGridRow] = []
     private lazy var summarizeIncoming = SettingsCheckbox("Summarize Incoming Entries") { on in
         UserDefaults.standard.set(on, forKey: AppSettings.summarizeIncomingKey)
         if on { Library.shared.processing.summarizeIncoming() }
@@ -26,6 +34,7 @@ final class AISettingsPane: SettingsPane {
     override func build() {
         popUpRow = form.row("Default Model", defaultPopUp)
         noneRow = form.row("Default Model", noneLabel)
+        chatRows = [form.row("Chat Model", chatPopUp), form.row("", chatHint)]
         form.row("", summarizeIncoming)
         form.row("Templates", NSButton.push("Edit Custom Templates…") { [weak self] in
             self?.presentSheet(TemplatesSheetController())
@@ -70,6 +79,15 @@ final class AISettingsPane: SettingsPane {
             contentChanged()
         }
         defaultPopUp.set(available.map(\.name), selected: available.firstIndex(of: current))
+        chatPopUp.set(["Same as Default"] + available.map(\.name), selected: SummaryModel.chatChoice.flatMap { available.firstIndex(of: $0) }.map { $0 + 1 } ?? 0)
+        let hint = SummaryModel.chat.sendsHint("question and excerpts of your notes") ?? ""
+        let showsHint = hasModels && !hint.isEmpty
+        chatHint.stringValue = hint
+        if chatRows.first?.isHidden != !hasModels || chatRows.last?.isHidden != !showsHint {
+            chatRows.first?.isHidden = !hasModels
+            chatRows.last?.isHidden = !showsHint
+            contentChanged()
+        }
 
         renderList()
     }

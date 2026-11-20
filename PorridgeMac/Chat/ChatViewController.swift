@@ -15,6 +15,8 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
     private let transcript = NSStackView()
     private let scope = NSPopUpButton(frame: .zero, pullsDown: false)
     private let scopeLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold), color: .brandProject)
+    /// Which model answers, and a quick way to choose another: the same choice as "Chat Model" in Settings.
+    private let modelPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let input = ChatInputView()
     private let send = NSButton()
     private var shownEntries: [UUID] = []
@@ -58,6 +60,12 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         let folder = NSImageView(image: .symbol("folder.fill", size: 11, weight: .bold))
         folder.contentTintColor = .brandProject
         let scopeRow = NSStackView.horizontal([folder, scopeLabel, scope], spacing: 6)
+        modelPopUp.target = self
+        modelPopUp.action = #selector(modelChosen)
+        modelPopUp.controlSize = .small
+        modelPopUp.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        modelPopUp.setAccessibilityLabel("Chat Model")
+        modelPopUp.translatesAutoresizingMaskIntoConstraints = false
 
         input.textView.delegate = self
         input.placeholder = "Ask your buckets…"
@@ -71,11 +79,15 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
 
         let root = NSView()
         root.addSubview(scopeRow)
+        root.addSubview(modelPopUp)
         root.addSubview(scroll)
         root.addSubview(inputRow)
         NSLayoutConstraint.activate([
             scopeRow.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: 12),
             scopeRow.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
+            modelPopUp.centerYAnchor.constraint(equalTo: scopeRow.centerYAnchor),
+            modelPopUp.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
+            modelPopUp.leadingAnchor.constraint(greaterThanOrEqualTo: scopeRow.trailingAnchor, constant: 12),
             scroll.topAnchor.constraint(equalTo: scopeRow.bottomAnchor, constant: 6),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -131,6 +143,27 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
 
     // MARK: Rendering
 
+    /// "Same as Default (<name>)", then the models of the list; hidden when there is none.
+    private func renderModel() {
+        let models = SummaryModel.available
+        modelPopUp.isHidden = models.isEmpty
+        let titles = ["Same as Default (\(SummaryModel.current.name))"] + models.map(\.menuTitle)
+        if modelPopUp.itemTitles != titles {
+            modelPopUp.removeAllItems()
+            modelPopUp.addItems(withTitles: titles)
+        }
+        let chosen = SummaryModel.chatChoice.flatMap { models.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
+        if modelPopUp.indexOfSelectedItem != chosen { modelPopUp.selectItem(at: chosen) }
+        modelPopUp.toolTip = SummaryModel.chat.sendsHint("question and excerpts of your notes") ?? "Answers on this device"
+    }
+
+    @objc private func modelChosen() {
+        let models = SummaryModel.available
+        let index = modelPopUp.indexOfSelectedItem
+        SummaryModel.chatChoice = index > 0 && index <= models.count ? models[index - 1] : nil
+        renderModel()
+    }
+
     private func render() {
         // What the chat is about: a new chat can still choose.
         let projects = library.projects
@@ -154,6 +187,8 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
                 scope.selectItem(at: 0)
             }
         }
+
+        renderModel()
 
         let entries = entries
         let ids = entries.map(\.id)

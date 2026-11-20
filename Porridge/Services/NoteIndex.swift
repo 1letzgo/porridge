@@ -139,13 +139,13 @@ final class NoteIndex {
 
     /// The context of a chat question (`ChatRetrieval.context`): the entries its filters ask for and the passages
     /// that fit it. `within` narrows it to some notes (those of a bucket); nil is everything.
-    func context(for question: String, within notes: Set<UUID>? = nil, bucketNames: [String: String]) async -> ChatContext {
+    func context(for question: String, within notes: Set<UUID>? = nil, bucketNames: [String: String], budget: ChatBudget = .standard) async -> ChatContext {
         let vector = await TextEmbedder.shared.vector(for: question)
         var documents: [UUID: ChatDocument] = [:]
         for (id, entry) in entries where notes?.contains(id) ?? true {
             if let document = entry.document { documents[id] = document }
         }
-        return ChatRetrieval.context(question, documents: documents, chunks: passages(within: notes), bucketNames: bucketNames, queryVector: vector)
+        return ChatRetrieval.context(question, documents: documents, chunks: passages(within: notes), bucketNames: bucketNames, queryVector: vector, budget: budget)
     }
 
     private func passages(within notes: Set<UUID>?) -> [ChatChunk] {

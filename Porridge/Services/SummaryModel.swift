@@ -72,6 +72,51 @@ enum SummaryModel: Hashable, Identifiable {
         }
     }
 
+    // MARK: - The chat
+
+    /// The model the chat answers with: the one chosen for the chat ("Chat Model"), or the default when none is
+    /// chosen or the chosen one is gone (deleted, removed, its key taken away). Stored on this device only.
+    static var chat: SummaryModel {
+        resolveChat(stored: UserDefaults.standard.string(forKey: AppSettings.chatModelKey), available: available, isUsable: \.isUsable, fallback: current)
+    }
+
+    /// The model chosen for the chat; nil is "Same as Default".
+    static var chatChoice: SummaryModel? {
+        get {
+            let stored = UserDefaults.standard.string(forKey: AppSettings.chatModelKey) ?? ""
+            return available.first { $0.id == stored }
+        }
+        set {
+            if let newValue { UserDefaults.standard.set(newValue.id, forKey: AppSettings.chatModelKey) }
+            else { UserDefaults.standard.removeObject(forKey: AppSettings.chatModelKey) }
+        }
+    }
+
+    /// The chat's model from what is stored: the chosen one when it is in the list and can run, else the default.
+    static func resolveChat(stored: String?, available: [SummaryModel], isUsable: (SummaryModel) -> Bool, fallback: SummaryModel) -> SummaryModel {
+        guard let stored, !stored.isEmpty, let chosen = available.first(where: { $0.id == stored }), isUsable(chosen) else { return fallback }
+        return chosen
+    }
+
+    /// Can answer now: an on-device model that is there, or a cloud model with its key (or its server address).
+    var isUsable: Bool {
+        switch self {
+        case .local(let model): model.isInstalled
+        case .cloud(let provider, _): provider == .custom ? !AIProvider.customBaseURL.isEmpty : (!provider.requiresKey || !provider.apiKey.isEmpty)
+        }
+    }
+
+    var isLocal: Bool {
+        if case .local = self { return true }
+        return false
+    }
+
+    /// What leaves the device with this model, said the way the summary sheets say it; nil on the device.
+    func sendsHint(_ material: String) -> String? {
+        guard case .cloud(let provider, _) = self else { return nil }
+        return "The \(material) goes to \(provider == .custom ? "your server" : provider.label)."
+    }
+
     // MARK: - The list
 
     private struct Stored: Codable {

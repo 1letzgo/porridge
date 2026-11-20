@@ -134,12 +134,23 @@ enum CloudLLM {
 
     // MARK: - Transport
 
+    /// A failed request as a message that says what to do: a key that is not accepted, a limit, or what the service said.
+    static func error(status: Int, message: String, provider: AIProvider) -> SummaryError {
+        let name = provider == .custom ? "Your server" : provider.label
+        switch status {
+        case 401, 403: return .provider("\(name) did not accept the API key. Check it in Settings, under AI.")
+        case 429: return .provider("\(name) is busy or your usage limit is reached. Try again later.")
+        case 500...599: return .provider("\(name) has a problem right now (\(status)). Try again later.")
+        default: return .provider("\(name): \(message)")
+        }
+    }
+
     private static func send(_ request: URLRequest, provider: AIProvider) async throws -> [String: Any] {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             let message = (try? JSONDecoder().decode(ErrorEnvelope.self, from: data))?.error?.message ?? "HTTP \(status)"
-            throw SummaryError.provider("\(provider.label): \(message)")
+            throw CloudLLM.error(status: status, message: message, provider: provider)
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw SummaryError.emptyResponse
