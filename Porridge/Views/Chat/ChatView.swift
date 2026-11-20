@@ -316,7 +316,8 @@ struct ChatView: View {
                             ForEach(sources) { source in
                                 Button { onOpen(source.noteID) } label: {
                                     HStack(spacing: 6) {
-                                        Image(systemName: "doc.text").font(.caption.weight(.bold))
+                                        // The kind of the note it comes from (`checklist` for a to-do), or a page when it is gone.
+                                        Image(systemName: notes.first { $0.id == source.noteID }?.kindSymbol ?? "doc.text").font(.caption.weight(.bold))
                                         Text(source.title).lineLimit(1)
                                     }
                                     .font(.caption.weight(.semibold))

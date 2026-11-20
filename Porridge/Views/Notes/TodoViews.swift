@@ -28,6 +28,8 @@ struct TodoCheckbox: View {
                 }
             }
             .frame(width: side, height: side)
+            // 44 pt to tap, however small the box is drawn.
+            .contentShape(Rectangle().inset(by: -max(0, 44 - side) / 2))
             .overlay(alignment: .topTrailing) {
                 if isPinned {
                     Image(systemName: "pin.fill")
@@ -57,7 +59,8 @@ struct TodoProgressLabel: View {
     var body: some View {
         if progress.total > 0 {
             HStack(spacing: 3) {
-                Image(systemName: "checklist")
+                // Circles, like the subtasks in the text; `checklist` is the symbol of the kind.
+                Image(systemName: "checkmark.circle")
                 Text(progress.label).monospacedDigit()
             }
                 .foregroundStyle(progress.isComplete ? Color.brandTaskText : .secondary)
@@ -76,7 +79,7 @@ struct TodoSourcePill: View {
     var body: some View {
         Button { openNote(source.id) } label: {
             HStack(spacing: 6) {
-                Image(systemName: source.isRecording ? "waveform" : "text.alignleft")
+                Image(systemName: source.kindSymbol)
                 Text(source.displayTitle).lineLimit(1)
                 Image(systemName: "chevron.right").font(.caption2.weight(.bold))
             }

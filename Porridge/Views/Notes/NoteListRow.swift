@@ -57,7 +57,7 @@ struct NoteListRow: View {
                 archiveButton
                 if note.canBeTodo {
                     Button { withAnimation(.snappy) { Todos.setTodo(!note.isTodo, note, in: context) } } label: {
-                        Label(note.isTodo ? "Convert to Note" : "Convert to To-do", systemImage: note.isTodo ? "text.alignleft" : "checkmark.square")
+                        Label(note.isTodo ? "Convert to Note" : "Convert to To-do", systemImage: note.isTodo ? "text.alignleft" : "checklist")
                     }
                 }
                 ShareLink(item: note.exportText) {

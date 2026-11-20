@@ -137,6 +137,28 @@ final class Note {
 
     var linkURL: URL? { url.flatMap { URL(string: $0) } }
 
+    /// The SF Symbol of the note's kind, the same in its row, its page and every pill that names it:
+    /// a to-do `checklist`, a link `link`, an image `photo`, a PDF `doc.richtext`, another file `doc`, a meeting
+    /// `waveform`, a note with a file `paperclip`, a note `text.alignleft`.
+    var kindSymbol: String {
+        if isTodo { return "checklist" }
+        if isLink { return "link" }
+        if isStored {
+            switch attachments.first?.kind {
+            case .image: return "photo"
+            case .pdf: return "doc.richtext"
+            default: return "doc"
+            }
+        }
+        if isRecording { return "waveform" }
+        return attachmentsData != nil ? "paperclip" : "text.alignleft"
+    }
+
+    /// The name of the note's kind, for VoiceOver and the bar of its page.
+    var kindName: String {
+        isTodo ? "To-do" : isLink ? "Link" : isImage ? "Image" : isFile ? "File" : isRecording ? "Meeting" : "Note"
+    }
+
     /// The site of a link without "www.", e.g. "github.com".
     var domain: String? {
         guard let host = linkURL?.host else { return nil }

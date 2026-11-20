@@ -104,7 +104,7 @@ struct MarkdownText: View {
             }
             .contextMenu {
                 if let onMakeTodo, !madeTodos.contains(plain(text).lowercased()) {
-                    Button { onMakeTodo(plain(text)) } label: { Label("Make To-do", systemImage: "checkmark.square") }
+                    Button { onMakeTodo(plain(text)) } label: { Label("Make To-do", systemImage: "checklist") }
                 }
             }
         case .paragraph(let text):

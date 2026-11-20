@@ -609,7 +609,7 @@ struct NotesView: View {
                                     }
                                     createOption("Link", systemImage: "link", tint: .brandLink) { showAddLink = true }
                                     createOption("Meeting", systemImage: "mic.fill", tint: .brandNavy) { showCalendar = true }
-                                    createOption("To-do", systemImage: "checkmark.square", tint: .brandTask) { addNote(todo: true) }
+                                    createOption("To-do", systemImage: "checklist", tint: .brandTask) { addNote(todo: true) }
                                     createOption("Note", systemImage: "square.and.pencil", tint: .brandSky) { addNote() }
                                 }
                                 FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
@@ -998,21 +998,11 @@ struct NoteRow: View {
     @Environment(\.modelContext) private var context
 
     var body: some View {
-        // Plain notes are sky blue, recorded meetings navy, saved links orange; a to-do is its green box.
+        // Plain notes are sky blue, recorded meetings navy, saved links orange, to-dos green.
         HStack(alignment: .top, spacing: 12) {
-            Group {
-                if note.isTodo {
-                    // Ticked right in the list; a deleted one is only shown.
-                    TodoCheckbox(isDone: note.isDone, isPinned: note.isPinned) {
-                        withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) }
-                    }
-                    .disabled(note.isDeleted)
-                } else {
-                    ThingsRowIcon(systemImage: icon, tint: tint, isPinned: note.isPinned)
-                        .accessibilityLabel(note.isLink ? "Link" : note.isImage ? "Image" : note.isFile ? "File" : note.isRecording ? "Meeting" : "Note")
-                }
-            }
-            .padding(.top, 1)
+            ThingsRowIcon(systemImage: note.kindSymbol, tint: tint, isPinned: note.isPinned)
+                .accessibilityLabel(note.kindName)
+                .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
                 Text(note.displayTitle)
                     .font(.body)
@@ -1040,24 +1030,20 @@ struct NoteRow: View {
                 Spacer(minLength: 0)
                 RowThumbnail(attachment: attachment)
             }
-        }
-    }
-
-    private var icon: String {
-        note.isLink ? "link" : note.isStored ? fileIcon : (note.isRecording ? "waveform" : note.attachmentsData != nil ? "paperclip" : "text.alignleft")
-    }
-
-    /// A file shows what it is: a picture, a PDF or a document.
-    private var fileIcon: String {
-        switch note.attachments.first?.kind {
-        case .image: "photo"
-        case .pdf: "doc.richtext"
-        default: "doc"
+            // A to-do is ticked right in the list, with its box at the end of the row; a deleted one only shows it.
+            if note.isTodo {
+                Spacer(minLength: 0)
+                TodoCheckbox(isDone: note.isDone, size: 26) {
+                    withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) }
+                }
+                .disabled(note.isDeleted)
+                .frame(maxHeight: .infinity)
+            }
         }
     }
 
     private var tint: Color {
-        note.isLink ? .brandLink : (note.isRecording || note.isStored ? .brandNavy : .brandSky)
+        note.isTodo ? .brandTask : note.isLink ? .brandLink : (note.isRecording || note.isStored ? .brandNavy : .brandSky)
     }
 
     @ViewBuilder

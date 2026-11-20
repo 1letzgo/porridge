@@ -519,8 +519,8 @@ struct NoteDetailView: View {
 
     // MARK: - Toolbar
 
-    private var barTitle: String { note.isTodo ? "To-do" : note.isLink ? "Link" : note.isImage ? "Image" : note.isFile ? "File" : note.isRecording ? "Meeting" : "Note" }
-    private var barIcon: String { note.isTodo ? "checkmark.square" : note.isLink ? "link" : note.isImage ? "photo" : note.isFile ? "doc" : note.isRecording ? "waveform" : "text.alignleft" }
+    private var barTitle: String { note.kindName }
+    private var barIcon: String { note.kindSymbol }
     private var barTint: Color { note.isTodo ? .brandTask : note.isLink ? .brandLink : note.isRecording || note.isStored ? .brandNavy : .brandSky }
 
     @ToolbarContentBuilder
@@ -563,7 +563,7 @@ struct NoteDetailView: View {
                 }
                 if note.canBeTodo {
                     Button { withAnimation(.snappy) { Todos.setTodo(!note.isTodo, note, in: context) } } label: {
-                        Label(note.isTodo ? "Convert to Note" : "Convert to To-do", systemImage: note.isTodo ? "text.alignleft" : "checkmark.square")
+                        Label(note.isTodo ? "Convert to Note" : "Convert to To-do", systemImage: note.isTodo ? "text.alignleft" : "checklist")
                     }
                 }
                 if opensOnSummary {
