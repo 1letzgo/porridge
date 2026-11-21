@@ -2,10 +2,8 @@ import AppKit
 
 /// Whether the notes sync through iCloud between the user's Apple devices. Switching takes effect at the next launch.
 final class SyncSettingsPane: SettingsPane {
-    private lazy var modePopUp = SettingsPopUp { [weak self] index in
-        let modes = SyncMode.allCases
-        guard index >= 0, index < modes.count else { return }
-        UserDefaults.standard.set(modes[index].rawValue, forKey: SyncMode.key)
+    private lazy var iCloudSync = SettingsCheckbox("iCloud Sync") { [weak self] on in
+        UserDefaults.standard.set((on ? SyncMode.iCloud : SyncMode.off).rawValue, forKey: SyncMode.key)
         self?.render()
     }
     private var restartLabel = NSTextField()
@@ -17,7 +15,7 @@ final class SyncSettingsPane: SettingsPane {
     private var visibility: [Bool] = []
 
     override func build() {
-        form.row("Sync With", modePopUp)
+        form.row("", iCloudSync)
         let restart = form.note()
         restartRow = restart.row
         restartLabel = restart.label
@@ -28,7 +26,7 @@ final class SyncSettingsPane: SettingsPane {
 
     override func render() {
         let mode = SyncMode.chosen
-        modePopUp.set(SyncMode.allCases.map(\.label), selected: SyncMode.allCases.firstIndex(of: mode))
+        iCloudSync.isOn = mode == .iCloud
         let needsRestart = mode != SyncMode.active
         restartLabel.stringValue = mode == .iCloud ? "Restart Porridge to sync with iCloud." : "Restart Porridge to stop syncing."
 
