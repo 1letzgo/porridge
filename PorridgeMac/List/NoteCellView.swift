@@ -126,7 +126,7 @@ final class NoteCellView: NSTableCellView {
         } else if note.status == .failed {
             badge.show("Failed", color: .brandDangerText)
         } else if [.recorded, .transcribing].contains(note.status), note.isRecording {
-            badge.show(note.hasLocalAudio ? "Waiting for transcription" : "Processing on another device")
+            badge.show(AudioStore.isLocal(note.audioFileName) ? "Waiting for transcription" : "Processing on another device")
         } else if case let waiting = note.pendingTodoSuggestions(made: []).count, waiting > 0 {
             // A summary with to-dos waiting to be taken on says so instead of "Summarized".
             badge.show(waiting == 1 ? "1 suggested to-do" : "\(waiting) suggested to-dos", color: .brandTaskText, symbol: "checklist")

@@ -130,7 +130,7 @@ final class AudioRecorder {
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
         let file = try AVAudioFile(
-            forWriting: AudioStore.url(for: name),
+            forWriting: AudioStore.localURL(for: name),
             settings: settings,
             commonFormat: .pcmFormatFloat32,
             interleaved: false

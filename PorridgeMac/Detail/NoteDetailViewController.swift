@@ -25,6 +25,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private var observers: [Observing] = []
     private var libraryToken: UUID?
     private var shownErrors = Set<String>()
+    private var isFetchingAudio = false
+    private var fetchAudioError: String?
+    private var fetchTask: Task<Void, Never>?
 
     // Head
     private let todoBox = TodoCheckboxButton()
@@ -68,6 +71,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
     // Bottom
     private lazy var playerBar = PlayerBarView(player: player)
+    private let fetchBar = NSStackView()
+    private let fetchButton = PillButton(title: "Download Recording", symbol: "arrow.down.circle", tint: .brandSky, target: nil, action: nil)
+    private let fetchMessage = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .brandDangerText)
     private let micButton = MicButton()
     private let micTime = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .semibold), color: .brandNavy)
     private var micTimer: Timer?
@@ -142,8 +148,14 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         content.translatesAutoresizingMaskIntoConstraints = false
         buildContent()
 
+        fetchButton.target = self
+        fetchButton.action = #selector(fetchRecording)
+        fetchBar.setViews([fetchButton, fetchMessage], in: .leading)
+        fetchBar.orientation = .vertical
+        fetchBar.alignment = .centerX
+        fetchBar.spacing = 6
         playerBar.onDelete = { [weak self] in self?.confirmDeleteRecording() }
-        let bottom = NSStackView.vertical([playerBar], spacing: 8, alignment: .centerX)
+        let bottom = NSStackView.vertical([playerBar, fetchBar], spacing: 8, alignment: .centerX)
 
         page.addSubview(head)
         page.addSubview(content)
@@ -344,6 +356,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         chips.hostWindow = view.window
         tab = opensOnSummary || isSummarizing ? .summary : .note
         if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
+        // A recording in iCloud is downloaded when its note is opened, then it plays.
+        fetchRecordingIfNeeded()
         // Load the speech model right away so the first piece is transcribed without delay.
         Task { try? await ModelManager.shared.ensureASR() }
         dictation.onLiveText = { [weak self] text in
@@ -370,6 +384,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             _ = self.note.audioFileName
             self.player.stop()
             if let name = self.note.audioFileName, self.note.hasLocalAudio { self.player.load(AudioStore.url(for: name)) }
+            self.fetchAudioError = nil
+            self.fetchRecordingIfNeeded()
         })
         NotificationCenter.default.addObserver(self, selector: #selector(stopRecordingRequested), name: .porridgeStopRecording, object: nil)
     }
@@ -430,9 +446,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         stage == nil && !note.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// A recording that is on another device could not be joined with the new part.
+    /// A recording that is only on another device (not in iCloud) could not be joined with the new part.
     private var canContinueRecording: Bool {
-        stage == nil && note.status == .ready && note.pendingAudioFileName == nil && (note.audioFileName == nil || note.hasLocalAudio)
+        stage == nil && note.status == .ready && note.pendingAudioFileName == nil && (note.audioFileName == nil || note.hasAudio)
     }
 
     private func computeTabs() -> [(NoteTab, String)] {
@@ -542,6 +558,11 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
         // Bottom
         playerBar.isHidden = !(note.hasLocalAudio && tab != .note)
+        fetchBar.isHidden = !(!note.hasLocalAudio && (isFetchingAudio || fetchAudioError != nil || note.canFetchAudio) && tab != .note)
+        fetchButton.isEnabled = !isFetchingAudio
+        fetchButton.title = isFetchingAudio ? "Downloading Recording…" : "Download Recording"
+        fetchMessage.stringValue = fetchAudioError ?? ""
+        fetchMessage.isHidden = fetchAudioError == nil
         renderMic()
 
         showErrors()
@@ -569,7 +590,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             statusPanel.show(symbol: nil, spinning: true, text: stage, detail: detail, tint: .brandSky, action: nil)
             statusPanel.isHidden = false
         } else if note.status == .ready, note.isRecording, let message = note.errorMessage, note.speakerMode == .none {
-            statusPanel.show(symbol: "person.2.slash", text: message, tint: .systemGray, action: note.hasLocalAudio ? ("Detect Speakers Again", { [weak self] in
+            statusPanel.show(symbol: "person.2.slash", text: message, tint: .systemGray, action: note.hasAudio ? ("Detect Speakers Again", { [weak self] in
                 guard let self else { return }
                 self.processing.enqueue(.transcript(self.note.id))
             }) : nil)
@@ -584,7 +605,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
                 retry = { processing.enqueue(.attachment(note.id)) }
             } else if AudioStore.exists(note.pendingAudioFileName) {
                 retry = { processing.enqueue(.note(note.id)) }
-            } else if note.hasLocalAudio {
+            } else if note.hasAudio {
                 retry = { processing.enqueue(.transcript(note.id)) }
             }
             statusPanel.show(symbol: "exclamationmark.triangle.fill", text: note.errorMessage ?? "Transcription failed", tint: .systemRed, action: retry.map { ("Try Again", $0) })
@@ -793,7 +814,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         }
     }
 
-    /// Takes a file off the note and deletes it on this device.
+    /// Takes a file off the note and deletes it, here and in iCloud.
     private func removeAttachment(_ attachment: Attachment) {
         note.attachments.removeAll { $0.id == attachment.id }
         AudioStore.delete(attachment.fileName)
@@ -874,7 +895,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private func confirmDeleteRecording() {
         Alerts.confirm(
             "Delete Recording?",
-            message: "The audio file is removed from this device. Transcript, speakers and summary stay.",
+            message: AudioStore.deleteRecordingMessage,
             action: "Delete Recording", in: view.window
         ) { [weak self] in
             guard let self else { return }
@@ -882,6 +903,44 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             AudioStore.delete(self.note.audioFileName)
             self.note.audioFileName = nil
             self.library.save()
+        }
+    }
+
+    /// Downloads the recording when it is in iCloud and not here yet (after the container was found at launch).
+    private func fetchRecordingIfNeeded() {
+        guard fetchTask == nil, note.audioFileName != nil, !note.hasLocalAudio else { return }
+        fetchTask = Task { @MainActor [weak self] in
+            _ = await AudioStore.cloudContainer()
+            guard let self else { return }
+            self.fetchTask = nil
+            if let name = self.note.audioFileName, self.note.hasLocalAudio {
+                self.player.load(AudioStore.url(for: name))
+                self.render()
+            } else if self.note.canFetchAudio, self.fetchAudioError == nil {
+                self.fetchRecording()
+            } else {
+                self.render()
+            }
+        }
+    }
+
+    @objc private func fetchRecording() {
+        guard let name = note.audioFileName, !isFetchingAudio else { return }
+        isFetchingAudio = true
+        fetchAudioError = nil
+        render()
+        Task { @MainActor [weak self] in
+            var failure: String?
+            do {
+                try await AudioStore.download(name)
+            } catch {
+                failure = error.localizedDescription
+            }
+            guard let self else { return }
+            self.isFetchingAudio = false
+            self.fetchAudioError = failure
+            if failure == nil, self.note.audioFileName == name { self.player.load(AudioStore.url(for: name)) }
+            self.render()
         }
     }
 
@@ -1041,7 +1100,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         case .export:
             return true
         case .deleteRecording:
-            return !deleted && note.hasLocalAudio
+            return !deleted && note.hasAudio
         case .loadPageAgain:
             return !deleted && note.isLink && stage == nil
         case .dictate:

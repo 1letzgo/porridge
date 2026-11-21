@@ -59,8 +59,13 @@ targets:
         com.apple.developer.kernel.increased-memory-limit: true
         com.apple.developer.icloud-container-identifiers:
           - iCloud.de.letzgo.porridge
+        # CloudKit: the notes (SwiftData). CloudDocuments: recordings and attachments, in the same container's
+        # iCloud Drive storage (Recordings/, Attachments/; outside Documents/, so never visible in iCloud Drive).
         com.apple.developer.icloud-services:
           - CloudKit
+          - CloudDocuments
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.de.letzgo.porridge
         # Every build, Debug included, uses the Production CloudKit database (the one TestFlight uses).
         com.apple.developer.icloud-container-environment: Production
         com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
@@ -146,8 +151,12 @@ targets:
       properties:
         com.apple.developer.icloud-container-identifiers:
           - iCloud.de.letzgo.porridge
+        # CloudKit: the notes. CloudDocuments: recordings and attachments (see the iOS target).
         com.apple.developer.icloud-services:
           - CloudKit
+          - CloudDocuments
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.de.letzgo.porridge
         com.apple.developer.icloud-container-environment: Production
         com.apple.developer.aps-environment: development
         com.apple.security.device.audio-input: true

@@ -197,7 +197,7 @@ final class RecordingJournal: @unchecked Sendable {
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
         do {
-            let file = try AVAudioFile(forWriting: AudioStore.url(for: name), settings: settings, commonFormat: .pcmFormatInt16, interleaved: true)
+            let file = try AVAudioFile(forWriting: AudioStore.localURL(for: name), settings: settings, commonFormat: .pcmFormatInt16, interleaved: true)
             let input = try FileHandle(forReadingFrom: sound)
             defer { try? input.close() }
             let chunk = Int(sampleRate) * 2

@@ -43,11 +43,16 @@ enum NoteMerger {
     private static func join(_ ordered: [Note], into base: Note) async throws {
         // The recordings come first: the joined audio decides where each transcript starts.
         let oldAudio = ordered.compactMap(\.audioFileName)
+        // Recordings that are in iCloud and not downloaded here come first, so they can be joined. One iCloud does
+        // not have is not waited for: the notes are combined without joined audio, as before.
+        for name in oldAudio where AudioStore.isInCloud(name) {
+            try await AudioStore.download(name)
+        }
         var mergedAudio: String?
         var offsets: [Double] = []
         var total = 0.0
         if ordered.allSatisfy(\.hasLocalAudio) {
-            let joined = try await concatenate(oldAudio.map(AudioStore.url(for:)))
+            let joined = try await concatenate(oldAudio.map { AudioStore.url(for: $0) })
             mergedAudio = joined.fileName
             offsets = joined.offsets
             total = joined.duration
@@ -148,7 +153,7 @@ enum NoteMerger {
         }
 
         let name = AudioStore.newFileName()
-        let output = AudioStore.url(for: name)
+        let output = AudioStore.localURL(for: name)
         guard let export = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else {
             throw MergeError.audio
         }

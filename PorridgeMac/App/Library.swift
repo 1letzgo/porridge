@@ -33,6 +33,8 @@ final class Library {
         let container = AppContainer.make()
         self.container = container
         processing = ProcessingService(container: container)
+        // Finds the iCloud container off the main thread and moves the files of notes into it.
+        CloudFiles.start(container)
 
         let center = NotificationCenter.default
         center.addObserver(forName: ModelContext.didSave, object: nil, queue: .main) { [weak self] _ in

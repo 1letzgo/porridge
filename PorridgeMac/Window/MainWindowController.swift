@@ -510,7 +510,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return note?.segments.isEmpty == false
         case #selector(transcribeAgain(_:)):
             guard let note else { return false }
-            return note.hasLocalAudio && library.processing.stages[note.id] == nil && !note.isDeleted
+            return note.hasAudio && library.processing.stages[note.id] == nil && !note.isDeleted
         case #selector(noteCommand(_:)):
             guard let command = NoteCommand(rawValue: item.tag), let detail = split.detail.noteDetail else { return false }
             return detail.validate(command, item: item)

@@ -169,7 +169,14 @@ final class Note {
     /// The note comes from a recording that is (or will be) transcribed with speakers.
     var isRecording: Bool { audioFileName != nil || segmentsData != nil }
 
+    /// The recording can be read here right now (on this device, or in iCloud and downloaded).
     var hasLocalAudio: Bool { AudioStore.exists(audioFileName) }
+
+    /// The recording is in iCloud and not downloaded here yet: `AudioStore.download` brings it.
+    var canFetchAudio: Bool { AudioStore.isInCloud(audioFileName) }
+
+    /// The recording can be read here now or after a download.
+    var hasAudio: Bool { AudioStore.isObtainable(audioFileName) }
 
     /// A part recorded later waits here until it is transcribed (`ProcessingService.processContinuation`).
     /// Notes typed during it count from the end of what is there.

@@ -22,7 +22,7 @@ enum Thumbnails {
     static func load(_ attachment: Attachment, maxPixels: Int = 360) async -> CGImage? {
         let key = "\(attachment.fileName)-\(maxPixels)" as NSString
         if let cached = cache.object(forKey: key) { return cached.image }
-        guard attachment.kind != .file, AttachmentStore.exists(attachment) else { return nil }
+        guard attachment.kind != .file, await AttachmentStore.fetchForThumbnail(attachment) else { return nil }
         let url = AttachmentStore.url(for: attachment)
         let kind = attachment.kind
         let image = await Task.detached(priority: .utility) { () -> CGImage? in

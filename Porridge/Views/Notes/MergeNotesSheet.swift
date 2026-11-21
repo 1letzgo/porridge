@@ -23,9 +23,9 @@ struct MergeNotesSheet: View {
         candidates.filter { selection.contains($0.id) }
     }
 
-    /// Without every recording on this device the audio cannot be joined and is dropped.
+    /// Without every recording here or in iCloud the audio cannot be joined and is dropped. Recordings in iCloud are downloaded first (`NoteMerger`).
     private var losesAudio: Bool {
-        !chosen.isEmpty && !([base] + chosen).allSatisfy(\.hasLocalAudio)
+        !chosen.isEmpty && !([base] + chosen).allSatisfy(\.hasAudio)
     }
 
     var body: some View {
@@ -95,7 +95,7 @@ struct MergeNotesSheet: View {
     private var footer: some View {
         VStack(spacing: 10) {
             if losesAudio {
-                Label("Some recordings are not on this device. The merged meeting will have no audio.", systemImage: "exclamationmark.triangle")
+                Label("Some recordings are not on this device or in iCloud. The merged meeting will have no audio.", systemImage: "exclamationmark.triangle")
                     .font(.footnote)
                     .foregroundStyle(Color.brandNavy.opacity(0.7))
             }

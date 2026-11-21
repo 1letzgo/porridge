@@ -157,7 +157,7 @@ final class PlaudImporter {
             }
             let fileName = AudioStore.newFileName(extension: "m4a")
             let duration = try await Task.detached(priority: .userInitiated) {
-                try OpusOggDecoder.decode(ogg: ogg, to: AudioStore.url(for: fileName))
+                try OpusOggDecoder.decode(ogg: ogg, to: AudioStore.localURL(for: fileName))
             }.value
             if let index = recordings.firstIndex(where: { $0.sessionId == recording.sessionId }) {
                 recordings[index].imported = true

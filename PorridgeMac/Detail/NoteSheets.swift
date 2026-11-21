@@ -343,9 +343,9 @@ final class MergeViewController: SheetViewController, NSTableViewDataSource, NST
         mergeButton.isEnabled = !chosen.isEmpty && !isMerging
         mergeButton.title = chosen.isEmpty ? "Merge" : "Merge \(chosen.count + 1) Recordings"
         cancelButton.isEnabled = !isMerging
-        // Without every recording on this device the audio cannot be joined and is dropped.
-        let losesAudio = !chosen.isEmpty && !([base] + chosen).allSatisfy(\.hasLocalAudio)
-        warning.stringValue = losesAudio ? "Some recordings are not on this device. The merged meeting will have no audio." : ""
+        // Without every recording here or in iCloud the audio cannot be joined and is dropped. Recordings in iCloud are downloaded first (`NoteMerger`).
+        let losesAudio = !chosen.isEmpty && !([base] + chosen).allSatisfy(\.hasAudio)
+        warning.stringValue = losesAudio ? "Some recordings are not on this device or in iCloud. The merged meeting will have no audio." : ""
         warning.isHidden = !losesAudio
         note.stringValue = chosen.isEmpty ? "" : "Combined in time order into “\(base.displayTitle)”. The other meetings are removed."
         note.isHidden = chosen.isEmpty
