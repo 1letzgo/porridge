@@ -11,8 +11,19 @@ struct DocumentsPage: View {
     var onRemove: (Note) -> Void
 
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
+    @Environment(\.modelContext) private var context
+    @Environment(ProcessingService.self) private var processing
     @State private var kind: DocumentKind?
     @State private var correspondent: String?
+    /// Choosing several documents to change at once.
+    @State private var isSelecting = false
+    @State private var chosen = Set<UUID>()
+    @State private var askingSender = false
+    @State private var senderText = ""
+    @State private var choosingMergeTarget = false
+    /// Merged into the target: the others, offered for deletion.
+    @State private var mergedAway: [Note] = []
+    @State private var error: String?
 
     var body: some View {
         let all = Documents.all(notes)
@@ -21,20 +32,17 @@ struct DocumentsPage: View {
         let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
         VStack(spacing: 0) {
             if !all.isEmpty {
-                filters(all)
-                    .padding(.bottom, Look.headerGap)
+                Group {
+                    if isSelecting { selectionBar(shown) } else { filters(all) }
+                }
+                .padding(.bottom, Look.headerGap)
             }
-            List(selection: $selection) {
-                ForEach(Array(groups.enumerated()), id: \.element.title) { index, group in
-                    Section {
-                        ForEach(group.notes) { note in
-                            // The bowls a document is in, or none: it waits in the inbox.
-                            NoteListRow(note: note, buckets: note.projectIDs.compactMap { names[$0] }) { onRemove(note) }
-                                .lastInSection(note.id == group.notes.last?.id)
-                        }
-                    } header: {
-                        ListHeader(title: group.title, count: group.notes.count, tint: .brandNavy, isFirst: index == 0)
-                    }
+            Group {
+                if isSelecting {
+                    List(selection: $chosen) { rows(groups, names: names) }
+                        .environment(\.editMode, .constant(.active))
+                } else {
+                    List(selection: $selection) { rows(groups, names: names) }
                 }
             }
             .cardList()
@@ -50,6 +58,135 @@ struct DocumentsPage: View {
                     EmptyStateView(title: "No Documents", message: "None fit the filter.", systemImage: "doc.text")
                 }
             }
+        }
+        .alert("Sender", isPresented: $askingSender) {
+            TextField("Company, office or person", text: $senderText)
+            Button("Cancel", role: .cancel) {}
+            Button("Set") { change(.sender(senderText)) }
+        } message: {
+            Text("For the \(chosenNotes.count) selected documents. Leave it empty to remove the sender.")
+        }
+        .confirmationDialog("Merge into Which Document?", isPresented: $choosingMergeTarget, titleVisibility: .visible) {
+            let documents = DocumentFiles.mergeable(chosenNotes)
+            ForEach(documents) { target in
+                Button(target.displayTitle) { Task { await merge(into: target, from: documents) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The pages of the others are added at its end, in the order of the list. It keeps what it is.")
+        }
+        .confirmationDialog(
+            "Delete the Merged Documents?",
+            isPresented: Binding(get: { !mergedAway.isEmpty }, set: { if !$0 { mergedAway = [] } }), titleVisibility: .visible
+        ) {
+            Button("Move \(mergedAway.count) to Recently Deleted", role: .destructive) {
+                mergedAway.forEach { NoteStore.trash($0, in: context) }
+                mergedAway = []
+            }
+            Button("Keep Them", role: .cancel) { mergedAway = [] }
+        } message: {
+            Text("Their pages are in the merged document now.")
+        }
+        .alert("Could Not Merge", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+            Button("OK") { error = nil }
+        } message: {
+            Text(error ?? "")
+        }
+    }
+
+    private func rows(_ groups: [(title: String, notes: [Note])], names: [String: String]) -> some View {
+        ForEach(Array(groups.enumerated()), id: \.element.title) { index, group in
+            Section {
+                ForEach(group.notes) { note in
+                    // The bowls a document is in, or none: it waits in the inbox.
+                    NoteListRow(note: note, buckets: note.projectIDs.compactMap { names[$0] }) { onRemove(note) }
+                        .lastInSection(note.id == group.notes.last?.id)
+                }
+            } header: {
+                ListHeader(title: group.title, count: group.notes.count, tint: .brandNavy, isFirst: index == 0)
+            }
+        }
+    }
+
+    // MARK: Several at once
+
+    /// The chosen documents, in the order of the list.
+    private var chosenNotes: [Note] {
+        Documents.all(notes).filter { chosen.contains($0.id) }
+    }
+
+    /// What can be done with the chosen documents: into a bowl or the inbox, their kind, their sender, merging.
+    private func selectionBar(_ shown: [Note]) -> some View {
+        let active = projects.filter { !$0.isArchived }
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Button(chosen.count == shown.count ? "Select None" : "Select All") {
+                    chosen = chosen.count == shown.count ? [] : Set(shown.map(\.id))
+                }
+                .font(.subheadline.weight(.semibold))
+                Menu {
+                    Button { change(.move(toBowl: nil)) } label: { Label("Inbox", systemImage: "tray") }
+                    Divider()
+                    ForEach(active) { bowl in
+                        Button { change(.move(toBowl: Projects.key(bowl))) } label: { Label(bowl.name, systemImage: "folder") }
+                    }
+                } label: {
+                    actionLabel("Move", systemImage: "folder")
+                }
+                .disabled(chosen.isEmpty)
+                Menu {
+                    Button("Not Set") { change(.kind(nil)) }
+                    ForEach(DocumentKind.allCases) { kind in
+                        Button { change(.kind(kind)) } label: { Label(kind.title, systemImage: kind.symbol) }
+                    }
+                } label: {
+                    actionLabel("Kind", systemImage: "tag")
+                }
+                .disabled(chosen.isEmpty)
+                Button {
+                    senderText = ""
+                    askingSender = true
+                } label: {
+                    actionLabel("Sender", systemImage: "person.crop.square")
+                }
+                .disabled(chosen.isEmpty)
+                Button { choosingMergeTarget = true } label: {
+                    actionLabel("Merge", systemImage: "arrow.triangle.merge")
+                }
+                .disabled(DocumentFiles.mergeable(chosenNotes).count < 2)
+                Button("Done") {
+                    isSelecting = false
+                    chosen = []
+                }
+                .font(.subheadline.weight(.bold))
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    private func actionLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(chosen.isEmpty ? Color.secondary : Color.brandOnNavy)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(chosen.isEmpty ? Color.brandNavy.opacity(0.1) : Color.brandNavy, in: Capsule())
+    }
+
+    private func change(_ change: Documents.BulkChange) {
+        guard !chosen.isEmpty else { return }
+        withAnimation(.snappy) { _ = Documents.apply(change, to: chosenNotes, in: context) }
+    }
+
+    private func merge(into target: Note, from documents: [Note]) async {
+        let others = documents.filter { $0.id != target.id }
+        do {
+            try await DocumentFiles.merge(others, into: target, context: context, processing: processing)
+            chosen = []
+            isSelecting = false
+            mergedAway = others
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 
@@ -94,6 +231,10 @@ struct DocumentsPage: View {
                     }
                     .accessibilityLabel("Filter by Sender")
                 }
+                // Several documents at once: into a bowl, their kind or sender, merged.
+                Button("Select") { withAnimation(.snappy) { isSelecting = true } }
+                    .font(.subheadline.weight(.bold))
+                    .padding(.leading, 4)
             }
             .padding(.horizontal, 20)
         }

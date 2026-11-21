@@ -24,6 +24,7 @@
 		08D73ACE26E2EFCE1C8BF991 /* NoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B2572B8D2D94B28605C5CAB /* NoteStore.swift */; };
 		0937C1931F2BF054FB62960C /* DocumentTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 626752232CFE16964C150FE6 /* DocumentTextTests.swift */; };
 		0A39A719F399E13587334A11 /* QuickActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE6FAD6923A33CEED95AFCE0 /* QuickActions.swift */; };
+		0AEDFE9766914D54A7AFB73A /* PDFPageEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52AB6F06814C52FAB0C337F1 /* PDFPageEditor.swift */; };
 		0B9254B666B987A9D2F735D3 /* PlaudBLE.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C900D2E54C5D9AD70BAB41 /* PlaudBLE.swift */; };
 		0D3DFCF60E41068DE2F6CB85 /* Alerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F461FB4A58F3A796EAEE215B /* Alerts.swift */; };
 		0EEE5BCF1FE9AE0AAFC20327 /* ChatDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7266962A43ED5C714064E64 /* ChatDataTests.swift */; };
@@ -287,6 +288,7 @@
 		E4ADE762004E14EE0DBDB5CC /* ImportDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA27233B657C5D94A0EAA955 /* ImportDropView.swift */; };
 		E4FF50C8B501EF91CB7C18CB /* AddModelSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C989CFD9B5F386B95ECA1F /* AddModelSheet.swift */; };
 		E53D3E365FE85257EF1B74A0 /* NoteMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */; };
+		E632C6F8F2F7258EBAB0C4C2 /* PDFPageEditorController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125D976AA86DF6D4DA17238C /* PDFPageEditorController.swift */; };
 		E6AB44344775FD2E3AE87BFE /* LiveTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC34B2F819480B429CF98E03 /* LiveTranscriber.swift */; };
 		E7930D2DFA603FB179DDA498 /* OpusOggDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74EAA32100EEC6B64A63D98 /* OpusOggDecoderTests.swift */; };
 		E7DEDC41A17EFCCE0690B3CB /* RecordingSettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = C83B748DEEC0D1AECB47A771 /* RecordingSettingsPane.swift */; };
@@ -392,6 +394,7 @@
 		10833D7F907B9A5F448D31C3 /* PorridgeShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PorridgeShortcuts.swift; sourceTree = "<group>"; };
 		108DEC7169C9E157AD66174F /* LocalLLM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLLM.swift; sourceTree = "<group>"; };
 		11ADD3F08EBC69F30C2D942B /* NoteTextEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTextEngine.swift; sourceTree = "<group>"; };
+		125D976AA86DF6D4DA17238C /* PDFPageEditorController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFPageEditorController.swift; sourceTree = "<group>"; };
 		14FED8C06993DE82444EF29D /* NoteMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteMarkdown.swift; sourceTree = "<group>"; };
 		1871870FC6707C39D01FE52E /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
 		1903944E632E4C61AAFF4242 /* Intake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intake.swift; sourceTree = "<group>"; };
@@ -441,6 +444,7 @@
 		4F3589CEAD998764D9D461E6 /* ChatModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModelTests.swift; sourceTree = "<group>"; };
 		50396E878D361D57D9F258E3 /* SettingsForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsForm.swift; sourceTree = "<group>"; };
 		50D5387B8FDB2327EE19DAAC /* PlaudAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudAccount.swift; sourceTree = "<group>"; };
+		52AB6F06814C52FAB0C337F1 /* PDFPageEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFPageEditor.swift; sourceTree = "<group>"; };
 		52C78A4C0BCA055F861C25B4 /* NoteKindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteKindTests.swift; sourceTree = "<group>"; };
 		536E6D547A46DCF6768AE6C5 /* NoteFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteFolder.swift; sourceTree = "<group>"; };
 		56347D6DCA553B0BFCD0F0A3 /* SummaryTasks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryTasks.swift; sourceTree = "<group>"; };
@@ -728,6 +732,7 @@
 				E643FF5DE4F5592C95134CAE /* NoteMediaViews.swift */,
 				CDFB2FA30B94FE642D6337FC /* NotesView.swift */,
 				7A86CDD2F6B34BBFD752D1A2 /* NoteTextView.swift */,
+				52AB6F06814C52FAB0C337F1 /* PDFPageEditor.swift */,
 				605D164877965A4BA545584B /* PlaudImportSheet.swift */,
 				3CA9C6649F3F5A8A76BBCEA0 /* PlaudLoginView.swift */,
 				32A619A6A5CEB3607BF5EE1E /* RecordMeetingSheet.swift */,
@@ -828,6 +833,7 @@
 				A7825A3F61D5732826AD5E47 /* NoteEditorView.swift */,
 				718820BD7DCFF2639840BA2B /* NoteSheets.swift */,
 				75133650D3341878711A7DE0 /* NoteWindowController.swift */,
+				125D976AA86DF6D4DA17238C /* PDFPageEditorController.swift */,
 				7676ABC6D6C4AFD360F43919 /* SuggestedTodosView.swift */,
 				84ACD4E1ED51AA2311A08EC4 /* SummaryTextView.swift */,
 				BEE9713B21FFE32E1F295931 /* TranscriptView.swift */,
@@ -1405,6 +1411,7 @@
 				486BC3F19E8213085E114EC2 /* NotesView.swift in Sources */,
 				F6654516D356993C3F1E71C9 /* OnboardingView.swift in Sources */,
 				179CF1D750C84E09B9978330 /* OpusOggDecoder.swift in Sources */,
+				0AEDFE9766914D54A7AFB73A /* PDFPageEditor.swift in Sources */,
 				F7FE4EF71ABE9BD19E9954CC /* PDFTextLayer.swift in Sources */,
 				96EE3621CBC49AA8BFF6B318 /* Paragraphs.swift in Sources */,
 				8595D00FE8DD1E7469896BD2 /* PlaudAPI.swift in Sources */,
@@ -1565,6 +1572,7 @@
 				CB7E9DDC73376C4B56AFBC74 /* Observing.swift in Sources */,
 				FEB5DE0D129CF30A5DAD29C5 /* OnboardingController.swift in Sources */,
 				2D34B31C045A32C957D87681 /* OpusOggDecoder.swift in Sources */,
+				E632C6F8F2F7258EBAB0C4C2 /* PDFPageEditorController.swift in Sources */,
 				AB929C4E5F1AB21F895243BE /* PDFTextLayer.swift in Sources */,
 				80E05524C639A02033C56895 /* Paragraphs.swift in Sources */,
 				DBC79736A01211FE26D4F937 /* PlaudAPI.swift in Sources */,

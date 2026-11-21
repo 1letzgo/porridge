@@ -47,6 +47,8 @@ struct NoteDetailView: View {
     @State private var fetchedAudio = 0
     @State private var confirmDeleteSummary = false
     @State private var showMerge = false
+    /// The page editor of the document's PDF.
+    @State private var showPages = false
     @State private var showSummaryEditor = false
     @State private var addingTag = false
     @State private var newTag = ""
@@ -243,6 +245,7 @@ struct NoteDetailView: View {
             // Cleaned up from the sheet itself, once its editor has handed over the last typing.
             SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 }), onFinish: finishEditingSummary)
         }
+        .sheet(isPresented: $showPages) { PDFPageEditor(note: note) }
         .sheet(isPresented: $showMerge) {
             MergeNotesSheet(base: note) {
                 // The recording may have been replaced by the joined one.
@@ -648,6 +651,13 @@ struct NoteDetailView: View {
                         Label("Continue Recording", systemImage: "mic.badge.plus")
                     }
                     .disabled(!canContinueRecording)
+                }
+                // A document's PDF: its pages turned, moved, deleted, added to or split off.
+                if note.isStored, DocumentFiles.pdf(of: note) != nil {
+                    Button { showPages = true } label: {
+                        Label("Edit Pages…", systemImage: "doc.on.doc")
+                    }
+                    .disabled(processing.stages[note.id] != nil)
                 }
                 if !note.segments.isEmpty {
                     Button { Clipboard.copy(note.transcriptText()) } label: {

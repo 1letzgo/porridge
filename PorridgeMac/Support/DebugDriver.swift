@@ -185,16 +185,41 @@ enum DebugDriver {
         case "dump":
             dump()
         case "shot":
-            // `shot <path.png>`: the front window as the app draws it, without asking for screen recording.
-            guard let content = controller.window?.contentView?.superview ?? controller.window?.contentView,
-                  let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { log("shot: no window"); return }
-            content.cacheDisplay(in: content.bounds, to: bitmap)
-            do {
-                try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
-                log("shot: \(argument)")
-            } catch {
-                log("shot: \(error.localizedDescription)")
+            // `shot <path.png>`: the front window as the app draws it, without asking for screen recording; an open
+            // sheet goes to `<path>-sheet.png`.
+            func shoot(_ window: NSWindow?, _ path: String) {
+                guard let content = window?.contentView?.superview ?? window?.contentView,
+                      let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { log("shot: no window"); return }
+                content.cacheDisplay(in: content.bounds, to: bitmap)
+                do {
+                    try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+                    log("shot: \(path)")
+                } catch {
+                    log("shot: \(error.localizedDescription)")
+                }
             }
+            shoot(controller.window, argument)
+            if let sheet = controller.window?.attachedSheet { shoot(sheet, (argument as NSString).deletingPathExtension + "-sheet.png") }
+        case "select-all":
+            // Every row of the list, as Command-A does.
+            state.selection = NoteListContent.build(for: state, library: library).sections.flatMap(\.1).compactMap {
+                if case .note(let id) = $0 { id } else { nil }
+            }
+        case "context-menu":
+            // The context menu of the selected notes, as titles (submenus indented).
+            let menu = NSMenu()
+            NoteOperations.addItems(for: state.selection.compactMap(library.note), to: menu, state: state, window: controller.window)
+            func list(_ menu: NSMenu, _ indent: String) {
+                for item in menu.items where !item.isSeparatorItem {
+                    log(indent + item.title + (item.state == .on ? " ✓" : ""))
+                    if let sub = item.submenu { list(sub, indent + "  ") }
+                }
+            }
+            list(menu, "")
+            log("--")
+        case "pages":
+            // The page editor of the open note's PDF.
+            if let note = controller.openNote { PDFPageEditorController.open(note, in: controller.window) } else { log("pages: no note") }
         case "drop", "hover":
             // `drop list|detail <path>|text:<words>[|<path>…]`: a drop from outside through the column's own drop
             // methods (`ImportDropView`); `hover` stops before the drop and leaves the highlight showing.

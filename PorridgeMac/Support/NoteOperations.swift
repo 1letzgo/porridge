@@ -53,6 +53,12 @@ enum NoteOperations {
         buckets.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         buckets.submenu = bucketMenu(for: notes, window: window)
         menu.addItem(buckets)
+        // Into one bowl (out of the others) or back to the inbox, all selected at once.
+        let move = NSMenuItem(title: notes.count == 1 ? "Move to" : "Move \(notes.count) to", action: nil, keyEquivalent: "")
+        move.image = NSImage(systemSymbolName: "arrow.right.doc.on.clipboard", accessibilityDescription: nil)
+        move.submenu = moveMenu(for: notes)
+        menu.addItem(move)
+        addDocumentItems(for: notes, to: menu, window: window)
         menu.addSeparator()
         menu.add("Copy", symbol: "doc.on.doc") { copy(notes) }
         let share = NSMenuItem(title: "Share", action: nil, keyEquivalent: "")
@@ -91,6 +97,85 @@ enum NoteOperations {
             }
         }
         return menu
+    }
+
+    /// The inbox and the bowls: a click moves all the notes there (`Documents.apply`).
+    static func moveMenu(for notes: [Note]) -> NSMenu {
+        let menu = NSMenu()
+        let inbox = menu.add("Inbox", symbol: "tray") { Documents.apply(.move(toBowl: nil), to: notes, in: context) }
+        inbox.state = notes.allSatisfy(\.isInInbox) ? .on : .off
+        menu.addSeparator()
+        for project in library.activeProjects {
+            let key = Projects.key(project)
+            let item = menu.add(project.name, symbol: "folder") { Documents.apply(.move(toBowl: key), to: notes, in: context) }
+            item.state = notes.allSatisfy { $0.projectIDs == [key] } ? .on : .off
+        }
+        return menu
+    }
+
+    /// For documents: their kind and sender (all selected at once), their pages, merging several PDFs.
+    private static func addDocumentItems(for notes: [Note], to menu: NSMenu, window: NSWindow?) {
+        let documents = notes.filter { $0.isStored && !$0.attachments.isEmpty }
+        guard !documents.isEmpty else { return }
+        let kinds = NSMenuItem(title: "Document Kind", action: nil, keyEquivalent: "")
+        kinds.image = NSImage(systemSymbolName: "tag", accessibilityDescription: nil)
+        let kindMenu = NSMenu()
+        kindMenu.add("Not Set") { Documents.apply(.kind(nil), to: documents, in: context) }
+        kindMenu.addSeparator()
+        for kind in DocumentKind.allCases {
+            let item = kindMenu.add(kind.title, symbol: kind.symbol) { Documents.apply(.kind(kind), to: documents, in: context) }
+            item.state = documents.allSatisfy { $0.documentInfo?.kind == kind } ? .on : .off
+        }
+        kinds.submenu = kindMenu
+        menu.addItem(kinds)
+        menu.add(documents.count == 1 ? "Set Sender…" : "Set Sender of \(documents.count)…", symbol: "person.crop.square") {
+            let current = Set(documents.map { $0.documentInfo?.correspondent ?? "" })
+            Alerts.ask(
+                "Sender", message: "Leave it empty to remove the sender.", placeholder: "Company, office or person",
+                value: current.count == 1 ? current.first ?? "" : "", action: "Set", validate: { _ in true }, in: window
+            ) { sender in
+                Documents.apply(.sender(sender), to: documents, in: context)
+            }
+        }
+        if documents.count == 1, let note = documents.first, DocumentFiles.pdf(of: note) != nil {
+            menu.add("Edit Pages…", symbol: "doc.on.doc") { PDFPageEditorController.open(note, in: window) }
+        }
+        let mergeable = DocumentFiles.mergeable(documents)
+        if mergeable.count >= 2 {
+            menu.add("Merge \(mergeable.count) PDFs…", symbol: "arrow.triangle.merge") { merge(mergeable, in: window) }
+        }
+    }
+
+    /// Asks which document the others go into, merges, then asks whether the others go to Recently Deleted.
+    static func merge(_ notes: [Note], in window: NSWindow?) {
+        let ordered = Documents.sorted(notes)
+        let alert = NSAlert()
+        alert.messageText = "Merge \(ordered.count) PDFs"
+        alert.informativeText = "The pages of the others are added at the end of the chosen document, in the order of the list. It keeps what it is."
+        let target = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 300, height: 26), pullsDown: false)
+        target.addItems(withTitles: ordered.map(\.displayTitle))
+        alert.accessoryView = target
+        alert.addButton(withTitle: "Merge")
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        let run: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .alertFirstButtonReturn else { return }
+            let into = ordered[max(0, target.indexOfSelectedItem)]
+            let others = ordered.filter { $0.id != into.id }
+            Task {
+                do {
+                    try await DocumentFiles.merge(others, into: into, context: context, processing: library.processing)
+                    Alerts.confirm(
+                        "Delete the Merged Documents?", message: "Their pages are in “\(into.displayTitle)” now.",
+                        action: "Move \(others.count) to Recently Deleted", in: window
+                    ) {
+                        others.forEach { NoteStore.trash($0, in: context) }
+                    }
+                } catch {
+                    Alerts.inform("Could Not Merge", message: error.localizedDescription, in: window)
+                }
+            }
+        }
+        if let window, window.attachedSheet == nil { alert.beginSheetModal(for: window, completionHandler: run) } else { run(alert.runModal()) }
     }
 
     /// The sharing services for a text, as a submenu.
