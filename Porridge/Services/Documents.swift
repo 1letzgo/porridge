@@ -28,12 +28,14 @@ extension Note {
         }
     }
 
-    /// A paper kept in the app: a PDF or office document brought in (scanned, shared, dropped, picked), or an
-    /// image that was read as one (a photographed receipt). A note with a file attached stays a note.
+    /// A paper kept in the app: a PDF or office document brought in (scanned, shared, dropped, picked), or another
+    /// file (a photographed receipt, a screenshot) that was read as one or marked as one by hand. A note with a file
+    /// attached stays a note.
     var isDocument: Bool {
         guard isStored, let first = attachments.first else { return false }
         if first.isDocumentFile { return true }
-        return first.document?.isMeaningful ?? false
+        guard let info = first.document else { return false }
+        return info.isMeaningful || (info.edited && !info.isEmpty)
     }
 
     /// A document of the kind the word names, in German or English: "Rechnung", "Verträge", "receipts".

@@ -80,6 +80,8 @@ class PillButton: NSButton {
     var isFilled = false { didSet { needsDisplay = true } }
     /// The label's color on a wash; navy when nil.
     var labelColor: NSColor? { didSet { needsDisplay = true } }
+    /// A line around it instead of a wash (the document chip, set apart from bowls and tags).
+    var isOutlined = false { didSet { needsDisplay = true } }
 
     convenience init(title: String, symbol: String? = nil, tint: NSColor = .brandSky, target: AnyObject?, action: Selector?) {
         self.init(frame: .zero)
@@ -106,8 +108,18 @@ class PillButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
         let alpha: CGFloat = isEnabled ? 1 : 0.4
-        (isFilled ? tint : tint.withAlphaComponent(isHighlighted ? 0.32 : 0.18)).withAlphaComponent(isFilled ? alpha : (isHighlighted ? 0.32 : 0.18) * alpha).setFill()
-        path.fill()
+        if isOutlined {
+            if isHighlighted {
+                tint.withAlphaComponent(0.18 * alpha).setFill()
+                path.fill()
+            }
+            tint.withAlphaComponent(0.7 * alpha).setStroke()
+            path.lineWidth = 1
+            path.stroke()
+        } else {
+            (isFilled ? tint : tint.withAlphaComponent(isHighlighted ? 0.32 : 0.18)).withAlphaComponent(isFilled ? alpha : (isHighlighted ? 0.32 : 0.18) * alpha).setFill()
+            path.fill()
+        }
         let color = (isFilled ? tint.onFill : labelColor ?? NSColor.brandNavy).withAlphaComponent(alpha)
         let attributes: [NSAttributedString.Key: Any] = [.font: font ?? .systemFont(ofSize: 12), .foregroundColor: color]
         let text = NSAttributedString(string: title, attributes: attributes)

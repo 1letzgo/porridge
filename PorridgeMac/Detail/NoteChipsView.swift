@@ -62,15 +62,18 @@ final class NoteChipsView: NSView {
             add.setAccessibilityLabel("Add to Bowl")
             views.append(add)
         }
-        // A document: what it is, after its bowls ("Invoice · Telekom", or "+ Document"); a click sets it.
-        if note.isDocument, !note.isDeleted {
+        // A stored file: what it is as a document, after its bowls ("Invoice · Telekom", or "+ Document" to mark
+        // it as one); a click sets it. Outlined grey, apart from the bowls (violet) and the tags (sky).
+        if note.isStored, !note.isDeleted {
             let info = note.documentInfo ?? DocumentInfo()
             let label = info.shortLabel
             let title = info.isEmpty ? String(localized: "Document") : (label.count > 40 ? String(label.prefix(39)) + "…" : label)
             let pill = PillButton(
                 title: title, symbol: info.isEmpty ? "plus" : (info.kind ?? .other).symbol,
-                tint: info.isEmpty ? .systemGray : .brandNavy, target: self, action: #selector(editDocument)
+                tint: .systemGray, target: self, action: #selector(editDocument)
             )
+            pill.isOutlined = true
+            pill.labelColor = .labelColor
             pill.setAccessibilityLabel(info.isEmpty ? String(localized: "Add Document Details") : info.sentence)
             pill.toolTip = info.isEmpty ? String(localized: "Add the kind, date, sender and amount") : info.line
             views.append(pill)

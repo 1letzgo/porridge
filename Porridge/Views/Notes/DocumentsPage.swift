@@ -145,8 +145,8 @@ struct NoteSelectionBar: View {
     }
 }
 
-/// What a document is, as a chip in the row of a note's bowls: its kind (and sender, kept short); "+ Document" while
-/// nothing is known. A tap opens the sheet to set it; date and amount are there and in the list row.
+/// What a stored file is as a document, as a chip in the row of a note's bowls: its kind (and sender, kept short);
+/// "+ Document" while nothing is known, so any file can be marked as one. A tap opens the sheet to set it; date and amount are there and in the list row.
 struct DocumentChip: View {
     let note: Note
     @State private var editing = false
@@ -157,20 +157,21 @@ struct DocumentChip: View {
             Group {
                 if info.isEmpty {
                     Label("Document", systemImage: "plus")
-                        .foregroundStyle(Color.brandNavy)
                 } else {
                     HStack(spacing: 6) {
                         Image(systemName: (info.kind ?? .other).symbol).font(.caption)
                         Text(info.shortLabel).lineLimit(1)
                     }
-                    .foregroundStyle(Color.brandNavy)
                     .frame(maxWidth: 240)
                 }
             }
             .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .chunkyPill(fill: info.isEmpty ? .gray : .brandNavy)
+            // Outlined grey: set apart from the bowls (violet wash) and the tags (sky wash).
+            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1))
+            .contentShape(Capsule())
             .fixedSize(horizontal: info.isEmpty, vertical: false)
         }
         .buttonStyle(.plain)

@@ -487,8 +487,8 @@ struct NoteDetailView: View {
                 ProjectPills(assigned: note.projectIDs) { project in
                     Projects.toggle(project, on: note, in: context)
                 }
-                // A document: what it is, after its bowls; a tap sets it.
-                if note.isDocument, !note.isDeleted {
+                // A stored file: what it is as a document, after its bowls; a tap sets it (and so marks it as one).
+                if note.isStored, !note.isDeleted {
                     DocumentChip(note: note)
                 }
                 ForEach(note.tags, id: \.self) { tag in

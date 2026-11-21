@@ -182,6 +182,13 @@ final class DocumentsTests: XCTestCase {
         XCTAssertTrue(photo.isDocument)
         photo.documentInfo = DocumentInfo(kind: .other)
         XCTAssertFalse(photo.isDocument)
+        // Marked as one by hand (the chip after the bowls): a screenshot counts as a document.
+        photo.documentInfo = DocumentInfo(kind: .other, isEdited: true)
+        XCTAssertTrue(photo.isDocument)
+        photo.documentInfo = DocumentInfo(day: "2026-03-02", isEdited: true)
+        XCTAssertTrue(photo.isDocument)
+        photo.documentInfo = DocumentInfo(isEdited: true)
+        XCTAssertFalse(photo.isDocument, "everything taken away: no document any more")
 
         XCTAssertFalse(storedNote(kind: "file", name: "backup.zip").isDocument)
         XCTAssertTrue(storedNote(kind: "file", name: "Vertrag.docx").isDocument)
