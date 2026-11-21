@@ -319,26 +319,8 @@ enum DocumentExtractor {
 
 /// The line the summary's model writes about a document: "DOCUMENT: invoice | 2026-03-02 | Telekom | 119.00 EUR".
 enum DocumentLine {
-    /// Words a model writes for a kind besides the listed ones: German, and other English names.
-    private static let kindWords: [String: DocumentKind] = [
-        "rechnung": .invoice, "bill": .invoice, "faktura": .invoice,
-        "quittung": .receipt, "kassenbon": .receipt, "kassenbeleg": .receipt, "beleg": .receipt, "bon": .receipt,
-        "vertrag": .contract, "vereinbarung": .contract, "agreement": .contract,
-        "brief": .letter, "schreiben": .letter, "anschreiben": .letter,
-        "kontoauszug": .statement, "auszug": .statement,
-        "gehaltsabrechnung": .payslip, "lohnabrechnung": .payslip, "entgeltabrechnung": .payslip, "pay slip": .payslip,
-        "bescheid": .notice, "official notice": .notice,
-        "bescheinigung": .certificate, "zeugnis": .certificate, "zertifikat": .certificate, "urkunde": .certificate,
-        "angebot": .offer, "kostenvoranschlag": .offer, "quote": .offer, "quotation": .offer,
-        "versicherung": .insurance, "versicherungsschein": .insurance, "police": .insurance, "policy": .insurance,
-        "sonstiges": .other, "andere": .other, "anderes": .other,
-    ]
-
-    /// The kind a word names; nil for one that is not known.
-    static func kindWord(_ word: String) -> DocumentKind? {
-        let key = word.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        return DocumentKind(rawValue: key) ?? kindWords[key]
-    }
+    /// The kind a word the model wrote names (also German: "Rechnung", "Vertrag"); nil for one that is not known.
+    static func kindWord(_ word: String) -> DocumentKind? { DocumentKind.named(word) }
 
     /// The line added to the prompt of a summary of a file or an image.
     static var prompt: String {

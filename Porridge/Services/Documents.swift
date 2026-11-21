@@ -36,6 +36,12 @@ extension Note {
         return first.document?.isMeaningful ?? false
     }
 
+    /// A document of the kind the word names, in German or English: "Rechnung", "Verträge", "receipts".
+    func isDocument(named word: String) -> Bool {
+        guard attachmentsData != nil, let kind = DocumentKind.named(word), isDocument else { return false }
+        return (documentInfo?.kind ?? .other) == kind
+    }
+
     /// The date on the document, or when it came in.
     var documentDate: Date { documentInfo?.date ?? createdAt }
 
@@ -120,6 +126,14 @@ enum Documents {
             }
         }
         return result
+    }
+
+    /// The search's words name the document's kind ("Rechnung", "Verträge") and the other words are in it: found
+    /// even when the kind's word is not in its text. At least one word has to name the kind.
+    static func matches(_ note: Note, query: String) -> Bool {
+        let words = query.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+        guard note.isStored, words.contains(where: note.isDocument(named:)) else { return false }
+        return words.allSatisfy { word in note.isDocument(named: word) || note.matches(word) }
     }
 
     // MARK: Reading

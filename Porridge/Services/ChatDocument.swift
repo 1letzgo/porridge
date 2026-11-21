@@ -39,6 +39,14 @@ struct ChatDocument: Codable, Equatable {
     let tags: [String]
     /// The start of the entry: its summary, else its text, its page or its transcript; at most 200 characters.
     let snippet: String
+    // A document (`Note.isDocument`): what it is. Nil for everything else, and in index files from before.
+    /// `DocumentKind` raw value.
+    var documentKind: String?
+    /// The date on the document, "yyyy-MM-dd".
+    var documentDay: String?
+    var correspondent: String?
+    /// "119.00 EUR" (`DocumentInfo.amount`).
+    var amount: String?
 
     static let snippetLength = 200
 
@@ -68,7 +76,21 @@ struct ChatDocument: Codable, Equatable {
         }
         let joined = lines.joined(separator: " ")
         snippet = joined.count > Self.snippetLength ? String(joined.prefix(Self.snippetLength - 1)) + "…" : joined
+        if note.isDocument, let info = note.documentInfo {
+            documentKind = (info.kind ?? .other).rawValue
+            documentDay = info.day
+            correspondent = info.correspondent
+            amount = info.amount
+        }
     }
+
+    var documentInfo: DocumentInfo? {
+        guard let documentKind else { return nil }
+        return DocumentInfo(kind: DocumentKind(rawValue: documentKind), day: documentDay, correspondent: correspondent, amount: amount)
+    }
+
+    /// The date a question's time is about for an entry that is not a to-do: the date on a document, else when it came in.
+    var date: Date { DocumentInfo.date(fromDay: documentDay) ?? createdAt }
 
     var isOpenTodo: Bool { todoState == "open" }
     var isDoneTodo: Bool { todoState == "done" }
@@ -98,7 +120,10 @@ struct ChatDocument: Codable, Equatable {
             }
             if subtasksTotal > 0 { kindText += ", \(subtasksDone) of \(subtasksTotal) subtasks done" }
         }
-        var parts = [kindText, "created " + Self.dayText(createdAt, calendar: calendar)]
+        var parts = [kindText]
+        // "Document: Invoice from Telekom, dated 2 Mar 2026, amount 119,00 €".
+        if let info = documentInfo { parts.append("Document: " + info.sentence) }
+        parts.append("created " + Self.dayText(createdAt, calendar: calendar))
         let names = bucketIDs.compactMap { bucketNames[$0] }
         parts.append(names.isEmpty ? "Inbox" : (names.count == 1 ? "Bowl: " : "Bowls: ") + names.joined(separator: ", "))
         if !tags.isEmpty { parts.append(tags.map { "#" + $0 }.joined(separator: " ")) }
@@ -125,8 +150,19 @@ struct ChatQuery: Equatable {
     var dateField: DateField = .auto
     /// The words left to search for.
     var words: [String] = []
+    /// Documents of these kinds only ("Rechnungen", "contracts").
+    var documentKinds: Set<DocumentKind> = []
+    /// Documents from these senders only, by `DocumentExtractor.correspondentKey`.
+    var senders: Set<String> = []
+    /// Documents with an amount of at least / at most this much ("über 100 Euro", "under $50").
+    var minAmount: Decimal?
+    var maxAmount: Decimal?
 
-    var isStructured: Bool { !kinds.isEmpty || !bucketIDs.isEmpty || inbox || todo != nil || range != nil }
+    var isStructured: Bool {
+        !kinds.isEmpty || !bucketIDs.isEmpty || inbox || todo != nil || range != nil || isAboutDocuments
+    }
+
+    var isAboutDocuments: Bool { !documentKinds.isEmpty || !senders.isEmpty || minAmount != nil || maxAmount != nil }
 
     // Word lists. A word counts as a whole word of the question, hyphens kept ("to-dos").
     static let kindWords: [ChatDocument.Kind: Set<String>] = [
@@ -141,6 +177,12 @@ struct ChatQuery: Equatable {
     static let overdueWords: Set<String> = ["überfällig", "überfällige", "überfälligen", "overdue", "verspätet", "late"]
     static let dueWords: Set<String> = ["fällig", "fällige", "fälligen", "due", "deadline", "deadlines", "frist", "fristen"]
     static let bucketWords: Set<String> = ["bowl", "bowls", "bucket", "buckets"]
+    /// Kind words that mean something else in a question: "a brief answer", "notice", "a statement", "quote".
+    static let ambiguousDocumentWords: Set<String> = ["brief", "notice", "statement", "quote", "bill", "police", "policy", "schreiben", "bescheid", "bon", "auszug", "other", "andere", "anderes"]
+    static let senderWords: Set<String> = ["von", "vom", "from", "absender", "sender"]
+    static let moreWords = ["über", "mehr als", "ab", "over", "more than", "above", "at least", "mindestens"]
+    static let lessWords = ["unter", "weniger als", "höchstens", "under", "less than", "below", "at most"]
+    static let currencyWords: Set<String> = ["€", "euro", "eur", "$", "dollar", "usd", "chf", "franken", "£", "pfund", "gbp"]
     static let weekdays: [String: Int] = [
         "sonntag": 1, "montag": 2, "dienstag": 3, "mittwoch": 4, "donnerstag": 5, "freitag": 6, "samstag": 7, "sonnabend": 7,
         "sunday": 1, "monday": 2, "tuesday": 3, "wednesday": 4, "thursday": 5, "friday": 6, "saturday": 7,
@@ -155,7 +197,8 @@ struct ChatQuery: Equatable {
     }
 
     /// Reads the filters of `question`. `bowls` are the names a question may name (`Projects.key` → name).
-    static func parse(_ question: String, buckets: [String: String] = [:], now: Date = Date(), calendar: Calendar = .current) -> ChatQuery {
+    /// `senders` are the senders of the documents a question may name ("Telekom").
+    static func parse(_ question: String, buckets: [String: String] = [:], senders: [String] = [], now: Date = Date(), calendar: Calendar = .current) -> ChatQuery {
         var query = ChatQuery()
         let all = words(question)
         var used = Set<Int>()
@@ -172,6 +215,59 @@ struct ChatQuery: Equatable {
             if dueWords.contains(word) { query.dateField = .due; take(index) }
             if bucketWords.contains(word) { take(index) }
             if word == "inbox" { query.inbox = true; take(index) }
+            if !ambiguousDocumentWords.contains(word), let kind = DocumentKind.named(word), kind != .other {
+                query.documentKinds.insert(kind)
+                take(index)
+            }
+        }
+
+        // A sender named in the question: its whole name ("Telekom Deutschland"), or its first word when that is
+        // distinctive ("Telekom" for "Telekom Deutschland GmbH").
+        for name in senders {
+            let key = DocumentExtractor.correspondentKey(name).split(separator: " ").map(String.init)
+            guard let head = key.first else { continue }
+            let foldedWords = all.map { DocumentExtractor.correspondentKey($0) }
+            var found: [Int]?
+            if key.count <= foldedWords.count {
+                for start in 0...(foldedWords.count - key.count) where Array(foldedWords[start..<start + key.count]) == key {
+                    found = Array(start..<start + key.count)
+                    break
+                }
+            }
+            if found == nil, head.count >= 4, !genericSenderWords.contains(head), let index = foldedWords.firstIndex(of: head) {
+                found = [index]
+            }
+            guard let found else { continue }
+            query.senders.insert(key.joined(separator: " "))
+            found.forEach(take)
+            if let first = found.first, first > 0, senderWords.contains(all[first - 1]) { take(first - 1) }
+        }
+
+        // An amount: "über 100 Euro", "mehr als 50 €", "under $20".
+        for (i, word) in all.enumerated() {
+            guard let value = Decimal(string: word.replacingOccurrences(of: ",", with: "."), locale: Locale(identifier: "en_US_POSIX")),
+                  word.allSatisfy({ $0.isNumber || $0 == "," || $0 == "." }) else { continue }
+            let hasCurrency = (i + 1 < all.count && currencyWords.contains(all[i + 1])) || question.contains("€\(word)") || question.contains("$\(word)")
+                || question.contains("\(word) €") || question.contains("\(word)€") || question.contains("\(word) $")
+            guard hasCurrency else { continue }
+            func before(_ phrases: [String]) -> Int? {
+                for phrase in phrases {
+                    let parts = phrase.split(separator: " ").map(String.init)
+                    guard i >= parts.count, Array(all[(i - parts.count)..<i]) == parts else { continue }
+                    return parts.count
+                }
+                return nil
+            }
+            if let length = before(moreWords) {
+                query.minAmount = value
+                ((i - length)...i).forEach(take)
+            } else if let length = before(lessWords) {
+                query.maxAmount = value
+                ((i - length)...i).forEach(take)
+            } else {
+                continue
+            }
+            if i + 1 < all.count, currencyWords.contains(all[i + 1]) { take(i + 1) }
         }
 
         // A bowl named in the question, by its whole name ("Reisen", "Haus und Garten").
@@ -195,11 +291,30 @@ struct ChatQuery: Equatable {
         // A list of to-dos is a list of what is still open, unless done ones are asked for.
         if query.kinds == [.todo], query.todo == nil { query.todo = .open }
         if query.todo == .done, query.range != nil, query.dateField == .auto { query.dateField = .done }
+        // A question about documents names a year as the time of the documents ("Rechnungen 2026").
+        if query.range == nil, query.isAboutDocuments, let (range, consumed) = yearRange(all, calendar: calendar) {
+            query.range = range
+            consumed.forEach(take)
+        }
 
         let rest = all.enumerated().filter { !used.contains($0.offset) }.map(\.element).joined(separator: " ")
         var seen = Set<String>()
         query.words = ChatRetrieval.queryWords(rest).filter { seen.insert($0).inserted }
         return query
+    }
+
+    /// Senders' first words that name no one in particular.
+    static let genericSenderWords: Set<String> = ["deutsche", "deutscher", "german", "stadt", "bank", "first", "erste", "allgemeine", "volks"]
+
+    /// A year named in a question ("2026", "aus 2025") as the span of that year, and the index of its word.
+    static func yearRange(_ words: [String], calendar: Calendar) -> (DateInterval, [Int])? {
+        for (i, word) in words.enumerated() where word.count == 4 {
+            guard let year = Int(word), (1950...2200).contains(year),
+                  let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1)),
+                  let end = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1)) else { continue }
+            return (DateInterval(start: start, end: end), [i])
+        }
+        return nil
     }
 
     /// The time a question names, as a span of days, and the indices of the words it was read from. `future` reads a
@@ -304,6 +419,21 @@ struct ChatQuery: Equatable {
     /// Whether an entry is one the question asks for.
     func matches(_ document: ChatDocument, now: Date = Date(), calendar: Calendar = .current) -> Bool {
         if !kinds.isEmpty, !kinds.contains(document.kind) { return false }
+        if isAboutDocuments {
+            guard let info = document.documentInfo else { return false }
+            if !documentKinds.isEmpty, !documentKinds.contains(info.kind ?? .other) { return false }
+            if !senders.isEmpty {
+                guard let sender = info.correspondent else { return false }
+                let key = DocumentExtractor.correspondentKey(sender)
+                // "Telekom" asks for "Telekom Deutschland" too.
+                guard senders.contains(where: { key == $0 || key.hasPrefix($0 + " ") }) else { return false }
+            }
+            if minAmount != nil || maxAmount != nil {
+                guard let value = DocumentInfo.parts(ofAmount: info.amount)?.value else { return false }
+                if let minAmount, value < minAmount { return false }
+                if let maxAmount, value > maxAmount { return false }
+            }
+        }
         if !bucketIDs.isEmpty || inbox {
             let inBucket = !bucketIDs.isDisjoint(with: document.bucketIDs)
             let inInbox = inbox && document.bucketIDs.isEmpty
@@ -324,7 +454,8 @@ struct ChatQuery: Equatable {
             case .due: date = due
             case .done: date = document.doneAt
             case .created: date = document.createdAt
-            case .auto: date = document.kind == .todo ? (due ?? document.createdAt) : document.createdAt
+            // A document by the date on it.
+            case .auto: date = document.kind == .todo ? (due ?? document.createdAt) : document.date
             }
             guard let date, date >= range.start, date < range.end else { return false }
         }
@@ -336,6 +467,12 @@ struct ChatQuery: Equatable {
         var parts: [String] = []
         if !kinds.isEmpty { parts.append("kind: " + ChatDocument.Kind.allCases.filter(kinds.contains).map { $0.label.lowercased() }.joined(separator: " or ")) }
         if let todo { parts.append("to-do state: " + todo.rawValue) }
+        if !documentKinds.isEmpty {
+            parts.append("document kind: " + DocumentKind.allCases.filter(documentKinds.contains).map { $0.title.lowercased() }.joined(separator: " or "))
+        }
+        if !senders.isEmpty { parts.append("from: " + senders.sorted().joined(separator: " or ")) }
+        if let minAmount { parts.append("amount at least \(minAmount)") }
+        if let maxAmount { parts.append("amount at most \(maxAmount)") }
         let names = bucketIDs.compactMap { bucketNames[$0] }.sorted() + (inbox ? ["Inbox"] : [])
         if !names.isEmpty { parts.append("in " + names.joined(separator: " or ")) }
         if let range {
@@ -344,7 +481,7 @@ struct ChatQuery: Equatable {
             case .due: "due"
             case .done: "done"
             case .created: "created"
-            case .auto: kinds == [.todo] ? "due (or created, without a due day)" : "created"
+            case .auto: kinds == [.todo] ? "due (or created, without a due day)" : isAboutDocuments ? "dated (the date on the document)" : "created"
             }
             let from = ChatDocument.dayText(range.start, calendar: calendar), to = ChatDocument.dayText(last, calendar: calendar)
             parts.append(field + (from == to ? " on " + from : " between " + from + " and " + to))
@@ -419,7 +556,8 @@ extension ChatRetrieval {
         _ question: String, documents: [UUID: ChatDocument], chunks: [ChatChunk], bucketNames: [String: String],
         queryVector: [Float]? = nil, now: Date = Date(), calendar: Calendar = .current, budget: ChatBudget = .standard
     ) -> ChatContext {
-        let query = ChatQuery.parse(question, buckets: bucketNames, now: now, calendar: calendar)
+        let senders = Array(Set(documents.values.compactMap(\.correspondent)))
+        let query = ChatQuery.parse(question, buckets: bucketNames, senders: senders, now: now, calendar: calendar)
         var context = ChatContext(query: query)
         func item(_ chunk: ChatChunk, outside: Bool = false) -> ChatContextItem? {
             guard let document = documents[chunk.noteID] else { return nil }

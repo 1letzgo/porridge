@@ -868,7 +868,7 @@ struct NotesView: View {
             // The index knows the words of every passage (transcripts included) without decoding anything.
             if let ids = NoteIndex.shared.noteIDs(matching: search) {
                 _ = NoteIndex.shared.version
-                result = result.filter { ids.contains($0.id) || $0.title.localizedCaseInsensitiveContains(search) || ($0.url?.localizedCaseInsensitiveContains(search) ?? false) }
+                result = result.filter { ids.contains($0.id) || $0.title.localizedCaseInsensitiveContains(search) || ($0.url?.localizedCaseInsensitiveContains(search) ?? false) || Documents.matches($0, query: search) }
             } else {
                 result = result.filter { $0.matches(search) }
             }

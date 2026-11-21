@@ -48,6 +48,34 @@ enum DocumentKind: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// German and English words for each kind, singular and plural, besides the raw value: what a model writes
+    /// for a kind, what a search or a chat question names it by.
+    static let words: [String: DocumentKind] = {
+        let lists: [(DocumentKind, [String])] = [
+            (.invoice, ["rechnung", "rechnungen", "invoices", "bill", "bills", "faktura", "fakturen"]),
+            (.receipt, ["quittung", "quittungen", "kassenbon", "kassenbons", "kassenbeleg", "kassenbelege", "beleg", "belege", "bon", "bons", "receipts"]),
+            (.contract, ["vertrag", "verträge", "vertraege", "vereinbarung", "vereinbarungen", "contracts", "agreement", "agreements"]),
+            (.letter, ["brief", "briefe", "schreiben", "anschreiben", "letters"]),
+            (.statement, ["kontoauszug", "kontoauszüge", "kontoauszuege", "auszug", "auszüge", "statements"]),
+            (.payslip, ["gehaltsabrechnung", "gehaltsabrechnungen", "lohnabrechnung", "lohnabrechnungen", "entgeltabrechnung",
+                        "entgeltabrechnungen", "lohnzettel", "payslips", "pay slip", "pay slips"]),
+            (.notice, ["bescheid", "bescheide", "steuerbescheid", "steuerbescheide", "official notice", "notices"]),
+            (.certificate, ["bescheinigung", "bescheinigungen", "zeugnis", "zeugnisse", "zertifikat", "zertifikate", "urkunde", "urkunden", "certificates"]),
+            (.offer, ["angebot", "angebote", "kostenvoranschlag", "kostenvoranschläge", "quote", "quotes", "quotation", "quotations", "offers"]),
+            (.insurance, ["versicherung", "versicherungen", "versicherungsschein", "versicherungsscheine", "police", "policen", "policy", "policies", "insurances"]),
+            (.other, ["sonstiges", "andere", "anderes"]),
+        ]
+        var words: [String: DocumentKind] = [:]
+        for (kind, list) in lists { for word in list { words[word] = kind } }
+        return words
+    }()
+
+    /// The kind a word names ("Rechnungen", "contract", "Quittung"); nil for one that is not known.
+    static func named(_ word: String) -> DocumentKind? {
+        let key = word.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        return DocumentKind(rawValue: key) ?? words[key]
+    }
+
     /// Kinds whose amount is worth showing: what was paid, is to be paid, or was offered.
     var hasAmount: Bool {
         switch self {

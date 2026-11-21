@@ -144,7 +144,7 @@ enum NoteListContent {
         if !text.isEmpty {
             // The index knows the words of every passage (transcripts included) without decoding anything.
             if let ids = NoteIndex.shared.noteIDs(matching: text) {
-                result = result.filter { ids.contains($0.id) || $0.title.localizedCaseInsensitiveContains(text) || ($0.url?.localizedCaseInsensitiveContains(text) ?? false) }
+                result = result.filter { ids.contains($0.id) || $0.title.localizedCaseInsensitiveContains(text) || ($0.url?.localizedCaseInsensitiveContains(text) ?? false) || Documents.matches($0, query: text) }
             } else {
                 result = result.filter { $0.matches(text) }
             }

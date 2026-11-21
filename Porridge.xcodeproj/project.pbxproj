@@ -224,6 +224,7 @@
 		B853384F1F895B498A9B94FF /* LinkImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB005D8452E913C0CB4DEE1D /* LinkImport.swift */; };
 		B878847EE850C704B43A71B1 /* TodoSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E508B0B8E0AF9A491D60DBCF /* TodoSuggestions.swift */; };
 		B8BDF5603AF09CC98BF9EEBF /* NoteListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 974C6207413D0D797EC57268 /* NoteListViewController.swift */; };
+		B8F1131E833F6CEF51389FEF /* DocumentChatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D82B4E9F49C3FF2A1C1A65A9 /* DocumentChatTests.swift */; };
 		B9924ED0964AD6E57A15058A /* Inbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0761F9B0499DCE47CEF53E66 /* Inbox.swift */; };
 		B9FD394C11D30C59C697667E /* AttachmentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4A27C57B3ED869FF1E87F8E /* AttachmentStore.swift */; };
 		BA87EC45A39E4DD919A65664 /* TodoBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70D8B970B5691D19DCFFFF26 /* TodoBridge.swift */; };
@@ -549,6 +550,7 @@
 		D2859C602EE177C280F20034 /* AISettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsPane.swift; sourceTree = "<group>"; };
 		D2A5616AFD8592E91EE7A9D4 /* SummaryEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryEditorSheet.swift; sourceTree = "<group>"; };
 		D4FD2A9BECD26688E68FAFE9 /* AppSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsTests.swift; sourceTree = "<group>"; };
+		D82B4E9F49C3FF2A1C1A65A9 /* DocumentChatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentChatTests.swift; sourceTree = "<group>"; };
 		DB032AAA624975E24BC692DD /* TodosTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodosTests.swift; sourceTree = "<group>"; };
 		DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingActivity.swift; sourceTree = "<group>"; };
 		DE1353083C7CC5218CFF6FB9 /* DictationSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSettings.swift; sourceTree = "<group>"; };
@@ -783,6 +785,7 @@
 				4F3589CEAD998764D9D461E6 /* ChatModelTests.swift */,
 				1D296BEE8976CC9807A1CF95 /* ChatTests.swift */,
 				C9EBB8024D359E26CCD8EC41 /* CloudFilesTests.swift */,
+				D82B4E9F49C3FF2A1C1A65A9 /* DocumentChatTests.swift */,
 				47CBE1DE2ED18108D163A9FB /* DocumentsTests.swift */,
 				626752232CFE16964C150FE6 /* DocumentTextTests.swift */,
 				CBB038AA5CA73FAFCB022177 /* InboxTests.swift */,
@@ -1632,6 +1635,7 @@
 				D4E99A698DF7393E5659B0EE /* ChatModelTests.swift in Sources */,
 				BDB5349022D49714148DCD26 /* ChatTests.swift in Sources */,
 				D39C7BC72C4F0FF0DA2509E1 /* CloudFilesTests.swift in Sources */,
+				B8F1131E833F6CEF51389FEF /* DocumentChatTests.swift in Sources */,
 				0937C1931F2BF054FB62960C /* DocumentTextTests.swift in Sources */,
 				EF695F2C609458BDF27B1E81 /* DocumentsTests.swift in Sources */,
 				F8C811CA5FFCA8A1BD440F07 /* InboxTests.swift in Sources */,

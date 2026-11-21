@@ -263,6 +263,7 @@ final class Note {
                 || (url?.localizedCaseInsensitiveContains(word) ?? false)
                 || (pageText?.localizedCaseInsensitiveContains(word) ?? false)
                 || (attachmentsData != nil && (documentInfo?.searchText.localizedCaseInsensitiveContains(word) ?? false))
+                || isDocument(named: String(word))
                 || (segmentsData != nil && transcriptText(timestamps: false).localizedCaseInsensitiveContains(word))
         }
     }

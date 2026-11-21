@@ -5,8 +5,8 @@ import SwiftData
 /// Lets a developer drive the app from the command line in a debug build, for checking the interface without
 /// clicking: with PORRIDGE_DEBUG_DRIVER set, commands written to `commandFile` are run. Not part of release builds.
 ///
-/// Commands: `page inbox|chat|archive|trash|search`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
-/// `search <text>`, `dump`, `key <window title>` (orders a window front), `title <text>` / `body <text>` (types
+/// Commands: `page inbox|todos|documents|chat|archive|trash|search`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
+/// `search <text>`, `dump`, `shot <path.png>`, `key <window title>` (orders a window front), `title <text>` / `body <text>` (types
 /// into the open note), `settings <tab>`.
 @MainActor
 enum DebugDriver {
@@ -184,6 +184,17 @@ enum DebugDriver {
             NSApp.terminate(nil)
         case "dump":
             dump()
+        case "shot":
+            // `shot <path.png>`: the front window as the app draws it, without asking for screen recording.
+            guard let content = controller.window?.contentView?.superview ?? controller.window?.contentView,
+                  let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { log("shot: no window"); return }
+            content.cacheDisplay(in: content.bounds, to: bitmap)
+            do {
+                try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
+                log("shot: \(argument)")
+            } catch {
+                log("shot: \(error.localizedDescription)")
+            }
         case "drop", "hover":
             // `drop list|detail <path>|text:<words>[|<path>…]`: a drop from outside through the column's own drop
             // methods (`ImportDropView`); `hover` stops before the drop and leaves the highlight showing.

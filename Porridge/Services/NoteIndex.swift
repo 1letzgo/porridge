@@ -215,6 +215,8 @@ extension Note {
         if let speakersData { hasher.update(data: speakersData) }
         // The names of its files are a passage too.
         if let attachmentsData { hasher.update(data: attachmentsData) }
+        // Documents got their kind, sender, date and amount in the chat's entry: they are cut again once.
+        if attachmentsData != nil, isDocument { hasher.update(data: Data("chat-doc-document-1".utf8)) }
         // Links got a passage of their own (their address): their passages are cut again once.
         if url != nil { hasher.update(data: Data("link-passage".utf8)) }
         // A to-do's passage says its state, due day and whether it is late (that changes at midnight).
