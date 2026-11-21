@@ -89,11 +89,6 @@ struct NoteDetailView: View {
                 AttachmentStrip(note: note, onRemove: note.isDeleted ? nil : { removeAttachment($0) })
             }
 
-            // A document, or an image that may be one: what it is, read automatically and set by hand.
-            if note.isStored, !note.isDeleted, note.isDocument || note.pageText?.isEmpty == false {
-                DocumentInfoCard(note: note)
-            }
-
             statusView
 
             if !note.speakers.isEmpty { speakerChips }
@@ -491,6 +486,10 @@ struct NoteDetailView: View {
                 }
                 ProjectPills(assigned: note.projectIDs) { project in
                     Projects.toggle(project, on: note, in: context)
+                }
+                // A document: what it is, after its bowls; a tap sets it.
+                if note.isDocument, !note.isDeleted {
+                    DocumentChip(note: note)
                 }
                 ForEach(note.tags, id: \.self) { tag in
                     let removable = note.labels.contains { $0.lowercased() == tag.lowercased() }

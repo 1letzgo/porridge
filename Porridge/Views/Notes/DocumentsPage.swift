@@ -145,55 +145,38 @@ struct NoteSelectionBar: View {
     }
 }
 
-/// What a document is, on its page: kind, date, sender and amount, read automatically or set by hand.
-struct DocumentInfoCard: View {
+/// What a document is, as a chip in the row of a note's bowls: its kind (and sender, kept short); "+ Document" while
+/// nothing is known. A tap opens the sheet to set it; date and amount are there and in the list row.
+struct DocumentChip: View {
     let note: Note
     @State private var editing = false
 
     var body: some View {
         let info = note.documentInfo ?? DocumentInfo()
         Button { editing = true } label: {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: (info.kind ?? .other).symbol)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Color.brandNavy)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(info.kind?.title ?? String(localized: "Document"))
-                        .font(.subheadline.weight(.bold))
+            Group {
+                if info.isEmpty {
+                    Label("Document", systemImage: "plus")
                         .foregroundStyle(Color.brandNavy)
-                    if info.isEmpty {
-                        Text("Add the kind, date, sender and amount.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 2) {
-                            if let sender = info.correspondent { field("From", sender) }
-                            if let day = info.dayText { field("Date", day) }
-                            if let amount = info.amountText { field("Amount", amount) }
-                        }
-                        .font(.subheadline)
+                } else {
+                    HStack(spacing: 6) {
+                        Image(systemName: (info.kind ?? .other).symbol).font(.caption)
+                        Text(info.shortLabel).lineLimit(1)
                     }
+                    .foregroundStyle(Color.brandNavy)
+                    .frame(maxWidth: 240)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "pencil")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
             }
-            .contentShape(Rectangle())
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .chunkyPill(fill: info.isEmpty ? .gray : .brandNavy)
+            .fixedSize(horizontal: info.isEmpty, vertical: false)
         }
         .buttonStyle(.plain)
-        .flatPanel(.brandNavy, padding: 12)
-        .accessibilityLabel(info.isEmpty ? String(localized: "Document details") : info.sentence)
+        .accessibilityLabel(info.isEmpty ? String(localized: "Add Document Details") : info.sentence)
         .accessibilityHint("Edit")
         .sheet(isPresented: $editing) { DocumentInfoSheet(note: note) }
-    }
-
-    private func field(_ label: LocalizedStringKey, _ value: String) -> some View {
-        GridRow {
-            Text(label).foregroundStyle(.secondary)
-            Text(value).foregroundStyle(.primary).lineLimit(2)
-        }
     }
 }
 

@@ -38,8 +38,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private let deletedBanner = NSStackView()
     private let chips = NoteChipsView()
     private let attachments = AttachmentStripView()
-    /// What a document is (kind, sender, date, amount), with the way to set it by hand.
-    private let documentPanel = PanelView()
     private let statusPanel = PanelView()
     private let speakers = FlowView()
     private let enhancedBanner = PanelView()
@@ -141,7 +139,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         tabs.action = #selector(tabChosen)
         tabs.setAccessibilityLabel("Show")
 
-        let head = NSStackView.vertical([titleRow, sourcePill, linkButton, meta, deletedBanner, chips, attachments, documentPanel, statusPanel, speakers, enhancedBanner, tabs], spacing: 10)
+        let head = NSStackView.vertical([titleRow, sourcePill, linkButton, meta, deletedBanner, chips, attachments, statusPanel, speakers, enhancedBanner, tabs], spacing: 10)
         head.setCustomSpacing(4, after: titleRow)
         head.setCustomSpacing(4, after: linkButton)
         head.setCustomSpacing(14, after: enhancedBanner)
@@ -187,7 +185,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             titleRow.widthAnchor.constraint(equalTo: head.widthAnchor),
             chips.widthAnchor.constraint(equalTo: head.widthAnchor),
             attachments.widthAnchor.constraint(equalTo: head.widthAnchor),
-            documentPanel.widthAnchor.constraint(equalTo: head.widthAnchor),
             statusPanel.widthAnchor.constraint(equalTo: head.widthAnchor),
             speakers.widthAnchor.constraint(equalTo: head.widthAnchor),
             enhancedBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
@@ -507,7 +504,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         chips.show(note, library: library)
         attachments.isHidden = note.attachmentsData == nil
         if note.attachmentsData != nil { attachments.show(note.attachments, canRemove: !note.isDeleted) }
-        renderDocument()
         renderStatus()
         renderSpeakers()
         let canUndo = processing.canUndoEnhance(note)
@@ -571,26 +567,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
         showErrors()
         (view.window?.windowController as? NoteWindowController)?.window?.title = note.displayTitle
-    }
-
-    /// A document, or an image that may be one: what it is, read automatically or set by hand.
-    private func renderDocument() {
-        let note = note
-        let shows = note.isStored && !note.isDeleted && (note.isDocument || note.pageText?.isEmpty == false)
-        documentPanel.isHidden = !shows
-        guard shows else { return }
-        let info = note.documentInfo ?? DocumentInfo()
-        var details: [String] = []
-        if let sender = info.correspondent { details.append(String(localized: "From \(sender)")) }
-        if let day = info.dayText { details.append(day) }
-        if let amount = info.amountText { details.append(amount) }
-        documentPanel.show(
-            symbol: (info.kind ?? .other).symbol,
-            text: info.kind?.title ?? String(localized: "Document"),
-            detail: info.isEmpty ? String(localized: "Add the kind, date, sender and amount.") : details.joined(separator: " · "),
-            tint: .brandNavy,
-            action: ("Edit…", { [weak self] in DocumentInfoSheet.edit(note, in: self?.view.window) })
-        )
     }
 
     private func metaLine(isTodo: Bool, isDone: Bool) -> String {

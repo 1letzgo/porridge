@@ -284,6 +284,10 @@ final class DocumentsTests: XCTestCase {
     func testTheLineOfARow() {
         let info = DocumentInfo(kind: .invoice, day: "2026-03-02", correspondent: "Telekom", amount: "119.00 EUR")
         XCTAssertTrue(info.line.hasPrefix("Invoice · Telekom · "))
+        // The chip after the bowls: kind and sender only.
+        XCTAssertEqual(info.shortLabel, "Invoice · Telekom")
+        XCTAssertEqual(DocumentInfo(correspondent: "Telekom").shortLabel, "Telekom")
+        XCTAssertEqual(DocumentInfo(day: "2026-03-02").shortLabel, "Document")
         XCTAssertTrue(info.sentence.hasPrefix("Invoice from Telekom, dated "))
         XCTAssertEqual(DocumentInfo(kind: .letter, amount: "5.00 EUR").line, "Letter", "a letter's amount says nothing")
     }

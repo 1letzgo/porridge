@@ -205,6 +205,12 @@ struct DocumentInfo: Codable, Hashable {
         return parts.joined(separator: " · ")
     }
 
+    /// A short name for a chip: "Invoice · Telekom", the sender alone without a kind, "Document" without either.
+    var shortLabel: String {
+        let parts = [kind?.title, correspondent].compactMap { $0 }
+        return parts.isEmpty ? String(localized: "Document") : parts.joined(separator: " · ")
+    }
+
     /// The document in a sentence, for the chat's passages: "Invoice from Telekom, dated 2 Mar 2026, amount 119,00 €".
     var sentence: String {
         var text = (kind ?? .other).title

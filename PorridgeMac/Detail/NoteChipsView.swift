@@ -1,8 +1,8 @@
 import AppKit
 import QuickLookUI
 
-/// The row under a note's head: suggested bowls (a click files the note), its bowls, its tags, and the
-/// buttons to add a bowl or a tag. It wraps into lines when the column is narrow.
+/// The row under a note's head: suggested bowls (a click files the note), its bowls, what a document is, its tags,
+/// and the buttons to add a bowl or a tag. It wraps into lines when the column is narrow.
 final class NoteChipsView: NSView {
     private let flow = FlowView()
     private let dueChip = DueDateChip()
@@ -62,6 +62,19 @@ final class NoteChipsView: NSView {
             add.setAccessibilityLabel("Add to Bowl")
             views.append(add)
         }
+        // A document: what it is, after its bowls ("Invoice · Telekom", or "+ Document"); a click sets it.
+        if note.isDocument, !note.isDeleted {
+            let info = note.documentInfo ?? DocumentInfo()
+            let label = info.shortLabel
+            let title = info.isEmpty ? String(localized: "Document") : (label.count > 40 ? String(label.prefix(39)) + "…" : label)
+            let pill = PillButton(
+                title: title, symbol: info.isEmpty ? "plus" : (info.kind ?? .other).symbol,
+                tint: info.isEmpty ? .systemGray : .brandNavy, target: self, action: #selector(editDocument)
+            )
+            pill.setAccessibilityLabel(info.isEmpty ? String(localized: "Add Document Details") : info.sentence)
+            pill.toolTip = info.isEmpty ? String(localized: "Add the kind, date, sender and amount") : info.line
+            views.append(pill)
+        }
         for tag in note.tags {
             let removable = note.labels.contains { $0.lowercased() == tag.lowercased() } && !note.isDeleted
             let pill = PillButton(title: "#\(tag)", symbol: removable ? "xmark" : nil, tint: .brandSky, target: self, action: removable ? #selector(removeTag(_:)) : nil)
@@ -105,6 +118,11 @@ final class NoteChipsView: NSView {
     }
 
     @objc private func addTag() { onAddTag?() }
+
+    @objc private func editDocument() {
+        guard let note else { return }
+        DocumentInfoSheet.edit(note, in: hostWindow)
+    }
 }
 
 /// Views side by side, wrapping into lines.
