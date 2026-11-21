@@ -4,10 +4,9 @@ version, license and the full license text.
 
     scripts/acknowledgements.py [<SwiftPM checkouts>]
 
-Writes Porridge/Resources/Acknowledgements.json (iOS + Mac) and
-android/app/src/main/assets/acknowledgements.json. The Swift license texts come from the SwiftPM checkouts
+Writes Porridge/Resources/Acknowledgements.json (iOS + Mac). The Swift license texts come from the SwiftPM checkouts
 (default /tmp/PorridgeMac-dd/SourcePackages/checkouts), the rest is fetched once from the projects.
-Run it again after a dependency update and adjust the versions below (Package.resolved, build.gradle.kts).
+Run it again after a dependency update and adjust the versions below (Package.resolved).
 
 Format: {"licenses": {key: text}, "sections": [{"title", "entries": [{"name", "version", "license", "url", "text"}]}]};
 identical texts are stored once.
@@ -118,54 +117,6 @@ def mlx_c_version():
     return re.search(r"set\(MLX_C_VERSION ([\d.]+)\)", local("mlx-swift/Source/Cmlx/mlx-c/CMakeLists.txt")).group(1)
 
 
-def android():
-    gradle = open(os.path.join(ROOT, "android/app/build.gradle.kts")).read()
-    sherpa = re.search(r'val sherpaVersion = "([^"]+)"', gradle).group(1)
-    libs = [
-        ("AndroidX Core", "1.15.0", "https://developer.android.com/jetpack/androidx/releases/core"),
-        ("AndroidX AppCompat", "1.7.0", "https://developer.android.com/jetpack/androidx/releases/appcompat"),
-        ("AndroidX Activity", "1.9.3", "https://developer.android.com/jetpack/androidx/releases/activity"),
-        ("AndroidX Lifecycle", "2.8.7", "https://developer.android.com/jetpack/androidx/releases/lifecycle"),
-        ("Jetpack Compose (UI, Foundation, Animation)", "1.7.6", "https://developer.android.com/jetpack/androidx/releases/compose"),
-        ("Compose Material 3", "1.3.1", "https://developer.android.com/jetpack/androidx/releases/compose-material3"),
-        ("Compose Material Icons", "1.7.6", "https://developer.android.com/jetpack/androidx/releases/compose-material"),
-        ("AndroidX Room", "2.6.1", "https://developer.android.com/jetpack/androidx/releases/room"),
-        ("AndroidX SQLite", "2.4.0", "https://developer.android.com/jetpack/androidx/releases/sqlite"),
-        ("AndroidX WorkManager", "2.10.0", "https://developer.android.com/jetpack/androidx/releases/work"),
-        ("AndroidX Security Crypto", "1.1.0-alpha06", "https://developer.android.com/jetpack/androidx/releases/security"),
-        ("Other AndroidX libraries (Annotation, Collection, SavedState, Startup, …)", "", "https://developer.android.com/jetpack/androidx"),
-        ("Kotlin Standard Library", "2.2.21", "https://github.com/JetBrains/kotlin"),
-        ("kotlinx.coroutines", "1.9.0", "https://github.com/Kotlin/kotlinx.coroutines"),
-        ("kotlinx.serialization", "1.7.3", "https://github.com/Kotlin/kotlinx.serialization"),
-        ("JetBrains Java Annotations", "23.0.0", "https://github.com/JetBrains/java-annotations"),
-        ("OkHttp", "5.3.2", "https://github.com/square/okhttp"),
-        ("Okio", "3.16.4", "https://github.com/square/okio"),
-        ("Tink", "1.8.0", "https://github.com/tink-crypto/tink-java"),
-        ("Gson", "2.8.9", "https://github.com/google/gson"),
-        ("Guava ListenableFuture", "1.0", "https://github.com/google/guava"),
-    ]
-    libs = [(n, v, "Apache 2.0", u, APACHE) for n, v, u in libs] + [
-        ("plaude-archiver (Plaud Bluetooth protocol)", "", "MIT", "https://github.com/roopen219/plaude-archiver", lambda: gh("roopen219/plaude-archiver")),
-        ("sherpa-onnx", sherpa, "Apache 2.0", "https://github.com/k2-fsa/sherpa-onnx", lambda: gh("k2-fsa/sherpa-onnx")),
-        ("ONNX Runtime (in sherpa-onnx)", "", "MIT", "https://github.com/microsoft/onnxruntime", lambda: gh("microsoft/onnxruntime")),
-        ("llama-android", "0.1.1", "MIT", "https://github.com/ffmpegkit-maintained/llama-android", lambda: gh("ffmpegkit-maintained/llama-android")),
-        ("llama.cpp (in llama-android)", "", "MIT", "https://github.com/ggml-org/llama.cpp", lambda: gh("ggml-org/llama.cpp")),
-        ("desugar_jdk_libs", "2.1.5", "GPL 2.0 with Classpath Exception", "https://github.com/google/desugar_jdk_libs", lambda: gh("google/desugar_jdk_libs")),
-    ]
-    models = [
-        ("Parakeet TDT v3 (ONNX, int8)", "0.6B", "CC BY 4.0", "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
-         lambda: "NVIDIA Parakeet TDT 0.6B v3 (https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), converted to ONNX for sherpa-onnx.\n\n" + CC_BY_4()),
-        ("pyannote Segmentation 3.0 (ONNX)", "3.0", "MIT", "https://huggingface.co/pyannote/segmentation-3.0", pyannote_mit),
-        ("WeSpeaker CAM++ VoxCeleb (ONNX)", "", "CC BY 4.0", "https://github.com/wenet-e2e/wespeaker",
-         lambda: "Speaker embedding model trained by WeSpeaker on VoxCeleb; the model follows the license of its dataset.\n\n" + CC_BY_4()),
-        ("Qwen3 4B Instruct 2507 (GGUF)", "4B", "Apache 2.0", "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF", APACHE),
-        ("Qwen3 1.7B (GGUF)", "1.7B", "Apache 2.0", "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF", APACHE),
-        ("Nemotron 3.5 Bolt-E4B (GGUF)", "E4B", "OpenMDW 1.1", "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF",
-         lambda: gh("OpenMDW/OpenMDW", "1.1/LICENSE.OpenMDW-1.1", "main")),
-    ]
-    return [("Libraries", libs), ("Models", models)]
-
-
 def build(sections):
     licenses, keys, out = {}, {}, []
     for title, entries in sections:
@@ -191,4 +142,3 @@ def write(path, data):
 
 
 write("Porridge/Resources/Acknowledgements.json", build(apple()))
-write("android/app/src/main/assets/acknowledgements.json", build(android()))

@@ -4,20 +4,8 @@ DerivedData/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 .DS_Store
 
-# --- Android ---
-android/local.properties
-android/.gradle/
-android/.kotlin/
-android/app/build/
-android/llama/build/
-*.apk
-*.aab
-*.jks
-*.keystore
 
 # --- AI / IDE (local only) ---
 CLAUDE.md
 AGENTS.md
 .claude/
-android/app/libs/*.aar
-android/app/libs/*.part

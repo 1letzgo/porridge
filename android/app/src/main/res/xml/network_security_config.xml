@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-  Ein eigener Server zu Hause (Ollama, Nextcloud) hat oft kein Zertifikat. Android kann Klartext nur ganz oder für
-  feste Namen erlauben, nicht für private Adressbereiche; deshalb ist er hier erlaubt, und data/Net.kt lässt http://
-  nur zu Adressen im eigenen Netz durch (iOS: NSAllowsLocalNetworking).
--->
-<network-security-config>
-    <base-config cleartextTrafficPermitted="true" />
-</network-security-config>

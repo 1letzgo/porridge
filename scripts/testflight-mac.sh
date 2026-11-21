@@ -4,7 +4,7 @@
 #   scripts/testflight-mac.sh            # archive, export and validate with Apple
 #   scripts/testflight-mac.sh --upload   # the same, then upload
 #
-# Version: TESTFLIGHT_MARKETING_VERSION from project.yml (MARKETING_VERSION is for the Android releases), build number: git rev-list --count HEAD.
+# Version: TESTFLIGHT_MARKETING_VERSION from project.yml, build number: git rev-list --count HEAD.
 # Needs the App Store Connect API key in ~/.appstoreconnect/private_keys.
 
 set -euo pipefail

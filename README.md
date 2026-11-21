@@ -6,12 +6,11 @@
 
 <p align="center">
   <strong>Notes, meetings and dictation, transcribed on your device.</strong><br>
-  For iPhone, iPad, Mac and Android.
+  For iPhone, iPad and Mac.
 </p>
 
 <p align="center">
   <a href="https://testflight.apple.com/join/n4TkBTJA"><img alt="TestFlight for iPhone, iPad and Mac" src="https://img.shields.io/badge/iOS%20%2B%20Mac-TestFlight-1F3667"></a>
-  <a href="https://github.com/1letzgo/porridge/releases?q=android-v"><img alt="Android release" src="https://img.shields.io/github/v/release/1letzgo/porridge?filter=android-v*&label=Android&color=29BD80"></a>
 </p>
 
 <p align="center">
@@ -32,13 +31,12 @@ Porridge records what is said in a meeting, writes it down with speaker names an
 - **Links:** Share a page to Porridge to save its text and summarize it.
 - **Projects:** Keep notes, meetings and links together, with pinned projects at the top.
 - **Search:** Search notes, transcripts, summaries and saved pages, narrowed by kind or tag.
-- **Sync:** iCloud on Apple devices, or your own Nextcloud across all platforms. With Nextcloud, recordings upload on Wi-Fi and download when you ask for them. With iCloud they stay on the device that made them.
+- **Sync:** iCloud across your iPhone, iPad and Mac. Recordings stay on the device that made them.
 - **Plaud import without the cloud:** Copy recordings straight from a Plaud recorder over Bluetooth, so they do not have to go through Plaud's cloud. You sign in to Plaud once in Settings to connect the recorder, then import from the plus button; the transcript and summary then come from Porridge.
 
 <p align="center">
   <img src="docs/screenshots/search.png" width="240" alt="Search across everything">
   <img src="docs/screenshots/dark.png" width="240" alt="Dark mode">
-  <img src="docs/screenshots/android.png" width="240" alt="The Android app">
 </p>
 
 ## On your device
@@ -49,14 +47,13 @@ Porridge records what is said in a meeting, writes it down with speaker names an
 | **Speakers** | pyannote | |
 | **Summaries** | Nemotron 3.5 Bolt, Qwen3 4B or Qwen3 1.7B, recommended to suit your device; Apple Intelligence on Apple devices | Your own key for OpenRouter, OpenAI, Anthropic, Google, Mistral, Groq or a compatible server |
 
-Models download once and then work offline. With iCloud, audio stays on the device that recorded it; with Nextcloud, recordings sync too.
+Models download once and then work offline. Audio stays on the device that recorded it.
 
 ## Get it
 
 | Platform | How | Needs |
 | --- | --- | --- |
 | **Mac** | [Join the TestFlight beta](https://testflight.apple.com/join/n4TkBTJA). | macOS 15 |
-| **Android** | [Latest APK](https://github.com/1letzgo/porridge/releases?q=android-v). Later versions come through the in-app update. | Android 8 |
 | **iPhone and iPad** | [Join the TestFlight beta](https://testflight.apple.com/join/n4TkBTJA). | iOS 18 |
 
 ## Build from source
@@ -67,7 +64,7 @@ xcodegen generate
 open Porridge.xcodeproj
 ```
 
-Use the `Porridge` scheme for iPhone and iPad and `PorridgeMac` for the Mac. You need your own Apple team and iCloud container for signing. For Android, see [android/README.md](android/README.md).
+Use the `Porridge` scheme for iPhone and iPad and `PorridgeMac` for the Mac. You need your own Apple team and iCloud container for signing.
 
 ## Project layout
 
@@ -78,8 +75,7 @@ Use the `Porridge` scheme for iPhone and iPad and `PorridgeMac` for the Mac. You
 | `Porridge/Views`, `Porridge/Design` | SwiftUI views and the shared look |
 | `PorridgeMac` | Mac app: dictation shortcut, menu bar |
 | `PorridgeWidgets`, `PorridgeShare` | Widgets, Live Activity and the share extension |
-| `android` | Native Android app in Kotlin and Compose |
-| `scripts` | Release scripts for Android and the Mac TestFlight build |
+| `scripts` | Mac TestFlight build script and the acknowledgements generator |
 
 The look and its rules are written down in [DESIGN.md](DESIGN.md).
 
@@ -130,57 +126,5 @@ Porridge stands on the work of these projects. Thank you! The full license texts
 | [Qwen3 4B Instruct 2507 (MLX, 4-bit)](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit) | 4B | Apache 2.0 |
 | [Qwen3.5 4B (MLX, 4-bit)](https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit) | 4B | Apache 2.0 |
 | [Speaker Diarization Community-1 (Core ML)](https://huggingface.co/FluidInference/speaker-diarization-coreml) | – | CC BY 4.0 |
-
-</details>
-
-### Android
-
-<details>
-<summary>Libraries</summary>
-
-| Project | Version | License |
-| --- | --- | --- |
-| [AndroidX Activity](https://developer.android.com/jetpack/androidx/releases/activity) | 1.9.3 | Apache 2.0 |
-| [AndroidX AppCompat](https://developer.android.com/jetpack/androidx/releases/appcompat) | 1.7.0 | Apache 2.0 |
-| [AndroidX Core](https://developer.android.com/jetpack/androidx/releases/core) | 1.15.0 | Apache 2.0 |
-| [AndroidX Lifecycle](https://developer.android.com/jetpack/androidx/releases/lifecycle) | 2.8.7 | Apache 2.0 |
-| [AndroidX Room](https://developer.android.com/jetpack/androidx/releases/room) | 2.6.1 | Apache 2.0 |
-| [AndroidX Security Crypto](https://developer.android.com/jetpack/androidx/releases/security) | 1.1.0-alpha06 | Apache 2.0 |
-| [AndroidX SQLite](https://developer.android.com/jetpack/androidx/releases/sqlite) | 2.4.0 | Apache 2.0 |
-| [AndroidX WorkManager](https://developer.android.com/jetpack/androidx/releases/work) | 2.10.0 | Apache 2.0 |
-| [Compose Material 3](https://developer.android.com/jetpack/androidx/releases/compose-material3) | 1.3.1 | Apache 2.0 |
-| [Compose Material Icons](https://developer.android.com/jetpack/androidx/releases/compose-material) | 1.7.6 | Apache 2.0 |
-| [desugar_jdk_libs](https://github.com/google/desugar_jdk_libs) | 2.1.5 | GPL 2.0 with Classpath Exception |
-| [Gson](https://github.com/google/gson) | 2.8.9 | Apache 2.0 |
-| [Guava ListenableFuture](https://github.com/google/guava) | 1.0 | Apache 2.0 |
-| [JetBrains Java Annotations](https://github.com/JetBrains/java-annotations) | 23.0.0 | Apache 2.0 |
-| [Jetpack Compose (UI, Foundation, Animation)](https://developer.android.com/jetpack/androidx/releases/compose) | 1.7.6 | Apache 2.0 |
-| [Kotlin Standard Library](https://github.com/JetBrains/kotlin) | 2.2.21 | Apache 2.0 |
-| [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) | 1.9.0 | Apache 2.0 |
-| [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) | 1.7.3 | Apache 2.0 |
-| [llama-android](https://github.com/ffmpegkit-maintained/llama-android) | 0.1.1 | MIT |
-| [llama.cpp (in llama-android)](https://github.com/ggml-org/llama.cpp) | – | MIT |
-| [OkHttp](https://github.com/square/okhttp) | 5.3.2 | Apache 2.0 |
-| [Okio](https://github.com/square/okio) | 3.16.4 | Apache 2.0 |
-| [ONNX Runtime (in sherpa-onnx)](https://github.com/microsoft/onnxruntime) | – | MIT |
-| [Other AndroidX libraries (Annotation, Collection, SavedState, Startup, …)](https://developer.android.com/jetpack/androidx) | – | Apache 2.0 |
-| [plaude-archiver (Plaud Bluetooth protocol)](https://github.com/roopen219/plaude-archiver) | – | MIT |
-| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | 2.0.1 | Apache 2.0 |
-| [Tink](https://github.com/tink-crypto/tink-java) | 1.8.0 | Apache 2.0 |
-
-</details>
-
-<details>
-<summary>Models</summary>
-
-| Project | Version | License |
-| --- | --- | --- |
-| [Parakeet TDT v3 (ONNX, int8)](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8) | 0.6B | CC BY 4.0 |
-| [pyannote Segmentation 3.0 (ONNX)](https://huggingface.co/pyannote/segmentation-3.0) | 3.0 | MIT |
-| [Nemotron 3.5 Bolt-E4B (GGUF)](https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF) | E4B | OpenMDW 1.1 |
-| [Qwen3 1.7B (GGUF)](https://huggingface.co/Qwen/Qwen3-1.7B-GGUF) | 1.7B | Apache 2.0 |
-| [Qwen3 4B Instruct 2507 (GGUF)](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | 4B | Apache 2.0 |
-| [Qwen3.5 4B (GGUF)](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF) | 4B | Apache 2.0 |
-| [WeSpeaker CAM++ VoxCeleb (ONNX)](https://github.com/wenet-e2e/wespeaker) | – | CC BY 4.0 |
 
 </details>
