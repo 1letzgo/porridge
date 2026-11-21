@@ -171,12 +171,12 @@ struct DocumentChip: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add Document Details")
             } else {
-                // The kind's own colour, as a wash like the bowls' and the tags': the symbol in it, the text plain,
-                // and the cross that takes it away, as on every other chip.
+                // The app's orange as a wash, like the bowls' violet and the tags' sky: the symbol in its readable shade,
+                // the text plain, and the cross that takes it away, as on every other chip.
                 HStack(spacing: 6) {
                     Button { editing = true } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: kind.symbol).font(.caption).foregroundStyle(kind.hue.color)
+                            Image(systemName: kind.symbol).font(.caption).foregroundStyle(Color.brandLinkText)
                             Text(info.shortLabel).lineLimit(1).foregroundStyle(.primary)
                         }
                         .contentShape(Rectangle())
@@ -194,29 +194,10 @@ struct DocumentChip: View {
                 .frame(maxWidth: 260)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(kind.hue.color.opacity(0.2), in: Capsule())
+                .background(Color.brandLink.opacity(0.2), in: Capsule())
             }
         }
         .sheet(isPresented: $editing) { DocumentInfoSheet(note: note) }
-    }
-}
-
-extension DocumentKind.Hue {
-    /// The system colour of the hue: it adapts to dark mode.
-    var color: Color {
-        switch self {
-        case .teal: .teal
-        case .mint: .mint
-        case .brown: .brown
-        case .yellow: .yellow
-        case .cyan: .cyan
-        case .green: .green
-        case .red: .red
-        case .orange: .orange
-        case .pink: .pink
-        case .indigo: .indigo
-        case .gray: .gray
-        }
     }
 }
 

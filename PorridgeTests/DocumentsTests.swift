@@ -320,9 +320,6 @@ final class DocumentsTests: XCTestCase {
     func testTheLineOfARow() {
         let info = DocumentInfo(kind: .invoice, day: "2026-03-02", correspondent: "Telekom", amount: "119.00 EUR")
         XCTAssertTrue(info.line.hasPrefix("Invoice · Telekom · "))
-        // Every kind its own colour; "other" the neutral one.
-        XCTAssertEqual(Set(DocumentKind.allCases.map(\.hue)).count, DocumentKind.allCases.count)
-        XCTAssertEqual(DocumentKind.other.hue, .gray)
         // The chip after the bowls: kind and sender only.
         XCTAssertEqual(info.shortLabel, "Invoice · Telekom")
         XCTAssertEqual(DocumentInfo(correspondent: "Telekom").shortLabel, "Telekom")

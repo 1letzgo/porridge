@@ -73,7 +73,7 @@ final class NoteChipsView: NSView {
             add.setAccessibilityLabel("Add to Bowl")
             views.append(add)
         }
-        // A stored file: what it is as a document, after its bowls ("Invoice · Telekom" in the kind's colour, or an
+        // A stored file: what it is as a document, after its bowls ("Invoice · Telekom" in orange, or an
         // outlined "+ Document" to mark it as one); a click sets it.
         if note.isStored, !note.isDeleted {
             let info = note.documentInfo ?? DocumentInfo()
@@ -82,9 +82,9 @@ final class NoteChipsView: NSView {
             let kind = info.kind ?? .other
             let pill = PillButton(
                 title: title, symbol: info.isEmpty ? "plus" : kind.symbol,
-                tint: info.isEmpty ? .systemGray : kind.hue.color, target: self, action: #selector(editDocument)
+                tint: info.isEmpty ? .systemGray : .brandLink, target: self, action: #selector(editDocument)
             )
-            // Nothing known yet: neutral and outlined; known: the kind's own colour as a wash, the text plain.
+            // Nothing known yet: neutral and outlined; known: the app's orange as a wash, the text plain.
             pill.isOutlined = info.isEmpty
             pill.labelColor = .labelColor
             pill.setAccessibilityLabel(info.isEmpty ? String(localized: "Add Document Details") : info.sentence)
@@ -151,25 +151,6 @@ final class NoteChipsView: NSView {
     @objc private func editDocument() {
         guard let note else { return }
         DocumentInfoSheet.edit(note, in: hostWindow)
-    }
-}
-
-extension DocumentKind.Hue {
-    /// The system colour of the hue: it adapts to dark mode.
-    var color: NSColor {
-        switch self {
-        case .teal: .systemTeal
-        case .mint: .systemMint
-        case .brown: .systemBrown
-        case .yellow: .systemYellow
-        case .cyan: .systemCyan
-        case .green: .systemGreen
-        case .red: .systemRed
-        case .orange: .systemOrange
-        case .pink: .systemPink
-        case .indigo: .systemIndigo
-        case .gray: .systemGray
-        }
     }
 }
 
