@@ -483,6 +483,12 @@ final class ProcessingService {
     private func processAttachments(_ id: UUID) async {
         guard let note = fetchNote(id) else { return }
         stages[id] = "Reading text…"
+        // A scanned PDF gets its text as an invisible layer first, so the file is searchable anywhere; the text is then
+        // read from the layer, without reading the pages twice.
+        if await DocumentFiles.makeSearchable(note) {
+            guard exists(id) else { return }
+            save()
+        }
         let text = await readAttachments(of: note)
         guard exists(id) else { return }
         // A document: what it is (kind, date, sender, amount) guessed on the device right away, and the bowl its

@@ -191,6 +191,56 @@ enum Documents {
         return count
     }
 
+    // MARK: Changing several at once
+
+    /// One change for several selected entries.
+    enum BulkChange: Equatable {
+        /// Into one bowl (out of the others), or out of all into the inbox (nil).
+        case move(toBowl: String?)
+        /// The document kind; nil takes it away. Only documents (stored files) change.
+        case kind(DocumentKind?)
+        /// The sender; nil or empty takes it away. Only documents change.
+        case sender(String?)
+    }
+
+    /// Applies the change to every note and saves once. A kind or sender set this way counts as set by hand
+    /// (never overwritten by reading). Returns how many notes changed.
+    @discardableResult
+    static func apply(_ change: BulkChange, to notes: [Note], in context: ModelContext, now: Date = Date()) -> Int {
+        var changed = 0
+        for note in notes where !note.isDeleted {
+            switch change {
+            case .move(let bowl):
+                let target = bowl.map { [$0] } ?? []
+                guard note.projectIDs != target else { continue }
+                note.projectIDs = target
+                if bowl != nil {
+                    note.filedAt = note.filedAt ?? now
+                    note.suggestedProjectIDs = []
+                }
+            case .kind(let kind):
+                guard note.isStored, !note.attachments.isEmpty else { continue }
+                var info = note.documentInfo ?? DocumentInfo()
+                info.kind = kind
+                info.isEdited = true
+                guard info != note.documentInfo else { continue }
+                note.documentInfo = info
+            case .sender(let sender):
+                guard note.isStored, !note.attachments.isEmpty else { continue }
+                var info = note.documentInfo ?? DocumentInfo()
+                let clean = sender?.trimmingCharacters(in: .whitespacesAndNewlines)
+                info.correspondent = clean?.isEmpty == false ? clean : nil
+                info.isEdited = true
+                guard info != note.documentInfo else { continue }
+                note.documentInfo = info
+            }
+            note.updatedAt = now
+            changed += 1
+        }
+        if changed > 0 { try? context.save() }
+        return changed
+    }
+
     // MARK: Filing
 
     /// The bowl documents of the same sender were filed into most often: where this one most likely belongs.
