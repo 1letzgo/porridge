@@ -52,6 +52,9 @@ struct NotesView: View {
     @State private var projectName = ""
     @State private var renamingProject: NoteFolder?
     @State private var deletingProject: NoteFolder?
+    /// The Inbox or a bowl is in its selection mode: several entries are changed at once (`NoteSelectionBar`).
+    @State private var isSelecting = false
+    @State private var chosen = Set<UUID>()
     /// A note in Recently Deleted that is about to go for good.
     @State private var deletingNow: Note?
 
@@ -152,6 +155,9 @@ struct NotesView: View {
                 tagTokens = []
                 searchKind = nil
             }
+            // Another page: what was chosen there is let go.
+            isSelecting = false
+            chosen = []
         }
         .onChange(of: selection) {
             // Leaving an empty new note leaves nothing behind, once its page has slid away.
@@ -325,7 +331,8 @@ struct NotesView: View {
         case .project:
             if let project = project(on: shown) {
                 ProjectPage(
-                    project: project, notes: notes, selection: $selection, onRemove: { remove($0) }
+                    project: project, notes: notes, selection: $selection, isSelecting: $isSelecting, chosen: $chosen,
+                    onRemove: { remove($0) }
                 )
                 .id(project.id)
             } else {
@@ -336,8 +343,6 @@ struct NotesView: View {
             inboxPage
         case .todos:
             todosPage
-        case .documents:
-            DocumentsPage(notes: notes, selection: $selection) { remove($0) }
         case .search:
             searchPage
         case .chat:
@@ -402,13 +407,6 @@ struct NotesView: View {
             if !folders.isEmpty {
                 projectsSection(recent.shown, contents: contents, isFirst: false, hidden: recent.hidden)
             }
-            // Every document across the inbox and the bowls, by kind, sender and date.
-            let documents = notes.lazy.filter { !$0.isDeleted && $0.isDocument }.count
-            if documents > 0 {
-                Section {} header: {
-                    ListHeaderButton(title: String(localized: "Documents"), count: documents, tint: .brandNavy, isFirst: false) { page = .documents }
-                }
-            }
             if archived > 0 {
                 Section {} header: {
                     ListHeaderButton(title: "Archive", count: archived, tint: .brandNavy, isFirst: false) { page = .archive }
@@ -472,27 +470,46 @@ struct NotesView: View {
     private var inboxPage: some View {
         let waiting = Inbox.notes(notes)
         let buckets = projects.filter { !$0.isArchived }
-        return List(selection: $selection) {
-            Section {
-                ForEach(waiting) { note in
-                    let isLast = note.id == waiting.last?.id
-                    if FilingBar.suggested(for: note, among: buckets).isEmpty {
-                        NoteListRow(note: note) { remove(note) }
-                            .lastInSection(isLast)
-                    } else {
-                        NoteListRow(note: note) { remove(note) }
-                        FilingBar(note: note, projects: buckets)
-                            .lastInSection(isLast)
-                    }
+        let rows = Section {
+            ForEach(waiting) { note in
+                let isLast = note.id == waiting.last?.id
+                // While choosing, the suggestions give way to the selection.
+                if isSelecting || FilingBar.suggested(for: note, among: buckets).isEmpty {
+                    NoteListRow(note: note) { remove(note) }
+                        .lastInSection(isLast)
+                } else {
+                    NoteListRow(note: note) { remove(note) }
+                    FilingBar(note: note, projects: buckets)
+                        .lastInSection(isLast)
                 }
             }
         }
-        .cardList()
+        return VStack(spacing: 0) {
+            if isSelecting {
+                NoteSelectionBar(notes: waiting, chosen: $chosen) { endSelecting() }
+            }
+            Group {
+                if isSelecting {
+                    List(selection: $chosen) { rows }
+                        .environment(\.editMode, .constant(.active))
+                } else {
+                    List(selection: $selection) { rows }
+                }
+            }
+            .cardList()
         .roomForFloatingButtons()
         .overlay {
             if waiting.isEmpty {
                 EmptyStateView(title: "Inbox Empty", message: "What is new or in no bowl waits here.", systemImage: "tray")
             }
+        }
+        }
+    }
+
+    private func endSelecting() {
+        withAnimation(.snappy) {
+            isSelecting = false
+            chosen = []
         }
     }
 
@@ -758,8 +775,17 @@ struct NotesView: View {
         if shown == .home, notes.contains(where: \.isDeleted) {
             trashButton
         }
+        // Several entries of the Inbox or a bowl at once: into a bowl, their kind or sender, merged.
+        if shown == .inbox || project(on: shown) != nil {
+            Button {
+                if isSelecting { endSelecting() } else { withAnimation(.snappy) { isSelecting = true } }
+            } label: {
+                Label(isSelecting ? "Done" : "Select", systemImage: isSelecting ? "checkmark.circle.fill" : "checkmark.circle")
+            }
+            .help(isSelecting ? "Done" : "Select")
+        }
         // What is brought in from outside has its own menu in the bar; on a bowl's page it goes into the bowl.
-        if shown == .home || shown == .documents || project(on: shown) != nil {
+        if shown == .home || project(on: shown) != nil {
             importMenu
                 .menuStyle(.button)
         }
@@ -808,7 +834,6 @@ struct NotesView: View {
         case .project: project(on: shown)?.name ?? "Porridge"
         case .inbox: "Inbox"
         case .todos: "To-dos"
-        case .documents: String(localized: "Documents")
         case .chat: "Chat"
         case .search: "Search"
         case .archive: "Archive"
@@ -823,7 +848,7 @@ struct NotesView: View {
     private func listTint(_ shown: ListPage) -> Color {
         switch shown {
         case .project: project(on: shown) == nil ? .brandSky : .brandProject
-        case .archive, .chat, .search, .documents: .brandNavy
+        case .archive, .chat, .search: .brandNavy
         case .trash: .red
         case .todos: .brandTask
         default: .brandSky
@@ -843,7 +868,6 @@ struct NotesView: View {
         case .project: project(on: shown) == nil ? "tray.full.fill" : "folder.fill"
         case .inbox: "tray.fill"
         case .todos: "checklist"
-        case .documents: "doc.text.fill"
         case .chat: "bubble.left.and.bubble.right.fill"
         case .search: "magnifyingglass"
         case .archive: "archivebox.fill"
@@ -1215,8 +1239,6 @@ enum ListPage: Hashable {
     case inbox
     /// The virtual folder of every open to-do by due day (`Todos.folder`), in the "Up Next" section of the home list.
     case todos
-    /// Every document (PDFs, scans, office files, read receipts) across the inbox and the bowls (`Documents`).
-    case documents
     /// The chat with the notes.
     case chat
     /// The search through everything.

@@ -1,23 +1,17 @@
 import SwiftData
 import SwiftUI
 
-/// Every document across the inbox and the bowls (`Documents`): narrowed by kind and sender, by the date on the
-/// document under its year. Only a view: the documents stay where they are filed.
-struct DocumentsPage: View {
+/// Changes several entries of the Inbox or a bowl at once, while the list is in its selection mode: into a bowl or
+/// back to the Inbox, and for documents their kind and sender (as set by hand) or merging their PDFs into one.
+struct NoteSelectionBar: View {
+    /// The entries of the list, in its order.
     let notes: [Note]
-    /// The note open in the detail column.
-    @Binding var selection: UUID?
-    /// Moves a note to the trash.
-    var onRemove: (Note) -> Void
+    @Binding var chosen: Set<UUID>
+    var onDone: () -> Void
 
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
     @Environment(\.modelContext) private var context
     @Environment(ProcessingService.self) private var processing
-    @State private var kind: DocumentKind?
-    @State private var correspondent: String?
-    /// Choosing several documents to change at once.
-    @State private var isSelecting = false
-    @State private var chosen = Set<UUID>()
     @State private var askingSender = false
     @State private var senderText = ""
     @State private var choosingMergeTarget = false
@@ -25,40 +19,60 @@ struct DocumentsPage: View {
     @State private var mergedAway: [Note] = []
     @State private var error: String?
 
+    /// The chosen entries, in the order of the list.
+    private var chosenNotes: [Note] { notes.filter { chosen.contains($0.id) } }
+
+    /// Kind and sender belong to documents: only offered when every chosen entry is one.
+    private var allDocuments: Bool {
+        let notes = chosenNotes
+        return !notes.isEmpty && notes.allSatisfy { $0.isStored && !$0.attachments.isEmpty }
+    }
+
     var body: some View {
-        let all = Documents.all(notes)
-        let shown = Documents.filtered(all, kind: kind, correspondent: correspondent)
-        let groups = Documents.yearGroups(shown)
-        let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
-        VStack(spacing: 0) {
-            if !all.isEmpty {
-                Group {
-                    if isSelecting { selectionBar(shown) } else { filters(all) }
+        let active = projects.filter { !$0.isArchived }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Button(chosen.count == notes.count ? "Select None" : "Select All") {
+                    chosen = chosen.count == notes.count ? [] : Set(notes.map(\.id))
                 }
-                .padding(.bottom, Look.headerGap)
-            }
-            Group {
-                if isSelecting {
-                    List(selection: $chosen) { rows(groups, names: names) }
-                        .environment(\.editMode, .constant(.active))
-                } else {
-                    List(selection: $selection) { rows(groups, names: names) }
+                .font(.subheadline.weight(.semibold))
+                Menu {
+                    Button { change(.move(toBowl: nil)) } label: { Label("Inbox", systemImage: "tray") }
+                    Divider()
+                    ForEach(active) { bowl in
+                        Button { change(.move(toBowl: Projects.key(bowl))) } label: { Label(bowl.name, systemImage: "folder") }
+                    }
+                } label: {
+                    actionLabel("Move", systemImage: "folder", isOn: !chosen.isEmpty)
                 }
-            }
-            .cardList()
-            .roomForFloatingButtons()
-            .overlay {
-                if all.isEmpty {
-                    EmptyStateView(
-                        title: "No Documents Yet",
-                        message: "Scan a letter, or import a PDF or a photo of a receipt. Porridge reads its text and tells what it is.",
-                        systemImage: "doc.text"
-                    )
-                } else if shown.isEmpty {
-                    EmptyStateView(title: "No Documents", message: "None fit the filter.", systemImage: "doc.text")
+                .disabled(chosen.isEmpty)
+                Menu {
+                    Button("Not Set") { change(.kind(nil)) }
+                    ForEach(DocumentKind.allCases) { kind in
+                        Button { change(.kind(kind)) } label: { Label(kind.title, systemImage: kind.symbol) }
+                    }
+                } label: {
+                    actionLabel("Kind", systemImage: "tag", isOn: allDocuments)
                 }
+                .disabled(!allDocuments)
+                Button {
+                    senderText = ""
+                    askingSender = true
+                } label: {
+                    actionLabel("Sender", systemImage: "person.crop.square", isOn: allDocuments)
+                }
+                .disabled(!allDocuments)
+                let canMerge = allDocuments && DocumentFiles.mergeable(chosenNotes).count >= 2
+                Button { choosingMergeTarget = true } label: {
+                    actionLabel("Merge", systemImage: "arrow.triangle.merge", isOn: canMerge)
+                }
+                .disabled(!canMerge)
+                Button("Done", action: onDone)
+                    .font(.subheadline.weight(.bold))
             }
+            .padding(.horizontal, 20)
         }
+        .padding(.bottom, Look.headerGap)
         .alert("Sender", isPresented: $askingSender) {
             TextField("Company, office or person", text: $senderText)
             Button("Cancel", role: .cancel) {}
@@ -94,83 +108,13 @@ struct DocumentsPage: View {
         }
     }
 
-    private func rows(_ groups: [(title: String, notes: [Note])], names: [String: String]) -> some View {
-        ForEach(Array(groups.enumerated()), id: \.element.title) { index, group in
-            Section {
-                ForEach(group.notes) { note in
-                    // The bowls a document is in, or none: it waits in the inbox.
-                    NoteListRow(note: note, buckets: note.projectIDs.compactMap { names[$0] }) { onRemove(note) }
-                        .lastInSection(note.id == group.notes.last?.id)
-                }
-            } header: {
-                ListHeader(title: group.title, count: group.notes.count, tint: .brandNavy, isFirst: index == 0)
-            }
-        }
-    }
-
-    // MARK: Several at once
-
-    /// The chosen documents, in the order of the list.
-    private var chosenNotes: [Note] {
-        Documents.all(notes).filter { chosen.contains($0.id) }
-    }
-
-    /// What can be done with the chosen documents: into a bowl or the inbox, their kind, their sender, merging.
-    private func selectionBar(_ shown: [Note]) -> some View {
-        let active = projects.filter { !$0.isArchived }
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Button(chosen.count == shown.count ? "Select None" : "Select All") {
-                    chosen = chosen.count == shown.count ? [] : Set(shown.map(\.id))
-                }
-                .font(.subheadline.weight(.semibold))
-                Menu {
-                    Button { change(.move(toBowl: nil)) } label: { Label("Inbox", systemImage: "tray") }
-                    Divider()
-                    ForEach(active) { bowl in
-                        Button { change(.move(toBowl: Projects.key(bowl))) } label: { Label(bowl.name, systemImage: "folder") }
-                    }
-                } label: {
-                    actionLabel("Move", systemImage: "folder")
-                }
-                .disabled(chosen.isEmpty)
-                Menu {
-                    Button("Not Set") { change(.kind(nil)) }
-                    ForEach(DocumentKind.allCases) { kind in
-                        Button { change(.kind(kind)) } label: { Label(kind.title, systemImage: kind.symbol) }
-                    }
-                } label: {
-                    actionLabel("Kind", systemImage: "tag")
-                }
-                .disabled(chosen.isEmpty)
-                Button {
-                    senderText = ""
-                    askingSender = true
-                } label: {
-                    actionLabel("Sender", systemImage: "person.crop.square")
-                }
-                .disabled(chosen.isEmpty)
-                Button { choosingMergeTarget = true } label: {
-                    actionLabel("Merge", systemImage: "arrow.triangle.merge")
-                }
-                .disabled(DocumentFiles.mergeable(chosenNotes).count < 2)
-                Button("Done") {
-                    isSelecting = false
-                    chosen = []
-                }
-                .font(.subheadline.weight(.bold))
-            }
-            .padding(.horizontal, 20)
-        }
-    }
-
-    private func actionLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
+    private func actionLabel(_ title: LocalizedStringKey, systemImage: String, isOn: Bool) -> some View {
         Label(title, systemImage: systemImage)
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(chosen.isEmpty ? Color.secondary : Color.brandOnNavy)
+            .foregroundStyle(isOn ? Color.brandOnNavy : Color.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(chosen.isEmpty ? Color.brandNavy.opacity(0.1) : Color.brandNavy, in: Capsule())
+            .background(isOn ? Color.brandNavy : Color.brandNavy.opacity(0.1), in: Capsule())
     }
 
     private func change(_ change: Documents.BulkChange) {
@@ -183,77 +127,10 @@ struct DocumentsPage: View {
         do {
             try await DocumentFiles.merge(others, into: target, context: context, processing: processing)
             chosen = []
-            isSelecting = false
             mergedAway = others
         } catch {
             self.error = error.localizedDescription
         }
-    }
-
-    /// The kinds with how many documents each has, then the senders as a menu.
-    private func filters(_ all: [Note]) -> some View {
-        let senders = Documents.correspondents(all)
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                chip("All", count: all.count, isOn: kind == nil) { kind = nil }
-                ForEach(Documents.kindCounts(all), id: \.kind) { entry in
-                    chip(entry.kind.title, count: entry.count, isOn: kind == entry.kind) {
-                        kind = kind == entry.kind ? nil : entry.kind
-                    }
-                }
-                // Also while a sender is chosen that has no documents any more: it can still be let go.
-                if !senders.isEmpty || correspondent != nil {
-                    Menu {
-                        Button { correspondent = nil } label: {
-                            if correspondent == nil { Label("All Senders", systemImage: "checkmark") } else { Text("All Senders") }
-                        }
-                        Divider()
-                        ForEach(senders, id: \.name) { sender in
-                            Button { correspondent = sender.name } label: {
-                                if correspondent == sender.name {
-                                    Label("\(sender.name) (\(sender.count))", systemImage: "checkmark")
-                                } else {
-                                    Text("\(sender.name) (\(sender.count))")
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "person.crop.square")
-                            Text(correspondent ?? String(localized: "Sender")).lineLimit(1)
-                            Image(systemName: "chevron.down").font(.caption2.weight(.bold))
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(correspondent == nil ? Color.primary : Color.brandOnNavy)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(correspondent == nil ? Color.brandNavy.opacity(0.1) : Color.brandNavy, in: Capsule())
-                    }
-                    .accessibilityLabel("Filter by Sender")
-                }
-                // Several documents at once: into a bowl, their kind or sender, merged.
-                Button("Select") { withAnimation(.snappy) { isSelecting = true } }
-                    .font(.subheadline.weight(.bold))
-                    .padding(.leading, 4)
-            }
-            .padding(.horizontal, 20)
-        }
-    }
-
-    private func chip(_ title: String, count: Int, isOn: Bool, action: @escaping () -> Void) -> some View {
-        Button { withAnimation(.snappy) { action() } } label: {
-            HStack(spacing: 4) {
-                Text(title)
-                Text("\(count)").foregroundStyle(isOn ? Color.brandOnNavy.opacity(0.8) : .secondary)
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(isOn ? Color.brandOnNavy : .primary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(isOn ? Color.brandNavy : Color.brandNavy.opacity(0.1), in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
 

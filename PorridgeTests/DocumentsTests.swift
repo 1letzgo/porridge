@@ -259,7 +259,6 @@ final class DocumentsTests: XCTestCase {
         var buddhist = Calendar(identifier: .buddhist)
         buddhist.timeZone = .current
         XCTAssertEqual(buddhist.component(.year, from: date), 2569, "what Calendar.current would give in Thailand")
-        XCTAssertEqual(Documents.yearGroups([document("A", kind: nil, day: "2026-03-02", sender: nil)]).map(\.title), ["2026"])
     }
 
     func testSearchFindsADocumentByItsSender() {
@@ -270,29 +269,16 @@ final class DocumentsTests: XCTestCase {
         XCTAssertFalse(note.matches("Telekom"))
     }
 
-    // MARK: The list
+    // MARK: Order
 
-    func testDocumentsAreListedByTheirDateFilteredAndGrouped() {
+    func testDocumentsAreOrderedByTheirDate() {
         let a = document("A", kind: .invoice, day: "2026-03-02", sender: "Telekom GmbH")
         let b = document("B", kind: .receipt, day: "2025-12-24", sender: "Bäckerei Schmidt")
         let c = document("C", kind: .invoice, day: "2026-05-01", sender: "telekom")
         let d = document("D", kind: nil, day: nil, sender: nil)
         d.createdAt = DocumentInfo.date(fromDay: "2024-01-01")!
-        let deleted = document("E", kind: .invoice, day: "2026-06-01", sender: "Telekom")
-        deleted.deletedAt = Date()
-        let plain = Note()
-
-        let all = Documents.all([a, b, c, d, deleted, plain])
-        XCTAssertEqual(all.map(\.title), ["C", "A", "B", "D"])
-        XCTAssertEqual(Documents.filtered(all, kind: .invoice, correspondent: nil).map(\.title), ["C", "A"])
-        XCTAssertEqual(Documents.filtered(all, kind: nil, correspondent: "Telekom").map(\.title), ["C", "A"])
-        XCTAssertEqual(Documents.filtered(all, kind: .other, correspondent: nil).map(\.title), ["D"], "without a kind it is Other")
-        XCTAssertEqual(Documents.kindCounts(all).map(\.kind), [.invoice, .receipt, .other])
-        XCTAssertEqual(Documents.kindCounts(all).map(\.count), [2, 1, 1])
-        let senders = Documents.correspondents(all)
-        XCTAssertEqual(Set(senders.map { DocumentExtractor.correspondentKey($0.name) }), ["backerei schmidt", "telekom"])
-        XCTAssertEqual(senders.first { DocumentExtractor.correspondentKey($0.name) == "telekom" }?.count, 2)
-        XCTAssertEqual(Documents.yearGroups(all).map(\.title), ["2026", "2025", "2024"])
+        XCTAssertEqual(Documents.sorted([a, b, c, d]).map(\.title), ["C", "A", "B", "D"], "without a date, by when it came in")
+        XCTAssertEqual(d.documentDate, d.createdAt)
     }
 
     func testTheLineOfARow() {

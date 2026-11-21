@@ -109,7 +109,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         switch state.page {
         case .inbox: "Inbox"
         case .todos: "To-dos"
-        case .documents: "Documents"
         case .chat: "Chat"
         case .project(let id): library.project(id)?.name ?? "Porridge"
         case .archive: "Archive"

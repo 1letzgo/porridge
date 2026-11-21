@@ -158,6 +158,9 @@ struct ProjectPage: View {
     let notes: [Note]
     /// The note open in the detail column.
     @Binding var selection: UUID?
+    /// Choosing several entries to change at once (`NoteSelectionBar`), and the chosen ones.
+    @Binding var isSelecting: Bool
+    @Binding var chosen: Set<UUID>
     /// Moves a note to the trash.
     var onRemove: (Note) -> Void
     @State private var filter = ProjectFilter.all
@@ -166,23 +169,39 @@ struct ProjectPage: View {
         let content = ProjectContent(of: project, notes: notes)
         // One flat list without headers: pinned first, then by last change; the To-dos filter by due day.
         let list = content.list(filter)
+        let rows = Section {
+            ForEach(list) { note in
+                NoteListRow(note: note) { onRemove(note) }
+                    .lastInSection(note.id == list.last?.id)
+            }
+        }
         VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // Only the kinds the bowl has something of; the one chosen stays while it is.
-                    ForEach(ProjectFilter.allCases.filter { $0 == .all || $0 == filter || content.count($0) > 0 }, id: \.self) { kind in
-                        chip(kind, count: content.count(kind))
+            if isSelecting {
+                // Choosing: what can be done with the chosen entries takes the place of the kinds.
+                NoteSelectionBar(notes: list, chosen: $chosen) {
+                    withAnimation(.snappy) {
+                        isSelecting = false
+                        chosen = []
                     }
                 }
-                .padding(.horizontal, 20)
-            }
-            .padding(.bottom, Look.headerGap)
-            List(selection: $selection) {
-                Section {
-                    ForEach(list) { note in
-                        NoteListRow(note: note) { onRemove(note) }
-                            .lastInSection(note.id == list.last?.id)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        // Only the kinds the bowl has something of; the one chosen stays while it is.
+                        ForEach(ProjectFilter.allCases.filter { $0 == .all || $0 == filter || content.count($0) > 0 }, id: \.self) { kind in
+                            chip(kind, count: content.count(kind))
+                        }
                     }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.bottom, Look.headerGap)
+            }
+            Group {
+                if isSelecting {
+                    List(selection: $chosen) { rows }
+                        .environment(\.editMode, .constant(.active))
+                } else {
+                    List(selection: $selection) { rows }
                 }
             }
             .cardList()

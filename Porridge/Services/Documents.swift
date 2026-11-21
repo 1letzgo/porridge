@@ -63,69 +63,12 @@ extension Note {
 /// the documents stay where they are.
 @MainActor
 enum Documents {
-    /// Every document that is not deleted, newest document date first.
-    static func all(_ notes: [Note]) -> [Note] {
-        sorted(notes.filter { !$0.isDeleted && $0.isDocument })
-    }
-
+    /// Documents by the date on them, newest first (the order several are merged in).
     static func sorted(_ documents: [Note]) -> [Note] {
         documents
             .map { (note: $0, date: $0.documentDate) }
             .sorted { $0.date != $1.date ? $0.date > $1.date : $0.note.createdAt > $1.note.createdAt }
             .map(\.note)
-    }
-
-    /// The documents of one kind and one sender (by `DocumentExtractor.correspondentKey`); nil lets any through.
-    static func filtered(_ documents: [Note], kind: DocumentKind?, correspondent: String?) -> [Note] {
-        let key = correspondent.map(DocumentExtractor.correspondentKey)
-        return documents.filter { note in
-            let info = note.documentInfo
-            if let kind, (info?.kind ?? .other) != kind { return false }
-            if let key, info?.correspondent.map(DocumentExtractor.correspondentKey) != key { return false }
-            return true
-        }
-    }
-
-    /// How many documents there are of each kind, in the order of `DocumentKind`; kinds with none are left out.
-    /// A document whose kind is not known counts as "Other".
-    static func kindCounts(_ documents: [Note]) -> [(kind: DocumentKind, count: Int)] {
-        var counts: [DocumentKind: Int] = [:]
-        for note in documents { counts[note.documentInfo?.kind ?? .other, default: 0] += 1 }
-        return DocumentKind.allCases.compactMap { kind in counts[kind].map { (kind, $0) } }
-    }
-
-    /// The senders with how many documents each sent, by name. Spellings of the same sender count together, under
-    /// the name used most.
-    static func correspondents(_ documents: [Note]) -> [(name: String, count: Int)] {
-        var names: [String: [String: Int]] = [:]
-        for note in documents {
-            guard let name = note.documentInfo?.correspondent else { continue }
-            let key = DocumentExtractor.correspondentKey(name)
-            guard !key.isEmpty else { continue }
-            names[key, default: [:]][name, default: 0] += 1
-        }
-        return names.values
-            .map { spellings in
-                let name = spellings.max { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }!.key
-                return (name: name, count: spellings.values.reduce(0, +))
-            }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
-    /// Documents under the year of their date, newest year first; the order within a year is kept.
-    static func yearGroups(_ documents: [Note], calendar: Calendar = DocumentInfo.calendar) -> [(title: String, notes: [Note])] {
-        var result: [(title: String, notes: [Note])] = []
-        for note in documents {
-            let title = String(calendar.component(.year, from: note.documentDate))
-            if result.last?.title == title {
-                result[result.count - 1].notes.append(note)
-            } else if let index = result.firstIndex(where: { $0.title == title }) {
-                result[index].notes.append(note)
-            } else {
-                result.append((title, [note]))
-            }
-        }
-        return result
     }
 
     /// The search's words name the document's kind ("Rechnung", "Verträge") and the other words are in it: found

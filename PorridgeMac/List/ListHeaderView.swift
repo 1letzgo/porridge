@@ -4,8 +4,6 @@ import AppKit
 /// (the kinds of a bowl or the search, the tags of the search) or empties it (the trash).
 final class ListHeaderView: NSView {
     var onFilter: ((KindFilter?) -> Void)?
-    var onDocumentKind: ((DocumentKind?) -> Void)?
-    var onDocumentSender: ((String?) -> Void)?
     var onTag: ((String) -> Void)?
     var onRemoveTag: ((String) -> Void)?
     var onEmptyTrash: (() -> Void)?
@@ -69,7 +67,6 @@ final class ListHeaderView: NSView {
         let (name, symbol, tint): (String, String, NSColor) = switch page {
         case .inbox: ("Inbox", "tray.fill", .brandSky)
         case .todos: ("To-dos", "checklist", .brandTask)
-        case .documents: ("Documents", "doc.text.fill", .brandNavy)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)
         case .project(let id): (library.project(id)?.name ?? "Bowl", "folder.fill", .brandProject)
         case .archive: ("Archive", "archivebox.fill", .brandNavy)
@@ -103,35 +100,6 @@ final class ListHeaderView: NSView {
                 filters.addArrangedSubview(filterPill(title: "All", count: total, kind: nil, isOn: state.kindFilter == nil, tint: .brandProject))
                 for kind in kinds {
                     filters.addArrangedSubview(filterPill(title: kind.title, count: kindCounts[kind] ?? 0, kind: kind, isOn: state.kindFilter == kind, tint: .brandProject))
-                }
-            }
-        case .documents:
-            // The kinds there are documents of, then the senders as a menu.
-            let all = Documents.all(library.notes)
-            if !all.isEmpty {
-                filters.addArrangedSubview(documentPill(title: "All", count: all.count, kind: nil, isOn: state.documentKind == nil))
-                for entry in Documents.kindCounts(all) {
-                    filters.addArrangedSubview(documentPill(title: entry.kind.title, count: entry.count, kind: entry.kind, isOn: state.documentKind == entry.kind))
-                }
-                let senders = Documents.correspondents(all)
-                // Also while a sender is chosen that has no documents any more: it can still be let go.
-                if !senders.isEmpty || state.documentSender != nil {
-                    let popup = NSPopUpButton(frame: .zero, pullsDown: true)
-                    popup.controlSize = .small
-                    popup.bezelStyle = .push
-                    popup.addItem(withTitle: state.documentSender ?? "Sender")
-                    let any = popup.menu?.addItem(withTitle: "All Senders", action: #selector(pickSender(_:)), keyEquivalent: "")
-                    any?.target = self
-                    any?.state = state.documentSender == nil ? .on : .off
-                    popup.menu?.addItem(.separator())
-                    for sender in senders {
-                        let item = popup.menu?.addItem(withTitle: "\(sender.name)  (\(sender.count))", action: #selector(pickSender(_:)), keyEquivalent: "")
-                        item?.representedObject = sender.name
-                        item?.target = self
-                        item?.state = state.documentSender == sender.name ? .on : .off
-                    }
-                    popup.setAccessibilityLabel("Filter by Sender")
-                    filters.addArrangedSubview(popup)
                 }
             }
         case .search:
@@ -189,26 +157,6 @@ final class ListHeaderView: NSView {
         } else {
             onFilter?(kind)
         }
-    }
-
-    private func documentPill(title: String, count: Int, kind: DocumentKind?, isOn: Bool) -> PillButton {
-        let pill = PillButton(title: "\(title)  \(count)", tint: .brandNavy, target: self, action: #selector(documentKindChosen(_:)))
-        pill.isFilled = isOn
-        pill.identifier = .init("document-" + (kind?.rawValue ?? "all"))
-        pill.setAccessibilityLabel(title)
-        pill.setAccessibilityValue(isOn ? "Selected" : "")
-        return pill
-    }
-
-    @objc private func documentKindChosen(_ sender: NSButton) {
-        let raw = (sender.identifier?.rawValue ?? "").replacingOccurrences(of: "document-", with: "")
-        let kind = DocumentKind(rawValue: raw)
-        // A second click on the chosen kind lets go of it.
-        onDocumentKind?((sender as? PillButton)?.isFilled == true ? nil : kind)
-    }
-
-    @objc private func pickSender(_ sender: NSMenuItem) {
-        onDocumentSender?(sender.representedObject as? String)
     }
 
     @objc private func pickTag(_ sender: NSMenuItem) {
