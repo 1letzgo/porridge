@@ -466,7 +466,9 @@ private struct SyncCard: View {
 
     var body: some View {
         SettingsCard(title: "Sync") {
-            MenuRow(title: "Sync With", selection: $mode, options: SyncMode.allCases.map { (value: $0, title: $0.label) })
+            Toggle("iCloud Sync", isOn: Binding(get: { mode == .iCloud }, set: { mode = $0 ? .iCloud : .off }))
+                .font(.body)
+                .tint(Color.brandSky)
             if mode != SyncMode.active {
                 Label(mode == .iCloud ? "Restart Porridge to sync with iCloud." : "Restart Porridge to stop syncing.", systemImage: "arrow.clockwise")
                     .font(.subheadline)

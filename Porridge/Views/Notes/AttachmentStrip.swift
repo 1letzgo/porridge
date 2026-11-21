@@ -4,12 +4,13 @@ import QuickLook
 import SwiftUI
 
 /// The files of a note in a row: images and PDFs with a small picture, other files with their name. A tap opens
-/// the file in Quick Look; one that is only on another device cannot be opened here.
+/// the file in Quick Look; one that is in iCloud is downloaded first.
 struct AttachmentStrip: View {
     let note: Note
     var onRemove: ((Attachment) -> Void)?
 
     @State private var preview: URL?
+    @State private var fetching: String?
     @State private var error: String?
 
     var body: some View {
@@ -17,7 +18,7 @@ struct AttachmentStrip: View {
             HStack(spacing: 10) {
                 ForEach(note.attachments) { attachment in
                     Button { open(attachment) } label: {
-                        AttachmentTile(attachment: attachment)
+                        AttachmentTile(attachment: attachment, isFetching: fetching == attachment.id)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(attachment.name)
@@ -45,14 +46,24 @@ struct AttachmentStrip: View {
     private func open(_ attachment: Attachment) {
         if let url = AttachmentStore.namedCopy(of: attachment) {
             preview = url
-        } else {
-            error = "This file is on another device."
+            return
+        }
+        guard fetching == nil else { return }
+        fetching = attachment.id
+        Task {
+            defer { fetching = nil }
+            do {
+                preview = try await AttachmentStore.fetchNamedCopy(of: attachment)
+            } catch {
+                self.error = error.localizedDescription
+            }
         }
     }
 }
 
 private struct AttachmentTile: View {
     let attachment: Attachment
+    let isFetching: Bool
 
     @State private var picture: CGImage?
 
@@ -77,6 +88,7 @@ private struct AttachmentTile: View {
                         .font(.title2)
                         .foregroundStyle(.secondary)
                 }
+                if isFetching { ProgressView() }
             }
             .frame(width: 120, height: 90)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -87,7 +99,8 @@ private struct AttachmentTile: View {
                 .truncationMode(.middle)
                 .frame(width: 120, alignment: .leading)
         }
-        .task(id: attachment.fileName) {
+        // Again after a download: the picture can be made now.
+        .task(id: "\(attachment.fileName)-\(isFetching)") {
             picture = await AttachmentThumbnail.load(attachment)
         }
     }
@@ -109,7 +122,7 @@ enum AttachmentThumbnail {
     static func load(_ attachment: Attachment, maxPixels: Int = 360) async -> CGImage? {
         let key = "\(attachment.fileName)-\(maxPixels)" as NSString
         if let cached = cache.object(forKey: key) { return cached.image }
-        guard attachment.kind != .file, AttachmentStore.exists(attachment) else { return nil }
+        guard attachment.kind != .file, await AttachmentStore.fetchForThumbnail(attachment) else { return nil }
         let url = AttachmentStore.url(for: attachment)
         let kind = attachment.kind
         let image = await Task.detached(priority: .utility) { () -> CGImage? in

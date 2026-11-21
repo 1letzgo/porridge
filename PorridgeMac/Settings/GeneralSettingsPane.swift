@@ -9,10 +9,8 @@ final class GeneralSettingsPane: SettingsPane {
     private let plaudStatus = NSTextField.label()
     private lazy var plaudButton = NSButton.push("Sign In…") { [weak self] in self?.plaudTapped() }
 
-    private lazy var syncPopUp = SettingsPopUp { [weak self] index in
-        let modes = SyncMode.allCases
-        guard index >= 0, index < modes.count else { return }
-        UserDefaults.standard.set(modes[index].rawValue, forKey: SyncMode.key)
+    private lazy var iCloudSync = SettingsCheckbox("iCloud Sync") { [weak self] on in
+        UserDefaults.standard.set((on ? SyncMode.iCloud : SyncMode.off).rawValue, forKey: SyncMode.key)
         self?.render()
     }
     private var restartLabel = NSTextField()
@@ -29,7 +27,7 @@ final class GeneralSettingsPane: SettingsPane {
         form.row("Plaud", NSStackView.horizontal([plaudStatus, plaudButton], spacing: 12))
         form.separator()
 
-        form.row("Sync With", syncPopUp)
+        form.row("", iCloudSync)
         let restart = form.note()
         restartRow = restart.row
         restartLabel = restart.label
@@ -56,7 +54,7 @@ final class GeneralSettingsPane: SettingsPane {
 
     private func renderSync() {
         let mode = SyncMode.chosen
-        syncPopUp.set(SyncMode.allCases.map(\.label), selected: SyncMode.allCases.firstIndex(of: mode))
+        iCloudSync.isOn = mode == .iCloud
         let needsRestart = mode != SyncMode.active
         restartLabel.stringValue = mode == .iCloud ? "Restart Porridge to sync with iCloud." : "Restart Porridge to stop syncing."
 

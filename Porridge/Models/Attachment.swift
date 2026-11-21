@@ -26,7 +26,7 @@ enum NoteSource: String {
 }
 
 /// A file that belongs to a note. It lives in the same store as the recordings (`AudioStore`) and, like them,
-/// stays on the device it was added on; the note's list of attachments syncs.
+/// goes to the other devices through iCloud Drive when sync is on; the note's list of attachments syncs.
 struct Attachment: Codable, Identifiable, Hashable {
     enum Kind: String, Codable {
         case image

@@ -25,6 +25,8 @@ struct PorridgeApp: App {
         let container = AppContainer.make()
         self.container = container
         _processing = State(initialValue: ProcessingService(container: container))
+        // Finds the iCloud container off the main thread and moves the files of notes into it.
+        MainActor.assumeIsolated { CloudFiles.start(container) }
         #if DEBUG
         MainActor.assumeIsolated { TestSeed.run(container) }
         #endif

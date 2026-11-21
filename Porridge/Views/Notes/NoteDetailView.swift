@@ -41,6 +41,10 @@ struct NoteDetailView: View {
     @State private var renamingSpeaker: Speaker?
     @State private var renameText = ""
     @State private var confirmDeleteAudio = false
+    @State private var isFetchingAudio = false
+    @State private var fetchAudioError: String?
+    /// Redraws when a recording arrived from iCloud: the file on disk is not observed.
+    @State private var fetchedAudio = 0
     @State private var confirmDeleteSummary = false
     @State private var showMerge = false
     @State private var showSummaryEditor = false
@@ -129,10 +133,14 @@ struct NoteDetailView: View {
         .inlineNavigationTitle()
         .keyboardDoneBar(isShown: focused) { focused = false }
         .safeAreaInset(edge: .bottom) {
-            if note.hasLocalAudio, tab != .note, !focused {
-                PlayerBar(player: player) { confirmDeleteAudio = true }
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
+            if fetchedAudio >= 0, tab != .note, !focused {
+                if note.hasLocalAudio {
+                    PlayerBar(player: player) { confirmDeleteAudio = true }
+                        .padding(.horizontal)
+                        .padding(.bottom, 8)
+                } else if isFetchingAudio || fetchAudioError != nil || note.canFetchAudio {
+                    fetchAudioBar
+                }
             }
         }
         .toolbar { toolbar }
@@ -165,6 +173,10 @@ struct NoteDetailView: View {
             // Load the speech model right away so the first piece is transcribed without delay.
             Task { try? await ModelManager.shared.ensureASR() }
             tab = opensOnSummary || isSummarizing ? .summary : .note
+        }
+        .task(id: note.audioFileName) {
+            // A recording in iCloud is downloaded when its note is opened, then it plays.
+            await fetchAudio()
         }
         .task {
             guard startsRecording, !didStartRecording, AppSettings.recordsNewNotes else { return }
@@ -263,7 +275,7 @@ struct NoteDetailView: View {
             Button("Cancel", role: .cancel) {}
             Button("Delete Recording", role: .destructive, action: deleteAudio)
         } message: {
-            Text("The audio file is removed from this device. Transcript, speakers and summary stay.")
+            Text(AudioStore.deleteRecordingMessage)
         }
         .alert("Rename Speaker", isPresented: .constant(renamingSpeaker != nil)) {
             TextField("Name", text: $renameText)
@@ -376,7 +388,7 @@ struct NoteDetailView: View {
                 Label(message, systemImage: "person.2.slash")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                if note.hasLocalAudio {
+                if note.hasAudio {
                     Button("Detect Speakers Again") { processing.enqueue(.transcript(note.id)) }
                         .buttonStyle(ChunkyButtonStyle())
                 }
@@ -398,7 +410,7 @@ struct NoteDetailView: View {
                 } else if AudioStore.exists(note.pendingAudioFileName) {
                     Button("Try Again") { processing.enqueue(.note(note.id)) }
                         .buttonStyle(ChunkyButtonStyle())
-                } else if note.hasLocalAudio {
+                } else if note.hasAudio {
                     Button("Try Again") { processing.enqueue(.transcript(note.id)) }
                         .buttonStyle(ChunkyButtonStyle())
                 }
@@ -434,7 +446,7 @@ struct NoteDetailView: View {
         }
     }
 
-    /// Takes a file off the note and deletes it on this device.
+    /// Takes a file off the note and deletes it, here and in iCloud.
     private func removeAttachment(_ attachment: Attachment) {
         note.attachments.removeAll { $0.id == attachment.id }
         AudioStore.delete(attachment.fileName)
@@ -609,7 +621,7 @@ struct NoteDetailView: View {
                     }
                 }
                 Divider()
-                if note.hasLocalAudio {
+                if note.hasAudio {
                     Button { processing.enqueue(.transcript(note.id)) } label: {
                         Label("Transcribe Again", systemImage: "waveform")
                     }
@@ -642,7 +654,7 @@ struct NoteDetailView: View {
                     .disabled(processing.stages[note.id] != nil || note.status != .ready)
                 }
                 Divider()
-                if note.hasLocalAudio {
+                if note.hasAudio {
                     Button(role: .destructive) { confirmDeleteAudio = true } label: {
                         Label("Delete Recording", systemImage: "waveform.slash")
                     }
@@ -658,10 +670,64 @@ struct NoteDetailView: View {
         .help("More")
     }
 
-    /// A recording that is on another device could not be joined with the new part.
+    /// A recording that is only on another device (not in iCloud) could not be joined with the new part.
     private var canContinueRecording: Bool {
         processing.stages[note.id] == nil && note.status == .ready && note.pendingAudioFileName == nil
-            && (note.audioFileName == nil || note.hasLocalAudio)
+            && (note.audioFileName == nil || note.hasAudio)
+    }
+
+    /// While the recording comes from iCloud: a spinner; after a failure the reason and a button to try again.
+    private var fetchAudioBar: some View {
+        VStack(spacing: 6) {
+            if isFetchingAudio {
+                HStack(spacing: 10) {
+                    ProgressView().tint(Color.brandNavy)
+                    Text("Downloading Recording…").font(.subheadline.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+            } else {
+                Button {
+                    Task { await fetchAudio() }
+                } label: {
+                    Label("Download Recording", systemImage: "arrow.down.circle")
+                }
+                .buttonStyle(ChunkyButtonStyle())
+            }
+            if let fetchAudioError {
+                Text(fetchAudioError).font(.footnote).foregroundStyle(Color.brandDangerText)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+    }
+
+    /// Downloads the recording when it is in iCloud and not here yet, then loads it into the player.
+    private func fetchAudio() async {
+        // At launch the iCloud container may still be looked for.
+        _ = await AudioStore.cloudContainer()
+        guard let name = note.audioFileName, !isFetchingAudio else { return }
+        guard !note.hasLocalAudio, AudioStore.isInCloud(name) else {
+            // Found only now that the container is known: already downloaded.
+            if note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
+            fetchedAudio += 1
+            return
+        }
+        isFetchingAudio = true
+        fetchAudioError = nil
+        defer {
+            isFetchingAudio = false
+            fetchedAudio += 1
+        }
+        do {
+            try await AudioStore.download(name)
+            guard note.audioFileName == name else { return }
+            player.load(AudioStore.url(for: name))
+        } catch is CancellationError {
+            // The note was closed; iCloud goes on with the download by itself.
+        } catch {
+            fetchAudioError = error.localizedDescription
+        }
     }
 
     private var isSummarizing: Bool { processing.summarizing.contains(note.id) }

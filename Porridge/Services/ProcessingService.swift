@@ -117,14 +117,16 @@ final class ProcessingService {
     /// Picks up recordings that were interrupted (app killed while transcribing).
     func resumePending() {
         let notes = (try? context.fetch(FetchDescriptor<Note>())) ?? []
-        for note in notes where [.recorded, .transcribing].contains(note.status) && note.hasLocalAudio && note.pendingAudioFileName == nil {
+        // Only a recording in the folder on this device was made here and is this device's work. One in iCloud
+        // belongs to a note that was done before; another device may be the one working on it now.
+        for note in notes where [.recorded, .transcribing].contains(note.status) && AudioStore.isLocal(note.audioFileName) && note.pendingAudioFileName == nil {
             enqueue(.transcript(note.id))
         }
         // Nothing left to work on (the file is gone): such a note would wait forever and never sync.
         var released = false
         for note in notes where !note.isLink && note.attachmentsData == nil {
             let pendingLost = note.pendingAudioFileName != nil && !AudioStore.exists(note.pendingAudioFileName)
-            let stuck = [.recorded, .transcribing].contains(note.status) && !note.hasLocalAudio && !AudioStore.exists(note.pendingAudioFileName)
+            let stuck = [.recorded, .transcribing].contains(note.status) && !AudioStore.isLocal(note.audioFileName) && !AudioStore.exists(note.pendingAudioFileName)
             guard pendingLost || stuck else { continue }
             if pendingLost { note.pendingAudioFileName = nil }
             if note.segments.isEmpty, note.text.isEmpty, note.audioFileName == nil {
@@ -247,11 +249,25 @@ final class ProcessingService {
 
     private func processTranscript(_ id: UUID) async {
         guard let meeting = fetchNote(id) else { return }
-        guard let fileName = meeting.audioFileName, AudioStore.exists(fileName) else {
+        guard let fileName = meeting.audioFileName, AudioStore.isObtainable(fileName) else {
             meeting.status = .failed
             meeting.errorMessage = ASRPipelineError.missingAudio.localizedDescription
             save()
             return
+        }
+        if !AudioStore.exists(fileName) {
+            // In iCloud only ("Detect Speakers Again" on another device than the one it was recorded on).
+            stages[id] = "Downloading recording…"
+            do {
+                try await AudioStore.download(fileName)
+            } catch {
+                guard exists(id) else { return }
+                meeting.status = .failed
+                meeting.errorMessage = error.localizedDescription
+                save()
+                return
+            }
+            guard exists(id) else { return }
         }
         meeting.status = .transcribing
         meeting.errorMessage = nil
@@ -469,12 +485,22 @@ final class ProcessingService {
         if !text.isEmpty { summarizeIfIncoming(note) }
     }
 
-    /// Reads the text of the note's files into `pageText` and returns it. While a file is missing (it is only on
-    /// another device) and nothing was read, the note counts as not looked at yet (`pageText` stays nil).
+    /// Reads the text of the note's files into `pageText` and returns it. Files in iCloud are downloaded first. While
+    /// a file is missing (it is only on another device, or iCloud could not deliver it) and nothing was read, the note
+    /// counts as not looked at yet (`pageText` stays nil).
     @discardableResult
     private func readAttachments(of note: Note) async -> String {
         let id = note.id
         let attachments = note.attachments
+        // One iCloud does not have yet is not waited for: the queue would stand still. It is read another time.
+        for attachment in attachments where AttachmentStore.isInCloud(attachment) {
+            do {
+                try await AttachmentStore.download(attachment, timeout: 180)
+            } catch {
+                print("[files] \(attachment.fileName) not downloaded: \(error.localizedDescription)")
+            }
+        }
+        guard exists(id) else { return "" }
         let present = attachments.filter(AttachmentStore.exists)
         let text = await AttachmentText.read(present.map { (url: AttachmentStore.url(for: $0), attachment: $0) })
         guard exists(id) else { return text }

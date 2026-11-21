@@ -160,7 +160,7 @@ final class FlowView: NSView {
 }
 
 /// The files of a note as small pictures: a click shows one in Quick Look, the context menu opens, shows in
-/// the Finder or removes it.
+/// the Finder or removes it. A file that is in iCloud is downloaded first (its tile dims meanwhile).
 final class AttachmentStripView: NSView, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
     private let stack = NSStackView()
     private var attachments: [Attachment] = []
@@ -203,8 +203,12 @@ final class AttachmentStripView: NSView, QLPreviewPanelDataSource, QLPreviewPane
             tile.action = #selector(preview(_:))
             let menu = NSMenu()
             menu.add("Quick Look", symbol: "eye") { [weak self] in self?.showPreview(at: index) }
-            menu.add("Open", symbol: "arrow.up.forward.app") { NSWorkspace.shared.open(AttachmentStore.url(for: attachment)) }
-            menu.add("Show in Finder", symbol: "folder") { NSWorkspace.shared.activateFileViewerSelecting([AttachmentStore.url(for: attachment)]) }
+            menu.add("Open", symbol: "arrow.up.forward.app") { [weak self] in
+                self?.withFile(at: index) { NSWorkspace.shared.open($0) }
+            }
+            menu.add("Show in Finder", symbol: "folder") { [weak self] in
+                self?.withFile(at: index) { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
+            }
             if canRemove {
                 menu.addItem(.separator())
                 menu.add("Remove", symbol: "trash", isDestructive: true) { [weak self] in self?.onRemove?(attachment) }
@@ -218,7 +222,33 @@ final class AttachmentStripView: NSView, QLPreviewPanelDataSource, QLPreviewPane
         showPreview(at: sender.tag)
     }
 
+    /// Runs `action` with the file, once it is downloaded when it is only in iCloud.
+    private func withFile(at index: Int, then action: @escaping (URL) -> Void) {
+        guard attachments.indices.contains(index) else { return }
+        let attachment = attachments[index]
+        if AttachmentStore.exists(attachment) {
+            action(AttachmentStore.url(for: attachment))
+            return
+        }
+        let tile = stack.arrangedSubviews.first { ($0 as? NSButton)?.tag == index }
+        tile?.alphaValue = 0.4
+        Task { @MainActor [weak self] in
+            do {
+                let url = try await AttachmentStore.download(attachment)
+                tile?.alphaValue = 1
+                action(url)
+            } catch {
+                tile?.alphaValue = 1
+                Alerts.inform("Could Not Open", message: error.localizedDescription, in: self?.window)
+            }
+        }
+    }
+
     private func showPreview(at index: Int) {
+        withFile(at: index) { [weak self] _ in self?.openPreview(at: index) }
+    }
+
+    private func openPreview(at index: Int) {
         previewIndex = index
         guard let panel = QLPreviewPanel.shared() else { return }
         panel.dataSource = self
