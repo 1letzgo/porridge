@@ -92,7 +92,7 @@ struct SettingsView: View {
 
     private var page: some View {
         VStack(spacing: 0) {
-            // The areas of the settings as pills, like the kinds in a bucket: one area shows at a time.
+            // The areas of the settings as pills, like the kinds in a bowl: one area shows at a time.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(SettingsArea.allCases, id: \.self) { areaPill($0) }
@@ -414,10 +414,7 @@ struct SettingsView: View {
     }
 
     private var aboutCard: some View {
-        SettingsCard(
-            title: "About",
-            footer: "Speech recognition: FluidAudio · NVIDIA Parakeet (CC-BY-4.0) · pyannote"
-        ) {
+        SettingsCard(title: "About") {
             ValueRow(
                 title: "Version",
                 value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
@@ -460,28 +457,28 @@ struct SettingsView: View {
 
 // MARK: - Building blocks
 
-/// Whether the notes sync through iCloud between the user's Apple devices. Switching takes effect at the next launch.
+/// Whether the notes sync through iCloud between the user's Apple devices. Switching asks first (the switch stays
+/// until confirmed) and takes effect at the next launch.
 private struct SyncCard: View {
     @AppStorage(SyncMode.key) private var mode: SyncMode = .iCloud
+    /// The mode the user switched to, while the question is open.
+    @State private var asking: SyncMode?
 
     var body: some View {
         SettingsCard(title: "Sync") {
-            Toggle("iCloud Sync", isOn: Binding(get: { mode == .iCloud }, set: { mode = $0 ? .iCloud : .off }))
+            Toggle("iCloud Sync", isOn: Binding(get: { mode == .iCloud }, set: { asking = $0 ? .iCloud : .off }))
                 .font(.body)
                 .tint(Color.brandSky)
-            if mode != SyncMode.active {
-                Label(mode == .iCloud ? "Restart Porridge to sync with iCloud." : "Restart Porridge to stop syncing.", systemImage: "arrow.clockwise")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            if mode == .iCloud {
-                let available = FileManager.default.ubiquityIdentityToken != nil
-                Label(
-                    available ? "Signed in to iCloud" : "Not signed in to iCloud",
-                    systemImage: available ? "checkmark.icloud.fill" : "xmark.icloud"
-                )
-                .foregroundStyle(available ? Color.accentColor : Color.accentColor.opacity(0.6))
-            }
+        }
+        .alert(
+            asking?.confirmTitle ?? "",
+            isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
+            presenting: asking
+        ) { target in
+            Button(target.confirmAction, role: target == .off ? .destructive : nil) { mode = target }
+            Button("Cancel", role: .cancel) {}
+        } message: { target in
+            Text(target.confirmMessage)
         }
     }
 }
@@ -489,7 +486,6 @@ private struct SyncCard: View {
 /// Settings group in the style of the list: a section head with a hairline, rows on the white page.
 struct SettingsCard<Content: View>: View {
     let title: String
-    var footer: String?
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -507,12 +503,6 @@ struct SettingsCard<Content: View>: View {
                 content
             }
             .foregroundStyle(.primary)
-
-            if let footer {
-                Text(footer)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -10,15 +10,8 @@ final class GeneralSettingsPane: SettingsPane {
     private lazy var plaudButton = NSButton.push("Sign In…") { [weak self] in self?.plaudTapped() }
 
     private lazy var iCloudSync = SettingsCheckbox("iCloud Sync") { [weak self] on in
-        UserDefaults.standard.set((on ? SyncMode.iCloud : SyncMode.off).rawValue, forKey: SyncMode.key)
-        self?.render()
+        self?.syncTapped(on ? .iCloud : .off)
     }
-    private var restartLabel = NSTextField()
-    private let iCloudLabel = NSTextField.label()
-    private let iCloudImage = NSImageView()
-    private var restartRow: NSGridRow?
-    private var iCloudRow: NSGridRow?
-    private var syncVisibility: [Bool] = []
 
     override func build() {
         form.row("Your Name", nameField)
@@ -28,11 +21,6 @@ final class GeneralSettingsPane: SettingsPane {
         form.separator()
 
         form.row("", iCloudSync)
-        let restart = form.note()
-        restartRow = restart.row
-        restartLabel = restart.label
-        iCloudImage.translatesAutoresizingMaskIntoConstraints = false
-        iCloudRow = form.row("iCloud", NSStackView.horizontal([iCloudImage, iCloudLabel], spacing: 6))
         form.separator()
 
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
@@ -40,7 +28,6 @@ final class GeneralSettingsPane: SettingsPane {
         form.row("Acknowledgements", NSButton.push("Show…") { [weak self] in
             self?.presentSheet(AcknowledgementsSheetController())
         })
-        form.note("Speech recognition: FluidAudio · NVIDIA Parakeet (CC-BY-4.0) · pyannote")
     }
 
     override func render() {
@@ -49,27 +36,18 @@ final class GeneralSettingsPane: SettingsPane {
         plaudStatus.stringValue = signedIn ? "Signed In" : "Not Signed In"
         plaudButton.title = signedIn ? "Sign Out" : "Sign In…"
         plaudButton.hasDestructiveAction = signedIn
-        renderSync()
+        iCloudSync.isOn = SyncMode.chosen == .iCloud
     }
 
-    private func renderSync() {
-        let mode = SyncMode.chosen
-        iCloudSync.isOn = mode == .iCloud
-        let needsRestart = mode != SyncMode.active
-        restartLabel.stringValue = mode == .iCloud ? "Restart Porridge to sync with iCloud." : "Restart Porridge to stop syncing."
-
-        let available = FileManager.default.ubiquityIdentityToken != nil
-        iCloudLabel.stringValue = available ? "Signed in to iCloud" : "Not signed in to iCloud"
-        iCloudImage.image = .symbol(available ? "checkmark.icloud.fill" : "xmark.icloud", size: 14)
-        iCloudImage.contentTintColor = available ? .controlAccentColor : NSColor.controlAccentColor.withAlphaComponent(0.6)
-
-        let showsICloud = mode == .iCloud
-        let now = [needsRestart, showsICloud]
-        if now != syncVisibility {
-            syncVisibility = now
-            restartRow?.isHidden = !needsRestart
-            iCloudRow?.isHidden = !showsICloud
-            contentChanged()
+    /// Asks before switching sync; the checkbox shows the stored mode until the user confirms.
+    private func syncTapped(_ target: SyncMode) {
+        render()
+        Alerts.confirm(
+            target.confirmTitle, message: target.confirmMessage, action: target.confirmAction,
+            isDestructive: target == .off, style: .warning, in: view.window
+        ) { [weak self] in
+            UserDefaults.standard.set(target.rawValue, forKey: SyncMode.key)
+            self?.render()
         }
     }
 

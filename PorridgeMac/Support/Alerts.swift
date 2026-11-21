@@ -5,12 +5,13 @@ import AppKit
 @MainActor
 enum Alerts {
     static func confirm(
-        _ title: String, message: String, action: String, isDestructive: Bool = true, in window: NSWindow?, then: @escaping () -> Void
+        _ title: String, message: String, action: String, isDestructive: Bool = true, style: NSAlert.Style? = nil,
+        in window: NSWindow?, then: @escaping () -> Void
     ) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
-        alert.alertStyle = isDestructive ? .warning : .informational
+        alert.alertStyle = style ?? (isDestructive ? .warning : .informational)
         let button = alert.addButton(withTitle: action)
         button.hasDestructiveAction = isDestructive
         let cancel = alert.addButton(withTitle: "Cancel")

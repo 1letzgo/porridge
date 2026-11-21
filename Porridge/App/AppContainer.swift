@@ -46,6 +46,36 @@ enum SyncMode: String, CaseIterable, Identifiable {
 
     /// The mode the app was started with; off on test data (`DataLocation.testFolder`).
     static let active = DataLocation.testFolder == nil ? chosen : .off
+
+    // MARK: - Asking before switching (settings of both apps)
+
+    /// Title of the question before the switch to this mode.
+    var confirmTitle: String {
+        self == .iCloud ? "Turn On iCloud Sync?" : "Turn Off iCloud Sync?"
+    }
+
+    /// Button that confirms the switch to this mode; turning off is the destructive one.
+    var confirmAction: String {
+        self == .iCloud ? "Turn On" : "Turn Off"
+    }
+
+    /// What the switch to this mode does. Turning off keeps the store (the same file, only without CloudKit) and
+    /// the files: new ones stay in the folder here (`AudioStore`), ones already in iCloud stay readable there.
+    var confirmMessage: String {
+        let restart = "Porridge needs to restart for this to take effect."
+        switch self {
+        case .iCloud:
+            let signedOut = FileManager.default.ubiquityIdentityToken == nil
+                ? " This device isn't signed in to iCloud; syncing starts once you sign in."
+                : ""
+            return "Your notes, bowls, recordings and attachments will be uploaded to your iCloud account and kept "
+                + "in sync on all your devices signed in to it.\(signedOut) \(restart)"
+        case .off:
+            return "Porridge will stop syncing. Your notes stay on this device, but changes will no longer reach "
+                + "your other devices, and theirs will no longer arrive here. New recordings and attachments stay "
+                + "on this device only. \(restart)"
+        }
+    }
 }
 
 enum AppContainer {
