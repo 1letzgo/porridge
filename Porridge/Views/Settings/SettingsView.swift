@@ -5,15 +5,13 @@ import UniformTypeIdentifiers
 
 /// The areas the settings are split into; one shows at a time, chosen with the pills on top.
 enum SettingsArea: String, CaseIterable {
-    case general, recording, summary, chat, models
+    case general, recording, ai
 
     var title: LocalizedStringKey {
         switch self {
         case .general: "General"
         case .recording: "Recording"
-        case .summary: "Summary"
-        case .chat: "Chat"
-        case .models: "Models"
+        case .ai: "AI"
         }
     }
 }
@@ -183,11 +181,9 @@ struct SettingsView: View {
         case .recording:
             transcriptionCard
             speakersCard
-        case .summary:
+        case .ai:
             summaryCard
-        case .chat:
             chatCard
-        case .models:
             modelsCard
         }
     }

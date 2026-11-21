@@ -51,6 +51,18 @@ final class SettingsForm {
         return (row, label)
     }
 
+    /// A bold section title across both columns, over the rows of its group.
+    @discardableResult
+    func header(_ title: String) -> NSGridRow {
+        let label = NSTextField(labelWithString: title)
+        label.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        let row = grid.addRow(with: [label])
+        row.mergeCells(in: NSRange(location: 0, length: 2))
+        row.cell(at: 0).xPlacement = .leading
+        row.bottomPadding = 2
+        return row
+    }
+
     /// A hairline across both columns between groups.
     @discardableResult
     func separator() -> NSGridRow {

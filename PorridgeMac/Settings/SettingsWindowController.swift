@@ -1,6 +1,6 @@
 import AppKit
 
-/// The Settings window: a toolbar of tabs (General, Recording, Summary, Chat, Models, Dictation), the areas of
+/// The Settings window: a toolbar of tabs (General, Recording, AI, Dictation), the areas of
 /// `SettingsView`. The window takes the height of the tab that shows.
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SettingsWindowController()
@@ -25,7 +25,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Opens the window on a tab: "general", "recording", "summary", "chat", "models", "dictation" (nil: where it was).
+    /// Opens the window on a tab: "general", "recording", "ai", "dictation" (nil: where it was).
     func show(tab: String?) {
         if let tab, let index = tabs.tabViewItems.firstIndex(where: { ($0.identifier as? String) == tab }) {
             tabs.selectedTabViewItemIndex = index
@@ -55,9 +55,7 @@ final class SettingsTabController: NSTabViewController {
         transitionOptions = [.crossfade, .allowUserInteraction]
         add(GeneralSettingsPane(), id: "general", label: "General", symbol: "gearshape")
         add(RecordingSettingsPane(), id: "recording", label: "Recording", symbol: "waveform")
-        add(SummarySettingsPane(), id: "summary", label: "Summary", symbol: "text.append")
-        add(ChatSettingsPane(), id: "chat", label: "Chat", symbol: "bubble.left.and.bubble.right")
-        add(ModelsSettingsPane(), id: "models", label: "Models", symbol: "cpu")
+        add(AISettingsPane(), id: "ai", label: "AI", symbol: "sparkles")
         add(DictationSettingsPane(), id: "dictation", label: "Dictation", symbol: "mic")
     }
 
