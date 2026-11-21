@@ -2,8 +2,7 @@ import SwiftData
 import XCTest
 @testable import Porridge
 
-/// To-dos: notes with a done state whose subtasks are the checklist lines of their text. Android's `TodosTest`
-/// has to give the same answers.
+/// To-dos: notes with a done state whose subtasks are the checklist lines of their text.
 @MainActor
 final class TodosTests: XCTestCase {
     private let text = """
@@ -210,53 +209,6 @@ final class TodosTests: XCTestCase {
         XCTAssertFalse(link.canBeTodo)
     }
 
-    // MARK: Sync
-
-    func testRecordsKeepTheTodoAndOlderRecordsDoNotErase() throws {
-        let context = try TestStore.context()
-        let plain = Note()
-        context.insert(plain)
-        // A note that never was a to-do writes no to-do fields.
-        XCTAssertNil(SyncRecords.record(plain)["todoStateRaw"])
-
-        let todo = Note()
-        todo.text = "- [x] a"
-        todo.todoState = .done
-        todo.todoDoneAt = Date(timeIntervalSince1970: 1_000)
-        todo.todoSourceID = "S"
-        context.insert(todo)
-        let record = SyncRecords.record(todo)
-        XCTAssertEqual(record["todoStateRaw"] as? String, "done")
-        XCTAssertEqual(record["todoDoneAt"] as? Int64, 1_000_000)
-        XCTAssertEqual(record["todoSourceID"] as? String, "S")
-
-        let copy = Note()
-        context.insert(copy)
-        SyncRecords.apply(record, to: copy)
-        XCTAssertTrue(copy.isDone)
-        XCTAssertEqual(copy.todoDoneAt, todo.todoDoneAt)
-        XCTAssertEqual(copy.todoSourceID, "S")
-
-        // A version without to-dos edited the note: its record has no to-do fields, the to-do stays here.
-        var old = record
-        old["todoStateRaw"] = nil
-        old["todoDoneAt"] = nil
-        old["todoSourceID"] = nil
-        old["text"] = "- [x] a\nedited elsewhere"
-        SyncRecords.apply(old, to: copy)
-        XCTAssertEqual(copy.text, "- [x] a\nedited elsewhere")
-        XCTAssertTrue(copy.isDone)
-        XCTAssertEqual(copy.todoSourceID, "S")
-
-        // Turned back into a note elsewhere.
-        var none = record
-        none["todoStateRaw"] = "none"
-        none["todoDoneAt"] = nil
-        SyncRecords.apply(none, to: copy)
-        XCTAssertFalse(copy.isTodo)
-        XCTAssertNil(copy.todoDoneAt)
-    }
-
     func testMergeTicksKeepsBothDevicesTicks() {
         let base = "- [ ] a\n- [ ] b\n- [ ] c"
         let merged = Todos.mergeTicks(base: base, winner: "- [x] a\n- [ ] b\n- [ ] c", loser: "- [ ] a\n- [ ] b\n- [x] c")
@@ -269,41 +221,6 @@ final class TodosTests: XCTestCase {
             Todos.mergeTicks(base: base, winner: "- [ ] new\n- [ ] c\n- [ ] a\n- [ ] b", loser: "- [x] a\n- [ ] b\n- [ ] c"),
             "- [ ] new\n- [ ] c\n- [x] a\n- [ ] b"
         )
-    }
-
-    private func todoRecord(_ text: String, _ updatedAt: Int64, state: String = "open") -> SyncRecord {
-        ["id": "T", "text": text, "updatedAt": NSNumber(value: updatedAt), "todoStateRaw": state]
-    }
-
-    func testTwoDevicesTickDifferentSubtasks() {
-        let base = todoRecord("- [ ] a\n- [ ] b\n- [ ] c", 1)
-        let baseState = SyncBase(local: SyncMerge.hash(base), remote: SyncMerge.hash(base), text: base["text"] as? String)
-        // Here "a" was ticked; on the other device, later, "b".
-        let here = todoRecord("- [x] a\n- [ ] b\n- [ ] c", 5)
-        let there = todoRecord("- [ ] a\n- [x] b\n- [ ] c", 7)
-        let result = SyncMerge.merge(
-            local: ["T": SyncMerge.Local(record: here, updatedAt: 5)], remote: ["T": there], tombstones: [:],
-            base: ["T": baseState], now: 10)
-        XCTAssertEqual(result.merged["T"]?["text"] as? String, "- [x] a\n- [x] b\n- [ ] c")
-        XCTAssertEqual(result.toApply["T"]?["text"] as? String, "- [x] a\n- [x] b\n- [ ] c")
-        XCTAssertEqual(result.merged["T"]?["todoStateRaw"] as? String, "open")
-
-        // The last open one ticked on the other device: the merged to-do is done.
-        let both = SyncMerge.merge(
-            local: ["T": SyncMerge.Local(record: todoRecord("- [x] a\n- [x] b\n- [ ] c", 5), updatedAt: 5)],
-            remote: ["T": todoRecord("- [ ] a\n- [ ] b\n- [x] c", 7)], tombstones: [:], base: ["T": baseState], now: 10)
-        XCTAssertEqual(both.merged["T"]?["text"] as? String, "- [x] a\n- [x] b\n- [x] c")
-        XCTAssertEqual(both.merged["T"]?["todoStateRaw"] as? String, "done")
-        XCTAssertEqual(both.merged["T"]?["todoDoneAt"] as? NSNumber, 10)
-    }
-
-    func testWithoutBaseTextTheNewerSideWinsAsBefore() {
-        let base = todoRecord("- [ ] a\n- [ ] b", 1)
-        let result = SyncMerge.merge(
-            local: ["T": SyncMerge.Local(record: todoRecord("- [x] a\n- [ ] b", 5), updatedAt: 5)],
-            remote: ["T": todoRecord("- [ ] a\n- [x] b", 7)], tombstones: [:],
-            base: ["T": SyncBase(local: SyncMerge.hash(base), remote: SyncMerge.hash(base))], now: 10)
-        XCTAssertEqual(result.merged["T"]?["text"] as? String, "- [ ] a\n- [x] b")
     }
 
     func testSearchFilterFindsOpenTodosOnly() {
@@ -448,34 +365,6 @@ extension TodosTests {
         XCTAssertTrue(todo(due: "2000-01-01").isOverdue)
         XCTAssertFalse(todo(due: "2000-01-01", done: true).isOverdue)
         XCTAssertFalse(todo(due: "2999-01-01").isOverdue)
-    }
-
-    func testDueDaySyncsAndAClearWinsOverOlderRecords() throws {
-        let context = try TestStore.context()
-        let note = todo(due: "2026-12-12")
-        context.insert(note)
-        let record = SyncRecords.record(note)
-        XCTAssertEqual(record["todoDueDay"] as? String, "2026-12-12")
-        XCTAssertNil(SyncRecords.record(Note())["todoDueDay"], "a note without a due day writes no field")
-
-        let copy = Note()
-        context.insert(copy)
-        SyncRecords.apply(record, to: copy)
-        XCTAssertEqual(copy.todoDue, "2026-12-12")
-
-        // A version without due days edited the note: no field, the day stays.
-        var old = record
-        old["todoDueDay"] = nil
-        old["todoStateRaw"] = nil
-        SyncRecords.apply(old, to: copy)
-        XCTAssertEqual(copy.todoDueDay, "2026-12-12")
-
-        // Taken away elsewhere.
-        var cleared = record
-        cleared["todoDueDay"] = "none"
-        SyncRecords.apply(cleared, to: copy)
-        XCTAssertNil(copy.todoDue)
-        XCTAssertEqual(copy.todoDueDay, "none")
     }
 
     func testChatLineAndExportNameTheDueDay() {

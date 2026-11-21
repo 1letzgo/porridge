@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-/// Local storage for recordings. Nextcloud copies them to its folder (`NextcloudSync`); iCloud does not.
+/// Local storage for recordings and attached files. They stay on this device: iCloud syncs only the notes.
 enum AudioStore {
     static let directory: URL = {
         let base = DataLocation.applicationSupport
@@ -10,7 +10,7 @@ enum AudioStore {
         return dir
     }()
 
-    /// Names also come from the sync file of other devices: only file names, never paths.
+    /// Names also come from other devices (through the synced notes): only file names, never paths.
     static func isPlainName(_ name: String) -> Bool {
         !name.isEmpty && !name.contains("/") && !name.hasPrefix(".")
     }

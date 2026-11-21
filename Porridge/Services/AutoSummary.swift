@@ -12,7 +12,7 @@ import Foundation
 /// Never twice, never over the user: only an entry with neither a summary nor `summarizedAt` is summarized. A summary
 /// the user deleted keeps its `summarizedAt` (`SummaryService.removeSummary`), so it does not come back by itself.
 /// The summary of a link, image, file or shared text has no tasks (`SummaryService.notePrompt`, `TodoSuggestions`).
-/// Android mirrors this in `AutoSummary.kt`; DESIGN.md "Summaries of incoming entries".
+/// DESIGN.md "Summaries of incoming entries".
 enum AutoSummary {
     enum Kind: String {
         case link, image, file, sharedText, importedAudio

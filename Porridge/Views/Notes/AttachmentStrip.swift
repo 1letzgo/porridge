@@ -4,13 +4,12 @@ import QuickLook
 import SwiftUI
 
 /// The files of a note in a row: images and PDFs with a small picture, other files with their name. A tap opens
-/// the file in Quick Look; one that is only on another device is fetched first.
+/// the file in Quick Look; one that is only on another device cannot be opened here.
 struct AttachmentStrip: View {
     let note: Note
     var onRemove: ((Attachment) -> Void)?
 
     @State private var preview: URL?
-    @State private var fetching: String?
     @State private var error: String?
 
     var body: some View {
@@ -18,7 +17,7 @@ struct AttachmentStrip: View {
             HStack(spacing: 10) {
                 ForEach(note.attachments) { attachment in
                     Button { open(attachment) } label: {
-                        AttachmentTile(attachment: attachment, isFetching: fetching == attachment.id)
+                        AttachmentTile(attachment: attachment)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(attachment.name)
@@ -46,29 +45,14 @@ struct AttachmentStrip: View {
     private func open(_ attachment: Attachment) {
         if let url = AttachmentStore.namedCopy(of: attachment) {
             preview = url
-            return
-        }
-        guard fetching == nil else { return }
-        guard NextcloudSync.shared.isActive else {
+        } else {
             error = "This file is on another device."
-            return
-        }
-        fetching = attachment.id
-        Task {
-            defer { fetching = nil }
-            do {
-                try await NextcloudSync.shared.fetchRecording(attachment.fileName)
-                preview = AttachmentStore.namedCopy(of: attachment)
-            } catch {
-                self.error = error.localizedDescription
-            }
         }
     }
 }
 
 private struct AttachmentTile: View {
     let attachment: Attachment
-    let isFetching: Bool
 
     @State private var picture: CGImage?
 
@@ -93,7 +77,6 @@ private struct AttachmentTile: View {
                         .font(.title2)
                         .foregroundStyle(.secondary)
                 }
-                if isFetching { ProgressView() }
             }
             .frame(width: 120, height: 90)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))

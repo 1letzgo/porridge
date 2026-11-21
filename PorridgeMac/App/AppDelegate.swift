@@ -49,7 +49,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Back from System Settings: a permission may have been given in the meantime.
     func applicationDidBecomeActive(_ notification: Notification) {
-        NextcloudSync.shared.syncSoon(after: .zero)
         if DictationController.shared.shortcutNeedsAccessibility || DictationController.shared.shortcutUnavailable {
             DictationController.shared.reloadShortcut()
         }

@@ -3,7 +3,7 @@ import Foundation
 /// One entry as the chat sees it: its kind, dates, buckets, link and to-do state, and a short snippet. Kept next to
 /// the entry's passages in the index (`NoteIndex`); derived from the note, never synced, rebuilt at any time.
 /// The bucket names are not stored (a bucket may be renamed): they are looked up when a question is asked.
-/// Android mirrors this in `ChatDocument.kt`; DESIGN.md "Chat data" describes the format.
+/// DESIGN.md "Chat data" describes the format.
 struct ChatDocument: Codable, Equatable {
     enum Kind: String, Codable, CaseIterable {
         case note, meeting, link, todo, image, file

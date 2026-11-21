@@ -66,7 +66,7 @@ enum LocalModel: String, CaseIterable, Identifiable {
         LocalModel(rawValue: UserDefaults.standard.string(forKey: AppSettings.localModelKey) ?? "") ?? recommended
     }
 
-    /// The model that suits this much memory; the same limits as on Android.
+    /// The model that suits this much memory.
     static func recommended(memoryGB: Double) -> LocalModel {
         if memoryGB >= 11 { return .nemotronBolt }
         return memoryGB >= 7.5 ? .qwen3 : .qwen3Small

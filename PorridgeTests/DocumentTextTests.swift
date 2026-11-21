@@ -1,7 +1,7 @@
 import XCTest
 @testable import Porridge
 
-/// The same cases as Android's `DocumentTextTest`.
+/// Text read from documents (.docx and others).
 final class DocumentTextTests: XCTestCase {
     /// A small .docx (a zip with a deflated `word/document.xml`).
     private let docx = "UEsDBBQAAAAIANOubl3HHBc8CgAAAAgAAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbLMJqSxILda3AwBQSwMEFAAAAAgA065uXT843Th4AAAAwQAAABEAAAB3b3JkL2RvY3VtZW50LnhtbLOxr8jNUShLLSrOzM+zVTLUM1Cyt7Mpt0rJTy7NTc0rAbGT8lMqQXQBiCgCESV2AUX5JfnZ+Tk5CimpRQrBmSVVpXnpNvogKRBZBCYL0HW5Fx3ednh+qoJaYm6BtcLhOUkITUAiMUkfosw1LyUVi1n6MKfoI7kPAFBLAQIUAxQAAAAIANOubl3HHBc8CgAAAAgAAAATAAAAAAAAAAAAAACAAQAAAABbQ29udGVudF9UeXBlc10ueG1sUEsBAhQDFAAAAAgA065uXT843Th4AAAAwQAAABEAAAAAAAAAAAAAAIABOwAAAHdvcmQvZG9jdW1lbnQueG1sUEsFBgAAAAACAAIAgAAAAOIAAAAAAA=="

@@ -1,7 +1,7 @@
 import XCTest
 @testable import Porridge
 
-/// To-dos suggested from the tasks of a summary. Android's `TodoSuggestionsTest` has to give the same answers.
+/// To-dos suggested from the tasks of a summary.
 @MainActor
 final class TodoSuggestionsTests: XCTestCase {
     private var berlin: Calendar {
@@ -179,24 +179,6 @@ final class TodoSuggestionsTests: XCTestCase {
         TodoSuggestions.offer(link)
         XCTAssertFalse(link.offersTodoSuggestions)
         XCTAssertTrue(link.pendingTodoSuggestions(made: []).isEmpty)
-    }
-
-    func testStatesSyncAndOlderRecordsKeepThem() throws {
-        let context = try TestStore.context()
-        let meeting = Note()
-        meeting.todoSuggestionsRaw = #"{"raum buchen":"dismissed"}"#
-        context.insert(meeting)
-        let record = SyncRecords.record(meeting)
-        XCTAssertEqual(record["todoSuggestionsRaw"] as? String, #"{"raum buchen":"dismissed"}"#)
-        XCTAssertNil(SyncRecords.record(Note())["todoSuggestionsRaw"])
-        let copy = Note()
-        context.insert(copy)
-        SyncRecords.apply(record, to: copy)
-        XCTAssertEqual(copy.todoSuggestionsRaw, meeting.todoSuggestionsRaw)
-        var old = record
-        old["todoSuggestionsRaw"] = nil
-        SyncRecords.apply(old, to: copy)
-        XCTAssertEqual(copy.todoSuggestionsRaw, meeting.todoSuggestionsRaw)
     }
 
     /// What the Apple model wrote for a German meeting on 20 November: the meeting's own date copied into every

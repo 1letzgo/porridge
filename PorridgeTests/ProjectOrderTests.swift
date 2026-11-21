@@ -2,7 +2,7 @@ import XCTest
 @testable import Porridge
 
 /// The order of a bucket's list (`Projects.ordered`), iOS and Mac alike: pinned first, then by last change; the
-/// To-dos filter by due day. Android's test of `Projects.ordered` has to give the same answers.
+/// To-dos filter by due day.
 @MainActor
 final class ProjectOrderTests: XCTestCase {
     private func note(_ title: String, minutesAgo: Double, pinned: Bool = false) -> Note {

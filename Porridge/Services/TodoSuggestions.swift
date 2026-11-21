@@ -20,7 +20,7 @@ struct TaskSuggestion: Equatable, Identifiable {
 
 /// To-dos suggested from the tasks of a summary (a meeting's or a note's). Nothing becomes a to-do without a tap:
 /// the meeting's page offers them, the user picks and takes them on, or dismisses them. What happened to each task
-/// is kept on the meeting (`Note.todoSuggestionsRaw`) so it is the same on every device. Android: `TodoSuggestions.kt`.
+/// is kept on the meeting (`Note.todoSuggestionsRaw`) so it is the same on every device.
 enum TodoSuggestions {
     static let taken = "taken"
     static let dismissed = "dismissed"

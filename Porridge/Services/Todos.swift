@@ -3,7 +3,7 @@ import SwiftData
 
 /// Whether a note is a to-do. A to-do is an ordinary note (same lists, buckets, inbox, search, chat and
 /// sync) with a done state; its subtasks are the checklist lines (`- [ ] ` / `- [x] `) of its text.
-/// Stored as `Note.todoStateRaw`: nil = never was a to-do, so its sync record stays as it was.
+/// Stored as `Note.todoStateRaw`: nil = never was a to-do.
 enum TodoState: String {
     case open
     case done
@@ -11,7 +11,7 @@ enum TodoState: String {
     case none
 }
 
-/// The rules of to-dos, kept free of views so Android can follow them (`Todos.kt`).
+/// The rules of to-dos, kept free of views.
 enum Todos {
     /// One checklist line of a to-do's text.
     struct Subtask: Equatable {
@@ -124,7 +124,7 @@ enum Todos {
         return nil
     }
 
-    // MARK: Sync
+    // MARK: Merging ticks
 
     /// Key of a subtask across versions of the text: its words and how many lines with the same words came before.
     private static func keyed(_ text: String) -> [String: Subtask] {
@@ -139,8 +139,8 @@ enum Todos {
         return result
     }
 
-    /// Three-way merge of the ticks when both devices changed a to-do: the text of `winner` (the newer one) with
-    /// the subtasks the other device ticked or unticked since `base`, as long as the winner left them alone.
+    /// Three-way merge of the ticks when two sides changed a to-do (the editor and a change from outside): the text
+    /// of `winner` with the subtasks the other side ticked or unticked since `base`, as long as the winner left them alone.
     static func mergeTicks(base: String, winner: String, loser: String) -> String {
         let baseItems = keyed(base), winnerItems = keyed(winner)
         var text = winner
@@ -150,36 +150,6 @@ enum Todos {
             text = setLine(mine.line, done: theirs.done, in: text)
         }
         return text
-    }
-
-    /// The record of a to-do changed on both devices: the newer one with the other one's ticks (see
-    /// `mergeTicks`), its done state following the merged subtasks. Nil when there is nothing to merge
-    /// (not a to-do, no base text, or the result is the newer record as it is).
-    static func mergeRecords(base: String?, winner: SyncRecord, loser: SyncRecord, now: Int64) -> SyncRecord? {
-        guard let base, isTodoRecord(winner), isTodoRecord(loser),
-              let winnerText = winner["text"] as? String, let loserText = loser["text"] as? String else { return nil }
-        let text = mergeTicks(base: base, winner: winnerText, loser: loserText)
-        guard text != winnerText else { return nil }
-        var merged = winner
-        merged["text"] = text
-        let state = TodoState(rawValue: winner["todoStateRaw"] as? String ?? "") ?? .open
-        switch stateAfterEdit(old: winnerText, new: text, state: state) {
-        case .done:
-            merged["todoStateRaw"] = TodoState.done.rawValue
-            merged["todoDoneAt"] = NSNumber(value: now)
-        case .open:
-            merged["todoStateRaw"] = TodoState.open.rawValue
-            merged["todoDoneAt"] = nil
-        default:
-            break
-        }
-        return merged
-    }
-
-    /// The record is of a to-do (open or done).
-    static func isTodoRecord(_ record: SyncRecord) -> Bool {
-        let raw = record["todoStateRaw"] as? String
-        return raw == TodoState.open.rawValue || raw == TodoState.done.rawValue
     }
 
     // MARK: Lists

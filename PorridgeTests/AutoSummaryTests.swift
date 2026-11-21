@@ -231,30 +231,22 @@ final class AutoSummaryTests: XCTestCase {
     }
 
     /// An entry from another device arrives by sync: its summary comes along, or it is not summarized twice.
-    func testSyncCarriesTheSummaryAndTheDeletion() throws {
-        let original = link()
-        original.summary = "## Zusammenfassung\nSauerteig."
-        original.summarizedAt = now
-        let copy = Note()
-        let record = try JSONSerialization.jsonObject(with: JSONSerialization.data(withJSONObject: SyncRecords.record(original))) as! SyncRecord
-        SyncRecords.apply(record, to: copy)
+    func testASyncedSummaryAndItsDeletionAreNotRedone() {
+        let copy = link()
+        copy.summary = "## Zusammenfassung\nSauerteig."
+        copy.summarizedAt = now
         XCTAssertFalse(due(copy, origin: false))
         XCTAssertFalse(due(copy, origin: true))
 
-        // Deleted on the other device: the record has no summary but keeps summarizedAt.
-        SummaryService.removeSummary(original)
-        let deletedRecord = SyncRecords.record(original)
-        XCTAssertNil(deletedRecord["summary"], "fields are written only when set")
-        SyncRecords.apply(deletedRecord, to: copy)
+        // Deleted on the other device: no summary, but summarizedAt stays.
+        SummaryService.removeSummary(copy)
         copy.updatedAt = now.addingTimeInterval(-AutoSummary.catchUpDelay - 1)
         XCTAssertNil(copy.summary)
+        XCTAssertNotNil(copy.summarizedAt)
         XCTAssertFalse(due(copy, origin: false), "a deleted summary does not come back on another device")
 
         // A link that came in elsewhere and has no summary yet: left to that device, caught up later.
-        let pending = Note()
-        let fresh = link()
-        SyncRecords.apply(SyncRecords.record(fresh), to: pending)
-        XCTAssertFalse(due(pending, origin: false))
+        XCTAssertFalse(due(link(), origin: false))
     }
 
     // MARK: - Attempts

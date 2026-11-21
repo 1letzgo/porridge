@@ -33,8 +33,6 @@ final class Library {
         let container = AppContainer.make()
         self.container = container
         processing = ProcessingService(container: container)
-        // On the empty fallback store the sync would take every note as deleted here and delete it everywhere.
-        if AppContainer.storeError == nil { NextcloudSync.shared.attach(container) }
 
         let center = NotificationCenter.default
         center.addObserver(forName: ModelContext.didSave, object: nil, queue: .main) { [weak self] _ in

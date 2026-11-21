@@ -75,8 +75,8 @@ targets:
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your device.
         NSCalendarsFullAccessUsageDescription: Porridge shows your calendar, lets you add events, and links recorded meetings to their appointment.
         NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
-        # A server of your own at home (Ollama, Nextcloud) often has no certificate: plain http is allowed there, and only there.
-        NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model or Nextcloud.
+        # A server of your own at home (Ollama) often has no certificate: plain http is allowed there, and only there.
+        NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         BGTaskSchedulerPermittedIdentifiers:
@@ -163,8 +163,8 @@ targets:
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your Mac. For dictation it listens while you hold the shortcut.
         NSCalendarsFullAccessUsageDescription: Porridge shows your calendar, lets you add events, and links recorded meetings to their appointment.
         NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
-        # A server of your own at home (Ollama, Nextcloud) often has no certificate: plain http is allowed there, and only there.
-        NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model or Nextcloud.
+        # A server of your own at home (Ollama) often has no certificate: plain http is allowed there, and only there.
+        NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSAppleEventsUsageDescription: Porridge pastes the dictated text into the app you are using.

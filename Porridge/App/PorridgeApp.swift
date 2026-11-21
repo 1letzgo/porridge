@@ -1,17 +1,14 @@
 import SwiftData
 import SwiftUI
 
-/// iOS wakes the app here when model downloads or uploads of recordings ended while it was not running.
+/// iOS wakes the app here when model downloads ended while it was not running.
 final class PorridgeAppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
         completionHandler: @escaping () -> Void
     ) {
-        // Each session tells iOS itself when it is done with its events; the wrong one would never call back.
-        switch identifier {
-        case RecordingUploads.sessionIdentifier: RecordingUploads.shared.backgroundCompletion = completionHandler
-        default: ModelBackgroundDownloads.shared.backgroundCompletion = completionHandler
-        }
+        // The session tells iOS itself when it is done with its events.
+        ModelBackgroundDownloads.shared.backgroundCompletion = completionHandler
     }
 }
 
@@ -28,8 +25,6 @@ struct PorridgeApp: App {
         let container = AppContainer.make()
         self.container = container
         _processing = State(initialValue: ProcessingService(container: container))
-        // On the empty fallback store the sync would take every note as deleted here and delete it everywhere.
-        if AppContainer.storeError == nil { NextcloudSync.shared.attach(container) }
         #if DEBUG
         MainActor.assumeIsolated { TestSeed.run(container) }
         #endif
@@ -56,8 +51,6 @@ struct PorridgeApp: App {
         }
         .modelContainer(container)
         .onChange(of: scenePhase) { _, phase in
-            // Back in the app: pick up what the other devices did.
-            if phase == .active { NextcloudSync.shared.syncSoon(after: .zero) }
             // A big model in memory gets an app in the background ended first.
             if phase == .background { Task { await ModelManager.shared.releaseLLM() } }
         }

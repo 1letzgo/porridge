@@ -25,8 +25,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private var observers: [Observing] = []
     private var libraryToken: UUID?
     private var shownErrors = Set<String>()
-    private var isFetchingAudio = false
-    private var fetchAudioError: String?
 
     // Head
     private let todoBox = TodoCheckboxButton()
@@ -70,9 +68,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
     // Bottom
     private lazy var playerBar = PlayerBarView(player: player)
-    private let fetchBar = NSStackView()
-    private let fetchButton = PillButton(title: "Download Recording", symbol: "arrow.down.circle", tint: .brandSky, target: nil, action: nil)
-    private let fetchMessage = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .brandDangerText)
     private let micButton = MicButton()
     private let micTime = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .semibold), color: .brandNavy)
     private var micTimer: Timer?
@@ -147,14 +142,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         content.translatesAutoresizingMaskIntoConstraints = false
         buildContent()
 
-        fetchButton.target = self
-        fetchButton.action = #selector(fetchRecording)
-        fetchBar.setViews([fetchButton, fetchMessage], in: .leading)
-        fetchBar.orientation = .vertical
-        fetchBar.alignment = .centerX
-        fetchBar.spacing = 6
         playerBar.onDelete = { [weak self] in self?.confirmDeleteRecording() }
-        let bottom = NSStackView.vertical([playerBar, fetchBar], spacing: 8, alignment: .centerX)
+        let bottom = NSStackView.vertical([playerBar], spacing: 8, alignment: .centerX)
 
         page.addSubview(head)
         page.addSubview(content)
@@ -446,11 +435,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         stage == nil && note.status == .ready && note.pendingAudioFileName == nil && (note.audioFileName == nil || note.hasLocalAudio)
     }
 
-    /// The recording is on Nextcloud and not here yet: it comes when asked for.
-    private var canFetchAudio: Bool {
-        note.audioFileName != nil && !note.hasLocalAudio && NextcloudSync.shared.isActive
-    }
-
     private func computeTabs() -> [(NoteTab, String)] {
         var list: [(NoteTab, String)] = []
         if opensOnSummary { list.append((.summary, "Summary")) }
@@ -558,11 +542,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
         // Bottom
         playerBar.isHidden = !(note.hasLocalAudio && tab != .note)
-        fetchBar.isHidden = !(canFetchAudio && tab != .note)
-        fetchButton.isEnabled = !isFetchingAudio
-        fetchButton.title = isFetchingAudio ? "Downloading…" : "Download Recording"
-        fetchMessage.stringValue = fetchAudioError ?? ""
-        fetchMessage.isHidden = fetchAudioError == nil
         renderMic()
 
         showErrors()
@@ -773,11 +752,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         let old = note.text
         guard text != old else { return }
         note.text = text
-        if !SyncRecords.wasJustApplied(note.id) {
-            note.updatedAt = Date()
-            // A box ticked in the editor, a subtask added: the to-do follows.
-            TodoBridge.follow(note, from: old)
-        }
+        note.updatedAt = Date()
+        // A box ticked in the editor, a subtask added: the to-do follows.
+        TodoBridge.follow(note, from: old)
         saveIfFilled()
     }
 
@@ -785,7 +762,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         guard (obj.object as? NSTextField) === titleField else { return }
         note.title = titleField.stringValue
         note.titleIsCustom = true
-        if !SyncRecords.wasJustApplied(note.id) { note.updatedAt = Date() }
+        note.updatedAt = Date()
         saveIfFilled()
     }
 
@@ -816,7 +793,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         }
     }
 
-    /// Takes a file off the note; the file itself goes with the next sync, once nothing points at it.
+    /// Takes a file off the note and deletes it on this device.
     private func removeAttachment(_ attachment: Attachment) {
         note.attachments.removeAll { $0.id == attachment.id }
         AudioStore.delete(attachment.fileName)
@@ -897,9 +874,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private func confirmDeleteRecording() {
         Alerts.confirm(
             "Delete Recording?",
-            message: NextcloudSync.shared.isActive
-                ? "The audio file is removed from all your devices and from Nextcloud. Transcript, speakers and summary stay."
-                : "The audio file is removed from this device. Transcript, speakers and summary stay.",
+            message: "The audio file is removed from this device. Transcript, speakers and summary stay.",
             action: "Delete Recording", in: view.window
         ) { [weak self] in
             guard let self else { return }
@@ -907,23 +882,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             AudioStore.delete(self.note.audioFileName)
             self.note.audioFileName = nil
             self.library.save()
-        }
-    }
-
-    @objc private func fetchRecording() {
-        guard let name = note.audioFileName else { return }
-        isFetchingAudio = true
-        fetchAudioError = nil
-        render()
-        Task { @MainActor in
-            do {
-                try await NextcloudSync.shared.fetchRecording(name)
-                player.load(AudioStore.url(for: name))
-            } catch {
-                fetchAudioError = error.localizedDescription
-            }
-            isFetchingAudio = false
-            render()
         }
     }
 

@@ -1,7 +1,7 @@
 import XCTest
 @testable import Porridge
 
-/// The same cases as Android's `HomeListLogicTest`.
+/// Small rules of the home list and the search.
 @MainActor
 final class NoteKindTests: XCTestCase {
     private func shown(_ kind: SearchKind) -> [String] {

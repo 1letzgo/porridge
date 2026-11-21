@@ -469,18 +469,12 @@ final class ProcessingService {
         if !text.isEmpty { summarizeIfIncoming(note) }
     }
 
-    /// Reads the text of the note's files into `pageText` and returns it. A file that is only on another device is
-    /// fetched first; while one is missing and nothing was read, the note counts as not looked at yet (`pageText`
-    /// stays nil), so the text is read once the file is here.
+    /// Reads the text of the note's files into `pageText` and returns it. While a file is missing (it is only on
+    /// another device) and nothing was read, the note counts as not looked at yet (`pageText` stays nil).
     @discardableResult
     private func readAttachments(of note: Note) async -> String {
         let id = note.id
         let attachments = note.attachments
-        if NextcloudSync.shared.isActive {
-            for attachment in attachments where !AttachmentStore.exists(attachment) {
-                try? await NextcloudSync.shared.fetchRecording(attachment.fileName)
-            }
-        }
         let present = attachments.filter(AttachmentStore.exists)
         let text = await AttachmentText.read(present.map { (url: AttachmentStore.url(for: $0), attachment: $0) })
         guard exists(id) else { return text }

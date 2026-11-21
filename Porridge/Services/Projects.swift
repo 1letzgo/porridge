@@ -2,13 +2,13 @@ import Foundation
 import SwiftData
 
 /// Projects: creating, renaming and deleting them, assigning notes and tasks, and what belongs to one.
-/// A project is a `NoteFolder`; elements name theirs in `projectIDs` (uppercase UUID strings, as on Android).
+/// A project is a `NoteFolder`; elements name theirs in `projectIDs` (uppercase UUID strings).
 enum Projects {
     static func key(_ project: NoteFolder) -> String { project.id.uuidString }
 
     /// The order of a bucket's list (iOS and Mac, every filter): one flat list, pinned notes first, each part by last
     /// change (newest first). `byDue` (the To-dos filter): within each part open to-dos by due day, then done ones
-    /// (`Todos.byDue`), ties by last change. Android's `Projects.ordered` mirrors this.
+    /// (`Todos.byDue`), ties by last change.
     static func ordered(_ notes: [Note], byDue: Bool = false) -> [Note] {
         let newest = notes.sorted { $0.updatedAt > $1.updatedAt }
         let pinned = newest.filter(\.isPinned)
@@ -43,26 +43,6 @@ enum Projects {
         }
         context.delete(project)
         try? context.save()
-    }
-
-    /// Takes the notes out of buckets that are not in `known` (deleted on another device, so `delete` never ran
-    /// here): otherwise such a note is in no list, neither the inbox nor a bucket. Suggestions of such buckets go
-    /// too. `known` must be every bucket there is, i.e. taken only after the buckets of a sync run are merged.
-    /// `updatedAt` stays: leaving a bucket that is gone is no edit and must not make the note newer elsewhere.
-    /// - Returns: the notes changed.
-    @discardableResult
-    static func pruneUnknown(_ notes: [Note], known: Set<String>) -> [Note] {
-        let known = Set(known.map { $0.uppercased() })
-        var changed: [Note] = []
-        for note in notes {
-            let projects = note.projectIDs.filter { known.contains($0.uppercased()) }
-            let suggested = note.suggestedProjectIDs.filter { known.contains($0.uppercased()) }
-            guard projects.count != note.projectIDs.count || suggested.count != note.suggestedProjectIDs.count else { continue }
-            if projects.count != note.projectIDs.count { note.projectIDs = projects }
-            if suggested.count != note.suggestedProjectIDs.count { note.suggestedProjectIDs = suggested }
-            changed.append(note)
-        }
-        return changed
     }
 
     static func toggle(_ project: NoteFolder, on note: Note, in context: ModelContext) {

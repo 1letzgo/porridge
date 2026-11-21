@@ -53,7 +53,6 @@ enum AppSettings {
     static let externalModelsKey = "summaryExternalModels"
     /// Off by default: a new note opens for typing. On: it starts recording right away.
     static let recordsNewNotesKey = "recordsNewNotes"
-    static let recordingsWiFiOnlyKey = "recordingsWiFiOnly"
     static let customTemplatesKey = "customSummaryTemplates"
     static let voiceRecognitionKey = "voiceRecognition"
     static let providerKey = "aiProvider"
@@ -91,7 +90,6 @@ enum AppSettings {
             localModelKey: LocalModel.defaultChoice.rawValue,
             voiceRecognitionKey: true,
             recordsNewNotesKey: false,
-            recordingsWiFiOnlyKey: true,
             summarizeIncomingKey: true,
             providerKey: AIProvider.openRouter.rawValue,
         ])
@@ -100,7 +98,6 @@ enum AppSettings {
     /// The names the user goes by, lowercased; empty when none is set.
     static var recordsNewNotes: Bool { UserDefaults.standard.bool(forKey: recordsNewNotesKey) }
     static var summarizeIncoming: Bool { UserDefaults.standard.bool(forKey: summarizeIncomingKey) }
-    static var recordingsWiFiOnly: Bool { UserDefaults.standard.bool(forKey: recordingsWiFiOnlyKey) }
 
     static var myNames: [String] {
         myNames(from: UserDefaults.standard.string(forKey: myNameKey) ?? "", voice: UserDefaults.standard.string(forKey: myVoiceNameKey) ?? "")
@@ -123,7 +120,6 @@ enum AppSettings {
     static func setMyVoice(_ profile: VoiceProfile?) {
         UserDefaults.standard.set(profile?.id.uuidString, forKey: myVoiceKey)
         UserDefaults.standard.set(profile?.name, forKey: myVoiceNameKey)
-        Task { @MainActor in NextcloudSync.shared.syncSoon() }
     }
 
     /// Whether a speaker or owner name is the user: the whole name or the first name of either side matches.

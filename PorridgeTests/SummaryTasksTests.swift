@@ -2,7 +2,7 @@ import SwiftData
 import XCTest
 @testable import Porridge
 
-/// The same cases as Android's `SummaryTasksLogicTest`, on a store in memory.
+/// The tasks of a summary, on a store in memory.
 @MainActor
 final class SummaryTasksTests: XCTestCase {
     private let summary = """

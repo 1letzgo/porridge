@@ -21,12 +21,39 @@ enum DataLocation {
     }
 }
 
+/// Whether the notes sync through iCloud. Chosen in the settings; a change takes effect at the next launch
+/// (the SwiftData store is set up with or without CloudKit when the app starts).
+enum SyncMode: String, CaseIterable, Identifiable {
+    case off
+    case iCloud = "icloud"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .off: "Off"
+        case .iCloud: "iCloud"
+        }
+    }
+
+    static let key = "syncMode"
+
+    /// The choice in the settings; iCloud for everyone who had the app before there was a choice, and for
+    /// everyone who had chosen the Nextcloud sync of earlier versions (its value is no case any more).
+    static var chosen: SyncMode {
+        UserDefaults.standard.string(forKey: key).flatMap(SyncMode.init(rawValue:)) ?? .iCloud
+    }
+
+    /// The mode the app was started with; off on test data (`DataLocation.testFolder`).
+    static let active = DataLocation.testFolder == nil ? chosen : .off
+}
+
 enum AppContainer {
     /// Set when the notes could not be opened and the app runs on an empty store in memory (see `make`).
     nonisolated(unsafe) private(set) static var storeError: String?
 
     /// SwiftData store, synced through the private CloudKit database (container from the entitlements) when
-    /// iCloud is the chosen sync; otherwise local (Nextcloud syncs on its own, see `NextcloudSync`).
+    /// iCloud sync is on; otherwise local only.
     static func make() -> ModelContainer {
         let schema = Schema([Meeting.self, Note.self, NoteFolder.self, VoiceProfile.self, ChatThread.self, ChatEntry.self])
         if let folder = DataLocation.testFolder {

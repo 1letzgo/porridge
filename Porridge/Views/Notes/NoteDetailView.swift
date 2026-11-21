@@ -27,10 +27,6 @@ struct NoteDetailView: View {
     @State private var dictation = InlineDictation()
     @State private var didStartRecording = false
     @State private var showExport = false
-    @State private var isFetchingAudio = false
-    @State private var fetchAudioError: String?
-    /// Redraws when a recording arrived: the file on disk is not observed.
-    @State private var fetchedAudio = 0
     @State private var showContinueRecording = false
     @State private var confirmContinueRecording = false
     /// Character offset where the current dictation starts; text before it is never changed.
@@ -138,9 +134,6 @@ struct NoteDetailView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 8)
             }
-            if fetchedAudio >= 0, canFetchAudio, tab != .note, !focused {
-                fetchAudioBar
-            }
         }
         .toolbar { toolbar }
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -197,15 +190,13 @@ struct NoteDetailView: View {
             if dictation.phase == .recording { Task { await finishDictation() } }
         }
         .onChange(of: note.text) { old, _ in
-            if !SyncRecords.wasJustApplied(note.id) {
-                note.updatedAt = Date()
-                // A box ticked in the editor, a subtask added: the to-do follows.
-                Todos.follow(note, from: old)
-            }
+            note.updatedAt = Date()
+            // A box ticked in the editor, a subtask added: the to-do follows.
+            Todos.follow(note, from: old)
             saveIfFilled()
         }
         .onChange(of: note.title) {
-            if !SyncRecords.wasJustApplied(note.id) { note.updatedAt = Date() }
+            note.updatedAt = Date()
             saveIfFilled()
         }
         .sheet(isPresented: $pickingDue) { DueDatePickerSheet(note: note) }
@@ -272,9 +263,7 @@ struct NoteDetailView: View {
             Button("Cancel", role: .cancel) {}
             Button("Delete Recording", role: .destructive, action: deleteAudio)
         } message: {
-            Text(NextcloudSync.shared.isActive
-                ? "The audio file is removed from all your devices and from Nextcloud. Transcript, speakers and summary stay."
-                : "The audio file is removed from this device. Transcript, speakers and summary stay.")
+            Text("The audio file is removed from this device. Transcript, speakers and summary stay.")
         }
         .alert("Rename Speaker", isPresented: .constant(renamingSpeaker != nil)) {
             TextField("Name", text: $renameText)
@@ -445,7 +434,7 @@ struct NoteDetailView: View {
         }
     }
 
-    /// Takes a file off the note; the file itself goes with the next sync, once nothing points at it.
+    /// Takes a file off the note and deletes it on this device.
     private func removeAttachment(_ attachment: Attachment) {
         note.attachments.removeAll { $0.id == attachment.id }
         AudioStore.delete(attachment.fileName)
@@ -673,46 +662,6 @@ struct NoteDetailView: View {
     private var canContinueRecording: Bool {
         processing.stages[note.id] == nil && note.status == .ready && note.pendingAudioFileName == nil
             && (note.audioFileName == nil || note.hasLocalAudio)
-    }
-
-    /// The recording is on Nextcloud and not here yet: it comes when asked for.
-    private var canFetchAudio: Bool {
-        note.audioFileName != nil && !note.hasLocalAudio && NextcloudSync.shared.isActive
-    }
-
-    private var fetchAudioBar: some View {
-        VStack(spacing: 6) {
-            Button {
-                Task { await fetchAudio() }
-            } label: {
-                if isFetchingAudio {
-                    ProgressView().tint(Color.brandNavy)
-                } else {
-                    Label("Download Recording", systemImage: "arrow.down.circle")
-                }
-            }
-            .buttonStyle(ChunkyButtonStyle())
-            .disabled(isFetchingAudio)
-            if let fetchAudioError {
-                Text(fetchAudioError).font(.footnote).foregroundStyle(Color.brandDangerText)
-            }
-        }
-        .padding(.horizontal)
-        .padding(.bottom, 8)
-    }
-
-    private func fetchAudio() async {
-        guard let name = note.audioFileName else { return }
-        isFetchingAudio = true
-        fetchAudioError = nil
-        defer { isFetchingAudio = false }
-        do {
-            try await NextcloudSync.shared.fetchRecording(name)
-            fetchedAudio += 1
-            player.load(AudioStore.url(for: name))
-        } catch {
-            fetchAudioError = error.localizedDescription
-        }
     }
 
     private var isSummarizing: Bool { processing.summarizing.contains(note.id) }

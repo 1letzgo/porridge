@@ -25,8 +25,8 @@ enum NoteSource: String {
     }
 }
 
-/// A file that belongs to a note. It lives in the same store as the recordings (`AudioStore`) and travels to the
-/// other devices the same way. Field names are those of the Android app's JSON.
+/// A file that belongs to a note. It lives in the same store as the recordings (`AudioStore`) and, like them,
+/// stays on the device it was added on; the note's list of attachments syncs.
 struct Attachment: Codable, Identifiable, Hashable {
     enum Kind: String, Codable {
         case image

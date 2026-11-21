@@ -2,7 +2,7 @@ import XCTest
 @testable import Porridge
 
 /// A task's own words are no date unless they name one: month short forms that are everyday words ("out", "set",
-/// "may") only count with a marked day or a year. Android's `TodoSuggestionsTest` has to give the same answers.
+/// "may") only count with a marked day or a year.
 @MainActor
 final class TodoSuggestionsDateGuessTests: XCTestCase {
     private var berlin: Calendar {

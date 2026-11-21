@@ -36,7 +36,7 @@
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Porridge shows your calendar, lets you add events, and links recorded meetings to their appointment.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Porridge connects to servers in your network that you entered yourself, such as your own AI model or Nextcloud.</string>
+	<string>Porridge connects to servers in your network that you entered yourself, such as your own AI model.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Porridge records meetings and notes with the microphone and transcribes them on your Mac. For dictation it listens while you hold the shortcut.</string>
 </dict>

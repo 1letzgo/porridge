@@ -4,8 +4,6 @@ import AppKit
 final class GeneralSettingsPane: SettingsPane {
     private lazy var nameField = SettingsTextField(placeholder: "Your Name") { name in
         UserDefaults.standard.set(name, forKey: AppSettings.myNameKey)
-        // The name follows the user to their other devices.
-        NextcloudSync.shared.syncSoon()
     }
     private let plaudStatus = NSTextField.label()
     private lazy var plaudButton = NSButton.push("Sign In…") { [weak self] in self?.plaudTapped() }

@@ -109,7 +109,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let buckets = library.activeProjects
         // Pinned buckets first, then by name.
         let sorted = buckets.filter(\.isPinned) + buckets.filter { !$0.isPinned }
-        // "Up Next", as the section of the home list on iOS and Android: the Inbox and, under it, the to-dos
+        // "Up Next", as the section of the home list on iOS: the Inbox and, under it, the to-dos
         // folder while there are to-dos to show.
         var upNext: [SidebarNode] = [SidebarNode(.page(.inbox))]
         if !Todos.folder(notes).isEmpty || state.page == .todos { upNext.append(SidebarNode(.page(.todos))) }
