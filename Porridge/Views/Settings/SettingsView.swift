@@ -5,13 +5,15 @@ import UniformTypeIdentifiers
 
 /// The areas the settings are split into; one shows at a time, chosen with the pills on top.
 enum SettingsArea: String, CaseIterable {
-    case general, recording, ai
+    case general, recording, summary, chat, models
 
     var title: LocalizedStringKey {
         switch self {
         case .general: "General"
         case .recording: "Recording"
-        case .ai: "AI"
+        case .summary: "Summary"
+        case .chat: "Chat"
+        case .models: "Models"
         }
     }
 }
@@ -181,8 +183,12 @@ struct SettingsView: View {
         case .recording:
             transcriptionCard
             speakersCard
-        case .ai:
+        case .summary:
             summaryCard
+        case .chat:
+            chatCard
+        case .models:
+            modelsCard
         }
     }
 
@@ -214,7 +220,7 @@ struct SettingsView: View {
 
     private var transcriptionCard: some View {
         SettingsCard(title: "Transcription") {
-            // Built like the AI card: the default on top, then the models on this device.
+            // Built like the Models card: the default on top, then the models on this device.
             if SpeechEngine.available.count > 1 {
                 MenuRow(
                     title: "Default Model",
@@ -309,19 +315,24 @@ struct SettingsView: View {
     }
 
     private var summaryCard: some View {
-        SettingsCard(title: "AI Summary") {
+        SettingsCard(title: "Summary") {
+            // Links, images, files, shared text and imported audio are summarized as they come in (`AutoSummary`).
+            Toggle("Summarize Incoming Entries", isOn: $summarizeIncoming)
+            CardDivider()
+
+            HStack {
+                Text("Custom Templates").font(.body)
+                Spacer(minLength: 12)
+                Button("Edit") { showTemplates = true }.buttonStyle(PillButtonStyle())
+            }
+        }
+    }
+
+    private var chatCard: some View {
+        SettingsCard(title: "Chat") {
             if SummaryModel.available.isEmpty {
-                ValueRow(title: "Default Model", value: "None added")
+                ValueRow(title: "Chat Model", value: "None added")
             } else {
-                MenuRow(
-                    title: "Default Model",
-                    selection: Binding(get: { defaultModel }, set: {
-                        defaultModel = $0
-                        SummaryModel.current = $0
-                    }),
-                    options: SummaryModel.available.map { (value: $0, title: $0.name) }
-                )
-                CardDivider()
                 // The chat may answer with another model than the summaries ("Same as Default" is the default).
                 MenuRow(
                     title: "Chat Model",
@@ -336,16 +347,23 @@ struct SettingsView: View {
                     Text(hint).font(.footnote).foregroundStyle(.secondary)
                 }
             }
-            CardDivider()
+        }
+    }
 
-            // Links, images, files, shared text and imported audio are summarized as they come in (`AutoSummary`).
-            Toggle("Summarize Incoming Entries", isOn: $summarizeIncoming)
-            CardDivider()
-
-            HStack {
-                Text("Custom Templates").font(.body)
-                Spacer(minLength: 12)
-                Button("Edit") { showTemplates = true }.buttonStyle(PillButtonStyle())
+    /// The default model on top, then the models on this device and in the cloud.
+    private var modelsCard: some View {
+        SettingsCard(title: "Models") {
+            if SummaryModel.available.isEmpty {
+                ValueRow(title: "Default Model", value: "None added")
+            } else {
+                MenuRow(
+                    title: "Default Model",
+                    selection: Binding(get: { defaultModel }, set: {
+                        defaultModel = $0
+                        SummaryModel.current = $0
+                    }),
+                    options: SummaryModel.available.map { (value: $0, title: $0.name) }
+                )
             }
             CardDivider()
 
