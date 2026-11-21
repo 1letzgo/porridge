@@ -33,8 +33,8 @@ final class IntakeFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["Keep without Bowl"].exists, "the inbox still offers to keep without a bowl")
         XCTAssertFalse(app.buttons["File into Bowl"].exists, "the inbox still shows a bowl pill under the row")
         row.press(forDuration: 1)
-        let file = app.buttons["Bowls"].firstMatch
-        XCTAssertTrue(file.waitForExistence(timeout: 5), "bowls missing in the long press")
+        let file = app.buttons["Bowl"].firstMatch
+        XCTAssertTrue(file.waitForExistence(timeout: 5), "bowl menu missing in the long press")
         file.tap()
         // With many bowls the menu scrolls; the new one may be further down.
         let choice = app.buttons[bucket].firstMatch

@@ -46,8 +46,8 @@ final class NotesFlowTests: XCTestCase {
         settings.tap()
         let row = app.buttons["Acknowledgements"].firstMatch
         XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
-        // The settings are split into areas; the row is in "About", which is still chosen after coming back.
-        app.buttons["About"].firstMatch.tap()
+        // The settings are split into areas; the row is in "General", which is still chosen after coming back.
+        app.buttons["General"].firstMatch.tap()
         XCTAssertTrue(app.reveal(row), "acknowledgements row missing")
         row.tap()
         XCTAssertTrue(app.staticTexts["Libraries"].waitForExistence(timeout: 10), "acknowledgements did not open")
