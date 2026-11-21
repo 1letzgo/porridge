@@ -11,9 +11,10 @@ enum Inbox {
         all.filter(\.isInInbox).sorted { $0.createdAt > $1.createdAt }
     }
 
-    /// Files the note into a bowl; it leaves the inbox and its suggestions are settled.
+    /// Files the note into a bowl, in place of the one it was in (an entry is in one bowl at most); it leaves the
+    /// inbox and its suggestions are settled.
     static func file(_ note: Note, into project: String, in context: ModelContext) {
-        if !note.projectIDs.contains(project) { note.projectIDs.append(project) }
+        note.projectIDs = Projects.assigned(project)
         settle(note, in: context)
     }
 

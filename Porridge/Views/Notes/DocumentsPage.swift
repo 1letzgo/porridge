@@ -153,24 +153,29 @@ struct DocumentChip: View {
 
     var body: some View {
         let info = note.documentInfo ?? DocumentInfo()
+        let kind = info.kind ?? .other
         Button { editing = true } label: {
             Group {
                 if info.isEmpty {
+                    // Nothing known yet: neutral and outlined, like an offer to add something.
                     Label("Document", systemImage: "plus")
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1))
                 } else {
+                    // The kind's own colour, as a wash like the bowls' and the tags': the symbol in it, the text plain.
                     HStack(spacing: 6) {
-                        Image(systemName: (info.kind ?? .other).symbol).font(.caption)
-                        Text(info.shortLabel).lineLimit(1)
+                        Image(systemName: kind.symbol).font(.caption).foregroundStyle(kind.hue.color)
+                        Text(info.shortLabel).lineLimit(1).foregroundStyle(.primary)
                     }
                     .frame(maxWidth: 240)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(kind.hue.color.opacity(0.2), in: Capsule())
                 }
             }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            // Outlined grey: set apart from the bowls (violet wash) and the tags (sky wash).
-            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1))
             .contentShape(Capsule())
             .fixedSize(horizontal: info.isEmpty, vertical: false)
         }
@@ -178,6 +183,25 @@ struct DocumentChip: View {
         .accessibilityLabel(info.isEmpty ? String(localized: "Add Document Details") : info.sentence)
         .accessibilityHint("Edit")
         .sheet(isPresented: $editing) { DocumentInfoSheet(note: note) }
+    }
+}
+
+extension DocumentKind.Hue {
+    /// The system colour of the hue: it adapts to dark mode.
+    var color: Color {
+        switch self {
+        case .teal: .teal
+        case .mint: .mint
+        case .brown: .brown
+        case .yellow: .yellow
+        case .cyan: .cyan
+        case .green: .green
+        case .red: .red
+        case .orange: .orange
+        case .pink: .pink
+        case .indigo: .indigo
+        case .gray: .gray
+        }
     }
 }
 

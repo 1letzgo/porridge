@@ -35,6 +35,37 @@ final class InboxTests: XCTestCase {
         XCTAssertEqual(Inbox.notes([old, a, c]).map(\.id), [c.id])
     }
 
+    func testAnEntryIsInOneBowlAtMost() throws {
+        let context = try TestStore.context()
+        let home = NoteFolder(name: "Home"), work = NoteFolder(name: "Work"), trip = NoteFolder(name: "Trip")
+        [home, work, trip].forEach(context.insert)
+        let note = Note()
+        context.insert(note)
+
+        // Filing, accepting a suggestion and the menus replace the bowl, they never add a second.
+        Inbox.file(note, into: Projects.key(home), in: context)
+        Inbox.file(note, into: Projects.key(work), in: context)
+        XCTAssertEqual(note.projectIDs, [Projects.key(work)])
+        Projects.toggle(trip, on: note, in: context)
+        XCTAssertEqual(note.projectIDs, [Projects.key(trip)])
+        Projects.toggle(trip, on: note, in: context)
+        XCTAssertTrue(note.isInInbox)
+        Documents.apply(.move(toBowl: Projects.key(home)), to: [note], in: context)
+        XCTAssertEqual(note.projectIDs, [Projects.key(home)])
+        XCTAssertEqual(Projects.assigned("X"), ["X"])
+
+        // An entry from before in several bowls keeps them; taking it out of one leaves the others, and putting it
+        // into a bowl moves it there.
+        let old = Note()
+        old.projectIDs = [Projects.key(home), Projects.key(work)]
+        context.insert(old)
+        Projects.remove(home, from: old, in: context)
+        XCTAssertEqual(old.projectIDs, [Projects.key(work)])
+        old.projectIDs = [Projects.key(home), Projects.key(work)]
+        Projects.toggle(trip, on: old, in: context)
+        XCTAssertEqual(old.projectIDs, [Projects.key(trip)])
+    }
+
     func testTheSuggestedBucketIsReadOffTheAnswer() {
         let projects = [NoteFolder(name: "Trip to Goa"), NoteFolder(name: "Küche")]
         let line = Inbox.promptLine(projects)

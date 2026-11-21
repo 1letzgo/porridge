@@ -49,15 +49,11 @@ enum NoteOperations {
         }
         let pinned = notes.allSatisfy(\.isPinned)
         menu.add(pinned ? "Unpin" : "Pin", symbol: pinned ? "pin.slash" : "pin") { setPinned(!pinned, notes) }
-        let buckets = NSMenuItem(title: "Bowls", action: nil, keyEquivalent: "")
+        // Into one bowl (in place of the one they are in) or back to the inbox, all selected at once.
+        let buckets = NSMenuItem(title: notes.count == 1 ? "Bowl" : "Bowl of \(notes.count)", action: nil, keyEquivalent: "")
         buckets.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         buckets.submenu = bucketMenu(for: notes, window: window)
         menu.addItem(buckets)
-        // Into one bowl (out of the others) or back to the inbox, all selected at once.
-        let move = NSMenuItem(title: notes.count == 1 ? "Move to" : "Move \(notes.count) to", action: nil, keyEquivalent: "")
-        move.image = NSImage(systemSymbolName: "arrow.right.doc.on.clipboard", accessibilityDescription: nil)
-        move.submenu = moveMenu(for: notes)
-        menu.addItem(move)
         addDocumentItems(for: notes, to: menu, window: window)
         menu.addSeparator()
         menu.add("Copy", symbol: "doc.on.doc") { copy(notes) }
@@ -71,36 +67,9 @@ enum NoteOperations {
         }
     }
 
-    /// A menu of the bowls, ticked where all the notes are in; a click puts them in or takes them out.
+    /// The inbox and the bowls, ticked where all the notes are: a click moves them there (in place of their bowl;
+    /// an entry is in one bowl at most).
     static func bucketMenu(for notes: [Note], window: NSWindow?) -> NSMenu {
-        let menu = NSMenu()
-        for project in library.activeProjects {
-            let key = Projects.key(project)
-            let inAll = notes.allSatisfy { $0.projectIDs.contains(key) }
-            let item = menu.add(project.name) {
-                for note in notes {
-                    if inAll {
-                        note.projectIDs.removeAll { $0 == key }
-                        note.updatedAt = Date()
-                    } else if !note.projectIDs.contains(key) {
-                        Inbox.file(note, into: key, in: context)
-                    }
-                }
-                library.save()
-            }
-            item.state = inAll ? .on : (notes.contains { $0.projectIDs.contains(key) } ? .mixed : .off)
-        }
-        menu.addSeparator()
-        menu.add("New Bowl…") {
-            BucketActions.create(in: window) { project in
-                notes.forEach { Inbox.file($0, into: Projects.key(project), in: context) }
-            }
-        }
-        return menu
-    }
-
-    /// The inbox and the bowls: a click moves all the notes there (`Documents.apply`).
-    static func moveMenu(for notes: [Note]) -> NSMenu {
         let menu = NSMenu()
         let inbox = menu.add("Inbox", symbol: "tray") { Documents.apply(.move(toBowl: nil), to: notes, in: context) }
         inbox.state = notes.allSatisfy(\.isInInbox) ? .on : .off
@@ -108,7 +77,13 @@ enum NoteOperations {
         for project in library.activeProjects {
             let key = Projects.key(project)
             let item = menu.add(project.name, symbol: "folder") { Documents.apply(.move(toBowl: key), to: notes, in: context) }
-            item.state = notes.allSatisfy { $0.projectIDs == [key] } ? .on : .off
+            item.state = notes.allSatisfy { $0.projectIDs == [key] } ? .on : (notes.contains { $0.projectIDs.contains(key) } ? .mixed : .off)
+        }
+        menu.addSeparator()
+        menu.add("New Bowl…") {
+            BucketActions.create(in: window) { project in
+                notes.forEach { Inbox.file($0, into: Projects.key(project), in: context) }
+            }
         }
         return menu
     }

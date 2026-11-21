@@ -45,20 +45,27 @@ enum Projects {
         try? context.save()
     }
 
+    /// Takes the note out of the bowl when it is in it, otherwise puts it into that bowl instead of the one it is in:
+    /// an entry is in one bowl at most.
+    @MainActor
     static func toggle(_ project: NoteFolder, on note: Note, in context: ModelContext) {
-        note.projectIDs = toggled(note.projectIDs, key(project))
-        // Put into a bowl by hand: it has left the inbox, whatever was suggested.
         if note.projectIDs.contains(key(project)) {
-            note.filedAt = note.filedAt ?? Date()
-            note.suggestedProjectIDs = []
+            remove(project, from: note, in: context)
+        } else {
+            Inbox.file(note, into: key(project), in: context)
         }
+    }
+
+    /// Takes the note out of the bowl; out of its only one, it is back in the inbox.
+    static func remove(_ project: NoteFolder, from note: Note, in context: ModelContext) {
+        note.projectIDs.removeAll { $0 == key(project) }
         note.updatedAt = Date()
         try? context.save()
     }
 
-    private static func toggled(_ ids: [String], _ id: String) -> [String] {
-        ids.contains(id) ? ids.filter { $0 != id } : ids + [id]
-    }
+    /// The bowls a note is in after it is put into `bowl`: that one only. Entries from before (in several) are
+    /// moved, not added to.
+    static func assigned(_ bowl: String) -> [String] { [bowl] }
 
     /// Notes from the folder days join the project their folder became.
     static func migrateFolders(in context: ModelContext) {

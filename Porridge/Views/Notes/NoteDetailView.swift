@@ -484,9 +484,11 @@ struct NoteDetailView: View {
                 if note.isTodo, !note.isDeleted {
                     DueDateChip(note: note, isPicking: $pickingDue)
                 }
-                ProjectPills(assigned: note.projectIDs) { project in
-                    Projects.toggle(project, on: note, in: context)
-                }
+                ProjectPills(
+                    assigned: note.projectIDs,
+                    onChoose: { Inbox.file(note, into: Projects.key($0), in: context) },
+                    onRemove: { Projects.remove($0, from: note, in: context) }
+                )
                 // A stored file: what it is as a document, after its bowls; a tap sets it (and so marks it as one).
                 if note.isStored, !note.isDeleted {
                     DocumentChip(note: note)

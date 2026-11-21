@@ -17,8 +17,8 @@ enum ShareImport {
             let project = entry.projectID.flatMap { folders.contains($0) ? $0 : nil }
             let notes = save(entry, known: &known, context: context, processing: processing)
             for note in notes {
-                if let project, !note.projectIDs.contains(project) {
-                    note.projectIDs.append(project)
+                if let project, note.projectIDs != [project] {
+                    note.projectIDs = Projects.assigned(project)
                     note.filedAt = note.filedAt ?? Date()
                 }
             }

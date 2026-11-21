@@ -1052,9 +1052,7 @@ struct NotesView: View {
 
     /// A recorded meeting: stored, opened and transcribed.
     private func insertAndProcess(_ note: Note) {
-        if let project = projectForNew, !note.projectIDs.contains(project) {
-            note.projectIDs.append(project)
-        }
+        if let project = projectForNew { note.projectIDs = Projects.assigned(project) }
         context.insert(note)
         try? context.save()
         draft = nil

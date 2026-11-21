@@ -1,10 +1,14 @@
 import SwiftData
 import SwiftUI
 
-/// The projects of a note as violet pills, and a menu to add it to more (or a new one).
+/// The bowl of a note as a violet pill: a tap on it changes the bowl, the cross takes the note out. Without a bowl,
+/// "+ Bowl" puts it into one. An entry is in one bowl at most; one from before that is in several shows each.
 struct ProjectPills: View {
     let assigned: [String]
-    let onToggle: (NoteFolder) -> Void
+    /// Puts the note into the bowl, in place of the one it is in.
+    let onChoose: (NoteFolder) -> Void
+    /// Takes the note out of the bowl.
+    let onRemove: (NoteFolder) -> Void
 
     @Environment(\.modelContext) private var context
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
@@ -12,12 +16,21 @@ struct ProjectPills: View {
     @State private var name = ""
 
     var body: some View {
+        let shown = projects.filter { assigned.contains(Projects.key($0)) }
         HStack(spacing: 8) {
-            ForEach(projects.filter { assigned.contains(Projects.key($0)) }) { project in
+            ForEach(shown) { project in
                 HStack(spacing: 6) {
-                    Image(systemName: "folder.fill").font(.caption)
-                    Text(project.name).font(.subheadline.weight(.semibold))
-                    Button { onToggle(project) } label: {
+                    Menu { choices } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "folder.fill").font(.caption)
+                            Text(project.name).font(.subheadline.weight(.semibold))
+                        }
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Bowl \(project.name)")
+                    .accessibilityHint("Change Bowl")
+                    Button { onRemove(project) } label: {
                         Image(systemName: "xmark").font(.caption2.weight(.bold))
                     }
                     .buttonStyle(.plain)
@@ -27,44 +40,51 @@ struct ProjectPills: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .chunkyPill(fill: .brandProject)
+                .fixedSize()
             }
-            Menu {
-                ForEach(projects) { project in
-                    Button { onToggle(project) } label: {
-                        if assigned.contains(Projects.key(project)) {
-                            Label(project.name, systemImage: "checkmark")
-                        } else {
-                            Text(project.name)
-                        }
-                    }
+            if shown.isEmpty {
+                Menu { choices } label: {
+                    Label("Bowl", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.brandProject)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .chunkyPill(fill: .gray)
                 }
-                if !projects.isEmpty { Divider() }
-                Button { name = ""; creating = true } label: { Label("New Bowl…", systemImage: "folder.badge.plus") }
-            } label: {
-                Label("Bowl", systemImage: "plus")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.brandProject)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .chunkyPill(fill: .gray)
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .fixedSize()
+                .accessibilityLabel("Add to Bowl")
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .fixedSize()
-            .accessibilityLabel("Add to Bowl")
         }
         .alert("New Bowl", isPresented: $creating) {
             TextField("Name", text: $name)
             Button("Cancel", role: .cancel) {}
             Button("Create") {
-                if let project = Projects.create(name, in: context) { onToggle(project) }
+                if let project = Projects.create(name, in: context) { onChoose(project) }
             }
         }
     }
+
+    /// The active bowls to choose from, the note's ticked, and a new one.
+    @ViewBuilder
+    private var choices: some View {
+        ForEach(projects.filter { !$0.isArchived || assigned.contains(Projects.key($0)) }) { project in
+            Button { if !assigned.contains(Projects.key(project)) { onChoose(project) } } label: {
+                if assigned.contains(Projects.key(project)) {
+                    Label(project.name, systemImage: "checkmark")
+                } else {
+                    Text(project.name)
+                }
+            }
+        }
+        if !projects.isEmpty { Divider() }
+        Button { name = ""; creating = true } label: { Label("New Bowl…", systemImage: "folder.badge.plus") }
+    }
 }
 
-/// "Projects" in a context menu: every project to tick, so a long press adds an element to one.
-/// Missing when there are no projects yet (they are made in the Projects tab).
+/// "Bowl" in a context menu: every bowl, the note's ticked; a long press moves the element into another one (`Projects.toggle`:
+/// in place of its bowl) or, on the ticked one, out of it. Missing when there are no bowls yet.
 struct ProjectMenu: View {
     let assigned: [String]
     let onToggle: (NoteFolder) -> Void
@@ -85,7 +105,7 @@ struct ProjectMenu: View {
                     }
                 }
             } label: {
-                Label("Bowls", systemImage: "folder")
+                Label("Bowl", systemImage: "folder")
             }
         }
     }

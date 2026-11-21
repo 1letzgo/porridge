@@ -76,6 +76,28 @@ enum DocumentKind: String, CaseIterable, Codable, Identifiable {
         return DocumentKind(rawValue: key) ?? words[key]
     }
 
+    /// The colour of the kind's chip, one per kind, shared by iOS and Mac (each maps it to its system colour, which
+    /// adapts to dark mode). Kept clear of the bowls' violet and the tags' sky blue; "other" is neutral.
+    enum Hue: String, CaseIterable {
+        case teal, mint, brown, yellow, cyan, green, red, orange, pink, indigo, gray
+    }
+
+    var hue: Hue {
+        switch self {
+        case .invoice: .teal
+        case .receipt: .mint
+        case .contract: .brown
+        case .letter: .yellow
+        case .statement: .cyan
+        case .payslip: .green
+        case .notice: .red
+        case .certificate: .orange
+        case .offer: .pink
+        case .insurance: .indigo
+        case .other: .gray
+        }
+    }
+
     /// Kinds whose amount is worth showing: what was paid, is to be paid, or was offered.
     var hasAmount: Bool {
         switch self {

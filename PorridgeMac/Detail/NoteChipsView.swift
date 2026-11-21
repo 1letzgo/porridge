@@ -48,31 +48,44 @@ final class NoteChipsView: NSView {
                 views.append(drop)
             }
         }
+        // The bowl (one at most; an entry from before may show several): a click changes it, the cross takes the
+        // note out. "+ Bowl" only while it is in none.
+        var shownBowls = 0
         for key in note.projectIDs {
             guard let project = library.project(key: key) else { continue }
-            let pill = PillButton(title: project.name, symbol: "xmark", tint: .brandProject, target: self, action: #selector(removeBucket(_:)))
-            pill.identifier = .init(key)
+            shownBowls += 1
+            let pill = PillButton(title: project.name, symbol: "folder.fill", tint: .brandProject, target: self, action: #selector(showBuckets(_:)))
             pill.isEnabled = !note.isDeleted
-            pill.setAccessibilityLabel("Remove from \(project.name)")
-            pill.toolTip = "Remove from Bowl"
+            pill.setAccessibilityLabel("Bowl \(project.name)")
+            pill.toolTip = "Change Bowl"
             views.append(pill)
+            if !note.isDeleted {
+                let remove = NSButton(image: .symbol("xmark", size: 10, weight: .bold, label: "Remove from \(project.name)"), target: self, action: #selector(removeBucket(_:)))
+                remove.isBordered = false
+                remove.contentTintColor = .brandProject
+                remove.identifier = .init(key)
+                remove.toolTip = "Remove from Bowl"
+                views.append(remove)
+            }
         }
-        if !note.isDeleted {
+        if !note.isDeleted, shownBowls == 0 {
             let add = PillButton(title: "Bowl", symbol: "plus", tint: .brandProject, target: self, action: #selector(showBuckets(_:)))
             add.setAccessibilityLabel("Add to Bowl")
             views.append(add)
         }
-        // A stored file: what it is as a document, after its bowls ("Invoice · Telekom", or "+ Document" to mark
-        // it as one); a click sets it. Outlined grey, apart from the bowls (violet) and the tags (sky).
+        // A stored file: what it is as a document, after its bowls ("Invoice · Telekom" in the kind's colour, or an
+        // outlined "+ Document" to mark it as one); a click sets it.
         if note.isStored, !note.isDeleted {
             let info = note.documentInfo ?? DocumentInfo()
             let label = info.shortLabel
             let title = info.isEmpty ? String(localized: "Document") : (label.count > 40 ? String(label.prefix(39)) + "…" : label)
+            let kind = info.kind ?? .other
             let pill = PillButton(
-                title: title, symbol: info.isEmpty ? "plus" : (info.kind ?? .other).symbol,
-                tint: .systemGray, target: self, action: #selector(editDocument)
+                title: title, symbol: info.isEmpty ? "plus" : kind.symbol,
+                tint: info.isEmpty ? .systemGray : kind.hue.color, target: self, action: #selector(editDocument)
             )
-            pill.isOutlined = true
+            // Nothing known yet: neutral and outlined; known: the kind's own colour as a wash, the text plain.
+            pill.isOutlined = info.isEmpty
             pill.labelColor = .labelColor
             pill.setAccessibilityLabel(info.isEmpty ? String(localized: "Add Document Details") : info.sentence)
             pill.toolTip = info.isEmpty ? String(localized: "Add the kind, date, sender and amount") : info.line
@@ -125,6 +138,25 @@ final class NoteChipsView: NSView {
     @objc private func editDocument() {
         guard let note else { return }
         DocumentInfoSheet.edit(note, in: hostWindow)
+    }
+}
+
+extension DocumentKind.Hue {
+    /// The system colour of the hue: it adapts to dark mode.
+    var color: NSColor {
+        switch self {
+        case .teal: .systemTeal
+        case .mint: .systemMint
+        case .brown: .systemBrown
+        case .yellow: .systemYellow
+        case .cyan: .systemCyan
+        case .green: .systemGreen
+        case .red: .systemRed
+        case .orange: .systemOrange
+        case .pink: .systemPink
+        case .indigo: .systemIndigo
+        case .gray: .systemGray
+        }
     }
 }
 
