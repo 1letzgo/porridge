@@ -198,7 +198,7 @@ struct NotesView: View {
         } message: {
             Text("The page is saved as a note and summarized.")
         }
-        .alert("New Bucket", isPresented: $showNewProject) {
+        .alert("New Bowl", isPresented: $showNewProject) {
             TextField("Name", text: $projectName)
             Button("Cancel", role: .cancel) { projectName = "" }
             Button("Create") {
@@ -206,7 +206,7 @@ struct NotesView: View {
                 projectName = ""
             }
         }
-        .alert("Rename Bucket", isPresented: .constant(renamingProject != nil)) {
+        .alert("Rename Bowl", isPresented: .constant(renamingProject != nil)) {
             TextField("Name", text: $projectName)
             Button("Cancel", role: .cancel) {
                 renamingProject = nil
@@ -222,8 +222,8 @@ struct NotesView: View {
             "Delete “\(deletingProject?.name ?? "")”?", isPresented: Binding(get: { deletingProject != nil }, set: { if !$0 { deletingProject = nil } }),
             titleVisibility: .visible, presenting: deletingProject
         ) { project in
-            // The bucket comes with the dialog: closing it may clear `deletingProject` before this runs.
-            Button("Delete Bucket", role: .destructive) {
+            // The bowl comes with the dialog: closing it may clear `deletingProject` before this runs.
+            Button("Delete Bowl", role: .destructive) {
                 if page == .project(project.id) { page = .home }
                 Projects.delete(project, in: context)
                 deletingProject = nil
@@ -240,14 +240,14 @@ struct NotesView: View {
             NoteStore.purgeExpired(in: context)
             ShareImport.importInbox(context: context, processing: processing)
             Projects.migrateFolders(in: context)
-            // Only buckets are archived now: notes archived by earlier versions come back.
+            // Only bowls are archived now: notes archived by earlier versions come back.
             Archive.clearArchivedNotes(in: context)
             // Reminders are gone: what was planned for them is taken back once.
             let center = UNUserNotificationCenter.current()
             let planned = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("remind-") }
             if !planned.isEmpty { center.removePendingNotificationRequests(withIdentifiers: planned) }
         }
-        // The share sheet offers the buckets: it reads this list, it cannot open the store.
+        // The share sheet offers the bowls: it reads this list, it cannot open the store.
         .task(id: shareProjects) { ShareInbox.writeProjects(shareProjects) }
         // The search index follows the notes: only what changed is cut again.
         .task(id: indexSignature) {
@@ -356,7 +356,7 @@ struct NotesView: View {
         }
     }
 
-    /// Opens the chat page. From a bucket the chat is about that bucket; the last chat about it is taken up again.
+    /// Opens the chat page. From a bowl the chat is about that bowl; the last chat about it is taken up again.
     private func openChat() {
         chatNavigation.open(from: projectForNew, threads: chatThreads)
         page = .chat
@@ -374,7 +374,7 @@ struct NotesView: View {
         let archived = HomeList.archivedProjects(projects).count
         let isEmpty = folders.isEmpty && waiting.isEmpty
         return List(selection: $selection) {
-            // "Up Next" is the first category: the Inbox (what is new or in no bucket) and below it the to-dos folder,
+            // "Up Next" is the first category: the Inbox (what is new or in no bowl) and below it the to-dos folder,
             // while there are to-dos to show: a view of every open one, wherever it is filed.
             let todoFolder = Todos.folder(notes)
             Section {
@@ -387,7 +387,7 @@ struct NotesView: View {
             } header: {
                 ListHeader(title: "Up Next", tint: .brandSky, isFirst: true)
             }
-            // The buckets as a list: the pinned and the latest few, the rest behind "More".
+            // The bowls as a list: the pinned and the latest few, the rest behind "More".
             if !folders.isEmpty {
                 projectsSection(recent.shown, contents: contents, isFirst: false, hidden: recent.hidden)
             }
@@ -403,7 +403,7 @@ struct NotesView: View {
             if isEmpty, archived == 0 {
                 EmptyStateView(
                     title: "Nothing Here Yet",
-                    message: "Add notes, meetings, links and buckets with the plus button.",
+                    message: "Add notes, meetings, links and bowls with the plus button.",
                     systemImage: "note.text"
                 )
             }
@@ -411,7 +411,7 @@ struct NotesView: View {
     }
 
     /// The to-dos folder opened: every open to-do by due day, grouped as the search's "Open To-dos", then those
-    /// done today. Each row names its buckets. Only a view: the to-dos stay where they are.
+    /// done today. Each row names its bowls. Only a view: the to-dos stay where they are.
     private var todosPage: some View {
         let folder = Todos.folder(notes)
         let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
@@ -445,12 +445,12 @@ struct NotesView: View {
         .roomForFloatingButtons()
         .overlay {
             if folder.isEmpty {
-                EmptyStateView(title: "Nothing to Do", message: "Open to-dos from the inbox and every bucket show up here.", systemImage: "checklist")
+                EmptyStateView(title: "Nothing to Do", message: "Open to-dos from the inbox and every bowl show up here.", systemImage: "checklist")
             }
         }
     }
 
-    /// The inbox opened: what is in no bucket, newest first, each with its suggested buckets.
+    /// The inbox opened: what is in no bowl, newest first, each with its suggested bowls.
     private var inboxPage: some View {
         let waiting = Inbox.notes(notes)
         let buckets = projects.filter { !$0.isArchived }
@@ -473,12 +473,12 @@ struct NotesView: View {
         .roomForFloatingButtons()
         .overlay {
             if waiting.isEmpty {
-                EmptyStateView(title: "Inbox Empty", message: "What is new or in no bucket waits here.", systemImage: "tray")
+                EmptyStateView(title: "Inbox Empty", message: "What is new or in no bowl waits here.", systemImage: "tray")
             }
         }
     }
 
-    /// The archive: archived buckets only. Notes are never archived.
+    /// The archive: archived bowls only. Notes are never archived.
     private var archive: some View {
         let folders = HomeList.archivedProjects(projects)
         return List(selection: $selection) {
@@ -492,7 +492,7 @@ struct NotesView: View {
             if folders.isEmpty {
                 EmptyStateView(
                     title: "Nothing Archived",
-                    message: "Archive a bucket with a swipe or a long press.",
+                    message: "Archive a bowl with a swipe or a long press.",
                     systemImage: "archivebox"
                 )
             }
@@ -575,7 +575,7 @@ struct NotesView: View {
                 moreRow(hidden: hidden, isExpanded: showAllProjects, tint: .brandProject) { showAllProjects.toggle() }
             }
         } header: {
-            ListHeader(title: "Buckets", tint: .brandProject, isFirst: isFirst)
+            ListHeader(title: "Bowls", tint: .brandProject, isFirst: isFirst)
         }
     }
 
@@ -627,7 +627,7 @@ struct NotesView: View {
     }
 
     /// The ways to start something: one plus button bottom right, the same in every view, that unfolds into
-    /// link, meeting and note (and bucket on the long list). Bottom left the chat and the search.
+    /// link, meeting and note (and bowl on the long list). Bottom left the chat and the search.
     private var createMenu: some View {
         ZStack(alignment: .bottom) {
             if showCreate {
@@ -657,7 +657,7 @@ struct NotesView: View {
                             VStack(alignment: .trailing, spacing: 14) {
                                 if showCreate {
                                     if page == .home {
-                                        createOption("Bucket", systemImage: "folder.badge.plus", tint: .brandProject) { showNewProject = true }
+                                        createOption("Bowl", systemImage: "folder.badge.plus", tint: .brandProject) { showNewProject = true }
                                     }
                                     createOption("Link", systemImage: "link", tint: .brandLink) { showAddLink = true }
                                     createOption("Meeting", systemImage: "mic.fill", tint: .brandNavy) { showCalendar = true }
@@ -747,7 +747,7 @@ struct NotesView: View {
         if shown == .home, notes.contains(where: \.isDeleted) {
             trashButton
         }
-        // What is brought in from outside has its own menu in the bar; on a bucket's page it goes into the bucket.
+        // What is brought in from outside has its own menu in the bar; on a bowl's page it goes into the bowl.
         if shown == .home || project(on: shown) != nil {
             importMenu
                 .menuStyle(.button)
@@ -838,7 +838,7 @@ struct NotesView: View {
         }
     }
 
-    /// What the search finds among the notes, those in archived buckets included.
+    /// What the search finds among the notes, those in archived bowls included.
     private var foundNotes: [Note] {
         var result = notes.filter { !$0.isDeleted }
         if let searchKind { result = result.filter(searchKind.matches) }
@@ -1051,7 +1051,7 @@ struct NotesView: View {
 struct NoteRow: View {
     let note: Note
     let stage: String?
-    /// Bucket names to show in the footer (a list of several buckets' notes); empty shows none.
+    /// Bowl names to show in the footer (a list of several bowls' notes); empty shows none.
     var buckets: [String] = []
 
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -1113,7 +1113,7 @@ struct NoteRow: View {
                 .foregroundStyle(Color.brandDangerText)
         } else {
             // "30. Oct 10:52": day and time without the "at" in between, to fit a narrow sidebar. Where a to-do names
-            // its buckets (the to-dos folder) its due day says more, and the date makes room for them.
+            // its bowls (the to-dos folder) its due day says more, and the date makes room for them.
             if buckets.isEmpty || !note.isTodo {
                 Text(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
                     .fixedSize()
@@ -1123,7 +1123,7 @@ struct NoteRow: View {
             TodoDueLabel(note: note)
             TodoProgressLabel(progress: note.todoProgress)
         }
-        // Where a list mixes buckets the row names its own; on a narrow row the names give way first.
+        // Where a list mixes bowls the row names its own; on a narrow row the names give way first.
         if !buckets.isEmpty {
             Label(buckets.joined(separator: ", "), systemImage: "folder")
                 .labelStyle(.titleAndIcon)
@@ -1187,7 +1187,7 @@ enum ListPage: Hashable {
     case home
     /// One project with everything in it.
     case project(UUID)
-    /// The inbox: what is new or in no bucket.
+    /// The inbox: what is new or in no bowl.
     case inbox
     /// The virtual folder of every open to-do by due day (`Todos.folder`), in the "Up Next" section of the home list.
     case todos

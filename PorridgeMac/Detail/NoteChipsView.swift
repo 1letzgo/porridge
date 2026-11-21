@@ -1,8 +1,8 @@
 import AppKit
 import QuickLookUI
 
-/// The row under a note's head: suggested buckets (a click files the note), its buckets, its tags, and the
-/// buttons to add a bucket or a tag. It wraps into lines when the column is narrow.
+/// The row under a note's head: suggested bowls (a click files the note), its bowls, its tags, and the
+/// buttons to add a bowl or a tag. It wraps into lines when the column is narrow.
 final class NoteChipsView: NSView {
     private let flow = FlowView()
     private let dueChip = DueDateChip()
@@ -29,7 +29,7 @@ final class NoteChipsView: NSView {
             dueChip.show(note)
             views.append(dueChip)
         }
-        // The bucket suggested for a note in the inbox: a click files it there, the cross drops the suggestion.
+        // The bowl suggested for a note in the inbox: a click files it there, the cross drops the suggestion.
         if note.isInInbox {
             for id in note.suggestedProjectIDs {
                 guard let project = library.project(key: id), !project.isArchived else { continue }
@@ -37,7 +37,7 @@ final class NoteChipsView: NSView {
                 pill.isFilled = true
                 pill.identifier = .init(id)
                 pill.setAccessibilityLabel("File into \(project.name)")
-                pill.toolTip = "Suggested bucket"
+                pill.toolTip = "Suggested bowl"
                 views.append(pill)
             }
             if !note.suggestedProjectIDs.isEmpty {
@@ -54,12 +54,12 @@ final class NoteChipsView: NSView {
             pill.identifier = .init(key)
             pill.isEnabled = !note.isDeleted
             pill.setAccessibilityLabel("Remove from \(project.name)")
-            pill.toolTip = "Remove from Bucket"
+            pill.toolTip = "Remove from Bowl"
             views.append(pill)
         }
         if !note.isDeleted {
-            let add = PillButton(title: "Bucket", symbol: "plus", tint: .brandProject, target: self, action: #selector(showBuckets(_:)))
-            add.setAccessibilityLabel("Add to Bucket")
+            let add = PillButton(title: "Bowl", symbol: "plus", tint: .brandProject, target: self, action: #selector(showBuckets(_:)))
+            add.setAccessibilityLabel("Add to Bowl")
             views.append(add)
         }
         for tag in note.tags {

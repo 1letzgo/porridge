@@ -1,7 +1,7 @@
 import AppKit
 
 /// The head of the middle column: the list's name after a colored square, as in Things, and what narrows it
-/// (the kinds of a bucket or the search, the tags of the search) or empties it (the trash).
+/// (the kinds of a bowl or the search, the tags of the search) or empties it (the trash).
 final class ListHeaderView: NSView {
     var onFilter: ((KindFilter?) -> Void)?
     var onTag: ((String) -> Void)?
@@ -68,7 +68,7 @@ final class ListHeaderView: NSView {
         case .inbox: ("Inbox", "tray.fill", .brandSky)
         case .todos: ("To-dos", "checklist", .brandTask)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)
-        case .project(let id): (library.project(id)?.name ?? "Bucket", "folder.fill", .brandProject)
+        case .project(let id): (library.project(id)?.name ?? "Bowl", "folder.fill", .brandProject)
         case .archive: ("Archive", "archivebox.fill", .brandNavy)
         case .trash: ("Recently Deleted", "trash.fill", .systemRed)
         case .search: ("Search", "magnifyingglass", .brandNavy)
@@ -89,7 +89,7 @@ final class ListHeaderView: NSView {
             trailing.addArrangedSubview(button)
         }
 
-        // The kinds: of a bucket only those it holds (the one chosen stays while it is); all of them in the search.
+        // The kinds: of a bowl only those it holds (the one chosen stays while it is); all of them in the search.
         filters.arrangedSubviews.forEach { $0.removeFromSuperview() }
         var kinds: [KindFilter] = []
         switch page {

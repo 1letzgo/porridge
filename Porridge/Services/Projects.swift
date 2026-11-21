@@ -6,7 +6,7 @@ import SwiftData
 enum Projects {
     static func key(_ project: NoteFolder) -> String { project.id.uuidString }
 
-    /// The order of a bucket's list (iOS and Mac, every filter): one flat list, pinned notes first, each part by last
+    /// The order of a bowl's list (iOS and Mac, every filter): one flat list, pinned notes first, each part by last
     /// change (newest first). `byDue` (the To-dos filter): within each part open to-dos by due day, then done ones
     /// (`Todos.byDue`), ties by last change.
     static func ordered(_ notes: [Note], byDue: Bool = false) -> [Note] {
@@ -47,7 +47,7 @@ enum Projects {
 
     static func toggle(_ project: NoteFolder, on note: Note, in context: ModelContext) {
         note.projectIDs = toggled(note.projectIDs, key(project))
-        // Put into a bucket by hand: it has left the inbox, whatever was suggested.
+        // Put into a bowl by hand: it has left the inbox, whatever was suggested.
         if note.projectIDs.contains(key(project)) {
             note.filedAt = note.filedAt ?? Date()
             note.suggestedProjectIDs = []

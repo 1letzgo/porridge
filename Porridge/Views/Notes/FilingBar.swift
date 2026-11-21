@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// The suggested buckets of one inbox entry. Any other bucket is in the long press of the row, as in every list.
+/// The suggested bowls of one inbox entry. Any other bowl is in the long press of the row, as in every list.
 struct FilingBar: View {
     let note: Note
     let projects: [NoteFolder]
@@ -33,7 +33,7 @@ struct FilingBar: View {
     }
 }
 
-/// A suggested bucket: the name takes it on, the cross drops it.
+/// A suggested bowl: the name takes it on, the cross drops it.
 struct SuggestionPill: View {
     let name: String
     let onAccept: () -> Void
@@ -48,7 +48,7 @@ struct SuggestionPill: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("File into \(name)")
-            .accessibilityHint("Suggested bucket")
+            .accessibilityHint("Suggested bowl")
             Button(action: onDismiss) {
                 Image(systemName: "xmark").font(.caption2.weight(.bold))
             }

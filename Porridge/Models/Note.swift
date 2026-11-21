@@ -22,7 +22,7 @@ final class Note {
     var isPinned: Bool = false
     /// Set while the note is in "Recently Deleted".
     var deletedAt: Date?
-    /// No longer used: only buckets are archived. Kept for the store and sync; `Archive.clearArchivedNotes` clears it at start.
+    /// No longer used: only bowls are archived. Kept for the store and sync; `Archive.clearArchivedNotes` clears it at start.
     var archivedAt: Date?
     /// A saved web link: the address, and the text of the page once it was fetched ("" = nothing to read).
     var url: String?
@@ -44,14 +44,14 @@ final class Note {
     var speakersData: Data?
     var segmentsData: Data?
 
-    // Everything that comes into the app is an intake: it has a channel, waits in the inbox and is filed into buckets.
+    // Everything that comes into the app is an intake: it has a channel, waits in the inbox and is filed into bowls.
     /// The channel the note came in through (`NoteSource`); "" for notes from before there were channels.
     var sourceRaw: String = ""
     /// Files that belong to the note (shared images, PDFs, documents) as JSON of `[Attachment]`.
     var attachmentsData: Data?
-    /// When the note was first put into a bucket. Whether it is in the inbox does not depend on it (`isInInbox`).
+    /// When the note was first put into a bowl. Whether it is in the inbox does not depend on it (`isInInbox`).
     var filedAt: Date?
-    /// The buckets (`NoteFolder.id` as uppercase strings) suggested for the note; taken on or dropped by the user.
+    /// The bowls (`NoteFolder.id` as uppercase strings) suggested for the note; taken on or dropped by the user.
     var suggestedProjectIDs: [String] = []
 
     // A to-do is a note like any other with a done state (`Todos`); its subtasks are the checklist lines of `text`.
@@ -104,7 +104,7 @@ final class Note {
         set { attachmentsData = newValue.isEmpty ? nil : try? Attachment.encoder.encode(newValue) }
     }
 
-    /// In the inbox: in no bucket. Everything stays there until it is put into one, and comes back when it is
+    /// In the inbox: in no bowl. Everything stays there until it is put into one, and comes back when it is
     /// taken out of its last one.
     var isInInbox: Bool { projectIDs.isEmpty && deletedAt == nil }
 

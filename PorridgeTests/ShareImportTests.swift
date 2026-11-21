@@ -28,7 +28,7 @@ final class ShareImportTests: XCTestCase {
         try ShareInbox.add(entry)
         XCTAssertEqual(ShareInbox.pending(), [entry])
 
-        // A bucket chosen afterwards replaces the entry, it does not add one.
+        // A bowl chosen afterwards replaces the entry, it does not add one.
         entry.projectID = "P1"
         try ShareInbox.add(entry)
         XCTAssertEqual(ShareInbox.pending().map(\.projectID), ["P1"])

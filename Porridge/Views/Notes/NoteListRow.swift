@@ -2,10 +2,10 @@ import SwiftData
 import SwiftUI
 
 /// A note, meeting or link in a list, with its swipes and long press: pin, projects, share, delete. Notes are never
-/// archived, only buckets are.
+/// archived, only bowls are.
 struct NoteListRow: View {
     let note: Note
-    /// The names of the note's buckets, shown in its row where a list mixes buckets (the to-dos folder).
+    /// The names of the note's bowls, shown in its row where a list mixes bowls (the to-dos folder).
     var buckets: [String] = []
     /// Moves the note to the trash, or deletes it when it already is there.
     var onRemove: () -> Void

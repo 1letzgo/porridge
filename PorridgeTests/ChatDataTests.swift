@@ -126,7 +126,7 @@ final class ChatDataTests: XCTestCase {
 
         let hedge = ChatDocument(note: f.notes["Hecke schneiden"]!)
         XCTAssertEqual(hedge.header(bucketNames: bucketNames, now: now, calendar: calendar),
-                       "«Hecke schneiden» — To-do, open, due 22 November 2026, 1 of 2 subtasks done · created Thu 12 Nov 2026 · Bucket: Haus und Garten")
+                       "«Hecke schneiden» — To-do, open, due 22 November 2026, 1 of 2 subtasks done · created Thu 12 Nov 2026 · Bowl: Haus und Garten")
         let offer = ChatDocument(note: f.notes["Angebot an Müller schicken"]!)
         XCTAssertTrue(offer.header(bucketNames: bucketNames, now: now, calendar: calendar).contains("due 19 November 2026, overdue"))
         let link = ChatDocument(note: f.notes["Swift Concurrency Guide"]!)
@@ -143,7 +143,7 @@ final class ChatDataTests: XCTestCase {
         let before = note.indexHash
         note.projectIDs = [house]
         let moved = note.indexHash
-        XCTAssertNotEqual(before, moved, "moving it to another bucket cuts it again")
+        XCTAssertNotEqual(before, moved, "moving it to another bowl cuts it again")
         note.archivedAt = now
         XCTAssertNotEqual(moved, note.indexHash, "a note cleared by Archive.clearArchivedNotes is cut again")
     }
@@ -164,9 +164,12 @@ final class ChatDataTests: XCTestCase {
         XCTAssertEqual(meeting.range, DateInterval(start: day(17, hour: 0), end: day(18, hour: 0)), "the last Tuesday")
         XCTAssertEqual(meeting.words, ["beschlossen"])
 
-        let bucket = parse("Was liegt im Bucket Haus und Garten?")
+        let bucket = parse("Was liegt im Bowl Haus und Garten?")
         XCTAssertEqual(bucket.bucketIDs, [house])
         XCTAssertEqual(bucket.words, [])
+        let oldWord = parse("Was liegt im Bucket Haus und Garten?")
+        XCTAssertEqual(oldWord.bucketIDs, [house], "the old word still names a bowl")
+        XCTAssertEqual(oldWord.words, [])
 
         XCTAssertEqual(parse("Was ist bis Freitag fällig?").range, DateInterval(start: day(20, hour: 0), end: day(21, hour: 0)), "a due day looks ahead")
         XCTAssertEqual(parse("Was steht nächste Woche an?").range, DateInterval(start: day(23, hour: 0), end: day(30, hour: 0)))
@@ -187,10 +190,10 @@ final class ChatDataTests: XCTestCase {
         XCTAssertEqual(context.items.first?.noteID, f["Angebot an Müller schicken"], "earliest due first")
     }
 
-    /// 2. Everything in a bucket, whatever its kind.
+    /// 2. Everything in a bowl, whatever its kind.
     func testEverythingInABucket() {
         let f = makeFixture()
-        let context = context("Was liegt im Bucket Haus und Garten?", f)
+        let context = context("Was liegt im Bowl Haus und Garten?", f)
         XCTAssertEqual(listed(context), [f["Sauerteig Rezept"], f["Hecke schneiden"], f["Fahrrad reparieren"], f["Mietvertrag"]])
     }
 
@@ -269,7 +272,7 @@ final class ChatDataTests: XCTestCase {
         XCTAssertFalse(pancakes.items.first?.header.contains("archived") ?? true)
     }
 
-    /// 13. A chat about one bucket sees only it.
+    /// 13. A chat about one bowl sees only it.
     func testABucketChat() {
         let f = makeFixture()
         let within = Set(f.all.filter { $0.projectIDs.contains(travel) }.map(\.id))

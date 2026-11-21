@@ -1,7 +1,7 @@
 import AppKit
 
 /// A note in the middle column: the icon of its kind, title, a preview of two lines and a footer with the date,
-/// the site, the length and its state. An entry in the inbox shows its suggested buckets under it.
+/// the site, the length and its state. An entry in the inbox shows its suggested bowls under it.
 /// The cell follows its note: a title typed in the detail shows here at once.
 final class NoteCellView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("note")
@@ -76,7 +76,7 @@ final class NoteCellView: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// Shows the note and follows it until another one is shown.
-    /// `namesBuckets`: the row names its buckets in place of the date (a list that mixes buckets, the to-dos folder).
+    /// `namesBuckets`: the row names its bowls in place of the date (a list that mixes bowls, the to-dos folder).
     func show(_ note: Note, buckets: [NoteFolder], showsSuggestions: Bool, namesBuckets: Bool = false) {
         self.namesBuckets = namesBuckets
         noteID = note.id
@@ -156,7 +156,7 @@ final class NoteCellView: NSTableCellView {
             thumbnailFile = nil
         }
 
-        // The buckets suggested for an inbox entry: a click files it there, the cross drops the suggestion.
+        // The bowls suggested for an inbox entry: a click files it there, the cross drops the suggestion.
         suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let suggested = showsSuggestions && note.isInInbox
             ? note.suggestedProjectIDs.compactMap { id in buckets.first { Projects.key($0) == id } } : []
@@ -201,7 +201,7 @@ final class NoteCellView: NSTableCellView {
             let left = max(0, NoteStore.trashDays - passed)
             add(left <= 1 ? String(localized: "Deleted tomorrow") : String(localized: "\(left) days left"), color: .brandDangerText)
         } else {
-            // A to-do that names its buckets lets its due day speak for it; the date makes room for the names.
+            // A to-do that names its bowls lets its due day speak for it; the date makes room for the names.
             if !(bucketNames(note).isEmpty == false && note.isTodo) {
                 add(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
             }

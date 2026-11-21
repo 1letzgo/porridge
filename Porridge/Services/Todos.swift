@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// Whether a note is a to-do. A to-do is an ordinary note (same lists, buckets, inbox, search, chat and
+/// Whether a note is a to-do. A to-do is an ordinary note (same lists, bowls, inbox, search, chat and
 /// sync) with a done state; its subtasks are the checklist lines (`- [ ] ` / `- [x] `) of its text.
 /// Stored as `Note.todoStateRaw`: nil = never was a to-do.
 enum TodoState: String {
@@ -154,7 +154,7 @@ enum Todos {
 
     // MARK: Lists
 
-    /// Done before today. Only the to-dos folder's "Done Today" section uses this; in buckets and the inbox a done
+    /// Done before today. Only the to-dos folder's "Done Today" section uses this; in bowls and the inbox a done
     /// to-do stays like every note (notes are never archived).
     static func isPutAway(doneAt: Date?, now: Date = Date(), calendar: Calendar = .current) -> Bool {
         guard let doneAt else { return false }
@@ -342,7 +342,7 @@ extension Note {
 
     var todoProgress: Todos.Progress { isTodo ? Todos.progress(text) : Todos.Progress(done: 0, total: 0) }
 
-    /// A to-do done before today: no longer in the to-dos folder's "Done Today". It stays in its bucket or the inbox.
+    /// A to-do done before today: no longer in the to-dos folder's "Done Today". It stays in its bowl or the inbox.
     var isPutAway: Bool { isDone && Todos.isPutAway(doneAt: todoDoneAt) }
 
     /// Any note but a saved one (link, shared file) and a meeting can be a to-do.
@@ -396,7 +396,7 @@ extension Todos {
         note.todoDoneAt = next == .done ? Date() : nil
     }
 
-    /// A task line of a summary as a to-do of its own, in the buckets of its note, pointing back to it.
+    /// A task line of a summary as a to-do of its own, in the bowls of its note, pointing back to it.
     /// Never from a saved link or file.
     @discardableResult
     static func create(fromTask task: String, of source: Note, in context: ModelContext) -> Note? {

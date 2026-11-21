@@ -117,7 +117,7 @@ final class ChatService {
         Task { await ModelManager.shared.releaseLLM() }
     }
 
-    /// The notes a chat is about: all living ones, or those of its bucket.
+    /// The notes a chat is about: all living ones, or those of its bowl.
     static func scope(of thread: ChatThread, notes: [Note]) -> [Note] {
         let living = notes.filter { !$0.isDeleted }
         guard let project = thread.projectID else { return living }
@@ -165,13 +165,13 @@ final class ChatService {
         await index.refresh(notes)
         let scope = Self.scope(of: thread, notes: notes)
         let within = thread.projectID == nil ? nil : Set(scope.map(\.id))
-        // The buckets by name: a question may name one, and every entry says where it is filed.
+        // The bowls by name: a question may name one, and every entry says where it is filed.
         let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { first, _ in first })
         // The model chosen for the chat ("Chat Model"), else the default; its room decides how much context it gets.
         let model = SummaryModel.chat
         let found = await index.context(for: question, within: within, bucketNames: names, budget: .for(model))
         guard !found.isEmpty || found.matched != nil else {
-            answer(thread.projectID == nil ? "There is nothing in your notes yet." : "There is nothing in this bucket yet.")
+            answer(thread.projectID == nil ? "There is nothing in your notes yet." : "There is nothing in this bowl yet.")
             return
         }
 
@@ -240,9 +240,9 @@ final class ChatService {
     ) -> (system: String, user: String) {
         let system = """
         Today is \(now.formatted(date: .complete, time: .omitted)) (\(ChatDocument.dayText(now))).
-        You are the assistant of a private notes app. Answer the question only from the entries and excerpts below; do not use outside knowledge and do not guess. They are taken from the user's notes, meetings (transcripts and summaries), to-dos, saved web links (with the text of the page), images and files (with the text read out of them)\(bucket.map { ", all of them filed in the bucket \"\($0)\"" } ?? "").
-        Every item starts with a number in brackets and a header: «title» — kind (for a to-do its state, due day and subtasks), the day it was created, its bucket (or Inbox), tags, and for a link its address. Use the header for questions about kind, dates, buckets and to-dos.
-        When a list of matching entries is given, it holds every entry of the kind, bucket, to-do state or time the question asks for: answer list questions from it in full and add nothing that is not in it. When the question also names a topic, take those entries of the list that are about it (they come first and say what they mention).
+        You are the assistant of a private notes app. Answer the question only from the entries and excerpts below; do not use outside knowledge and do not guess. They are taken from the user's notes, meetings (transcripts and summaries), to-dos, saved web links (with the text of the page), images and files (with the text read out of them)\(bucket.map { ", all of them filed in the bowl \"\($0)\"" } ?? "").
+        Every item starts with a number in brackets and a header: «title» — kind (for a to-do its state, due day and subtasks), the day it was created, its bowl (or Inbox), tags, and for a link its address. Use the header for questions about kind, dates, bowls and to-dos.
+        When a list of matching entries is given, it holds every entry of the kind, bowl, to-do state or time the question asks for: answer list questions from it in full and add nothing that is not in it. When the question also names a topic, take those entries of the list that are about it (they come first and say what they mention).
         Write the answer itself in full words: name every entry you mention by its title and give the facts the question asks for (for a to-do its due day, for a link its address, for a meeting what was said or decided). Put the numbers of the items you used after the facts, like: Hecke schneiden, due 22 November [2]. Never answer with numbers alone.
         If the items do not contain the answer, say plainly that you found nothing about it in the notes.
         Always answer in the language the question is written in (a German question gets a German answer). Be concise.

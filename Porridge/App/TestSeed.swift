@@ -3,8 +3,8 @@ import Foundation
 import SwiftData
 
 /// Data for the UI tests, only in debug builds: `-seedMeetingWithTasks <title>` adds a summarized meeting whose
-/// summary has three tasks (the user's, somebody else's with a date, nobody's), in a new bucket of the same name.
-/// `-seedTodos <prefix>` adds four open to-dos: "<prefix> long overdue" (due 1 January 2000, in a new bucket named
+/// summary has three tasks (the user's, somebody else's with a date, nobody's), in a new bowl of the same name.
+/// `-seedTodos <prefix>` adds four open to-dos: "<prefix> long overdue" (due 1 January 2000, in a new bowl named
 /// <prefix>), "<prefix> today", "<prefix> upcoming" (in five days) and "<prefix> no date".
 enum TestSeed {
     @MainActor
@@ -64,7 +64,7 @@ enum TestSeed {
     }
 
     /// The entries of `ChatDataTests` as real notes, for trying the chat by hand (debug driver `seed-chat` on the
-    /// Mac): three buckets "Reisen", "Haus und Garten", "Arbeit" and 15 entries of every kind, dated around Friday,
+    /// Mac): three bowls "Reisen", "Haus und Garten", "Arbeit" and 15 entries of every kind, dated around Friday,
     /// 20 November 2026. Only on test data (`DataLocation.testFolder`), never in the real store.
     @MainActor
     static func seedChat(_ context: ModelContext) {

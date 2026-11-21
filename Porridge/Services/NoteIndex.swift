@@ -131,14 +131,14 @@ final class NoteIndex {
 
     /// The passages a chat question is answered from (`ChatRetrieval.select`): by words (BM25) and by meaning
     /// (vector), mixed, within the time the question names; the newest when nothing fits. `within` narrows them
-    /// to some notes (those of a bucket); nil is everything.
+    /// to some notes (those of a bowl); nil is everything.
     func search(_ question: String, within notes: Set<UUID>? = nil) async -> [ChatChunk] {
         let vector = await TextEmbedder.shared.vector(for: question)
         return ChatRetrieval.select(question, in: passages(within: notes), queryVector: vector)
     }
 
     /// The context of a chat question (`ChatRetrieval.context`): the entries its filters ask for and the passages
-    /// that fit it. `within` narrows it to some notes (those of a bucket); nil is everything.
+    /// that fit it. `within` narrows it to some notes (those of a bowl); nil is everything.
     func context(for question: String, within notes: Set<UUID>? = nil, bucketNames: [String: String], budget: ChatBudget = .standard) async -> ChatContext {
         let vector = await TextEmbedder.shared.vector(for: question)
         var documents: [UUID: ChatDocument] = [:]
@@ -203,7 +203,7 @@ extension Note {
     /// Changes whenever anything the passages are made of changes. Stable across launches (SHA-256).
     var indexHash: String {
         var hasher = SHA256()
-        // The chat's entry (`ChatDocument`) holds the buckets too; "chat-doc-1" cuts every note again once when the
+        // The chat's entry (`ChatDocument`) holds the bowls too; "chat-doc-1" cuts every note again once when the
         // entry came (the vectors of unchanged passages are kept). `archivedAt` (no longer used for notes) stays in
         // the hash so notes cleared by `Archive.clearArchivedNotes` are cut again without their old "archived" mark.
         let entry = ["chat-doc-1", sourceRaw, projectIDs.joined(separator: ","), archivedAt.map { "\($0.timeIntervalSince1970)" } ?? ""]

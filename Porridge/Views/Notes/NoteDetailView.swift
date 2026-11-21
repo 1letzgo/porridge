@@ -470,7 +470,7 @@ struct NoteDetailView: View {
     private var tagRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                // The bucket suggested for a note in the inbox: a tap files it there.
+                // The bowl suggested for a note in the inbox: a tap files it there.
                 ForEach(suggestedProjects) { project in
                     SuggestionPill(name: project.name) {
                         withAnimation(.snappy) { Inbox.file(note, into: Projects.key(project), in: context) }

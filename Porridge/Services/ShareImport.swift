@@ -13,7 +13,7 @@ enum ShareImport {
         let folders = Set(((try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []).map(\.id.uuidString))
         var known = LinkImport.knownAddresses(in: context)
         for entry in entries {
-            // A bucket deleted since the share: the note waits in the inbox instead.
+            // A bowl deleted since the share: the note waits in the inbox instead.
             let project = entry.projectID.flatMap { folders.contains($0) ? $0 : nil }
             let notes = save(entry, known: &known, context: context, processing: processing)
             for note in notes {

@@ -32,9 +32,9 @@ private final class SidebarNode: NSObject {
     }
 }
 
-/// The sidebar as a source list: Up Next (the Inbox and the to-dos folder), the buckets, then More (the chat, the
+/// The sidebar as a source list: Up Next (the Inbox and the to-dos folder), the bowls, then More (the chat, the
 /// archive and Recently Deleted).
-/// Notes dropped on a bucket go into it; files dropped on it are brought in there.
+/// Notes dropped on a bowl go into it; files dropped on it are brought in there.
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSTextFieldDelegate {
     private let state: WindowState
     private let library = Library.shared
@@ -43,7 +43,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private var libraryToken: UUID?
     private var observers: [Observing] = []
     private var isSyncingSelection = false
-    /// The bucket whose name is being edited in place.
+    /// The bowl whose name is being edited in place.
     private var renaming: NoteFolder?
 
     init(state: WindowState) {
@@ -107,26 +107,26 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private func rebuild() {
         let notes = library.notes
         let buckets = library.activeProjects
-        // Pinned buckets first, then by name.
+        // Pinned bowls first, then by name.
         let sorted = buckets.filter(\.isPinned) + buckets.filter { !$0.isPinned }
         // "Up Next", as the section of the home list on iOS: the Inbox and, under it, the to-dos
         // folder while there are to-dos to show.
         var upNext: [SidebarNode] = [SidebarNode(.page(.inbox))]
         if !Todos.folder(notes).isEmpty || state.page == .todos { upNext.append(SidebarNode(.page(.todos))) }
         var top: [SidebarNode] = [SidebarNode(.group("Up Next"), children: upNext)]
-        top.append(SidebarNode(.group("Buckets"), children: sorted.map { SidebarNode(.page(.project($0.id))) }))
+        top.append(SidebarNode(.group("Bowls"), children: sorted.map { SidebarNode(.page(.project($0.id))) }))
         // The chat is a place to go, not something waiting: it leads the other places under "More".
         var more: [SidebarNode] = [SidebarNode(.page(.chat))]
         let archived = HomeList.archivedProjects(library.projects).count
         if archived > 0 || state.page == .archive { more.append(SidebarNode(.page(.archive))) }
         if notes.contains(where: \.isDeleted) || state.page == .trash { more.append(SidebarNode(.page(.trash))) }
         if !more.isEmpty { top.append(SidebarNode(.group("More"), children: more)) }
-        // An open bucket that is archived shows under the archive, but the sidebar still marks it.
+        // An open bowl that is archived shows under the archive, but the sidebar still marks it.
         roots = top
         guard renaming == nil else { return }
         isSyncingSelection = true
         outline.reloadData()
-        for node in roots where !node.children.isEmpty || node.kind == .group("Buckets") { outline.expandItem(node) }
+        for node in roots where !node.children.isEmpty || node.kind == .group("Bowls") { outline.expandItem(node) }
         isSyncingSelection = false
         syncSelection()
     }
@@ -230,10 +230,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             cell.configure(title: "Chat", symbol: "bubble.left.and.bubble.right.fill", tint: .brandNavy, badge: 0)
         case .project(let id):
             let project = library.project(id)
-            // What is in the bucket and not deleted, as the bucket's page lists it.
+            // What is in the bowl and not deleted, as the bowl's page lists it.
             let key = project.map(Projects.key)
             let count = key.map { key in notes.lazy.filter { !$0.isDeleted && $0.projectIDs.contains(key) }.count } ?? 0
-            cell.configure(title: project?.name ?? "Bucket", symbol: "folder.fill", tint: .brandProject, badge: count, pinned: project?.isPinned == true)
+            cell.configure(title: project?.name ?? "Bowl", symbol: "folder.fill", tint: .brandProject, badge: count, pinned: project?.isPinned == true)
         case .archive:
             cell.configure(title: "Archive", symbol: "archivebox.fill", tint: .brandNavy, badge: 0)
         case .trash:
@@ -265,7 +265,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             default: return []
             }
         }
-        // Files, pictures, links and text from outside: into the bucket under them, anywhere else into the inbox
+        // Files, pictures, links and text from outside: into the bowl under them, anywhere else into the inbox
         // (its row lights up). Folders alone are taken too, so the notice after the drop can say why they stay out.
         guard let plan = Intake.plan(pasteboard), plan.canImport || !plan.skipped.isEmpty else { return [] }
         if case .project? = (item as? SidebarNode)?.page, index == NSOutlineViewDropOnItemIndex { return .copy }
@@ -306,7 +306,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         menu.removeAllItems()
         let row = outline.clickedRow
         guard row >= 0, let page = (outline.item(atRow: row) as? SidebarNode)?.page else {
-            menu.addItem(withTitle: "New Bucket…", action: #selector(MainWindowController.newBucket(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "New Bowl…", action: #selector(MainWindowController.newBucket(_:)), keyEquivalent: "")
             return
         }
         switch page {
@@ -321,17 +321,17 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             let archive = menu.addItem(withTitle: project.isArchived ? "Unarchive" : "Archive", action: #selector(toggleArchive(_:)), keyEquivalent: "")
             archive.representedObject = project
             archive.target = self
-            let chat = menu.addItem(withTitle: "Chat with Bucket", action: #selector(chatWithBucket(_:)), keyEquivalent: "")
+            let chat = menu.addItem(withTitle: "Chat with Bowl", action: #selector(chatWithBucket(_:)), keyEquivalent: "")
             chat.representedObject = project
             chat.target = self
             menu.addItem(.separator())
-            let delete = menu.addItem(withTitle: "Delete Bucket…", action: #selector(deleteBucket(_:)), keyEquivalent: "")
+            let delete = menu.addItem(withTitle: "Delete Bowl…", action: #selector(deleteBucket(_:)), keyEquivalent: "")
             delete.representedObject = project
             delete.target = self
         case .trash:
             menu.addItem(withTitle: "Delete All…", action: #selector(MainWindowController.emptyTrash(_:)), keyEquivalent: "")
         default:
-            menu.addItem(withTitle: "New Bucket…", action: #selector(MainWindowController.newBucket(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "New Bowl…", action: #selector(MainWindowController.newBucket(_:)), keyEquivalent: "")
         }
     }
 
@@ -369,7 +369,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         beginRenaming(project)
     }
 
-    /// The bucket's name becomes editable in place, as in the Finder's sidebar.
+    /// The bowl's name becomes editable in place, as in the Finder's sidebar.
     func beginRenaming(_ project: NoteFolder) {
         guard let node = node(for: .project(project.id)) else { return }
         let row = outline.row(forItem: node)

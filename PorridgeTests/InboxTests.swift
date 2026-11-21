@@ -2,7 +2,7 @@ import SwiftData
 import XCTest
 @testable import Porridge
 
-/// The inbox: what waits in it, how a note leaves it, and how a suggested bucket is read from a model's answer.
+/// The inbox: what waits in it, how a note leaves it, and how a suggested bowl is read from a model's answer.
 @MainActor
 final class InboxTests: XCTestCase {
     func testANoteStaysInTheInboxUntilItIsInABucketAndComesBackOutOfIt() throws {
@@ -11,7 +11,7 @@ final class InboxTests: XCTestCase {
         context.insert(project)
         let old = Note(), a = Note(), c = Note()
         old.createdAt = Date(timeIntervalSince1970: 1_000_000)
-        // Dropping a suggestion or having been filed once does not take a note out: only a bucket does.
+        // Dropping a suggestion or having been filed once does not take a note out: only a bowl does.
         old.filedAt = old.createdAt
         a.createdAt = Date(timeIntervalSince1970: 2_000_000)
         c.createdAt = Date(timeIntervalSince1970: 3_000_000)
@@ -26,7 +26,7 @@ final class InboxTests: XCTestCase {
         XCTAssertEqual(a.projectIDs, [Projects.key(project)])
         XCTAssertTrue(a.suggestedProjectIDs.isEmpty)
 
-        // Taken out of its only bucket, a note is back in the inbox; trashed it is not in it. Notes are never
+        // Taken out of its only bowl, a note is back in the inbox; trashed it is not in it. Notes are never
         // archived: an `archivedAt` left by an earlier version keeps nothing out.
         Projects.toggle(project, on: c, in: context)
         XCTAssertTrue(c.isInInbox)
@@ -46,7 +46,7 @@ final class InboxTests: XCTestCase {
         XCTAssertEqual(project?.name, "Trip to Goa")
         XCTAssertEqual(text, "## Summary\nFlights are booked.\n\nTAGS: travel, flights")
 
-        // "none" and a bucket the model made up are no suggestion; the line still goes.
+        // "none" and a bowl the model made up are no suggestion; the line still goes.
         for name in ["none", "Holidays"] {
             let (rest, made) = Inbox.splitProject("Text\nPROJECT: \(name)", projects: projects)
             XCTAssertNil(made)

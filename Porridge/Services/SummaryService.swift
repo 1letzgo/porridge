@@ -111,7 +111,7 @@ enum SummaryService {
         let language = SummaryLanguage.detect(in: material)
         let chosen = model ?? .current
         let stored = note.modelContext != nil
-        // A note in the inbox gets a bucket suggested along with its summary.
+        // A note in the inbox gets a bowl suggested along with its summary.
         let buckets = Inbox.candidates(for: note)
         let answer = try await run(
             model: chosen,

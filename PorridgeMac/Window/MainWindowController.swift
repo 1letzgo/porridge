@@ -96,7 +96,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             state.draft = nil
             state.draftStartsRecording = false
         }
-        // The open bucket was deleted on another device.
+        // The open bowl was deleted on another device.
         if case .project(let id) = state.page, library.project(id) == nil { state.page = .inbox }
         // A note deleted for good (here or on another device) is no longer open.
         let kept = state.selection.filter { id in state.draft?.id == id || library.note(id) != nil }
@@ -238,7 +238,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let item = NSToolbarItem(itemIdentifier: identifier)
             item.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: "Chat")
             item.label = "Chat"
-            item.toolTip = "Chat with Your Buckets"
+            item.toolTip = "Chat with Your Bowls"
             item.isBordered = true
             item.action = #selector(openChat(_:))
             item.target = self
@@ -273,7 +273,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             ("New To-do", "checklist", #selector(newTodo(_:)), .brandTask),
             ("Record Meeting", "mic.fill", #selector(recordMeeting(_:)), .brandNavy),
             ("Add Link…", "link", #selector(addLink(_:)), .brandLink),
-            ("New Bucket…", "folder.badge.plus", #selector(newBucket(_:)), .brandProject),
+            ("New Bowl…", "folder.badge.plus", #selector(newBucket(_:)), .brandProject),
         ]
         for (title, symbol, action, tint) in entries {
             let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
@@ -347,8 +347,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func newNote(_ sender: Any?) { addNote(todo: false) }
     @objc func newTodo(_ sender: Any?) { addNote(todo: true) }
 
-    /// A new note opens at once; it is stored once it has content. In a bucket it goes into it; in the to-dos
-    /// folder it is a to-do, in no bucket.
+    /// A new note opens at once; it is stored once it has content. In a bowl it goes into it; in the to-dos
+    /// folder it is a to-do, in no bowl.
     private func addNote(todo asked: Bool) {
         let todo = asked || state.page == .todos
         if !state.page.allowsCreating || state.page == .chat || state.page == .search { state.page = .inbox }

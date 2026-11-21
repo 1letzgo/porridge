@@ -101,7 +101,7 @@ enum DebugDriver {
         case "suggest":
             controller.split.detail.noteDetail?.debugSuggestions(argument)
         case "seed-todos":
-            // Four open to-dos as the iOS test seed makes them: long overdue (in a new bucket named like the
+            // Four open to-dos as the iOS test seed makes them: long overdue (in a new bowl named like the
             // prefix), today, upcoming (in five days), no date.
             let bucket = Projects.create(argument, in: library.context)
             let today = Date()
@@ -121,12 +121,12 @@ enum DebugDriver {
             }
             library.save()
         case "purge-prefix":
-            // Removes the test to-dos and the bucket "seed-todos" made.
+            // Removes the test to-dos and the bowl "seed-todos" made.
             for note in library.notes where note.title.hasPrefix(argument + " ") { NoteStore.deletePermanently(note, in: library.context) }
             for project in library.projects where project.name == argument { Projects.delete(project, in: library.context) }
         case "seed-meeting":
             // A summarized meeting whose summary has three tasks (the user's, somebody else's with a date,
-            // nobody's), as the iOS test seed makes it but without a bucket.
+            // nobody's), as the iOS test seed makes it but without a bowl.
             let meeting = Note()
             meeting.title = argument
             meeting.titleIsCustom = true
@@ -156,7 +156,7 @@ enum DebugDriver {
                 NoteStore.deletePermanently(meeting, in: library.context)
             }
         case "bucket-new":
-            // Makes a bucket the way "New Bucket…" does once its name is given; "!" before the name pins it.
+            // Makes a bowl the way "New Bowl…" does once its name is given; "!" before the name pins it.
             let pinned = argument.hasPrefix("!")
             if let project = Projects.create(pinned ? String(argument.dropFirst()) : argument, in: library.context), pinned {
                 project.isPinned = true

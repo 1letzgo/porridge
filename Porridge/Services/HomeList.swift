@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// What the home list shows of the buckets, and what is in the archive (archived buckets only).
+/// What the home list shows of the bowls, and what is in the archive (archived bowls only).
 enum HomeList {
     /// How many projects that are not pinned the list shows before "More".
     static let recentProjects = 5
@@ -36,8 +36,8 @@ enum HomeList {
     }
 }
 
-/// Archiving keeps a bucket out of the lists without deleting it; its elements stay in it and in the search.
-/// Only buckets are archived, never single notes.
+/// Archiving keeps a bowl out of the lists without deleting it; its elements stay in it and in the search.
+/// Only bowls are archived, never single notes.
 enum Archive {
     static func set(_ archived: Bool, _ project: NoteFolder, in context: ModelContext) {
         project.archivedAt = archived ? Date() : nil

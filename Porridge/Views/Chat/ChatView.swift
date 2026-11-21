@@ -11,10 +11,10 @@ final class ChatNavigation {
     var showsList = false
     /// What a new chat is about (`Projects.key`); nil is all notes.
     var newScope: String?
-    /// The bucket the chat was opened from: a new chat is about it.
+    /// The bowl the chat was opened from: a new chat is about it.
     var project: String?
 
-    /// Opening the chat from a bucket or the home list: the last chat about it is taken up again, otherwise a new one starts.
+    /// Opening the chat from a bowl or the home list: the last chat about it is taken up again, otherwise a new one starts.
     func open(from project: String?, threads: [ChatThread]) {
         self.project = project
         newScope = project
@@ -140,7 +140,7 @@ private struct ChatList: View {
 }
 
 /// One chat with the notes: the questions are answered by the model chosen in Settings, from the passages of the
-/// notes that fit. A chat is about all notes or about one bucket.
+/// notes that fit. A chat is about all notes or about one bowl.
 struct ChatView: View {
     /// The chat; nil is a new one, made with the first question.
     let thread: ChatThread?
@@ -173,8 +173,8 @@ struct ChatView: View {
     ]
 
     static func scopeName(_ project: String?, projects: [NoteFolder]) -> String {
-        guard let project else { return String(localized: "All Buckets") }
-        return projects.first { Projects.key($0) == project }?.name ?? String(localized: "Deleted Bucket")
+        guard let project else { return String(localized: "All Bowls") }
+        return projects.first { Projects.key($0) == project }?.name ?? String(localized: "Deleted Bowl")
     }
 
     var body: some View {
@@ -223,7 +223,7 @@ struct ChatView: View {
             } else {
                 Menu {
                     Picker("About", selection: $scope) {
-                        Label("All Buckets", systemImage: "tray.full").tag(String?.none)
+                        Label("All Bowls", systemImage: "tray.full").tag(String?.none)
                         ForEach(projects.filter { !$0.isArchived }) { project in
                             Label(project.name, systemImage: "folder").tag(Optional(Projects.key(project)))
                         }
@@ -294,7 +294,7 @@ struct ChatView: View {
     private var intro: some View {
         VStack(spacing: 18) {
             EmptyStateView(
-                title: "Ask Your Buckets",
+                title: "Ask Your Bowls",
                 message: "Ask about anything in your notes, meetings, links, images and files. The answer comes from your own data.",
                 systemImage: "bubble.left.and.text.bubble.right"
             )
@@ -379,7 +379,7 @@ struct ChatView: View {
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            TextField("Ask your buckets…", text: $input, axis: .vertical)
+            TextField("Ask your bowls…", text: $input, axis: .vertical)
                 .lineLimit(1...4)
                 .focused($focused)
                 .submitLabel(.send)

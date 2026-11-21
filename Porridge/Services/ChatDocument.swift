@@ -1,8 +1,8 @@
 import Foundation
 
-/// One entry as the chat sees it: its kind, dates, buckets, link and to-do state, and a short snippet. Kept next to
+/// One entry as the chat sees it: its kind, dates, bowls, link and to-do state, and a short snippet. Kept next to
 /// the entry's passages in the index (`NoteIndex`); derived from the note, never synced, rebuilt at any time.
-/// The bucket names are not stored (a bucket may be renamed): they are looked up when a question is asked.
+/// The bowl names are not stored (a bowl may be renamed): they are looked up when a question is asked.
 /// DESIGN.md "Chat data" describes the format.
 struct ChatDocument: Codable, Equatable {
     enum Kind: String, Codable, CaseIterable {
@@ -84,7 +84,7 @@ struct ChatDocument: Codable, Equatable {
     }
 
     /// The line that introduces the entry to the model:
-    /// `«Title» — To-do, open, due 12 December 2026, overdue, 1 of 3 subtasks done · created Tue 17 Nov 2026 · Bucket: Travel`
+    /// `«Title» — To-do, open, due 12 December 2026, overdue, 1 of 3 subtasks done · created Tue 17 Nov 2026 · Bowl: Travel`
     /// and for a link `«Title» — Link (example.com) · created … · Inbox · https://example.com/a`.
     func header(bucketNames: [String: String], now: Date = Date(), calendar: Calendar = .current) -> String {
         var kindText = kind.label
@@ -100,7 +100,7 @@ struct ChatDocument: Codable, Equatable {
         }
         var parts = [kindText, "created " + Self.dayText(createdAt, calendar: calendar)]
         let names = bucketIDs.compactMap { bucketNames[$0] }
-        parts.append(names.isEmpty ? "Inbox" : (names.count == 1 ? "Bucket: " : "Buckets: ") + names.joined(separator: ", "))
+        parts.append(names.isEmpty ? "Inbox" : (names.count == 1 ? "Bowl: " : "Bowls: ") + names.joined(separator: ", "))
         if !tags.isEmpty { parts.append(tags.map { "#" + $0 }.joined(separator: " ")) }
         if let url { parts.append(url) }
         return "«\(title)» — " + parts.joined(separator: " · ")
@@ -109,7 +109,7 @@ struct ChatDocument: Codable, Equatable {
 
 // MARK: - The question as filters
 
-/// What a question asks for beyond its words: a kind of entry, a bucket, the state of a to-do, a time. Read from the
+/// What a question asks for beyond its words: a kind of entry, a bowl, the state of a to-do, a time. Read from the
 /// question by fixed word lists (German and English); the words it was read from are not searched for.
 struct ChatQuery: Equatable {
     enum TodoFilter: String { case open, done, overdue }
@@ -118,7 +118,7 @@ struct ChatQuery: Equatable {
 
     var kinds: Set<ChatDocument.Kind> = []
     var bucketIDs: Set<String> = []
-    /// "Inbox": entries in no bucket.
+    /// "Inbox": entries in no bowl.
     var inbox = false
     var todo: TodoFilter?
     var range: DateInterval?
@@ -140,7 +140,7 @@ struct ChatQuery: Equatable {
     static let doneWords: Set<String> = ["erledigt", "erledigte", "erledigten", "done", "completed", "finished", "abgehakt", "abgehakte", "abgeschlossen", "abgeschlossene", "geschafft"]
     static let overdueWords: Set<String> = ["überfällig", "überfällige", "überfälligen", "overdue", "verspätet", "late"]
     static let dueWords: Set<String> = ["fällig", "fällige", "fälligen", "due", "deadline", "deadlines", "frist", "fristen"]
-    static let bucketWords: Set<String> = ["bucket", "buckets"]
+    static let bucketWords: Set<String> = ["bowl", "bowls", "bucket", "buckets"]
     static let weekdays: [String: Int] = [
         "sonntag": 1, "montag": 2, "dienstag": 3, "mittwoch": 4, "donnerstag": 5, "freitag": 6, "samstag": 7, "sonnabend": 7,
         "sunday": 1, "monday": 2, "tuesday": 3, "wednesday": 4, "thursday": 5, "friday": 6, "saturday": 7,
@@ -154,7 +154,7 @@ struct ChatQuery: Equatable {
             .filter { !$0.isEmpty }
     }
 
-    /// Reads the filters of `question`. `buckets` are the names a question may name (`Projects.key` → name).
+    /// Reads the filters of `question`. `bowls` are the names a question may name (`Projects.key` → name).
     static func parse(_ question: String, buckets: [String: String] = [:], now: Date = Date(), calendar: Calendar = .current) -> ChatQuery {
         var query = ChatQuery()
         let all = words(question)
@@ -174,7 +174,7 @@ struct ChatQuery: Equatable {
             if word == "inbox" { query.inbox = true; take(index) }
         }
 
-        // A bucket named in the question, by its whole name ("Reisen", "Haus und Garten").
+        // A bowl named in the question, by its whole name ("Reisen", "Haus und Garten").
         for (id, name) in buckets {
             let nameWords = words(name)
             guard !nameWords.isEmpty, nameWords.count <= all.count else { continue }
@@ -411,7 +411,7 @@ struct ChatBudget: Equatable {
 }
 
 extension ChatRetrieval {
-    /// The context a question is answered from. With filters (a kind, a bucket, a to-do state, a time), every
+    /// The context a question is answered from. With filters (a kind, a bowl, a to-do state, a time), every
     /// matching entry is listed (up to `listLimit`), then the passages of the matches that have the question's
     /// words, then further passages of the first matches; when no match has the words, the best passages of all
     /// entries follow, marked as outside. Without filters, the best passages of all entries (`select`).

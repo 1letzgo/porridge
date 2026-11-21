@@ -287,7 +287,7 @@ extension TodoSuggestions {
     }
 
     /// Takes the chosen suggestions on: one to-do each, or one to-do "Follow-ups: <title>" with them as subtasks.
-    /// The ones not chosen are dismissed. The to-dos are in the note's buckets and point back to it.
+    /// The ones not chosen are dismissed. The to-dos are in the note's bowls and point back to it.
     @discardableResult
     static func take(_ chosen: [TaskSuggestion], dismissing rest: [TaskSuggestion], from note: Note, asOne: Bool, in context: ModelContext) -> [Note] {
         guard !note.isSaved, !chosen.isEmpty else { return [] }

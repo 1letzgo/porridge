@@ -1,8 +1,8 @@
 import AppKit
 import SwiftData
 
-/// What can be done with notes from a list, a menu or the detail: pin, buckets, share, delete. The same for one note
-/// or several selected ones. Notes are never archived, only buckets are.
+/// What can be done with notes from a list, a menu or the detail: pin, bowls, share, delete. The same for one note
+/// or several selected ones. Notes are never archived, only bowls are.
 @MainActor
 enum NoteOperations {
     private static var library: Library { .shared }
@@ -49,7 +49,7 @@ enum NoteOperations {
         }
         let pinned = notes.allSatisfy(\.isPinned)
         menu.add(pinned ? "Unpin" : "Pin", symbol: pinned ? "pin.slash" : "pin") { setPinned(!pinned, notes) }
-        let buckets = NSMenuItem(title: "Buckets", action: nil, keyEquivalent: "")
+        let buckets = NSMenuItem(title: "Bowls", action: nil, keyEquivalent: "")
         buckets.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         buckets.submenu = bucketMenu(for: notes, window: window)
         menu.addItem(buckets)
@@ -65,7 +65,7 @@ enum NoteOperations {
         }
     }
 
-    /// A menu of the buckets, ticked where all the notes are in; a click puts them in or takes them out.
+    /// A menu of the bowls, ticked where all the notes are in; a click puts them in or takes them out.
     static func bucketMenu(for notes: [Note], window: NSWindow?) -> NSMenu {
         let menu = NSMenu()
         for project in library.activeProjects {
@@ -85,7 +85,7 @@ enum NoteOperations {
             item.state = inAll ? .on : (notes.contains { $0.projectIDs.contains(key) } ? .mixed : .off)
         }
         menu.addSeparator()
-        menu.add("New Bucket…") {
+        menu.add("New Bowl…") {
             BucketActions.create(in: window) { project in
                 notes.forEach { Inbox.file($0, into: Projects.key(project), in: context) }
             }
@@ -158,13 +158,13 @@ enum NoteOperations {
     }
 }
 
-/// Buckets: create, rename, archive, delete.
+/// Bowls: create, rename, archive, delete.
 @MainActor
 enum BucketActions {
     private static var library: Library { .shared }
 
     static func create(in window: NSWindow?, then: @escaping (NoteFolder) -> Void = { _ in }) {
-        Alerts.ask("New Bucket", placeholder: "Name", action: "Create", in: window) { name in
+        Alerts.ask("New Bowl", placeholder: "Name", action: "Create", in: window) { name in
             if let project = Projects.create(name, in: library.context) {
                 library.reload()
                 then(project)
@@ -173,13 +173,13 @@ enum BucketActions {
     }
 
     static func rename(_ project: NoteFolder, in window: NSWindow?) {
-        Alerts.ask("Rename Bucket", placeholder: "Name", value: project.name, action: "Rename", in: window) { name in
+        Alerts.ask("Rename Bowl", placeholder: "Name", value: project.name, action: "Rename", in: window) { name in
             Projects.rename(project, to: name, in: library.context)
         }
     }
 
     static func confirmDelete(_ project: NoteFolder, state: WindowState, in window: NSWindow) {
-        Alerts.confirm("Delete “\(project.name)”?", message: "Its meetings, notes and links stay.", action: "Delete Bucket", in: window) {
+        Alerts.confirm("Delete “\(project.name)”?", message: "Its meetings, notes and links stay.", action: "Delete Bowl", in: window) {
             if state.page == .project(project.id) { state.page = .inbox }
             Projects.delete(project, in: library.context)
         }
@@ -199,7 +199,7 @@ enum BucketActions {
             Archive.set(!project.isArchived, project, in: library.context)
         }
         menu.addSeparator()
-        menu.add("Delete Bucket…", symbol: "trash", isDestructive: true) {
+        menu.add("Delete Bowl…", symbol: "trash", isDestructive: true) {
             guard let window else { return }
             confirmDelete(project, state: state, in: window)
         }

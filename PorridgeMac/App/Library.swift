@@ -3,7 +3,7 @@ import CoreData
 import SwiftData
 import UserNotifications
 
-/// The notes, buckets and chats of the app for the AppKit windows: one store (`AppContainer`), one processing
+/// The notes, bowls and chats of the app for the AppKit windows: one store (`AppContainer`), one processing
 /// queue, and the fetched lists, which follow every save of the store (this app's and the sync's). Windows ask to
 /// be told of a change with `observe`; each change is told once, a moment after it happened.
 @MainActor
@@ -73,7 +73,7 @@ final class Library {
         NoteStore.purgeExpired(in: context)
         ShareImport.importInbox(context: context, processing: processing)
         Projects.migrateFolders(in: context)
-        // Only buckets are archived now: notes archived by earlier versions come back.
+        // Only bowls are archived now: notes archived by earlier versions come back.
         Archive.clearArchivedNotes(in: context)
         // Reminders are gone: what was planned for them is taken back once.
         let center = UNUserNotificationCenter.current()
@@ -158,7 +158,7 @@ final class Library {
 
     // MARK: Index and share sheet
 
-    /// The search index follows the notes (only what changed is cut again); the share sheet reads the buckets
+    /// The search index follows the notes (only what changed is cut again); the share sheet reads the bowls
     /// from a file, it cannot open the store.
     private func followIndexAndShare() {
         let share = projects.filter { !$0.isArchived }.map { ShareInbox.Project(id: Projects.key($0), name: $0.name) }

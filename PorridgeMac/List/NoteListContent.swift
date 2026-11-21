@@ -1,6 +1,6 @@
 import Foundation
 
-/// An entry of the middle column: a note, or a bucket (in the archive).
+/// An entry of the middle column: a note, or a bowl (in the archive).
 enum ListItem: Hashable {
     case note(UUID)
     case project(UUID)
@@ -18,7 +18,7 @@ struct ListSection: Hashable {
     var count: Int?
 }
 
-/// What the middle column shows for a page of the sidebar: sections of notes (and archived buckets), built from
+/// What the middle column shows for a page of the sidebar: sections of notes (and archived bowls), built from
 /// the library the same way the iOS lists build them.
 @MainActor
 enum NoteListContent {
@@ -27,7 +27,7 @@ enum NoteListContent {
         var emptyTitle: String
         var emptyMessage: String
         var emptySymbol: String
-        /// The kinds a bucket holds, for its filter; empty elsewhere.
+        /// The kinds a bowl holds, for its filter; empty elsewhere.
         var kindCounts: [KindFilter: Int] = [:]
     }
 
@@ -38,7 +38,7 @@ enum NoteListContent {
             let waiting = Inbox.notes(notes)
             return Built(
                 sections: waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })],
-                emptyTitle: "Inbox Empty", emptyMessage: "What is new or in no bucket waits here.", emptySymbol: "tray"
+                emptyTitle: "Inbox Empty", emptyMessage: "What is new or in no bowl waits here.", emptySymbol: "tray"
             )
         case .todos:
             // Exactly the groups of the search's "Open To-dos", then those done today (`Todos.folder`).
@@ -54,11 +54,11 @@ enum NoteListContent {
             }
             return Built(
                 sections: sections, emptyTitle: "Nothing to Do",
-                emptyMessage: "Open to-dos from the inbox and every bucket show up here.", emptySymbol: "checklist"
+                emptyMessage: "Open to-dos from the inbox and every bowl show up here.", emptySymbol: "checklist"
             )
         case .project(let id):
             guard let project = library.project(id) else {
-                return Built(sections: [], emptyTitle: "Bucket Deleted", emptyMessage: "This bucket is gone.", emptySymbol: "folder")
+                return Built(sections: [], emptyTitle: "Bowl Deleted", emptyMessage: "This bowl is gone.", emptySymbol: "folder")
             }
             let key = Projects.key(project)
             let content = notes.filter { !$0.isDeleted && $0.projectIDs.contains(key) }
@@ -74,18 +74,18 @@ enum NoteListContent {
             let sections: [(ListSection, [ListItem])] = sorted.isEmpty ? [] : [(ListSection(id: "bucket", title: "", tint: .sky), sorted.map { .note($0.id) })]
             return Built(
                 sections: sections, emptyTitle: "Nothing Here Yet",
-                emptyMessage: "Add meetings, notes and links to the bucket, or drop them on it in the sidebar.",
+                emptyMessage: "Add meetings, notes and links to the bowl, or drop them on it in the sidebar.",
                 emptySymbol: "folder", kindCounts: counts
             )
         case .archive:
-            // Archived buckets only: notes are never archived.
+            // Archived bowls only: notes are never archived.
             let buckets = HomeList.archivedProjects(library.projects)
             let sections: [(ListSection, [ListItem])] = buckets.isEmpty ? [] : [
-                (ListSection(id: "buckets", title: "Buckets", tint: .project), buckets.map { .project($0.id) })
+                (ListSection(id: "buckets", title: "Bowls", tint: .project), buckets.map { .project($0.id) })
             ]
             return Built(
                 sections: sections, emptyTitle: "Nothing Archived",
-                emptyMessage: "Archive a bucket from its context menu.", emptySymbol: "archivebox"
+                emptyMessage: "Archive a bowl from its context menu.", emptySymbol: "archivebox"
             )
         case .trash:
             let deleted = notes.filter(\.isDeleted).sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
@@ -111,7 +111,7 @@ enum NoteListContent {
         }
     }
 
-    /// What the search finds among the notes, those in archived buckets included; strictly a timeline.
+    /// What the search finds among the notes, those in archived bowls included; strictly a timeline.
     static func search(_ notes: [Note], state: WindowState) -> [Note] {
         var result = notes.filter { !$0.isDeleted }
         if let kind = state.kindFilter {

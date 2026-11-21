@@ -13,7 +13,7 @@ enum ShareInbox {
         var text: String?
         var title: String?
         var files: [File] = []
-        /// The bucket chosen in the share sheet (`NoteFolder.id` as uppercase string).
+        /// The bowl chosen in the share sheet (`NoteFolder.id` as uppercase string).
         var projectID: String?
         var date: Date = Date()
 
@@ -35,7 +35,7 @@ enum ShareInbox {
         var kind: Kind
     }
 
-    /// A bucket the share sheet can offer; the app writes the list (`writeProjects`).
+    /// A bowl the share sheet can offer; the app writes the list (`writeProjects`).
     struct Project: Codable, Hashable, Identifiable {
         var id: String
         var name: String
@@ -70,13 +70,13 @@ enum ShareInbox {
     }
 
     /// Writes the entry; its files are in `folder(for:)` already. The app only sees an entry once this is written,
-    /// so a share that was interrupted never arrives half. Writing it again replaces it (a bucket chosen).
+    /// so a share that was interrupted never arrives half. Writing it again replaces it (a bowl chosen).
     static func add(_ entry: Entry) throws {
         let data = try JSONEncoder().encode(entry)
         try data.write(to: try folder(for: entry.id).appendingPathComponent(entryName), options: .atomic)
     }
 
-    /// Writes the entry again (a bucket chosen after the share), only while it still waits: once the app has saved
+    /// Writes the entry again (a bowl chosen after the share), only while it still waits: once the app has saved
     /// it and taken it out, nothing is written, so the folder never comes back as a second share. False then.
     @discardableResult
     static func update(_ entry: Entry) throws -> Bool {
@@ -161,7 +161,7 @@ enum ShareInbox {
         }
     }
 
-    // MARK: Buckets for the share sheet
+    // MARK: Bowls for the share sheet
 
     private static var projectsURL: URL? { root?.appendingPathComponent("ShareProjects.json") }
 

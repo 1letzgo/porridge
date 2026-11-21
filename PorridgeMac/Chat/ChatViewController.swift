@@ -1,8 +1,8 @@
 import AppKit
 import SwiftData
 
-/// One chat with the buckets: questions are answered by the chosen model from the passages of the notes that fit.
-/// A chat is about all buckets or one (a new chat can choose, a held one keeps what it started with); answers
+/// One chat with the bowls: questions are answered by the chosen model from the passages of the notes that fit.
+/// A chat is about all bowls or one (a new chat can choose, a held one keeps what it started with); answers
 /// name the notes they come from, a click opens one. The field is at the bottom.
 final class ChatViewController: NSViewController, NSTextViewDelegate {
     private let state: WindowState
@@ -68,7 +68,7 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         modelPopUp.translatesAutoresizingMaskIntoConstraints = false
 
         input.textView.delegate = self
-        input.placeholder = "Ask your buckets…"
+        input.placeholder = "Ask your bowls…"
         send.image = .symbol("arrow.up.circle.fill", size: 26, weight: .semibold, label: "Send")
         send.isBordered = false
         send.contentTintColor = .brandSky
@@ -181,7 +181,7 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
             scope.isHidden = false
             scopeLabel.isHidden = true
             scope.removeAllItems()
-            scope.addItem(withTitle: String(localized: "All Buckets"))
+            scope.addItem(withTitle: String(localized: "All Bowls"))
             scope.lastItem?.representedObject = nil
             for project in projects where !project.isArchived {
                 scope.addItem(withTitle: project.name)
@@ -229,7 +229,7 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
     private func addIntro() {
         let empty = EmptyMessageView()
         empty.show(
-            title: "Ask Your Buckets",
+            title: "Ask Your Bowls",
             message: "Ask about anything in your notes, meetings, links, images and files. The answer comes from your own data.",
             symbol: "bubble.left.and.text.bubble.right"
         )

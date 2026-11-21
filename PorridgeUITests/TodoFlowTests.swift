@@ -47,7 +47,7 @@ final class TodoFlowTests: XCTestCase {
         XCTAssertTrue(progress.waitForExistence(timeout: 5), "ticking a subtask did not count")
         app.buttons["Done"].firstMatch.tap()
 
-        // Due today, from the chip in the row of buckets and tags.
+        // Due today, from the chip in the row of bowls and tags.
         let due = app.buttons["Add Due Date"]
         XCTAssertTrue(due.waitForExistence(timeout: 5), "due date chip missing")
         due.tap()
@@ -78,7 +78,7 @@ final class TodoFlowTests: XCTestCase {
     }
 
     /// A summarized meeting offers its tasks as to-dos: the user's and nobody's are picked, Anna's is not; taking
-    /// them on makes two to-dos in the meeting's bucket, and the suggestions are gone.
+    /// them on makes two to-dos in the meeting's bowl, and the suggestions are gone.
     func testSuggestedTodosFromAMeetingAreTakenOn() throws {
         let title = unique("Launch")
         let app = XCUIApplication()
@@ -87,7 +87,7 @@ final class TodoFlowTests: XCTestCase {
         app.launch()
 
         let bucket = app.staticTexts[title].firstMatch
-        XCTAssertTrue(app.reveal(bucket), "bucket of the meeting missing")
+        XCTAssertTrue(app.reveal(bucket), "bowl of the meeting missing")
         bucket.tap()
         let hint = app.staticTexts["3 suggested to-dos"].firstMatch
         XCTAssertTrue(hint.waitForExistence(timeout: 10), "the meeting row does not say that to-dos wait")
@@ -108,7 +108,7 @@ final class TodoFlowTests: XCTestCase {
         screenshot("meeting-suggested-todos-taken", app)
 
         app.buttons["Back"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["To-dos"].firstMatch.waitForExistence(timeout: 10), "no to-dos in the bucket")
+        XCTAssertTrue(app.staticTexts["To-dos"].firstMatch.waitForExistence(timeout: 10), "no to-dos in the bowl")
         XCTAssertTrue(app.staticTexts["Send the offer to the customer"].exists, "the user's task is not a to-do")
         XCTAssertTrue(app.staticTexts["Update the roadmap"].exists, "nobody's task is not a to-do")
         XCTAssertFalse(app.staticTexts["Book the venue"].exists, "Anna's task became a to-do without being picked")
@@ -135,10 +135,10 @@ final class TodoFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "no Overdue group")
         let first = app.staticTexts["\(prefix) long overdue"]
         XCTAssertTrue(first.waitForExistence(timeout: 5), "the longest overdue to-do is not on top")
-        // It names its bucket: the row's label holds the prefix twice, in the title and as the bucket.
+        // It names its bowl: the row's label holds the prefix twice, in the title and as the bowl.
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "\(prefix) long overdue, ")).firstMatch
         XCTAssertTrue(row.exists, "row of the overdue to-do missing")
-        XCTAssertEqual(row.label.components(separatedBy: prefix).count - 1, 2, "the row does not name its bucket: \(row.label)")
+        XCTAssertEqual(row.label.components(separatedBy: prefix).count - 1, 2, "the row does not name its bowl: \(row.label)")
         screenshot("inbox-todos-folder", app)
 
         // Ticked in the folder, it goes to Done Today.

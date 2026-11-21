@@ -1,7 +1,7 @@
 import XCTest
 @testable import Porridge
 
-/// The order of a bucket's list (`Projects.ordered`), iOS and Mac alike: pinned first, then by last change; the
+/// The order of a bowl's list (`Projects.ordered`), iOS and Mac alike: pinned first, then by last change; the
 /// To-dos filter by due day.
 @MainActor
 final class ProjectOrderTests: XCTestCase {

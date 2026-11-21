@@ -6,7 +6,7 @@ private enum NoteTab: Int {
     case summary, note, transcript, article
 }
 
-/// One note: its head stays in place (title, link, date, buckets and tags, files, state, speakers), below it the
+/// One note: its head stays in place (title, link, date, bowls and tags, files, state, speakers), below it the
 /// tab that is chosen scrolls on its own: the summary, the text, the transcript or the article. A meeting's
 /// recording plays from the bar at the bottom; the microphone dictates into the text.
 final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
@@ -366,7 +366,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         }
         dictation.onStopRequested = { [weak self] in Task { await self?.finishDictation() } }
         observers.append(Observing { [weak self] in self?.render() })
-        // Other notes count too: the to-dos made from this one, its buckets.
+        // Other notes count too: the to-dos made from this one, its bowls.
         libraryToken = library.observe { [weak self] in
             guard let self else { return }
             // Deleted for good (here or on another device): the window closes it; reading it now would trap.

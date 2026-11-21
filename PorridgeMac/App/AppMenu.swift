@@ -64,7 +64,7 @@ enum AppMenu {
         item(menu, "New To-do", #selector(MainWindowController.newTodo(_:)), "n", [.command, .shift], symbol: "checklist")
         item(menu, "Record Meeting", #selector(MainWindowController.recordMeeting(_:)), "r")
         item(menu, "Add Link…", #selector(MainWindowController.addLink(_:)), "l")
-        item(menu, "New Bucket…", #selector(MainWindowController.newBucket(_:)), "n", [.command, .control])
+        item(menu, "New Bowl…", #selector(MainWindowController.newBucket(_:)), "n", [.command, .control])
         item(menu, "New Chat", #selector(MainWindowController.newChat(_:)), "k", [.command, .shift])
         menu.addItem(.separator())
         item(menu, "Import Audio…", #selector(MainWindowController.importAudio(_:)))
@@ -180,7 +180,7 @@ enum AppMenu {
         item(due, "Clear Due Date", dueAction, "\u{8}", [.command, .control], symbol: "calendar.badge.minus", tag: 4)
         item(menu, "Due Date", nil, symbol: "calendar").submenu = due
         item(menu, "Add Tag…", command, "t", [.command, .shift], symbol: "number", tag: NoteCommand.addTag.rawValue)
-        let buckets = item(menu, "Buckets", nil, symbol: "folder")
+        let buckets = item(menu, "Bowls", nil, symbol: "folder")
         buckets.submenu = BucketsMenu.make()
         menu.addItem(.separator())
         item(menu, "Summarize with AI…", command, "s", [.command, .shift], symbol: "sparkles", tag: NoteCommand.summarize.rawValue)
@@ -216,12 +216,12 @@ enum AppMenu {
     }
 }
 
-/// The buckets as a menu for the open note (Note › Buckets): ticked where it is in, a click puts it in or takes it out.
+/// The bowls as a menu for the open note (Note › Bowls): ticked where it is in, a click puts it in or takes it out.
 @MainActor
 final class BucketsMenu: NSObject, NSMenuDelegate {
     /// Every menu keeps its own (a menu can be the submenu of one item only); the delegates stay alive here.
     private static var all: [BucketsMenu] = []
-    let menu = NSMenu(title: "Buckets")
+    let menu = NSMenu(title: "Bowls")
 
     static func make() -> NSMenu {
         let buckets = BucketsMenu()

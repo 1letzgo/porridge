@@ -63,7 +63,7 @@ final class DetailViewController: NSViewController {
             show(key: nil, nil)
             empty.show(
                 title: state.selection.count > 1 ? "\(state.selection.count) Notes Selected" : "No Note Selected",
-                message: state.selection.count > 1 ? "Drag them onto a bucket, or use the context menu." : "Pick a note from the list.",
+                message: state.selection.count > 1 ? "Drag them onto a bowl, or use the context menu." : "Pick a note from the list.",
                 symbol: "note.text"
             )
             return

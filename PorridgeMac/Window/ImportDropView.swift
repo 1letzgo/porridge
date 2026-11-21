@@ -1,8 +1,8 @@
 import AppKit
 
 /// The root of the list column and of the detail: files, pictures, links and text dragged in from other apps land
-/// here (`Intake`) and go into the open bucket or the inbox. While something is dragged over it, it says what would
-/// be added where, or why it can't be. Buckets in the sidebar are drop targets of their own.
+/// here (`Intake`) and go into the open bowl or the inbox. While something is dragged over it, it says what would
+/// be added where, or why it can't be. Bowls in the sidebar are drop targets of their own.
 final class ImportDropView: NSView {
     private let state: WindowState
     private let highlight = DropHighlightView()
@@ -41,7 +41,7 @@ final class ImportDropView: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         hideHighlight()
-        // Outside a bucket (inbox, to-dos, chat, archive, trash, search) it goes to the inbox, and the window follows.
+        // Outside a bowl (inbox, to-dos, chat, archive, trash, search) it goes to the inbox, and the window follows.
         return Intake.accept(sender.draggingPasteboard, project: state.projectForNew, state: state)
     }
 

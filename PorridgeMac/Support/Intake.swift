@@ -7,7 +7,7 @@ extension NSPasteboard.PasteboardType {
     static let porridgeNote = NSPasteboard.PasteboardType("de.letzgo.porridge.note-ids")
 }
 
-/// Notes on the pasteboard, for dragging them onto buckets and between windows.
+/// Notes on the pasteboard, for dragging them onto bowls and between windows.
 enum NotePasteboard {
     static func write(_ notes: [Note], to pasteboard: NSPasteboard) {
         pasteboard.clearContents()
@@ -33,7 +33,7 @@ enum NotePasteboard {
 }
 
 /// Everything that comes into the app from outside: files and pictures (dropped, pasted or picked), web links and
-/// text. Each becomes a note in the inbox or the open bucket, and the first one opens. Nothing that comes in this
+/// text. Each becomes a note in the inbox or the open bowl, and the first one opens. Nothing that comes in this
 /// way becomes a to-do.
 @MainActor
 enum Intake {
@@ -116,7 +116,7 @@ enum Intake {
         return type.conforms(to: .audio) || type.conforms(to: .movie)
     }
 
-    /// Where something dropped now would land: the bucket's name, or "Inbox".
+    /// Where something dropped now would land: the bowl's name, or "Inbox".
     static func destinationName(project: String?) -> String {
         guard let project else { return "Inbox" }
         return Library.shared.project(key: project)?.name ?? "Inbox"
@@ -211,7 +211,7 @@ enum Intake {
     }
 
     /// Opens what came in: on the page it belongs to when that one is open, otherwise where it lives (from the
-    /// to-dos, the chat, the archive or the search the window goes to its bucket or the inbox).
+    /// to-dos, the chat, the archive or the search the window goes to its bowl or the inbox).
     private static func show(_ note: Note, in state: WindowState?) {
         guard let state else { return }
         switch state.page {

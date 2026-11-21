@@ -80,7 +80,7 @@ struct ProjectRow: View {
     }
 }
 
-/// The inbox as the one entry of its category on the home list: what is new or in no bucket, with its own symbol.
+/// The inbox as the one entry of its category on the home list: what is new or in no bowl, with its own symbol.
 struct InboxRow: View {
     let waiting: [Note]
     var onOpen: () -> Void
@@ -169,7 +169,7 @@ struct ProjectPage: View {
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    // Only the kinds the bucket has something of; the one chosen stays while it is.
+                    // Only the kinds the bowl has something of; the one chosen stays while it is.
                     ForEach(ProjectFilter.allCases.filter { $0 == .all || $0 == filter || content.count($0) > 0 }, id: \.self) { kind in
                         chip(kind, count: content.count(kind))
                     }
@@ -191,7 +191,7 @@ struct ProjectPage: View {
                 if content.count(filter) == 0 {
                     EmptyStateView(
                         title: "Nothing Here Yet",
-                        message: "Add meetings, notes and links to the bucket from their page.",
+                        message: "Add meetings, notes and links to the bowl from their page.",
                         systemImage: "folder"
                     )
                 }
@@ -217,7 +217,7 @@ struct ProjectPage: View {
 }
 
 /// What is in a project, by kind (in the order of the notes given). Notes are never archived: done to-dos of
-/// earlier days stay in it too. `list` gives the order the bucket shows.
+/// earlier days stay in it too. `list` gives the order the bowl shows.
 struct ProjectContent {
     var todos: [Note] = []
     var meetings: [Note] = []
@@ -233,8 +233,8 @@ struct ProjectContent {
         for note in all where !note.isDeleted && note.projectIDs.contains(id) { add(note) }
     }
 
-    /// The content of every bucket in one pass over the notes, by the bucket's key (`Projects.key`). For lists of
-    /// buckets: asking each bucket on its own would walk all notes once per bucket.
+    /// The content of every bowl in one pass over the notes, by the bowl's key (`Projects.key`). For lists of
+    /// bowls: asking each bowl on its own would walk all notes once per bowl.
     static func byProject(_ all: [Note]) -> [String: ProjectContent] {
         var contents: [String: ProjectContent] = [:]
         for note in all where !note.isDeleted {
@@ -243,7 +243,7 @@ struct ProjectContent {
         return contents
     }
 
-    /// What the bucket shows under the filter, in its order (`Projects.ordered`).
+    /// What the bowl shows under the filter, in its order (`Projects.ordered`).
     func list(_ filter: ProjectFilter) -> [Note] {
         switch filter {
         case .all: Projects.ordered(todos + meetings + notes + links + images + files)

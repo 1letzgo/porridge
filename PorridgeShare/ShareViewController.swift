@@ -2,7 +2,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 /// "Share" > Porridge: saves what was shared (a link, text, images, PDFs, files, audio) into the app's inbox and
-/// closes by itself. A bucket can be chosen before it does; "Undo" takes the share back. Reading
+/// closes by itself. A bowl can be chosen before it does; "Undo" takes the share back. Reading
 /// the page or the text in an image and summarizing is done by the app.
 final class ShareViewController: UIViewController {
     private let card = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterial))
@@ -196,7 +196,7 @@ final class ShareViewController: UIViewController {
         let projects = ShareInbox.projects()
         bucketButton.isHidden = projects.isEmpty
         let chosen = projects.first { $0.id == entry.projectID }
-        bucketButton.configuration?.title = chosen?.name ?? "Bucket"
+        bucketButton.configuration?.title = chosen?.name ?? "Bowl"
         bucketButton.configuration?.image = UIImage(systemName: "folder")
         bucketButton.configuration?.imagePadding = 4
         bucketButton.menu = UIMenu(children: [

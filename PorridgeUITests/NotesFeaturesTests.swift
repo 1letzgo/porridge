@@ -137,7 +137,7 @@ final class NotesFeaturesTests: XCTestCase {
     func testProjectIsCreatedAndPinned() throws {
         let app = launchApp()
         let name = unique("Project")
-        app.create("Bucket")
+        app.create("Bowl")
         let field = app.textFields["Name"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), "name field missing")
         field.typeText(name)
@@ -162,7 +162,7 @@ final class NotesFeaturesTests: XCTestCase {
         // Clean up, so runs do not pile projects up.
         XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 5))
         app.buttons["Delete"].tap()
-        let confirm = app.buttons["Delete Bucket"]
+        let confirm = app.buttons["Delete Bowl"]
         if confirm.waitForExistence(timeout: 5) { confirm.tap() }
     }
 }

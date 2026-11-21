@@ -95,7 +95,7 @@ final class DueDatePickerController: NSViewController {
     }
 }
 
-/// The chip of a to-do's page, first in the row of buckets and tags: "+ Due Date", or the day in green (red when
+/// The chip of a to-do's page, first in the row of bowls and tags: "+ Due Date", or the day in green (red when
 /// late). A click opens the menu of choices.
 final class DueDateChip: PillButton {
     private var note: Note?

@@ -2,7 +2,7 @@ import AppKit
 import SwiftData
 
 /// The middle column: the notes of the page chosen in the sidebar, in sections, newest first. Notes can be
-/// dragged onto buckets in the sidebar; files, pictures and links dropped here come into the page.
+/// dragged onto bowls in the sidebar; files, pictures and links dropped here come into the page.
 final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMenuDelegate {
     private let state: WindowState
     private let library = Library.shared
@@ -191,7 +191,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             switch dataSource.itemIdentifier(forRow: row) {
             case .note(let id)?: ids.append(id)
             case .project(let id)?:
-                // An archived bucket opens like any bucket.
+                // An archived bowl opens like any bowl.
                 state.page = .project(id)
                 return
             case nil: break
@@ -319,7 +319,7 @@ private final class GroupRowView: NSTableRowView {
     override func drawBackground(in dirtyRect: NSRect) {}
 }
 
-/// An archived bucket in the archive's list.
+/// An archived bowl in the archive's list.
 final class BucketCellView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("bucket")
     private let icon = KindIconView()
@@ -351,6 +351,6 @@ final class BucketCellView: NSTableCellView {
         let count = notes.lazy.filter { !$0.isDeleted && $0.projectIDs.contains(key) }.count
         summary.stringValue = count == 0 ? String(localized: "Empty") : String(localized: "\(count) entries")
         icon.isPinned = project.isPinned
-        setAccessibilityLabel("Bucket \(project.name), \(summary.stringValue)")
+        setAccessibilityLabel("Bowl \(project.name), \(summary.stringValue)")
     }
 }

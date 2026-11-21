@@ -171,10 +171,10 @@ private final class ChatThreadCell: NSTableCellView {
     }
 }
 
-/// What a chat is about: all buckets or one.
+/// What a chat is about: all bowls or one.
 enum ChatScope {
     static func name(_ project: String?, projects: [NoteFolder]) -> String {
-        guard let project else { return String(localized: "All Buckets") }
-        return projects.first { Projects.key($0) == project }?.name ?? String(localized: "Deleted Bucket")
+        guard let project else { return String(localized: "All Bowls") }
+        return projects.first { Projects.key($0) == project }?.name ?? String(localized: "Deleted Bowl")
     }
 }

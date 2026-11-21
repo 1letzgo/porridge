@@ -148,7 +148,7 @@ final class ChatTests: XCTestCase {
         let context = ChatRetrieval.context("Wann ist was?", documents: documents, chunks: ChatRetrieval.chunks(from: notes), bucketNames: ["P1": "Reisen"])
         let prompt = ChatService.prompt(question: "Wann?", history: [(role: .user, text: "Hallo")], context: context, bucket: nil)
         XCTAssertTrue(prompt.user.contains("[1] «Urlaub» — Note · created "), prompt.user)
-        XCTAssertTrue(prompt.user.contains(" · Bucket: Reisen"))
+        XCTAssertTrue(prompt.user.contains(" · Bowl: Reisen"))
         XCTAssertTrue(prompt.user.contains(" · Inbox"))
         XCTAssertTrue(prompt.user.contains("User: Hallo"))
         XCTAssertTrue(prompt.user.hasSuffix("Question: Wann?"))

@@ -3,20 +3,20 @@ import Observation
 
 /// What the sidebar of a window shows; the Mac form of the list pages of iOS (`ListPage`).
 enum SidebarPage: Hashable, Codable {
-    /// What is new or in no bucket.
+    /// What is new or in no bowl.
     case inbox
     /// Every open to-do by due day, wherever it is filed: a view, not a place (`Todos.folder`).
     case todos
-    /// The chat with the buckets.
+    /// The chat with the bowls.
     case chat
-    /// One bucket with everything in it.
+    /// One bowl with everything in it.
     case project(UUID)
     case archive
     case trash
     /// The search through everything (from the toolbar's field).
     case search
 
-    /// New things go into the open bucket; in the archive and the trash nothing is created.
+    /// New things go into the open bowl; in the archive and the trash nothing is created.
     var allowsCreating: Bool { self != .archive && self != .trash }
 
     var projectID: UUID? {
@@ -24,7 +24,7 @@ enum SidebarPage: Hashable, Codable {
     }
 }
 
-/// The kinds of elements a bucket's list or the search can be narrowed to.
+/// The kinds of elements a bowl's list or the search can be narrowed to.
 enum KindFilter: String, CaseIterable, Codable {
     case todos, meetings, notes, links, images, files
 
@@ -73,12 +73,12 @@ final class WindowState {
     var searchText = ""
     /// Tags picked for the search; a note must have all of them.
     var searchTags: [String] = []
-    /// Narrows a bucket's list or the search to one kind.
+    /// Narrows a bowl's list or the search to one kind.
     var kindFilter: KindFilter?
 
     /// Which chat shows; nil is a new one that is not kept until its first question.
     var chatID: UUID?
-    /// What a new chat is about (`Projects.key`); nil is all buckets.
+    /// What a new chat is about (`Projects.key`); nil is all bowls.
     var chatScope: String?
 
     /// The note open in the detail, a new one not saved yet included.
@@ -93,7 +93,7 @@ final class WindowState {
         searchTags = []
     }
 
-    /// The bucket new things go into: the one that is open.
+    /// The bowl new things go into: the one that is open.
     var projectForNew: String? {
         page.projectID.map { $0.uuidString }
     }
@@ -102,7 +102,7 @@ final class WindowState {
         selection = [id]
     }
 
-    /// Shows a note where it lives (its bucket, the inbox or the trash) and opens it; for notes reached
+    /// Shows a note where it lives (its bowl, the inbox or the trash) and opens it; for notes reached
     /// from elsewhere, like the sources of a chat answer.
     func reveal(_ note: Note) {
         if note.isDeleted {
@@ -115,7 +115,7 @@ final class WindowState {
         selection = [note.id]
     }
 
-    /// Opening the chat from a bucket or the inbox: the last chat about it is taken up again, otherwise a new one starts.
+    /// Opening the chat from a bowl or the inbox: the last chat about it is taken up again, otherwise a new one starts.
     func openChat(threads: [ChatThread]) {
         let project = projectForNew
         chatScope = project

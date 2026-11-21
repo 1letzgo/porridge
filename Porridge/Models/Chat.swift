@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// One conversation with the notes. Several are kept side by side; a chat can be about everything or about one bucket.
+/// One conversation with the notes. Several are kept side by side; a chat can be about everything or about one bowl.
 /// Chats stay on the device they were held on: they are not synced.
 @Model
 final class ChatThread {
@@ -10,7 +10,7 @@ final class ChatThread {
     var title: String = ""
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
-    /// The bucket the chat is about (`Projects.key`); nil is all notes.
+    /// The bowl the chat is about (`Projects.key`); nil is all notes.
     var projectID: String?
 
     init(projectID: String? = nil) {

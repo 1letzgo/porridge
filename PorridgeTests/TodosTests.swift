@@ -146,16 +146,16 @@ final class TodosTests: XCTestCase {
         // Done yesterday: out of the to-dos folder's "Done Today", but nowhere archived.
         XCTAssertTrue(filed.isPutAway)
         XCTAssertTrue(Todos.folder(all).doneToday.isEmpty)
-        // In its bucket, like every note there, in every list of it.
+        // In its bowl, like every note there, in every list of it.
         let content = ProjectContent(of: bucket, notes: all)
         XCTAssertEqual(Set(content.list(.all).map(\.id)), [filed.id, open.id])
         XCTAssertEqual(Set(content.list(.todos).map(\.id)), [filed.id, open.id])
         XCTAssertEqual(ProjectContent.byProject(all)[Projects.key(bucket)]?.count(.todos), 2)
-        // Without a bucket it stays in the inbox.
+        // Without a bowl it stays in the inbox.
         XCTAssertTrue(loose.isInInbox)
         XCTAssertFalse(filed.isInInbox)
         XCTAssertEqual(Inbox.notes(all).map(\.id), [loose.id])
-        // The archive holds buckets only.
+        // The archive holds bowls only.
         XCTAssertEqual(HomeList.archivedProjects([bucket, old]).map(\.name), ["Old"])
         XCTAssertEqual(HomeList.activeProjects([bucket, old]).map(\.name), ["Garden"])
         // Un-ticking still works as before.
@@ -401,7 +401,7 @@ extension TodosTests {
         let today = todo("today", due: "2026-11-20")
         let later = todo("later", due: "2026-12-01")
         let undated = todo("undated")
-        let filed = todo("filed in a bucket", due: "2026-11-02")
+        let filed = todo("filed in a bowl", due: "2026-11-02")
         filed.projectIDs = ["B1"]
         let doneToday = todo("done today", done: calendar.date(byAdding: .hour, value: -1, to: now))
         let doneEarlier = todo("done yesterday", done: calendar.date(byAdding: .day, value: -1, to: now))
@@ -412,7 +412,7 @@ extension TodosTests {
 
         let folder = Todos.folder([undated, later, plain, doneEarlier, today, deleted, late, doneToday, filed], now: now, calendar: calendar)
         XCTAssertEqual(folder.groups.map(\.title), ["Overdue", "Today", "Upcoming", "No Due Date"])
-        XCTAssertEqual(folder.groups.map { $0.notes.map(\.title) }, [["filed in a bucket", "late"], ["today"], ["later"], ["undated"]])
+        XCTAssertEqual(folder.groups.map { $0.notes.map(\.title) }, [["filed in a bowl", "late"], ["today"], ["later"], ["undated"]])
         XCTAssertEqual(folder.doneToday.map(\.title), ["done today"])
         XCTAssertEqual(folder.open, 5)
         XCTAssertEqual(folder.overdue, 2)

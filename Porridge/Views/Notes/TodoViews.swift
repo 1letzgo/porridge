@@ -157,7 +157,7 @@ struct DueDateMenuItems: View {
     }
 }
 
-/// The due day on a to-do's page, in the row of its buckets and tags: a menu with the choices.
+/// The due day on a to-do's page, in the row of its bowls and tags: a menu with the choices.
 struct DueDateChip: View {
     let note: Note
     @Binding var isPicking: Bool

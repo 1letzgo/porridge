@@ -7,7 +7,7 @@ extension NSColor {
     static let brandNavy = NSColor(named: "BrandNavy") ?? .labelColor
     /// Saved links.
     static let brandLink = NSColor(named: "BrandLink") ?? .systemOrange
-    /// Buckets: violet.
+    /// Bowls: violet.
     static let brandProject = NSColor(named: "BrandProject") ?? .systemPurple
     /// Check boxes in summaries.
     static let brandTask = NSColor(named: "BrandTask") ?? .systemGreen
