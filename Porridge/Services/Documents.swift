@@ -121,6 +121,16 @@ enum Documents {
         try? context.save()
     }
 
+    /// Takes what the document is away by hand (the cross on its chip). That is a decision: kept as an empty info set
+    /// by hand, so no reading (on the device, by the model, the backfill, after a page edit) brings it back. Setting it by
+    /// hand again works as always. A PDF stays a document (with nothing known), another file is a file again.
+    static func clear(_ note: Note, in context: ModelContext) {
+        guard note.isStored, !note.attachments.isEmpty else { return }
+        note.documentInfo = DocumentInfo(isEdited: true)
+        note.updatedAt = Date()
+        try? context.save()
+    }
+
     /// Stored files read before documents were looked at get their first guess; each only once (an empty
     /// `DocumentInfo` marks one with nothing found). Returns how many were read.
     @discardableResult

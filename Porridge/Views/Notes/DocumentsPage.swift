@@ -149,39 +149,54 @@ struct NoteSelectionBar: View {
 /// "+ Document" while nothing is known, so any file can be marked as one. A tap opens the sheet to set it; date and amount are there and in the list row.
 struct DocumentChip: View {
     let note: Note
+    @Environment(\.modelContext) private var context
     @State private var editing = false
 
     var body: some View {
         let info = note.documentInfo ?? DocumentInfo()
         let kind = info.kind ?? .other
-        Button { editing = true } label: {
-            Group {
-                if info.isEmpty {
-                    // Nothing known yet: neutral and outlined, like an offer to add something.
+        Group {
+            if info.isEmpty {
+                // Nothing known yet: neutral and outlined, like an offer to add something.
+                Button { editing = true } label: {
                     Label("Document", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1))
-                } else {
-                    // The kind's own colour, as a wash like the bowls' and the tags': the symbol in it, the text plain.
-                    HStack(spacing: 6) {
-                        Image(systemName: kind.symbol).font(.caption).foregroundStyle(kind.hue.color)
-                        Text(info.shortLabel).lineLimit(1).foregroundStyle(.primary)
-                    }
-                    .frame(maxWidth: 240)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(kind.hue.color.opacity(0.2), in: Capsule())
+                        .contentShape(Capsule())
+                        .fixedSize()
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add Document Details")
+            } else {
+                // The kind's own colour, as a wash like the bowls' and the tags': the symbol in it, the text plain,
+                // and the cross that takes it away, as on every other chip.
+                HStack(spacing: 6) {
+                    Button { editing = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: kind.symbol).font(.caption).foregroundStyle(kind.hue.color)
+                            Text(info.shortLabel).lineLimit(1).foregroundStyle(.primary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(info.sentence)
+                    .accessibilityHint("Edit")
+                    Button { withAnimation(.snappy) { Documents.clear(note, in: context) } } label: {
+                        Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.primary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove Document Details")
+                }
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: 260)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(kind.hue.color.opacity(0.2), in: Capsule())
             }
-            .font(.subheadline.weight(.semibold))
-            .contentShape(Capsule())
-            .fixedSize(horizontal: info.isEmpty, vertical: false)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(info.isEmpty ? String(localized: "Add Document Details") : info.sentence)
-        .accessibilityHint("Edit")
         .sheet(isPresented: $editing) { DocumentInfoSheet(note: note) }
     }
 }

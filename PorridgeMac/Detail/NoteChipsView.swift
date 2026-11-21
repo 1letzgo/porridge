@@ -90,6 +90,14 @@ final class NoteChipsView: NSView {
             pill.setAccessibilityLabel(info.isEmpty ? String(localized: "Add Document Details") : info.sentence)
             pill.toolTip = info.isEmpty ? String(localized: "Add the kind, date, sender and amount") : info.line
             views.append(pill)
+            // Known: a cross beside it takes it away, as with the bowl.
+            if !info.isEmpty {
+                let remove = NSButton(image: .symbol("xmark", size: 10, weight: .bold, label: "Remove Document Details"), target: self, action: #selector(clearDocument))
+                remove.isBordered = false
+                remove.contentTintColor = .secondaryLabelColor
+                remove.toolTip = "Remove Document Details"
+                views.append(remove)
+            }
         }
         for tag in note.tags {
             let removable = note.labels.contains { $0.lowercased() == tag.lowercased() } && !note.isDeleted
@@ -134,6 +142,11 @@ final class NoteChipsView: NSView {
     }
 
     @objc private func addTag() { onAddTag?() }
+
+    @objc private func clearDocument() {
+        guard let note else { return }
+        Documents.clear(note, in: Library.shared.context)
+    }
 
     @objc private func editDocument() {
         guard let note else { return }

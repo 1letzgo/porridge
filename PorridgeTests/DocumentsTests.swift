@@ -268,6 +268,35 @@ final class DocumentsTests: XCTestCase {
         XCTAssertEqual(buddhist.component(.year, from: date), 2569, "what Calendar.current would give in Thailand")
     }
 
+    func testRemovedByHandStaysRemoved() throws {
+        let context = try TestStore.context()
+        let pdf = storedNote(kind: "pdf", name: "Telekom.pdf")
+        pdf.pageText = germanInvoice
+        let photo = storedNote(kind: "image", name: "Bildschirmfoto.png")
+        [pdf, photo].forEach(context.insert)
+        Documents.read(pdf, text: germanInvoice, now: now)
+        photo.documentInfo = DocumentInfo(kind: .receipt, isEdited: true)
+        XCTAssertTrue(photo.isDocument)
+
+        Documents.clear(pdf, in: context)
+        Documents.clear(photo, in: context)
+        XCTAssertEqual(pdf.documentInfo, DocumentInfo(isEdited: true))
+        XCTAssertTrue(pdf.isDocument, "a PDF stays a document, with nothing known")
+        XCTAssertFalse(photo.isDocument, "an image is a file again")
+
+        // Nothing read automatically brings it back: the device, the model, the backfill, a split-off part.
+        XCTAssertFalse(Documents.read(pdf, text: germanInvoice, now: now))
+        Documents.apply(DocumentInfo(kind: .invoice, correspondent: "Telekom"), to: pdf)
+        XCTAssertEqual(Documents.backfill(in: context, now: now), 0)
+        XCTAssertEqual(pdf.documentInfo, DocumentInfo(isEdited: true))
+        XCTAssertNil(DocumentFiles.carriedInfo(pdf.documentInfo))
+
+        // Set by hand again: as always.
+        Documents.set(DocumentInfo(kind: .contract), on: photo, in: context)
+        XCTAssertEqual(photo.documentInfo?.kind, .contract)
+        XCTAssertTrue(photo.isDocument)
+    }
+
     func testSearchFindsADocumentByItsSender() {
         let note = storedNote(kind: "pdf", name: "scan.pdf")
         note.documentInfo = DocumentInfo(kind: .invoice, correspondent: "Stadtwerke München")
