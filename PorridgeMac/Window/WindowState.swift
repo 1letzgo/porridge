@@ -7,6 +7,8 @@ enum SidebarPage: Hashable, Codable {
     case inbox
     /// Every open to-do by due day, wherever it is filed: a view, not a place (`Todos.folder`).
     case todos
+    /// Every document across the inbox and the bowls, by kind, sender and date (`Documents`): a view, not a place.
+    case documents
     /// The chat with the bowls.
     case chat
     /// One bowl with everything in it.
@@ -61,6 +63,8 @@ final class WindowState {
             guard page != oldValue else { return }
             if oldValue == .search, page != .search { clearSearch() }
             kindFilter = nil
+            documentKind = nil
+            documentSender = nil
         }
     }
     /// The notes selected in the list; the detail shows one when it is exactly one.
@@ -75,6 +79,10 @@ final class WindowState {
     var searchTags: [String] = []
     /// Narrows a bowl's list or the search to one kind.
     var kindFilter: KindFilter?
+    /// Narrows the documents to one kind; nil is all.
+    var documentKind: DocumentKind?
+    /// Narrows the documents to one sender; nil is all.
+    var documentSender: String?
 
     /// Which chat shows; nil is a new one that is not kept until its first question.
     var chatID: UUID?

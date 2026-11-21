@@ -87,6 +87,11 @@ struct NoteDetailView: View {
                 AttachmentStrip(note: note, onRemove: note.isDeleted ? nil : { removeAttachment($0) })
             }
 
+            // A document, or an image that may be one: what it is, read automatically and set by hand.
+            if note.isStored, !note.isDeleted, note.isDocument || note.pageText?.isEmpty == false {
+                DocumentInfoCard(note: note)
+            }
+
             statusView
 
             if !note.speakers.isEmpty { speakerChips }

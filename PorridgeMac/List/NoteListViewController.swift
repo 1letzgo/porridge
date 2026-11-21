@@ -100,6 +100,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             (item.base is ListSection) ? GroupRowView() : NSTableRowView()
         }
         header.onFilter = { [weak self] kind in self?.state.kindFilter = kind }
+        header.onDocumentKind = { [weak self] kind in self?.state.documentKind = kind }
+        header.onDocumentSender = { [weak self] sender in self?.state.documentSender = sender }
         header.onTag = { [weak self] tag in
             guard let self else { return }
             if !self.state.searchTags.contains(where: { $0.lowercased() == tag.lowercased() }) { self.state.searchTags.append(tag) }
@@ -114,7 +116,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         observers.append(Observing { [weak self] in
             guard let self else { return }
             // Read what the list depends on, so a change of it rebuilds the list.
-            _ = (self.state.page, self.state.kindFilter, self.state.searchText, self.state.searchTags)
+            _ = (self.state.page, self.state.kindFilter, self.state.searchText, self.state.searchTags, self.state.documentKind, self.state.documentSender)
             self.reload()
         })
         observers.append(Observing { [weak self] in

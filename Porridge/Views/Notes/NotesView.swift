@@ -40,6 +40,8 @@ struct NotesView: View {
     @State private var showCreate = false
     @State private var showAudioImporter = false
     @State private var showFileImporter = false
+    /// The document camera is open.
+    @State private var showScanner = false
     @State private var audioImportError: String?
     @State private var showPlaud = false
     @State private var plaudSignedIn = PlaudAccount.isSignedIn
@@ -175,6 +177,13 @@ struct NotesView: View {
             importAudio(result)
         }
         .modifier(FileIntake(isPicking: $showFileImporter) { addFiles($0) })
+        .fullScreenCover(isPresented: $showScanner) {
+            DocumentScanner { url in
+                showScanner = false
+                if let url { addFiles([url]) }
+            }
+            .ignoresSafeArea()
+        }
         .alert("Import Failed", isPresented: Binding(get: { audioImportError != nil }, set: { if !$0 { audioImportError = nil } })) {
             Button("OK") { audioImportError = nil }
         } message: {
@@ -327,6 +336,8 @@ struct NotesView: View {
             inboxPage
         case .todos:
             todosPage
+        case .documents:
+            DocumentsPage(notes: notes, selection: $selection) { remove($0) }
         case .search:
             searchPage
         case .chat:
@@ -390,6 +401,13 @@ struct NotesView: View {
             // The bowls as a list: the pinned and the latest few, the rest behind "More".
             if !folders.isEmpty {
                 projectsSection(recent.shown, contents: contents, isFirst: false, hidden: recent.hidden)
+            }
+            // Every document across the inbox and the bowls, by kind, sender and date.
+            let documents = notes.lazy.filter { !$0.isDeleted && $0.isDocument }.count
+            if documents > 0 {
+                Section {} header: {
+                    ListHeaderButton(title: String(localized: "Documents"), count: documents, tint: .brandNavy, isFirst: false) { page = .documents }
+                }
             }
             if archived > 0 {
                 Section {} header: {
@@ -649,6 +667,9 @@ struct NotesView: View {
                                     if page == .home {
                                         createOption("Bowl", systemImage: "folder.badge.plus", tint: .brandProject) { showNewProject = true }
                                     }
+                                    if DocumentScanner.isAvailable {
+                                        createOption("Scan", systemImage: "doc.viewfinder", tint: .brandNavy) { showScanner = true }
+                                    }
                                     createOption("Link", systemImage: "link", tint: .brandLink) { showAddLink = true }
                                     createOption("Meeting", systemImage: "mic.fill", tint: .brandNavy) { showCalendar = true }
                                     createOption("To-do", systemImage: "checklist", tint: .brandTask) { addNote(todo: true) }
@@ -738,7 +759,7 @@ struct NotesView: View {
             trashButton
         }
         // What is brought in from outside has its own menu in the bar; on a bowl's page it goes into the bowl.
-        if shown == .home || project(on: shown) != nil {
+        if shown == .home || shown == .documents || project(on: shown) != nil {
             importMenu
                 .menuStyle(.button)
         }
@@ -759,6 +780,9 @@ struct NotesView: View {
                 Button { showPlaud = true } label: { Label("Import Plaud", systemImage: "recordingtape") }
             }
             Button { showFileImporter = true } label: { Label("Photo or File", systemImage: "paperclip") }
+            if DocumentScanner.isAvailable {
+                Button { showScanner = true } label: { Label("Scan Document", systemImage: "doc.viewfinder") }
+            }
         } label: {
             Label("Import", systemImage: "square.and.arrow.down")
         }
@@ -784,6 +808,7 @@ struct NotesView: View {
         case .project: project(on: shown)?.name ?? "Porridge"
         case .inbox: "Inbox"
         case .todos: "To-dos"
+        case .documents: String(localized: "Documents")
         case .chat: "Chat"
         case .search: "Search"
         case .archive: "Archive"
@@ -798,7 +823,7 @@ struct NotesView: View {
     private func listTint(_ shown: ListPage) -> Color {
         switch shown {
         case .project: project(on: shown) == nil ? .brandSky : .brandProject
-        case .archive, .chat, .search: .brandNavy
+        case .archive, .chat, .search, .documents: .brandNavy
         case .trash: .red
         case .todos: .brandTask
         default: .brandSky
@@ -818,6 +843,7 @@ struct NotesView: View {
         case .project: project(on: shown) == nil ? "tray.full.fill" : "folder.fill"
         case .inbox: "tray.fill"
         case .todos: "checklist"
+        case .documents: "doc.text.fill"
         case .chat: "bubble.left.and.bubble.right.fill"
         case .search: "magnifyingglass"
         case .archive: "archivebox.fill"
@@ -1059,11 +1085,19 @@ struct NoteRow: View {
                     .foregroundStyle(note.isDone ? .secondary : .primary)
                     .strikethrough(note.isDone, color: .secondary)
                     .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                // A document says what it is: "Invoice · Telekom · 119,00 € · 2 Mar 2026".
+                let document = note.isDocument ? note.documentInfo.flatMap { $0.isEmpty ? nil : $0.line } : nil
+                if let document {
+                    Text(document)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.brandNavy)
+                        .lineLimit(1)
+                }
                 if !note.preview.isEmpty {
                     Text(note.preview)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(document == nil ? 2 : 1)
                 }
                 // The full line when there is room (narrow sidebar on the Mac); otherwise without domain and speakers.
                 ViewThatFits(in: .horizontal) {
@@ -1181,6 +1215,8 @@ enum ListPage: Hashable {
     case inbox
     /// The virtual folder of every open to-do by due day (`Todos.folder`), in the "Up Next" section of the home list.
     case todos
+    /// Every document (PDFs, scans, office files, read receipts) across the inbox and the bowls (`Documents`).
+    case documents
     /// The chat with the notes.
     case chat
     /// The search through everything.

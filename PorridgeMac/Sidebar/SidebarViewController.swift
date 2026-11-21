@@ -117,6 +117,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         top.append(SidebarNode(.group("Bowls"), children: sorted.map { SidebarNode(.page(.project($0.id))) }))
         // The chat is a place to go, not something waiting: it leads the other places under "More".
         var more: [SidebarNode] = [SidebarNode(.page(.chat))]
+        // Every document, wherever it is filed: there once there is one.
+        if notes.contains(where: { !$0.isDeleted && $0.isDocument }) || state.page == .documents { more.append(SidebarNode(.page(.documents))) }
         let archived = HomeList.archivedProjects(library.projects).count
         if archived > 0 || state.page == .archive { more.append(SidebarNode(.page(.archive))) }
         if notes.contains(where: \.isDeleted) || state.page == .trash { more.append(SidebarNode(.page(.trash))) }
@@ -228,6 +230,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             cell.configure(title: "To-dos", symbol: "checklist", tint: .brandTask, badge: folder.open, alert: folder.overdue)
         case .chat:
             cell.configure(title: "Chat", symbol: "bubble.left.and.bubble.right.fill", tint: .brandNavy, badge: 0)
+        case .documents:
+            cell.configure(title: "Documents", symbol: "doc.text.fill", tint: .brandNavy, badge: 0)
         case .project(let id):
             let project = library.project(id)
             // What is in the bowl and not deleted, as the bowl's page lists it.

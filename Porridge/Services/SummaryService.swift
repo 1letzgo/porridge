@@ -113,22 +113,29 @@ enum SummaryService {
         let stored = note.modelContext != nil
         // A note in the inbox gets a bowl suggested along with its summary.
         let buckets = Inbox.candidates(for: note)
+        // An image or a file is asked what it is as a document as well (kind, date, sender, amount).
+        let isDocument = note.isStored && !hasTranscript
         let answer = try await run(
             model: chosen,
             header: hasTranscript ? header(for: note)
                 : "Date: \(note.createdAt.formatted(date: .long, time: .shortened))" + (note.url.map { "\nSource: \($0)" } ?? ""),
             material: material, language: language,
             system: (hasTranscript ? systemPrompt(language, template: template) : notePrompt(language, isLink: note.isSaved, isDocument: !note.isLink))
-                + Inbox.promptLine(buckets),
+                + Inbox.promptLine(buckets) + (isDocument ? DocumentLine.prompt : ""),
             noun: hasTranscript ? "meeting" : "note", focus: hasTranscript ? template.focus : "", progress: progress
         )
 
         // Deleted for good while the model was working (trash emptied, removed by sync): there is nothing to write to.
         guard !stored || note.modelContext != nil else { throw CancellationError() }
         if onlyIfEmpty, note.summary != nil || note.summarizedAt != nil { throw CancellationError() }
-        let (raw, bucket) = Inbox.splitProject(answer, projects: buckets)
+        let (answered, bucket) = Inbox.splitProject(answer, projects: buckets)
+        let (raw, document) = isDocument ? DocumentLine.split(answered) : (answered, nil)
+        if let document { Documents.apply(document, to: note) }
         // Only a suggestion: the note stays in the inbox until the user takes it on. Not when it was filed meanwhile.
-        if let bucket, note.isInInbox { note.suggestedProjectIDs = [Projects.key(bucket)] }
+        // Where documents of the same sender went before says more than the model's guess.
+        if note.isInInbox, let bowl = (isDocument ? Documents.suggestedBowl(for: note, in: note.modelContext) : nil) ?? bucket.map(Projects.key) {
+            note.suggestedProjectIDs = [bowl]
+        }
         let body: String
         if hasTranscript {
             let (newTitle, text) = splitTitle(raw)

@@ -262,6 +262,7 @@ final class Note {
                 || (summary?.localizedCaseInsensitiveContains(word) ?? false)
                 || (url?.localizedCaseInsensitiveContains(word) ?? false)
                 || (pageText?.localizedCaseInsensitiveContains(word) ?? false)
+                || (attachmentsData != nil && (documentInfo?.searchText.localizedCaseInsensitiveContains(word) ?? false))
                 || (segmentsData != nil && transcriptText(timestamps: false).localizedCaseInsensitiveContains(word))
         }
     }

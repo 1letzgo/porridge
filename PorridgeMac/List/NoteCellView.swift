@@ -10,6 +10,8 @@ final class NoteCellView: NSTableCellView {
     private let todoBox = TodoCheckboxButton()
     private let titleLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize + 1, weight: .medium))
     private let previewLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize), color: .secondaryLabelColor, lines: 2)
+    /// What a document is: "Invoice · Telekom · 119,00 € · 2 Mar 2026".
+    private let documentLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize, weight: .medium), color: .brandNavy)
     private let footerLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor)
     private let badge = StateBadge()
     private let thumbnail = NSImageView()
@@ -36,6 +38,8 @@ final class NoteCellView: NSTableCellView {
         footerLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         previewLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        documentLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        documentLabel.lineBreakMode = .byTruncatingTail
         todoBox.target = self
         todoBox.action = #selector(toggleDone)
 
@@ -44,7 +48,7 @@ final class NoteCellView: NSTableCellView {
         suggestions.orientation = .horizontal
         suggestions.spacing = 6
         suggestions.translatesAutoresizingMaskIntoConstraints = false
-        let text = NSStackView.vertical([titleLabel, previewLabel, footer, suggestions], spacing: 3)
+        let text = NSStackView.vertical([titleLabel, documentLabel, previewLabel, footer, suggestions], spacing: 3)
         // The text takes the width of the row; the box and the picture keep theirs at the end.
         text.setHuggingPriority(.init(1), for: .horizontal)
         text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -66,6 +70,7 @@ final class NoteCellView: NSTableCellView {
             footer.widthAnchor.constraint(equalTo: text.widthAnchor),
             titleLabel.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
             previewLabel.widthAnchor.constraint(equalTo: text.widthAnchor),
+            documentLabel.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
             thumbnail.widthAnchor.constraint(equalToConstant: 44),
             thumbnail.heightAnchor.constraint(equalToConstant: 44),
         ])
@@ -115,9 +120,13 @@ final class NoteCellView: NSTableCellView {
             .foregroundColor: done ? NSColor.secondaryLabelColor : NSColor.labelColor,
             .strikethroughStyle: done ? NSUnderlineStyle.single.rawValue : 0,
         ])
+        let document = note.isDocument ? note.documentInfo.flatMap { $0.isEmpty ? nil : $0.line } : nil
+        documentLabel.stringValue = document ?? ""
+        documentLabel.isHidden = document == nil
         let preview = note.preview
         previewLabel.stringValue = preview
         previewLabel.isHidden = preview.isEmpty
+        previewLabel.maximumNumberOfLines = document == nil ? 2 : 1
         footerLabel.attributedStringValue = footer(note)
 
         let stage = processing.stages[note.id]

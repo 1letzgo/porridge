@@ -49,6 +49,7 @@ enum DebugDriver {
             switch argument {
             case "chat": state.page = .chat
             case "todos": state.page = .todos
+            case "documents": state.page = .documents
             case "archive": state.page = .archive
             case "trash": state.page = .trash
             case "search": state.page = .search

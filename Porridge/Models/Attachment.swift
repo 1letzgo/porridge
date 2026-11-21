@@ -41,6 +41,9 @@ struct Attachment: Codable, Identifiable, Hashable {
     var name: String
     var kindRaw: String
     var bytes: Int64 = 0
+    /// What the file is as a document (kind, date, sender, amount); nil until it was read. Inside the synced list of
+    /// attachments, so it needs no field of its own in the store; older versions ignore it.
+    var document: DocumentInfo?
 
     var kind: Kind { Kind(rawValue: kindRaw) ?? .file }
 

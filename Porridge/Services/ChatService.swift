@@ -62,7 +62,10 @@ extension ChatRetrieval {
             // An image or a file is found by its name, even when nothing could be read out of it.
             let attachments = note.attachmentsData == nil ? [] : note.attachments
             if !attachments.isEmpty {
-                result.append(chunk(note, text: (note.isImage ? "Image: " : "File: ") + attachments.map(\.name).joined(separator: ", "), part: .files))
+                var line = (note.isImage ? "Image: " : "File: ") + attachments.map(\.name).joined(separator: ", ")
+                // What the document is: "which invoices came from Telekom?" finds it, dated by the document's date.
+                if note.isDocument, let info = note.documentInfo, !info.isEmpty { line += ". Document: " + info.sentence }
+                result.append(chunk(note, text: line, part: .files, date: note.isDocument ? note.documentInfo?.date : nil))
             }
             // A to-do says so, and whether it is done: "what is still open?" finds it.
             if note.isTodo {

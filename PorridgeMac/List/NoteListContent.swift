@@ -56,6 +56,21 @@ enum NoteListContent {
                 sections: sections, emptyTitle: "Nothing to Do",
                 emptyMessage: "Open to-dos from the inbox and every bowl show up here.", emptySymbol: "checklist"
             )
+        case .documents:
+            // By the date on the document, under its year; narrowed by kind and sender in the header.
+            let all = Documents.all(notes)
+            let shown = Documents.filtered(all, kind: state.documentKind, correspondent: state.documentSender)
+            let sections = Documents.yearGroups(shown).map { group in
+                (ListSection(id: "documents-" + group.title, title: group.title, tint: .navy, count: group.notes.count), group.notes.map { ListItem.note($0.id) })
+            }
+            return Built(
+                sections: sections,
+                emptyTitle: all.isEmpty ? "No Documents Yet" : "No Documents",
+                emptyMessage: all.isEmpty
+                    ? "Drop a PDF or a scan here, or import one from your iPhone. Porridge reads its text and tells what it is."
+                    : "None fit the filter.",
+                emptySymbol: "doc.text"
+            )
         case .project(let id):
             guard let project = library.project(id) else {
                 return Built(sections: [], emptyTitle: "Bowl Deleted", emptyMessage: "This bowl is gone.", emptySymbol: "folder")

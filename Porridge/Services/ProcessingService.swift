@@ -180,6 +180,8 @@ final class ProcessingService {
                 self?.summarizeIncoming()
             }
         }
+        // Files read before documents were looked at get their first guess, once.
+        Documents.backfill(in: context)
         guard AppSettings.summarizeIncoming, SummaryService.canRunWithoutAsking else { return }
         let notes = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.summary == nil && $0.summarizedAt == nil && $0.deletedAt == nil }))) ?? []
         let origins = AutoSummary.origins()
@@ -477,6 +479,12 @@ final class ProcessingService {
         stages[id] = "Reading text…"
         let text = await readAttachments(of: note)
         guard exists(id) else { return }
+        // A document: what it is (kind, date, sender, amount) guessed on the device right away, and the bowl its
+        // sender's documents went into suggested. The summary's model refines both.
+        if note.pageText != nil, Documents.read(note, text: text), note.suggestedProjectIDs.isEmpty,
+           let bowl = Documents.suggestedBowl(for: note, in: context) {
+            note.suggestedProjectIDs = [bowl]
+        }
         note.status = .ready
         note.errorMessage = nil
         note.updatedAt = Date()

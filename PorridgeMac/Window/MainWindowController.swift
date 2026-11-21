@@ -109,6 +109,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         switch state.page {
         case .inbox: "Inbox"
         case .todos: "To-dos"
+        case .documents: "Documents"
         case .chat: "Chat"
         case .project(let id): library.project(id)?.name ?? "Porridge"
         case .archive: "Archive"
@@ -393,6 +394,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 Alerts.inform("Import Failed", message: error.localizedDescription, in: self.window)
             }
         }
+    }
+
+    // MARK: Continuity Camera
+
+    /// "Import from iPhone or iPad" (File menu, context menus): a photo, a sketch or scanned pages from the phone come
+    /// in like a dropped file, into the open bowl or the inbox.
+    override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?, returnType: NSPasteboard.PasteboardType?) -> Any? {
+        if sendType == nil, let returnType, DeviceImport.types.contains(returnType), state.page.allowsCreating { return self }
+        return super.validRequestor(forSendType: sendType, returnType: returnType)
+    }
+
+    @objc func readSelection(from pasteboard: NSPasteboard) -> Bool {
+        guard let url = DeviceImport.file(from: pasteboard) else { return false }
+        return Intake.addFiles([url], project: state.projectForNew, state: state)
     }
 
     @objc func importFile(_ sender: Any?) {
