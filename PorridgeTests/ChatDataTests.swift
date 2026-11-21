@@ -98,9 +98,7 @@ final class ChatDataTests: XCTestCase {
         add("Geheimes Projekt", text: "Codename Falke startet im Frühjahr.", created: day(15)) { note in
             note.deletedAt = self.day(16)
         }
-        add("Altes Rezept", text: "Pfannkuchen mit Milch, Mehl und Eiern.", created: day(1, month: 3)) { note in
-            note.archivedAt = self.day(1, month: 4)
-        }
+        add("Altes Rezept", text: "Pfannkuchen mit Milch, Mehl und Eiern.", created: day(1, month: 3))
         return fixture
     }
 
@@ -135,20 +133,19 @@ final class ChatDataTests: XCTestCase {
         XCTAssertEqual(link.header(bucketNames: bucketNames, now: now, calendar: calendar),
                        "«Swift Concurrency Guide» — Link (swift.org) · created Wed 18 Nov 2026 · Inbox · https://www.swift.org/documentation/concurrency")
         let old = ChatDocument(note: f.notes["Altes Rezept"]!)
-        XCTAssertTrue(old.header(bucketNames: bucketNames, now: now, calendar: calendar).contains(" · archived"))
+        XCTAssertFalse(old.header(bucketNames: bucketNames, now: now, calendar: calendar).contains("archived"), "notes are never archived")
         XCTAssertEqual(ChatDocument(note: f.notes["Kickoff Website"]!).snippet, "Beschlüsse: Budget 20.000 Euro. Launch im Februar.")
         XCTAssertEqual(ChatDocument(note: f.notes["Fahrrad reparieren"]!).snippet, "Schlauch hinten tauschen.")
     }
 
-    func testTheEntryChangesWithBucketsArchiveAndState() {
+    func testTheEntryChangesWithBucketsAndState() {
         let note = makeFixture().notes["Packliste Norwegen"]!
         let before = note.indexHash
         note.projectIDs = [house]
         let moved = note.indexHash
         XCTAssertNotEqual(before, moved, "moving it to another bucket cuts it again")
         note.archivedAt = now
-        XCTAssertNotEqual(moved, note.indexHash, "archiving it too")
-        XCTAssertTrue(ChatDocument(note: note).archived)
+        XCTAssertNotEqual(moved, note.indexHash, "a note cleared by Archive.clearArchivedNotes is cut again")
     }
 
     // MARK: - Reading the question
@@ -263,13 +260,13 @@ final class ChatDataTests: XCTestCase {
         XCTAssertEqual(listed(context("Welche Meetings hatten wir letzte Woche?", f)), [f["Weekly"]])
     }
 
-    /// 12. Deleted entries never reach the chat; archived ones do, marked.
-    func testDeletedNeverArchivedMarked() {
+    /// 12. Deleted entries never reach the chat; old ones do, unmarked (notes are never archived).
+    func testDeletedNeverReachesTheChat() {
         let f = makeFixture()
         XCTAssertFalse(all(context("Was weißt du über Codename Falke?", f)).contains(f["Geheimes Projekt"]))
         let pancakes = context("Wie mache ich Pfannkuchen?", f)
         XCTAssertEqual(pancakes.items.first?.noteID, f["Altes Rezept"])
-        XCTAssertTrue(pancakes.items.first?.header.hasSuffix(" · archived") ?? false)
+        XCTAssertFalse(pancakes.items.first?.header.contains("archived") ?? true)
     }
 
     /// 13. A chat about one bucket sees only it.

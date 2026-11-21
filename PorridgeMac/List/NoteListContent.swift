@@ -61,7 +61,7 @@ enum NoteListContent {
                 return Built(sections: [], emptyTitle: "Bucket Deleted", emptyMessage: "This bucket is gone.", emptySymbol: "folder")
             }
             let key = Projects.key(project)
-            let content = notes.filter { !$0.isDeleted && !$0.isArchived && $0.projectIDs.contains(key) }
+            let content = notes.filter { !$0.isDeleted && $0.projectIDs.contains(key) }
             var counts: [KindFilter: Int] = [:]
             var shown: [Note] = []
             for note in content {
@@ -78,16 +78,14 @@ enum NoteListContent {
                 emptySymbol: "folder", kindCounts: counts
             )
         case .archive:
+            // Archived buckets only: notes are never archived.
             let buckets = HomeList.archivedProjects(library.projects)
-            let archived = HomeList.archivedNotes(notes)
-            var sections: [(ListSection, [ListItem])] = []
-            if !buckets.isEmpty {
-                sections.append((ListSection(id: "buckets", title: "Buckets", tint: .project), buckets.map { .project($0.id) }))
-            }
-            sections += dateSections(archived)
+            let sections: [(ListSection, [ListItem])] = buckets.isEmpty ? [] : [
+                (ListSection(id: "buckets", title: "Buckets", tint: .project), buckets.map { .project($0.id) })
+            ]
             return Built(
                 sections: sections, emptyTitle: "Nothing Archived",
-                emptyMessage: "Archive a bucket or note from its context menu.", emptySymbol: "archivebox"
+                emptyMessage: "Archive a bucket from its context menu.", emptySymbol: "archivebox"
             )
         case .trash:
             let deleted = notes.filter(\.isDeleted).sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
@@ -113,12 +111,12 @@ enum NoteListContent {
         }
     }
 
-    /// What the search finds among the notes, archived ones included; strictly a timeline.
+    /// What the search finds among the notes, those in archived buckets included; strictly a timeline.
     static func search(_ notes: [Note], state: WindowState) -> [Note] {
         var result = notes.filter { !$0.isDeleted }
         if let kind = state.kindFilter {
-            // In the search the chip is "Open To-dos": not done and not put away.
-            result = result.filter { kind == .todos ? $0.isTodo && !$0.isDone && !$0.isArchived : kind.matches($0) }
+            // In the search the chip is "Open To-dos": not done.
+            result = result.filter { kind == .todos ? $0.isTodo && !$0.isDone : kind.matches($0) }
         }
         if !state.searchTags.isEmpty {
             let wanted = state.searchTags.map { $0.lowercased() }

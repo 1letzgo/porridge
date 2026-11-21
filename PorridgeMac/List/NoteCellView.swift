@@ -201,7 +201,6 @@ final class NoteCellView: NSTableCellView {
             let left = max(0, NoteStore.trashDays - passed)
             add(left <= 1 ? String(localized: "Deleted tomorrow") : String(localized: "\(left) days left"), color: .brandDangerText)
         } else {
-            if note.isArchived { add(String(localized: "Archived")) }
             // A to-do that names its buckets lets its due day speak for it; the date makes room for the names.
             if !(bucketNames(note).isEmpty == false && note.isTodo) {
                 add(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))

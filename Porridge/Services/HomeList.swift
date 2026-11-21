@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// What the home list shows of the buckets, and what is in the archive.
+/// What the home list shows of the buckets, and what is in the archive (archived buckets only).
 enum HomeList {
     /// How many projects that are not pinned the list shows before "More".
     static let recentProjects = 5
@@ -34,32 +34,27 @@ enum HomeList {
         let others = latest.filter { !$0.isPinned }
         return (pinned + (showAll ? others : Array(others.prefix(recentProjects))), max(0, others.count - recentProjects))
     }
-
-    static func archivedNotes(_ notes: [Note]) -> [Note] {
-        notes.filter { $0.isArchived && !$0.isDeleted }
-    }
 }
 
-/// Archiving keeps an element out of the lists without deleting it; it stays in the search.
+/// Archiving keeps a bucket out of the lists without deleting it; its elements stay in it and in the search.
+/// Only buckets are archived, never single notes.
 enum Archive {
-    static func set(_ archived: Bool, _ note: Note, in context: ModelContext) {
-        guard note.modelContext != nil else { return }
-        // A done to-do from an earlier day is out of the lists by itself: taken out of the archive it is open again.
-        if !archived, note.isPutAway {
-            note.todoState = .open
-            note.todoDoneAt = nil
-        }
-        note.archivedAt = archived ? Date() : nil
-        if archived { note.isPinned = false }
-        note.updatedAt = Date()
-        try? context.save()
-    }
-
-    /// The project's elements stay in it.
     static func set(_ archived: Bool, _ project: NoteFolder, in context: ModelContext) {
         project.archivedAt = archived ? Date() : nil
         if archived { project.isPinned = false }
         project.updatedAt = Date()
         try? context.save()
+    }
+
+    /// Notes archived by earlier versions come back: `Note.archivedAt` is cleared on every note that still has it.
+    /// Runs at every start and does nothing once all are clear; `updatedAt` stays, so the notes keep their place and
+    /// no device pushes them as changed. Each device cleans its own store. Returns how many notes it cleared.
+    @discardableResult
+    static func clearArchivedNotes(in context: ModelContext) -> Int {
+        let notes = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.archivedAt != nil }))) ?? []
+        guard !notes.isEmpty else { return 0 }
+        notes.forEach { $0.archivedAt = nil }
+        try? context.save()
+        return notes.count
     }
 }

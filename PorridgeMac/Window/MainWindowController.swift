@@ -428,12 +428,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         NoteOperations.setPinned(!notes.allSatisfy(\.isPinned), notes)
     }
 
-    @objc func toggleArchive(_ sender: Any?) {
-        let notes = selectedNotes.filter { $0.modelContext != nil }
-        let archived = notes.allSatisfy(\.isArchived)
-        notes.forEach { Archive.set(!archived, $0, in: library.context) }
-    }
-
     @objc func deleteNote(_ sender: Any?) {
         let notes = selectedNotes
         guard !notes.isEmpty else { return }
@@ -500,12 +494,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(emptyTrash(_:)):
             return library.notes.contains(where: \.isDeleted)
         case #selector(togglePin(_:)):
-            let saved = notes.filter { $0.modelContext != nil && !$0.isDeleted && !$0.isArchived }
-            item.title = !saved.isEmpty && saved.allSatisfy(\.isPinned) ? "Unpin" : "Pin"
-            return !saved.isEmpty
-        case #selector(toggleArchive(_:)):
             let saved = notes.filter { $0.modelContext != nil && !$0.isDeleted }
-            item.title = !saved.isEmpty && saved.allSatisfy(\.isArchived) ? "Unarchive" : "Archive"
+            item.title = !saved.isEmpty && saved.allSatisfy(\.isPinned) ? "Unpin" : "Pin"
             return !saved.isEmpty
         case #selector(deleteNote(_:)):
             item.title = !notes.isEmpty && notes.allSatisfy(\.isDeleted) ? "Delete Now…" : "Delete"

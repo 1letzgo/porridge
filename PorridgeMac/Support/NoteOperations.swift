@@ -1,8 +1,8 @@
 import AppKit
 import SwiftData
 
-/// What can be done with notes from a list, a menu or the detail: pin, buckets, archive, share, delete. The same
-/// for one note or several selected ones.
+/// What can be done with notes from a list, a menu or the detail: pin, buckets, share, delete. The same for one note
+/// or several selected ones. Notes are never archived, only buckets are.
 @MainActor
 enum NoteOperations {
     private static var library: Library { .shared }
@@ -47,18 +47,12 @@ enum NoteOperations {
                 TodoBridge.setTodo(!note.isTodo, note)
             }
         }
-        if !notes.contains(where: \.isArchived) {
-            let pinned = notes.allSatisfy(\.isPinned)
-            menu.add(pinned ? "Unpin" : "Pin", symbol: pinned ? "pin.slash" : "pin") { setPinned(!pinned, notes) }
-        }
+        let pinned = notes.allSatisfy(\.isPinned)
+        menu.add(pinned ? "Unpin" : "Pin", symbol: pinned ? "pin.slash" : "pin") { setPinned(!pinned, notes) }
         let buckets = NSMenuItem(title: "Buckets", action: nil, keyEquivalent: "")
         buckets.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         buckets.submenu = bucketMenu(for: notes, window: window)
         menu.addItem(buckets)
-        let archived = notes.allSatisfy(\.isArchived)
-        menu.add(archived ? "Unarchive" : "Archive", symbol: archived ? "tray.and.arrow.up" : "archivebox") {
-            notes.forEach { Archive.set(!archived, $0, in: context) }
-        }
         menu.addSeparator()
         menu.add("Copy", symbol: "doc.on.doc") { copy(notes) }
         let share = NSMenuItem(title: "Share", action: nil, keyEquivalent: "")

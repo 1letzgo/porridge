@@ -152,7 +152,7 @@ struct TodoFolderRow: View {
     }
 }
 
-/// One project opened: everything in it that is not archived (meetings, notes, links), filtered by kind.
+/// One project opened: everything in it that is not deleted (meetings, notes, links, to-dos done or not), filtered by kind.
 struct ProjectPage: View {
     let project: NoteFolder
     let notes: [Note]
@@ -216,8 +216,8 @@ struct ProjectPage: View {
     }
 }
 
-/// What is in a project, by kind (in the order of the notes given). Archived elements are not
-/// in it: they are in the archive. `list` gives the order the bucket shows.
+/// What is in a project, by kind (in the order of the notes given). Notes are never archived: done to-dos of
+/// earlier days stay in it too. `list` gives the order the bucket shows.
 struct ProjectContent {
     var todos: [Note] = []
     var meetings: [Note] = []
@@ -230,14 +230,14 @@ struct ProjectContent {
 
     init(of project: NoteFolder, notes all: [Note]) {
         let id = Projects.key(project)
-        for note in all where !note.isDeleted && !note.isArchived && note.projectIDs.contains(id) { add(note) }
+        for note in all where !note.isDeleted && note.projectIDs.contains(id) { add(note) }
     }
 
     /// The content of every bucket in one pass over the notes, by the bucket's key (`Projects.key`). For lists of
     /// buckets: asking each bucket on its own would walk all notes once per bucket.
     static func byProject(_ all: [Note]) -> [String: ProjectContent] {
         var contents: [String: ProjectContent] = [:]
-        for note in all where !note.isDeleted && !note.isArchived {
+        for note in all where !note.isDeleted {
             for id in note.projectIDs { contents[id, default: ProjectContent()].add(note) }
         }
         return contents

@@ -102,13 +102,11 @@ final class WindowState {
         selection = [id]
     }
 
-    /// Shows a note where it lives (its bucket, the inbox, the archive or the trash) and opens it; for notes reached
+    /// Shows a note where it lives (its bucket, the inbox or the trash) and opens it; for notes reached
     /// from elsewhere, like the sources of a chat answer.
     func reveal(_ note: Note) {
         if note.isDeleted {
             page = .trash
-        } else if note.isArchived {
-            page = .archive
         } else if let bucket = note.projectIDs.compactMap(UUID.init(uuidString:)).first {
             page = .project(bucket)
         } else {

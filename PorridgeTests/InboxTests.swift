@@ -26,12 +26,13 @@ final class InboxTests: XCTestCase {
         XCTAssertEqual(a.projectIDs, [Projects.key(project)])
         XCTAssertTrue(a.suggestedProjectIDs.isEmpty)
 
-        // Taken out of its only bucket, a note is back in the inbox; trashed or archived it is not in it.
+        // Taken out of its only bucket, a note is back in the inbox; trashed it is not in it. Notes are never
+        // archived: an `archivedAt` left by an earlier version keeps nothing out.
         Projects.toggle(project, on: c, in: context)
         XCTAssertTrue(c.isInInbox)
         c.archivedAt = Date()
         old.deletedAt = Date()
-        XCTAssertTrue(Inbox.notes([old, a, c]).isEmpty)
+        XCTAssertEqual(Inbox.notes([old, a, c]).map(\.id), [c.id])
     }
 
     func testTheSuggestedBucketIsReadOffTheAnswer() {

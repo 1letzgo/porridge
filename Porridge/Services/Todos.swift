@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// Whether a note is a to-do. A to-do is an ordinary note (same lists, buckets, inbox, archive, search, chat and
+/// Whether a note is a to-do. A to-do is an ordinary note (same lists, buckets, inbox, search, chat and
 /// sync) with a done state; its subtasks are the checklist lines (`- [ ] ` / `- [x] `) of its text.
 /// Stored as `Note.todoStateRaw`: nil = never was a to-do, so its sync record stays as it was.
 enum TodoState: String {
@@ -184,7 +184,8 @@ enum Todos {
 
     // MARK: Lists
 
-    /// A done to-do stays in its list, ticked, for the rest of the day; from the next day it counts as archived.
+    /// Done before today. Only the to-dos folder's "Done Today" section uses this; in buckets and the inbox a done
+    /// to-do stays like every note (notes are never archived).
     static func isPutAway(doneAt: Date?, now: Date = Date(), calendar: Calendar = .current) -> Bool {
         guard let doneAt else { return false }
         return doneAt < calendar.startOfDay(for: now)
@@ -319,7 +320,7 @@ enum Todos {
     struct Folder {
         var groups: [(title: String, notes: [Note])]
         var doneToday: [Note]
-        /// Open to-dos (not done, not deleted, not archived).
+        /// Open to-dos (not done, not deleted).
         var open: Int
         /// Of them, those due before today.
         var overdue: Int
@@ -328,7 +329,7 @@ enum Todos {
     }
 
     static func folder(_ notes: [Note], now: Date = Date(), calendar: Calendar = .current) -> Folder {
-        let living = notes.filter { $0.isTodo && !$0.isDeleted && $0.archivedAt == nil }
+        let living = notes.filter { $0.isTodo && !$0.isDeleted }
         let open = living.filter { !$0.isDone }
         // Done ones stay for the rest of the day they were done on, as in every list.
         let done = living.filter { $0.isDone && !isPutAway(doneAt: $0.todoDoneAt, now: now, calendar: calendar) }
@@ -371,7 +372,7 @@ extension Note {
 
     var todoProgress: Todos.Progress { isTodo ? Todos.progress(text) : Todos.Progress(done: 0, total: 0) }
 
-    /// A to-do done before today: out of the lists like an archived note.
+    /// A to-do done before today: no longer in the to-dos folder's "Done Today". It stays in its bucket or the inbox.
     var isPutAway: Bool { isDone && Todos.isPutAway(doneAt: todoDoneAt) }
 
     /// Any note but a saved one (link, shared file) and a meeting can be a to-do.

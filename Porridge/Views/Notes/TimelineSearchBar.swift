@@ -38,7 +38,7 @@ enum SearchKind: CaseIterable {
 
     func matches(_ note: Note) -> Bool {
         switch self {
-        case .todos: note.isTodo && !note.isDone && !note.isArchived
+        case .todos: note.isTodo && !note.isDone
         case .meetings: note.isRecording && !note.isLink
         case .notes: !note.isRecording && !note.isLink && !note.isStored && !note.isTodo
         case .links: note.isLink

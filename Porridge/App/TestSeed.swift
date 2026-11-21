@@ -155,9 +155,7 @@ enum TestSeed {
         add("Geheimes Projekt", text: "Codename Falke startet im Frühjahr.", created: day(15)) { note in
             note.deletedAt = day(16)
         }
-        add("Altes Rezept", text: "Pfannkuchen mit Milch, Mehl und Eiern.", created: day(1, month: 3)) { note in
-            note.archivedAt = day(1, month: 4)
-        }
+        add("Altes Rezept", text: "Pfannkuchen mit Milch, Mehl und Eiern.", created: day(1, month: 3))
         try? context.save()
     }
 }

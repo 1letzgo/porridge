@@ -117,7 +117,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         top.append(SidebarNode(.group("Buckets"), children: sorted.map { SidebarNode(.page(.project($0.id))) }))
         // The chat is a place to go, not something waiting: it leads the other places under "More".
         var more: [SidebarNode] = [SidebarNode(.page(.chat))]
-        let archived = HomeList.archivedProjects(library.projects).count + HomeList.archivedNotes(notes).count
+        let archived = HomeList.archivedProjects(library.projects).count
         if archived > 0 || state.page == .archive { more.append(SidebarNode(.page(.archive))) }
         if notes.contains(where: \.isDeleted) || state.page == .trash { more.append(SidebarNode(.page(.trash))) }
         if !more.isEmpty { top.append(SidebarNode(.group("More"), children: more)) }
@@ -230,9 +230,9 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             cell.configure(title: "Chat", symbol: "bubble.left.and.bubble.right.fill", tint: .brandNavy, badge: 0)
         case .project(let id):
             let project = library.project(id)
-            // What is in the bucket and not archived or deleted, as the bucket's page lists it.
+            // What is in the bucket and not deleted, as the bucket's page lists it.
             let key = project.map(Projects.key)
-            let count = key.map { key in notes.lazy.filter { !$0.isDeleted && !$0.isArchived && $0.projectIDs.contains(key) }.count } ?? 0
+            let count = key.map { key in notes.lazy.filter { !$0.isDeleted && $0.projectIDs.contains(key) }.count } ?? 0
             cell.configure(title: project?.name ?? "Bucket", symbol: "folder.fill", tint: .brandProject, badge: count, pinned: project?.isPinned == true)
         case .archive:
             cell.configure(title: "Archive", symbol: "archivebox.fill", tint: .brandNavy, badge: 0)
@@ -260,7 +260,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         if pasteboard.availableType(from: [.porridgeNote]) != nil {
             guard let page = (item as? SidebarNode)?.page, index == NSOutlineViewDropOnItemIndex else { return [] }
             switch page {
-            case .project, .archive, .trash, .inbox: return .move
+            // Notes are never archived: the archive takes no notes.
+            case .project, .trash, .inbox: return .move
             default: return []
             }
         }
@@ -286,8 +287,6 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
                 case .inbox:
                     note.projectIDs = []
                     note.updatedAt = Date()
-                case .archive:
-                    Archive.set(true, note, in: context)
                 case .trash:
                     NoteStore.trash(note, in: context)
                 default:

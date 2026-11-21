@@ -127,25 +127,67 @@ final class TodosTests: XCTestCase {
         XCTAssertEqual(note.text, "- [x] a\n- [x] b")
     }
 
-    func testDoneTodosAreArchivedFromTheNextDay() throws {
+    func testDoneTodosStayInTheirBucketOrTheInboxAndOnlyBucketsAreArchived() throws {
         let context = try TestStore.context()
-        let note = Note()
-        note.todoState = .done
-        note.todoDoneAt = Date()
-        context.insert(note)
-        XCTAssertFalse(note.isArchived)
-        XCTAssertTrue(note.isInInbox)
+        let bucket = NoteFolder(name: "Garden"), old = NoteFolder(name: "Old")
+        [bucket, old].forEach(context.insert)
+        Archive.set(true, old, in: context)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())
+        let filed = Note(), loose = Note(), open = Note()
+        for note in [filed, loose] {
+            note.todoState = .done
+            note.todoDoneAt = yesterday
+        }
+        filed.projectIDs = [Projects.key(bucket)]
+        open.todoState = .open
+        open.projectIDs = [Projects.key(bucket)]
+        [filed, loose, open].forEach(context.insert)
+        let all = [filed, loose, open]
 
-        note.todoDoneAt = Calendar.current.date(byAdding: .day, value: -1, to: Date())
-        XCTAssertTrue(note.isPutAway)
-        XCTAssertTrue(note.isArchived)
-        XCTAssertFalse(note.isInInbox)
-        XCTAssertEqual(HomeList.archivedNotes([note]).map(\.id), [note.id])
+        // Done yesterday: out of the to-dos folder's "Done Today", but nowhere archived.
+        XCTAssertTrue(filed.isPutAway)
+        XCTAssertTrue(Todos.folder(all).doneToday.isEmpty)
+        // In its bucket, like every note there, in every list of it.
+        let content = ProjectContent(of: bucket, notes: all)
+        XCTAssertEqual(Set(content.list(.all).map(\.id)), [filed.id, open.id])
+        XCTAssertEqual(Set(content.list(.todos).map(\.id)), [filed.id, open.id])
+        XCTAssertEqual(ProjectContent.byProject(all)[Projects.key(bucket)]?.count(.todos), 2)
+        // Without a bucket it stays in the inbox.
+        XCTAssertTrue(loose.isInInbox)
+        XCTAssertFalse(filed.isInInbox)
+        XCTAssertEqual(Inbox.notes(all).map(\.id), [loose.id])
+        // The archive holds buckets only.
+        XCTAssertEqual(HomeList.archivedProjects([bucket, old]).map(\.name), ["Old"])
+        XCTAssertEqual(HomeList.activeProjects([bucket, old]).map(\.name), ["Garden"])
+        // Un-ticking still works as before.
+        Todos.setDone(false, filed, in: context)
+        XCTAssertEqual(filed.todoState, .open)
+    }
 
-        // Taken out of the archive it is open again.
-        Archive.set(false, note, in: context)
-        XCTAssertEqual(note.todoState, .open)
-        XCTAssertFalse(note.isArchived)
+    func testNotesArchivedByEarlierVersionsComeBackWithoutAChange() throws {
+        let context = try TestStore.context()
+        let bucket = NoteFolder(name: "Garden")
+        context.insert(bucket)
+        let changed = Date(timeIntervalSince1970: 1_700_000_000)
+        let filed = Note(), loose = Note()
+        filed.projectIDs = [Projects.key(bucket)]
+        for note in [filed, loose] {
+            note.archivedAt = changed
+            note.updatedAt = changed
+            context.insert(note)
+        }
+        try context.save()
+        // Even before the cleanup the lists ignore the field.
+        XCTAssertTrue(loose.isInInbox)
+        XCTAssertEqual(ProjectContent(of: bucket, notes: [filed, loose]).list(.all).map(\.id), [filed.id])
+
+        XCTAssertEqual(Archive.clearArchivedNotes(in: context), 2)
+        XCTAssertNil(filed.archivedAt)
+        XCTAssertNil(loose.archivedAt)
+        XCTAssertEqual(filed.updatedAt, changed, "the cleanup is no edit")
+        XCTAssertEqual(loose.updatedAt, changed)
+        // Once is enough: a second start finds nothing.
+        XCTAssertEqual(Archive.clearArchivedNotes(in: context), 0)
     }
 
     func testSummaryTaskBecomesATodoInTheSameBuckets() throws {
@@ -476,12 +518,10 @@ extension TodosTests {
         let doneEarlier = todo("done yesterday", done: calendar.date(byAdding: .day, value: -1, to: now))
         let deleted = todo("deleted", due: "2026-11-01")
         deleted.deletedAt = now
-        let archived = todo("archived")
-        archived.archivedAt = now
         let plain = Note()
         plain.title = "a note"
 
-        let folder = Todos.folder([undated, later, plain, doneEarlier, today, deleted, late, archived, doneToday, filed], now: now, calendar: calendar)
+        let folder = Todos.folder([undated, later, plain, doneEarlier, today, deleted, late, doneToday, filed], now: now, calendar: calendar)
         XCTAssertEqual(folder.groups.map(\.title), ["Overdue", "Today", "Upcoming", "No Due Date"])
         XCTAssertEqual(folder.groups.map { $0.notes.map(\.title) }, [["filed in a bucket", "late"], ["today"], ["later"], ["undated"]])
         XCTAssertEqual(folder.doneToday.map(\.title), ["done today"])
@@ -497,6 +537,11 @@ extension TodosTests {
         XCTAssertEqual(next.groups.map(\.title), ["Overdue", "Upcoming"])
 
         XCTAssertTrue(Todos.folder([plain, doneEarlier], now: now, calendar: calendar).isEmpty)
+
+        // `archivedAt` of earlier versions does not count: notes are never archived.
+        let formerlyArchived = todo("formerly archived")
+        formerlyArchived.archivedAt = now
+        XCTAssertEqual(Todos.folder([formerlyArchived], now: now, calendar: calendar).open, 1)
     }
 }
 

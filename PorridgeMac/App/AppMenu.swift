@@ -198,7 +198,6 @@ enum AppMenu {
         item(menu, "Merge with…", command, "", symbol: "arrow.triangle.merge", tag: NoteCommand.merge.rawValue)
         item(menu, "Export…", command, "", symbol: "arrow.up.doc", tag: NoteCommand.export.rawValue)
         menu.addItem(.separator())
-        item(menu, "Archive", #selector(MainWindowController.toggleArchive(_:)), "", symbol: "archivebox")
         item(menu, "Recover", #selector(MainWindowController.recoverNote(_:)), "", symbol: "arrow.uturn.backward")
         item(menu, "Delete Recording…", command, "", symbol: "waveform.slash", tag: NoteCommand.deleteRecording.rawValue)
         item(menu, "Delete", #selector(MainWindowController.deleteNote(_:)), "\u{8}", .command, symbol: "trash")

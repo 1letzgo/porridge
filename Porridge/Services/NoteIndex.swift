@@ -203,8 +203,9 @@ extension Note {
     /// Changes whenever anything the passages are made of changes. Stable across launches (SHA-256).
     var indexHash: String {
         var hasher = SHA256()
-        // The chat's entry (`ChatDocument`) holds the buckets and the archive state too; "chat-doc-1" cuts every
-        // note again once when the entry came (the vectors of unchanged passages are kept).
+        // The chat's entry (`ChatDocument`) holds the buckets too; "chat-doc-1" cuts every note again once when the
+        // entry came (the vectors of unchanged passages are kept). `archivedAt` (no longer used for notes) stays in
+        // the hash so notes cleared by `Archive.clearArchivedNotes` are cut again without their old "archived" mark.
         let entry = ["chat-doc-1", sourceRaw, projectIDs.joined(separator: ","), archivedAt.map { "\($0.timeIntervalSince1970)" } ?? ""]
         for part in [title, text, summary ?? "", pageText ?? "", url ?? "", labels.joined(separator: ","), String(createdAt.timeIntervalSince1970)] + entry {
             hasher.update(data: Data(part.utf8))

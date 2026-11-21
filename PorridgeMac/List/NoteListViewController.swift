@@ -348,7 +348,7 @@ final class BucketCellView: NSTableCellView {
     func show(_ project: NoteFolder, notes: [Note]) {
         name.stringValue = project.name
         let key = Projects.key(project)
-        let count = notes.lazy.filter { !$0.isDeleted && !$0.isArchived && $0.projectIDs.contains(key) }.count
+        let count = notes.lazy.filter { !$0.isDeleted && $0.projectIDs.contains(key) }.count
         summary.stringValue = count == 0 ? String(localized: "Empty") : String(localized: "\(count) entries")
         icon.isPinned = project.isPinned
         setAccessibilityLabel("Bucket \(project.name), \(summary.stringValue)")

@@ -73,6 +73,8 @@ final class Library {
         NoteStore.purgeExpired(in: context)
         ShareImport.importInbox(context: context, processing: processing)
         Projects.migrateFolders(in: context)
+        // Only buckets are archived now: notes archived by earlier versions come back.
+        Archive.clearArchivedNotes(in: context)
         // Reminders are gone: what was planned for them is taken back once.
         let center = UNUserNotificationCenter.current()
         let planned = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("remind-") }

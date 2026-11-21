@@ -22,7 +22,7 @@ final class Note {
     var isPinned: Bool = false
     /// Set while the note is in "Recently Deleted".
     var deletedAt: Date?
-    /// Set while the note is in the archive: out of the lists, still in the search.
+    /// No longer used: only buckets are archived. Kept for the store and sync; `Archive.clearArchivedNotes` clears it at start.
     var archivedAt: Date?
     /// A saved web link: the address, and the text of the page once it was fetched ("" = nothing to read).
     var url: String?
@@ -79,9 +79,6 @@ final class Note {
 
     var isDeleted: Bool { deletedAt != nil }
 
-    /// Archived by hand, or a to-do done before today (`isPutAway`).
-    var isArchived: Bool { archivedAt != nil || isPutAway }
-
     var speakerMode: SpeakerMode {
         get { SpeakerMode(rawValue: speakerModeRaw) ?? .none }
         set { speakerModeRaw = newValue.rawValue }
@@ -109,7 +106,7 @@ final class Note {
 
     /// In the inbox: in no bucket. Everything stays there until it is put into one, and comes back when it is
     /// taken out of its last one.
-    var isInInbox: Bool { projectIDs.isEmpty && deletedAt == nil && !isArchived }
+    var isInInbox: Bool { projectIDs.isEmpty && deletedAt == nil }
 
     /// Every file of the note in the store: its recordings and its attachments.
     var storedFileNames: [String] {

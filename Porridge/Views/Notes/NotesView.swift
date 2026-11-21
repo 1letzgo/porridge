@@ -240,6 +240,8 @@ struct NotesView: View {
             NoteStore.purgeExpired(in: context)
             ShareImport.importInbox(context: context, processing: processing)
             Projects.migrateFolders(in: context)
+            // Only buckets are archived now: notes archived by earlier versions come back.
+            Archive.clearArchivedNotes(in: context)
             // Reminders are gone: what was planned for them is taken back once.
             let center = UNUserNotificationCenter.current()
             let planned = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("remind-") }
@@ -369,7 +371,7 @@ struct NotesView: View {
             max(project.updatedAt, contents[Projects.key(project)]?.lastChange ?? .distantPast)
         }
         let waiting = Inbox.notes(notes)
-        let archived = HomeList.archivedProjects(projects).count + HomeList.archivedNotes(notes).count
+        let archived = HomeList.archivedProjects(projects).count
         let isEmpty = folders.isEmpty && waiting.isEmpty
         return List(selection: $selection) {
             // "Up Next" is the first category: the Inbox (what is new or in no bucket) and below it the to-dos folder,
@@ -476,22 +478,21 @@ struct NotesView: View {
         }
     }
 
+    /// The archive: archived buckets only. Notes are never archived.
     private var archive: some View {
         let folders = HomeList.archivedProjects(projects)
-        let archivedNotes = HomeList.archivedNotes(notes)
         return List(selection: $selection) {
             if !folders.isEmpty {
                 projectsSection(folders, contents: ProjectContent.byProject(notes), isFirst: true)
             }
-            dateSections(groups(archivedNotes), isFirst: folders.isEmpty)
         }
         .cardList()
         .roomForFloatingButtons()
         .overlay {
-            if folders.isEmpty, archivedNotes.isEmpty {
+            if folders.isEmpty {
                 EmptyStateView(
                     title: "Nothing Archived",
-                    message: "Archive a bucket or note with a swipe or a long press.",
+                    message: "Archive a bucket with a swipe or a long press.",
                     systemImage: "archivebox"
                 )
             }
@@ -837,7 +838,7 @@ struct NotesView: View {
         }
     }
 
-    /// What the search finds among the notes, archived ones included.
+    /// What the search finds among the notes, those in archived buckets included.
     private var foundNotes: [Note] {
         var result = notes.filter { !$0.isDeleted }
         if let searchKind { result = result.filter(searchKind.matches) }
@@ -1111,10 +1112,6 @@ struct NoteRow: View {
             Text(daysLeft(deletedAt))
                 .foregroundStyle(Color.brandDangerText)
         } else {
-            if note.isArchived {
-                Image(systemName: "archivebox")
-                    .accessibilityLabel("Archived")
-            }
             // "30. Oct 10:52": day and time without the "at" in between, to fit a narrow sidebar. Where a to-do names
             // its buckets (the to-dos folder) its due day says more, and the date makes room for them.
             if buckets.isEmpty || !note.isTodo {

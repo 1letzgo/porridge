@@ -36,8 +36,6 @@ struct ChatDocument: Codable, Equatable {
     let doneAt: Date?
     let subtasksDone: Int
     let subtasksTotal: Int
-    /// Archived by hand (`archivedAt`): out of the lists, still in the chat.
-    let archived: Bool
     let tags: [String]
     /// The start of the entry: its summary, else its text, its page or its transcript; at most 200 characters.
     let snippet: String
@@ -58,7 +56,6 @@ struct ChatDocument: Codable, Equatable {
         let progress = note.todoProgress
         subtasksDone = progress.done
         subtasksTotal = progress.total
-        archived = note.archivedAt != nil
         tags = note.tags
         let sources = [note.summary ?? "", note.text, note.pageText ?? "", note.segments.prefix(20).map(\.text).joined(separator: " ")]
         var lines: [String] = []
@@ -87,7 +84,7 @@ struct ChatDocument: Codable, Equatable {
     }
 
     /// The line that introduces the entry to the model:
-    /// `«Title» — To-do, open, due 12 December 2026, overdue, 1 of 3 subtasks done · created Tue 17 Nov 2026 · Bucket: Travel · archived`
+    /// `«Title» — To-do, open, due 12 December 2026, overdue, 1 of 3 subtasks done · created Tue 17 Nov 2026 · Bucket: Travel`
     /// and for a link `«Title» — Link (example.com) · created … · Inbox · https://example.com/a`.
     func header(bucketNames: [String: String], now: Date = Date(), calendar: Calendar = .current) -> String {
         var kindText = kind.label
@@ -105,7 +102,6 @@ struct ChatDocument: Codable, Equatable {
         let names = bucketIDs.compactMap { bucketNames[$0] }
         parts.append(names.isEmpty ? "Inbox" : (names.count == 1 ? "Bucket: " : "Buckets: ") + names.joined(separator: ", "))
         if !tags.isEmpty { parts.append(tags.map { "#" + $0 }.joined(separator: " ")) }
-        if archived { parts.append("archived") }
         if let url { parts.append(url) }
         return "«\(title)» — " + parts.joined(separator: " · ")
     }
