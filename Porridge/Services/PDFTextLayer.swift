@@ -39,11 +39,21 @@ enum PDFTextLayer {
         return result
     }
 
-    /// Puts a text layer on every page without text (up to `maxPages`). Returns how many pages got one.
+    /// The pages that get a layer: without text, upright (a turned page would be read sideways; it keeps being read
+    /// for the note's text the usual way) and without annotations (signatures, form fields and links would not survive
+    /// the page being drawn again).
+    static func pagesToLayer(_ document: PDFDocument) -> [Int] {
+        pagesWithoutText(document).filter { index in
+            guard let page = document.page(at: index) else { return false }
+            return page.rotation % 360 == 0 && page.annotations.isEmpty
+        }
+    }
+
+    /// Puts a text layer on every page that can get one (`pagesToLayer`, up to `maxPages`). Returns how many did.
     @discardableResult
     static func addTextLayer(to document: PDFDocument, recognize: (CGImage) -> [Line] = recognizeLines) -> Int {
         var changed = 0
-        for index in pagesWithoutText(document).prefix(maxPages) {
+        for index in pagesToLayer(document).prefix(maxPages) {
             autoreleasepool {
                 guard let page = document.page(at: index), let image = render(page) else { return }
                 let lines = recognize(image).filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -127,6 +137,10 @@ enum PDFTextLayer {
         context.closePDF()
         guard let layered = PDFDocument(data: data as Data)?.page(at: 0) else { return nil }
         layered.rotation = page.rotation
+        // The page's other boxes as they were: what is shown and printed of it does not change.
+        for box in [PDFDisplayBox.cropBox, .bleedBox, .trimBox, .artBox] {
+            layered.setBounds(page.bounds(for: box), for: box)
+        }
         return layered
     }
 }
@@ -218,6 +232,10 @@ enum PDFPages {
         guard let first = numbers.first, let last = numbers.last else { return "" }
         if numbers.count == 1 { return String(localized: "Page \(first)") }
         if last - first + 1 == numbers.count { return String(localized: "Pages \(first)–\(last)") }
+        // Many pages here and there: the first few and how many, so a title stays short.
+        if numbers.count > 4 {
+            return String(localized: "Pages \(numbers.prefix(3).map(String.init).joined(separator: ", ")), … (\(numbers.count) pages)")
+        }
         return String(localized: "Pages \(numbers.map(String.init).joined(separator: ", "))")
     }
 

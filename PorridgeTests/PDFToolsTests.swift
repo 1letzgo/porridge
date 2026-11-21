@@ -38,11 +38,17 @@ final class PDFToolsTests: XCTestCase {
         })
     }
 
-    func testOnlyPagesWithoutTextAreReadAndTheirRotationStays() throws {
+    func testOnlyUprightPagesWithoutTextOrAnnotationsGetALayerAndKeepTheirBoxes() throws {
         let text = try XCTUnwrap(PDFDocument(data: textPDF("Already text")))
-        let scan = try XCTUnwrap(PDFDocument(data: try XCTUnwrap(scannedPDF(lines: ["SCAN"]))))
-        let document = PDFPages.merged([text, scan])
-        document.page(at: 1)?.rotation = 90
+        let scan = { try XCTUnwrap(PDFDocument(data: try XCTUnwrap(self.scannedPDF(lines: ["SCAN"])))) }
+        let document = PDFPages.merged([text, try scan(), try scan(), try scan()])
+        // Turned: it would be read sideways; it keeps being read for the note's text the usual way.
+        document.page(at: 2)?.rotation = 90
+        // A signature or a form field would not survive the page being drawn again.
+        document.page(at: 3)?.addAnnotation(PDFAnnotation(bounds: CGRect(x: 10, y: 10, width: 50, height: 20), forType: .square, withProperties: nil))
+        let crop = CGRect(x: 20, y: 30, width: 500, height: 700)
+        document.page(at: 1)?.setBounds(crop, for: .cropBox)
+        XCTAssertEqual(PDFTextLayer.pagesToLayer(document), [1])
         var read = 0
         let changed = PDFTextLayer.addTextLayer(to: document) { _ in
             read += 1
@@ -52,7 +58,9 @@ final class PDFToolsTests: XCTestCase {
         XCTAssertEqual(read, 1)
         XCTAssertTrue(document.page(at: 0)?.string?.contains("Already text") ?? false)
         XCTAssertTrue(document.page(at: 1)?.string?.contains("Fake line") ?? false)
-        XCTAssertEqual(document.page(at: 1)?.rotation, 90)
+        XCTAssertEqual(document.page(at: 1)?.bounds(for: .cropBox), crop, "what is shown of the page stays")
+        XCTAssertEqual(document.page(at: 2)?.rotation, 90)
+        XCTAssertEqual(document.page(at: 3)?.annotations.count, 1)
         // Nothing read: nothing changes.
         let empty = try XCTUnwrap(PDFDocument(data: try XCTUnwrap(scannedPDF(lines: ["X"]))))
         XCTAssertEqual(PDFTextLayer.addTextLayer(to: empty) { _ in [] }, 0)
@@ -92,6 +100,7 @@ final class PDFToolsTests: XCTestCase {
         XCTAssertEqual(PDFPages.label([1, 2, 3]), "Pages 2–4")
         XCTAssertEqual(PDFPages.label([2]), "Page 3")
         XCTAssertEqual(PDFPages.label([0, 2, 4]), "Pages 1, 3, 5")
+        XCTAssertEqual(PDFPages.label(Array(stride(from: 0, to: 24, by: 2))), "Pages 1, 3, 5, … (12 pages)", "a title stays short")
     }
 
     // MARK: Files
@@ -111,7 +120,13 @@ final class PDFToolsTests: XCTestCase {
         XCTAssertEqual(after.bytes, Int64(data.count))
         XCTAssertEqual(after.document, DocumentInfo(kind: .invoice, correspondent: "Telekom", isEdited: true))
         XCTAssertEqual(note.pageText, "old text", "kept until the new file is read")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: AudioStore.localURL(for: before.fileName).path))
+        // The old file stays for a while: another device may still name it.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: AudioStore.localURL(for: before.fileName).path))
+        XCTAssertNotNil(ReplacedFiles.pending()[before.fileName])
+        AudioStore.delete(before.fileName)
+        var pending = UserDefaults.standard.dictionary(forKey: ReplacedFiles.key) ?? [:]
+        pending[before.fileName] = nil
+        UserDefaults.standard.set(pending, forKey: ReplacedFiles.key)
         XCTAssertEqual(PDFDocument(url: AudioStore.localURL(for: after.fileName))?.pageCount, 3)
         AudioStore.delete(after.fileName)
     }
@@ -156,6 +171,47 @@ final class PDFToolsTests: XCTestCase {
         XCTAssertEqual(DocumentFiles.mergeable([target, other, Note()]).count, 2)
         XCTAssertEqual(DocumentFiles.mergedInfo(target: nil, others: [nil, DocumentInfo(kind: .receipt)]), DocumentInfo(kind: .receipt))
         for item in [target, other] { item.attachments.forEach { AudioStore.delete($0.fileName) } }
+    }
+
+    func testReplacedFilesAreDeletedOnlyAfterTheirGraceAndWhenNothingNamesThem() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ReplacedFilesTests-\(UUID().uuidString)"))
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        ReplacedFiles.remember("old.pdf", now: start, defaults: defaults)
+        ReplacedFiles.remember("named.pdf", now: start, defaults: defaults)
+        ReplacedFiles.remember("recent.pdf", now: start.addingTimeInterval(ReplacedFiles.grace - 60), defaults: defaults)
+        var deleted: [String] = []
+        XCTAssertFalse(ReplacedFiles.hasDue(now: start.addingTimeInterval(60), defaults: defaults))
+        XCTAssertEqual(ReplacedFiles.purge(referenced: [], now: start.addingTimeInterval(60), defaults: defaults) { deleted.append($0) }, [])
+
+        let later = start.addingTimeInterval(ReplacedFiles.grace + 1)
+        XCTAssertTrue(ReplacedFiles.hasDue(now: later, defaults: defaults))
+        XCTAssertEqual(ReplacedFiles.purge(referenced: ["named.pdf"], now: later, defaults: defaults) { deleted.append($0) }, ["old.pdf"])
+        XCTAssertEqual(deleted, ["old.pdf"])
+        XCTAssertEqual(Set(ReplacedFiles.pending(defaults: defaults).keys), ["recent.pdf"], "a named file is forgotten, never deleted")
+    }
+
+    func testSavingNeedsTheFileThePagesWereLoadedFrom() throws {
+        let context = try TestStore.context()
+        let processing = ProcessingService(container: context.container)
+        let note = try storedPDF(try numbered(3), in: context)
+        let file = note.attachments[0]
+        XCTAssertThrowsError(try DocumentFiles.save(try numbered(1), as: file, loadedFrom: nil, of: note, context: context, processing: processing))
+        XCTAssertThrowsError(try DocumentFiles.save(try numbered(1), as: file, loadedFrom: "other.pdf", of: note, context: context, processing: processing))
+        XCTAssertEqual(note.attachments[0].fileName, file.fileName, "never loaded: nothing written")
+        try DocumentFiles.save(try numbered(2), as: file, loadedFrom: file.fileName, of: note, context: context, processing: processing)
+        XCTAssertNotEqual(note.attachments[0].fileName, file.fileName)
+        for name in [file.fileName, note.attachments[0].fileName] { AudioStore.delete(name) }
+    }
+
+    func testOnlyEntriesWithNothingButTheMergedPDFMayBeDeleted() throws {
+        let context = try TestStore.context()
+        let only = try storedPDF(try numbered(1), in: context)
+        let withText = try storedPDF(try numbered(1), in: context)
+        withText.text = "My notes on it"
+        let twoFiles = try storedPDF(try numbered(1), in: context)
+        twoFiles.attachments += [Attachment(fileName: "x.jpg", name: "x.jpg", kindRaw: "image")]
+        XCTAssertEqual(DocumentFiles.deletableAfterMerge([only, withText, twoFiles]).map(\.id), [only.id])
+        for item in [only, withText, twoFiles] { item.attachments.forEach { AudioStore.delete($0.fileName) } }
     }
 
     // MARK: Several at once

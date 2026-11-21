@@ -142,7 +142,7 @@ enum NoteOperations {
         }
         let mergeable = DocumentFiles.mergeable(documents)
         if mergeable.count >= 2 {
-            menu.add("Merge \(mergeable.count) PDFs…", symbol: "arrow.triangle.merge") { merge(mergeable, in: window) }
+            menu.add("Merge \(mergeable.count) PDFs…", symbol: "arrow.triangle.merge", enabled: !DocumentFiles.isBusy) { merge(mergeable, in: window) }
         }
     }
 
@@ -164,11 +164,14 @@ enum NoteOperations {
             Task {
                 do {
                     try await DocumentFiles.merge(others, into: into, context: context, processing: library.processing)
+                    // Only entries that held nothing but the merged PDF are offered for deletion.
+                    let deletable = DocumentFiles.deletableAfterMerge(others)
+                    guard !deletable.isEmpty else { return }
                     Alerts.confirm(
                         "Delete the Merged Documents?", message: "Their pages are in “\(into.displayTitle)” now.",
-                        action: "Move \(others.count) to Recently Deleted", in: window
+                        action: "Move \(deletable.count) to Recently Deleted", in: window
                     ) {
-                        others.forEach { NoteStore.trash($0, in: context) }
+                        deletable.forEach { NoteStore.trash($0, in: context) }
                     }
                 } catch {
                     Alerts.inform("Could Not Merge", message: error.localizedDescription, in: window)

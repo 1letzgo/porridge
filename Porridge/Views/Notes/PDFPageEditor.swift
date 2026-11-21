@@ -20,6 +20,10 @@ struct PDFPageEditor: View {
     @State private var items: [Item] = []
     @State private var chosen = Set<UUID>()
     @State private var isLoading = true
+    /// The file the pages were loaded from; nil until they were. Nothing can be added, saved or split before.
+    @State private var loadedFrom: String?
+    /// The pages could not be loaded: the editor closes once the message is read.
+    @State private var failedToLoad = false
     @State private var isWorking = false
     @State private var changed = false
     /// Goes up when pages turn, so their pictures are drawn again.
@@ -46,7 +50,7 @@ struct PDFPageEditor: View {
                     .environment(\.editMode, .constant(.active))
                 }
             }
-            .disabled(isWorking)
+            .disabled(isWorking || loadedFrom == nil)
             .overlay { if isWorking { ProgressView().controlSize(.large) } }
             .brandNavigationTitle("Pages")
             .toolbar {
@@ -55,7 +59,7 @@ struct PDFPageEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await save(close: true) } }
-                        .disabled(!changed || isWorking)
+                        .disabled(!changed || isWorking || loadedFrom == nil)
                 }
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button { rotate(-90) } label: { Label("Rotate Left", systemImage: "rotate.left") }
@@ -80,6 +84,7 @@ struct PDFPageEditor: View {
                     } label: {
                         Label("More", systemImage: "ellipsis.circle")
                     }
+                    .disabled(loadedFrom == nil || isWorking)
                 }
             }
             .confirmationDialog("Split Every Page?", isPresented: $confirmSplitEvery, titleVisibility: .visible) {
@@ -89,7 +94,10 @@ struct PDFPageEditor: View {
                 Text("This document keeps its first page; every other page becomes a document of its own in the same bowl.")
             }
             .alert("Could Not Edit Pages", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
-                Button("OK") { error = nil }
+                Button("OK") {
+                    error = nil
+                    if failedToLoad { dismiss() }
+                }
             } message: {
                 Text(error ?? "")
             }
@@ -115,7 +123,9 @@ struct PDFPageEditor: View {
         do {
             let document = try await DocumentFiles.load(file)
             items = (0..<document.pageCount).compactMap { document.page(at: $0).map { Item(page: $0) } }
+            loadedFrom = file.fileName
         } catch {
+            failedToLoad = true
             self.error = error.localizedDescription
         }
         isLoading = false
@@ -160,7 +170,9 @@ struct PDFPageEditor: View {
         isWorking = true
         defer { isWorking = false }
         do {
-            try DocumentFiles.save(edited, as: file, of: note, context: context, processing: processing)
+            try DocumentFiles.save(edited, as: file, loadedFrom: loadedFrom, of: note, context: context, processing: processing)
+            // What is shown is the saved file now.
+            loadedFrom = DocumentFiles.pdf(of: note)?.fileName
             changed = false
             if close { dismiss() }
             return true

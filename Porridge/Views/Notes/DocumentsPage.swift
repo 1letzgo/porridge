@@ -18,6 +18,8 @@ struct NoteSelectionBar: View {
     /// Merged into the target: the others, offered for deletion.
     @State private var mergedAway: [Note] = []
     @State private var error: String?
+    /// A merge is running: the bar waits.
+    @State private var isWorking = false
 
     /// The chosen entries, in the order of the list.
     private var chosenNotes: [Note] { notes.filter { chosen.contains($0.id) } }
@@ -72,7 +74,13 @@ struct NoteSelectionBar: View {
             }
             .padding(.horizontal, 20)
         }
+        .disabled(isWorking)
         .padding(.bottom, Look.headerGap)
+        // Only what the list shows can be chosen: an entry moved out of it (or deleted) leaves the selection.
+        .onChange(of: notes.map(\.id), initial: true) { _, ids in
+            let visible = chosen.intersection(ids)
+            if visible != chosen { chosen = visible }
+        }
         .alert("Sender", isPresented: $askingSender) {
             TextField("Company, office or person", text: $senderText)
             Button("Cancel", role: .cancel) {}
@@ -124,10 +132,13 @@ struct NoteSelectionBar: View {
 
     private func merge(into target: Note, from documents: [Note]) async {
         let others = documents.filter { $0.id != target.id }
+        isWorking = true
+        defer { isWorking = false }
         do {
             try await DocumentFiles.merge(others, into: target, context: context, processing: processing)
             chosen = []
-            mergedAway = others
+            // Only entries that held nothing but the merged PDF are offered for deletion.
+            mergedAway = DocumentFiles.deletableAfterMerge(others)
         } catch {
             self.error = error.localizedDescription
         }

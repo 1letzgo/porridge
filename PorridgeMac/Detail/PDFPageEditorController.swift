@@ -9,6 +9,10 @@ final class PDFPageEditorController: NSViewController, NSTableViewDataSource, NS
     private let note: Note
     private var pages: [PDFPage] = []
     private var changed = false { didSet { updateButtons() } }
+    /// The file the pages were loaded from; nil until they were. Nothing can be added, saved or split before.
+    private var loadedFrom: String? { didSet { updateButtons() } }
+    /// A split is running.
+    private var isBusy = false { didSet { updateButtons() } }
     private let table = NSTableView()
     private let status = NSTextField.label(color: .secondaryLabelColor)
     private let rotateLeft = NSButton()
@@ -115,10 +119,15 @@ final class PDFPageEditorController: NSViewController, NSTableViewDataSource, NS
             do {
                 let document = try await DocumentFiles.load(file)
                 pages = (0..<document.pageCount).compactMap { document.page(at: $0) }
+                loadedFrom = file.fileName
                 table.reloadData()
                 updateButtons()
             } catch {
+                // Nothing to edit: the sheet closes after saying why.
                 status.stringValue = error.localizedDescription
+                let window = view.window?.sheetParent
+                close()
+                Alerts.inform("Could Not Open the Pages", message: error.localizedDescription, in: window)
             }
         }
     }
@@ -174,14 +183,15 @@ final class PDFPageEditorController: NSViewController, NSTableViewDataSource, NS
     private var selected: IndexSet { table.selectedRowIndexes.filteredIndexSet { $0 < pages.count } }
 
     private func updateButtons() {
-        let some = !selected.isEmpty
+        let some = !selected.isEmpty && loadedFrom != nil && !isBusy
         rotateLeft.isEnabled = some
         rotateRight.isEnabled = some
         moveUp.isEnabled = some && (selected.first ?? 0) > 0
         moveDown.isEnabled = some && (selected.last ?? pages.count) < pages.count - 1
         delete.isEnabled = some && selected.count < pages.count
-        split.isEnabled = pages.count > 1
-        save.isEnabled = changed
+        split.isEnabled = pages.count > 1 && loadedFrom != nil && !isBusy
+        add.isEnabled = loadedFrom != nil && !isBusy
+        save.isEnabled = changed && loadedFrom != nil && !isBusy
         if !pages.isEmpty { status.stringValue = pages.count == 1 ? "1 page" : "\(pages.count) pages" }
     }
 
@@ -241,6 +251,8 @@ final class PDFPageEditorController: NSViewController, NSTableViewDataSource, NS
 
     /// The pages of a PDF, or a picture as a page, at the end.
     private func addPages(from url: URL) {
+        // Before the pages are there, added ones would be all there is.
+        guard loadedFrom != nil, !isBusy else { return }
         if let document = PDFDocument(url: url) {
             for index in 0..<document.pageCount {
                 if let page = document.page(at: index)?.copy() as? PDFPage { pages.append(page) }
@@ -280,7 +292,9 @@ final class PDFPageEditorController: NSViewController, NSTableViewDataSource, NS
     private func write() -> Bool {
         guard changed, let file = DocumentFiles.pdf(of: note) else { return true }
         do {
-            try DocumentFiles.save(edited, as: file, of: note, context: library.context, processing: library.processing)
+            try DocumentFiles.save(edited, as: file, loadedFrom: loadedFrom, of: note, context: library.context, processing: library.processing)
+            // What is shown is the saved file now.
+            loadedFrom = DocumentFiles.pdf(of: note)?.fileName
             changed = false
             return true
         } catch {
@@ -311,9 +325,11 @@ final class PDFPageEditorController: NSViewController, NSTableViewDataSource, NS
 
     /// Saves what was changed, splits, and closes.
     private func runSplit(_ split: PDFPages.Split) {
-        guard write() else { return }
+        guard loadedFrom != nil, !isBusy, write() else { return }
         let note = note
+        isBusy = true
         Task {
+            defer { isBusy = false }
             do {
                 try await DocumentFiles.split(note, split, context: library.context, processing: library.processing)
                 close()

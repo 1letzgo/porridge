@@ -187,6 +187,8 @@ final class ProcessingService {
         if !didBackfillDocuments {
             didBackfillDocuments = true
             Documents.backfill(in: context)
+            // PDF files replaced by a new version, once every device had the time to sync the new name.
+            DocumentFiles.purgeReplaced(in: context)
         }
         guard AppSettings.summarizeIncoming, SummaryService.canRunWithoutAsking else { return }
         let notes = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.summary == nil && $0.summarizedAt == nil && $0.deletedAt == nil }))) ?? []
