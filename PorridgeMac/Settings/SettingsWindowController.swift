@@ -1,6 +1,6 @@
 import AppKit
 
-/// The Settings window: a toolbar of tabs (General, Recording, AI, Sync, Dictation, About), the areas of
+/// The Settings window: a toolbar of tabs (General, Recording, AI, Dictation), the areas of
 /// `SettingsView`. The window takes the height of the tab that shows.
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SettingsWindowController()
@@ -25,7 +25,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Opens the window on a tab: "general", "recording", "ai", "sync", "dictation", "about" (nil: where it was).
+    /// Opens the window on a tab: "general", "recording", "ai", "dictation" (nil: where it was).
     func show(tab: String?) {
         if let tab, let index = tabs.tabViewItems.firstIndex(where: { ($0.identifier as? String) == tab }) {
             tabs.selectedTabViewItemIndex = index
@@ -56,9 +56,7 @@ final class SettingsTabController: NSTabViewController {
         add(GeneralSettingsPane(), id: "general", label: "General", symbol: "gearshape")
         add(RecordingSettingsPane(), id: "recording", label: "Recording", symbol: "waveform")
         add(AISettingsPane(), id: "ai", label: "AI", symbol: "sparkles")
-        add(SyncSettingsPane(), id: "sync", label: "Sync", symbol: "arrow.triangle.2.circlepath")
         add(DictationSettingsPane(), id: "dictation", label: "Dictation", symbol: "mic")
-        add(AboutSettingsPane(), id: "about", label: "About", symbol: "info.circle")
     }
 
     @available(*, unavailable)
