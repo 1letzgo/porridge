@@ -114,7 +114,8 @@ final class ListHeaderView: NSView {
                     filters.addArrangedSubview(documentPill(title: entry.kind.title, count: entry.count, kind: entry.kind, isOn: state.documentKind == entry.kind))
                 }
                 let senders = Documents.correspondents(all)
-                if !senders.isEmpty {
+                // Also while a sender is chosen that has no documents any more: it can still be let go.
+                if !senders.isEmpty || state.documentSender != nil {
                     let popup = NSPopUpButton(frame: .zero, pullsDown: true)
                     popup.controlSize = .small
                     popup.bezelStyle = .push

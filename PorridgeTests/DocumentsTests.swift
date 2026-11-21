@@ -110,6 +110,15 @@ final class DocumentsTests: XCTestCase {
         XCTAssertEqual(DocumentExtractor.correspondent(in: "Muster AG | Hauptstr. 1 | 10115 Berlin\nRechnung"), "Muster AG")
         XCTAssertNil(DocumentExtractor.correspondent(in: "Bankverbindung: Sparkasse Berlin"), "a field, not a name")
         XCTAssertNil(DocumentExtractor.correspondent(in: "Liebe Anna,\nwie geht es dir?"))
+        XCTAssertEqual(DocumentExtractor.correspondent(in: "Acme Inc.\n1 Infinite Loop"), "Acme Inc.")
+    }
+
+    func testItemsOfAReceiptAreNoSender() {
+        XCTAssertNil(DocumentExtractor.correspondent(in: "Bananen 1,2 kg\nÄpfel 2,99 EUR"), "a weight is no legal form")
+        XCTAssertNil(DocumentExtractor.correspondent(in: "Obst AG 3,99"), "a line with a price is an item")
+        XCTAssertNil(DocumentExtractor.correspondent(in: "Filiale 12 AG"), "a name with a number is an address")
+        XCTAssertNil(DocumentExtractor.correspondent(in: "danke se"), "a legal form only after a capitalised name")
+        XCTAssertNil(DocumentExtractor.correspondent(in: "AG"))
     }
 
     func testSpellingsOfOneSenderAreTheSame() {
@@ -137,7 +146,13 @@ final class DocumentsTests: XCTestCase {
 
     func testUnknownFieldsOfTheModelsLineStayUnknown() {
         XCTAssertEqual(DocumentLine.parse(" letter | none | \"Finanzamt Berlin\" | none"), DocumentInfo(kind: .letter, correspondent: "Finanzamt Berlin"))
-        XCTAssertEqual(DocumentLine.parse("memo | 3. März 2026 | - | 12,50 €"), DocumentInfo(kind: .other, day: "2026-03-03", amount: "12.50 EUR"))
+        // A kind the model made up is unknown, so the device's guess stays; German words are understood.
+        XCTAssertEqual(DocumentLine.parse("memo | 3. März 2026 | - | 12,50 €"), DocumentInfo(day: "2026-03-03", amount: "12.50 EUR"))
+        XCTAssertEqual(DocumentLine.parse("Rechnung | none | none | none")?.kind, .invoice)
+        XCTAssertEqual(DocumentLine.parse("Vertrag | none | Vermieter | none")?.kind, .contract)
+        XCTAssertEqual(DocumentLine.parse("Quittung | none | Bäckerei | none")?.kind, .receipt)
+        XCTAssertEqual(DocumentLine.parse("Brief | none | Anna | none")?.kind, .letter)
+        XCTAssertEqual(DocumentLine.parse("other | none | Anna | none")?.kind, .other)
         XCTAssertNil(DocumentLine.parse("none | none | none | none"))
         XCTAssertEqual(DocumentLine.split("No line here").info, nil)
         XCTAssertTrue(DocumentLine.prompt.contains("invoice | receipt"))
@@ -196,6 +211,55 @@ final class DocumentsTests: XCTestCase {
         XCTAssertFalse(Documents.read(note, text: englishReceipt, now: now))
         Documents.apply(DocumentInfo(kind: .receipt), to: note)
         XCTAssertEqual(note.documentInfo?.kind, .contract, "set by hand, kept")
+    }
+
+    func testAFreshGuessNeverReplacesWhatIsKnownAndNothingReadChangesNothing() throws {
+        let note = storedNote(kind: "pdf", name: "scan.pdf")
+        // What the model found, maybe on another device.
+        note.documentInfo = DocumentInfo(kind: .invoice, day: "2026-02-01", correspondent: "Telekom")
+        XCTAssertFalse(Documents.read(note, text: "", now: now), "a file iCloud did not deliver yet")
+        XCTAssertFalse(Documents.read(note, text: "  \n ", now: now))
+        XCTAssertEqual(note.documentInfo, DocumentInfo(kind: .invoice, day: "2026-02-01", correspondent: "Telekom"))
+
+        // Read again on this device: only what was missing is filled in.
+        XCTAssertTrue(Documents.read(note, text: germanInvoice, now: now))
+        XCTAssertEqual(note.documentInfo, DocumentInfo(kind: .invoice, day: "2026-02-01", correspondent: "Telekom", amount: "119.00 EUR"))
+
+        // "Other" says less than a kind: it fills, it never replaces.
+        XCTAssertEqual(DocumentInfo(kind: .invoice).merged(with: DocumentInfo(kind: .other)).kind, .invoice)
+        XCTAssertEqual(DocumentInfo().merged(with: DocumentInfo(kind: .other)).kind, .other)
+        XCTAssertEqual(DocumentInfo(kind: .other).merged(with: DocumentInfo(kind: .receipt)).kind, .receipt)
+        let guessedOther = storedNote(kind: "pdf", name: "x.pdf")
+        guessedOther.documentInfo = DocumentInfo(kind: .other)
+        Documents.read(guessedOther, text: germanInvoice, now: now)
+        XCTAssertEqual(guessedOther.documentInfo?.kind, .invoice)
+    }
+
+    func testRemovingTheFirstFileKeepsWhatTheDocumentIs() {
+        let note = storedNote(kind: "pdf", name: "a.pdf")
+        let second = Attachment(fileName: "b.pdf", name: "b.pdf", kindRaw: "pdf")
+        note.attachments += [second]
+        note.documentInfo = DocumentInfo(kind: .contract, correspondent: "Vermieter", isEdited: true)
+        let first = note.attachments[0].id
+
+        note.removeAttachment(id: first)
+        XCTAssertEqual(note.attachments.map(\.id), [second.id])
+        XCTAssertEqual(note.documentInfo, DocumentInfo(kind: .contract, correspondent: "Vermieter", isEdited: true))
+
+        note.removeAttachment(id: "unknown")
+        XCTAssertEqual(note.attachments.count, 1)
+        note.removeAttachment(id: second.id)
+        XCTAssertTrue(note.attachments.isEmpty)
+    }
+
+    func testDayKeysAreGregorianWhateverTheCalendar() {
+        XCTAssertEqual(DocumentInfo.calendar.identifier, .gregorian)
+        let date = DocumentInfo.date(fromDay: "2026-03-02")!
+        XCTAssertEqual(DocumentInfo.dayKey(date), "2026-03-02")
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = .current
+        XCTAssertEqual(buddhist.component(.year, from: date), 2569, "what Calendar.current would give in Thailand")
+        XCTAssertEqual(Documents.yearGroups([document("A", kind: nil, day: "2026-03-02", sender: nil)]).map(\.title), ["2026"])
     }
 
     func testSearchFindsADocumentByItsSender() {
@@ -305,6 +369,29 @@ final class DocumentsTests: XCTestCase {
         XCTAssertEqual(PDFDocument(url: url)?.pageCount, 3)
         XCTAssertNil(ScannedPDF.write([], title: ""))
         XCTAssertEqual(ScannedPDF.fileName(title: "Mietvertrag 2026/27"), "Mietvertrag 2026-27.pdf")
+    }
+
+    func testScannedPagesAreMadeSmallAndReadOneAtATime() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let big = UIGraphicsImageRenderer(size: CGSize(width: 3000, height: 4000), format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 3000, height: 4000))
+        }
+        let small = try XCTUnwrap(ScannedPDF.compressed(big))
+        XCTAssertEqual(small.size.width * small.scale, ScannedPDF.pixelWidth)
+        XCTAssertEqual(small.size.height * small.scale, (4000 * ScannedPDF.pixelWidth / 3000).rounded())
+        let tiny = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 600), format: format).image { _ in }
+        XCTAssertEqual(try XCTUnwrap(ScannedPDF.compressed(tiny)).size.width, 400, "never made larger")
+
+        var asked: [Int] = []
+        let url = try XCTUnwrap(ScannedPDF.write(pageCount: 2, title: "") { index in
+            asked.append(index)
+            return big
+        })
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(asked, [0, 1])
+        XCTAssertEqual(PDFDocument(url: url)?.pageCount, 2)
     }
 
     // MARK: Helpers

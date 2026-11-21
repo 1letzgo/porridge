@@ -72,6 +72,8 @@ final class ProcessingService {
     @ObservationIgnored private var running: Job?
     @ObservationIgnored private var autoAttempts = AutoSummary.Attempts()
     @ObservationIgnored private var sweepTask: Task<Void, Never>?
+    /// The documents read before this version got their first guess in this launch (`Documents.backfill`).
+    @ObservationIgnored private var didBackfillDocuments = false
 
     init(container: ModelContainer) {
         self.container = container
@@ -180,8 +182,12 @@ final class ProcessingService {
                 self?.summarizeIncoming()
             }
         }
-        // Files read before documents were looked at get their first guess, once.
-        Documents.backfill(in: context)
+        // Files read before documents were looked at (or synced from a device that does not read them) get their
+        // first guess, once per launch.
+        if !didBackfillDocuments {
+            didBackfillDocuments = true
+            Documents.backfill(in: context)
+        }
         guard AppSettings.summarizeIncoming, SummaryService.canRunWithoutAsking else { return }
         let notes = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.summary == nil && $0.summarizedAt == nil && $0.deletedAt == nil }))) ?? []
         let origins = AutoSummary.origins()

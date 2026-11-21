@@ -38,6 +38,18 @@ extension Note {
 
     /// The date on the document, or when it came in.
     var documentDate: Date { documentInfo?.date ?? createdAt }
+
+    /// Takes a file off the note. What the document is lives on the first file: when that one goes, it moves to the
+    /// file that is first now, so nothing read or set by hand is lost.
+    func removeAttachment(id: String) {
+        var list = attachments
+        guard let index = list.firstIndex(where: { $0.id == id }) else { return }
+        let removed = list.remove(at: index)
+        if index == 0, let info = removed.document, !list.isEmpty, list[0].document == nil {
+            list[0].document = info
+        }
+        attachments = list
+    }
 }
 
 /// The documents of the app as a small document management: every PDF, scan and office file across the inbox and
@@ -95,7 +107,7 @@ enum Documents {
     }
 
     /// Documents under the year of their date, newest year first; the order within a year is kept.
-    static func yearGroups(_ documents: [Note], calendar: Calendar = .current) -> [(title: String, notes: [Note])] {
+    static func yearGroups(_ documents: [Note], calendar: Calendar = DocumentInfo.calendar) -> [(title: String, notes: [Note])] {
         var result: [(title: String, notes: [Note])] = []
         for note in documents {
             let title = String(calendar.component(.year, from: note.documentDate))
@@ -112,14 +124,17 @@ enum Documents {
 
     // MARK: Reading
 
-    /// After the file's text was read: a first guess on the device, unless the user set it by hand. A note that is
-    /// not a stored file is left alone. Returns whether anything changed.
+    /// After the file's text was read: a first guess on the device. It only fills what is not known yet: what the
+    /// model found or the user set (here or on another device) is never replaced by it. Nothing read (a file iCloud
+    /// did not deliver yet) changes nothing. A note that is not a stored file is left alone. Returns whether
+    /// anything changed.
     @discardableResult
     static func read(_ note: Note, text: String, now: Date = Date()) -> Bool {
-        guard note.isStored, let first = note.attachments.first, first.document?.edited != true else { return false }
+        guard note.isStored, let first = note.attachments.first, first.document?.edited != true,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         let guess = DocumentExtractor.extract(from: text, name: first.name, now: now)
         let before = note.documentInfo
-        note.documentInfo = guess
+        note.documentInfo = before.map { guess.merged(with: $0) } ?? guess
         return before != note.documentInfo
     }
 

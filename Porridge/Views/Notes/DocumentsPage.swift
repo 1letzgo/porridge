@@ -64,7 +64,8 @@ struct DocumentsPage: View {
                         kind = kind == entry.kind ? nil : entry.kind
                     }
                 }
-                if !senders.isEmpty {
+                // Also while a sender is chosen that has no documents any more: it can still be let go.
+                if !senders.isEmpty || correspondent != nil {
                     Menu {
                         Button { correspondent = nil } label: {
                             if correspondent == nil { Label("All Senders", systemImage: "checkmark") } else { Text("All Senders") }

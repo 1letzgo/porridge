@@ -96,10 +96,11 @@ struct DocumentInfo: Codable, Hashable {
     /// The date on the document as a day at noon in the current calendar; nil when there is none.
     var date: Date? { DocumentInfo.date(fromDay: day) }
 
-    /// The fields of `other` that are known fill or replace these; `other` wins where it knows something.
+    /// The fields of `other` that are known fill or replace these; `other` wins where it knows something. "Other"
+    /// never replaces a kind that says more.
     func merged(with other: DocumentInfo) -> DocumentInfo {
         var result = self
-        if let kind = other.kind { result.kind = kind }
+        if let kind = other.kind, kind != .other || result.kind == nil { result.kind = kind }
         if let day = other.day { result.day = day }
         if let correspondent = other.correspondent { result.correspondent = correspondent }
         if let amount = other.amount { result.amount = amount }
@@ -108,7 +109,14 @@ struct DocumentInfo: Codable, Hashable {
 
     // MARK: Days
 
-    static func dayKey(_ date: Date, calendar: Calendar = .current) -> String {
+    /// Day keys are Gregorian whatever calendar the device uses (Japanese, Buddhist …), in the device's time zone.
+    static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar
+    }()
+
+    static func dayKey(_ date: Date, calendar: Calendar = DocumentInfo.calendar) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
@@ -125,7 +133,7 @@ struct DocumentInfo: Codable, Hashable {
         return String(format: "%04d-%02d-%02d", year, month, day)
     }
 
-    static func date(fromDay day: String?, calendar: Calendar = .current) -> Date? {
+    static func date(fromDay day: String?, calendar: Calendar = DocumentInfo.calendar) -> Date? {
         guard let day else { return nil }
         let parts = day.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3, dayKey(year: parts[0], month: parts[1], day: parts[2]) != nil else { return nil }

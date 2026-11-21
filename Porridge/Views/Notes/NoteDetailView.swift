@@ -453,7 +453,7 @@ struct NoteDetailView: View {
 
     /// Takes a file off the note and deletes it, here and in iCloud.
     private func removeAttachment(_ attachment: Attachment) {
-        note.attachments.removeAll { $0.id == attachment.id }
+        note.removeAttachment(id: attachment.id)
         AudioStore.delete(attachment.fileName)
         note.updatedAt = Date()
         if note.attachments.isEmpty {

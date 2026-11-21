@@ -260,8 +260,8 @@ enum DocumentExtractor {
 
     // MARK: Sender
 
-    /// Legal forms and offices that stand as a word of their own ("Muster AG").
-    private static let legalFormWords: Set<String> = ["gmbh", "ag", "kg", "ohg", "se", "ug", "mbh", "gbr", "ltd", "inc", "llc", "plc", "amt"]
+    /// Legal forms that end a company's name ("Muster AG"). Not "KG": on a receipt it is a weight.
+    private static let legalFormWords: Set<String> = ["gmbh", "ag", "ohg", "se", "ug", "mbh", "gbr", "ltd", "inc", "llc", "plc"]
     /// Words of a company, an office or a bank anywhere in a name ("Stadtsparkasse", "Finanzamt").
     private static let organizationParts = [
         "gmbh", "e.v.", "sparkasse", "bank", "versicherung", "stadtwerke", "finanzamt", "krankenkasse", "behörde", "insurance",
@@ -277,12 +277,18 @@ enum DocumentExtractor {
             .filter { !$0.isEmpty }
         for line in lines.prefix(25) {
             let name = firstPart(of: line)
-            // "Bankverbindung: …" is a field, not a name.
-            guard name.count >= 3, name.count <= 60, name.contains(where: \.isLetter), !name.contains(":") else { continue }
+            // "Bankverbindung: …" is a field, not a name; a line with a price or a number is an item or an address.
+            guard name.count >= 3, name.count <= 60, name.contains(where: \.isLetter), !name.contains(":"),
+                  !name.contains(where: \.isNumber),
+                  number.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) == nil else { continue }
             let lower = name.lowercased()
-            let words = Set(lower.components(separatedBy: CharacterSet.alphanumerics.inverted))
-            guard !words.isDisjoint(with: legalFormWords) || organizationParts.contains(where: lower.contains) else { continue }
-            return name
+            if organizationParts.contains(where: lower.contains) { return name }
+            // A legal form only as the last word after a name that starts with a capital: "Muster AG".
+            let words = name.split(separator: " ").map { $0.trimmingCharacters(in: .punctuationCharacters) }
+            if words.count >= 2, let last = words.last, legalFormWords.contains(last.lowercased()),
+               words.first?.first?.isUppercase == true {
+                return name
+            }
         }
         return nil
     }
@@ -313,6 +319,27 @@ enum DocumentExtractor {
 
 /// The line the summary's model writes about a document: "DOCUMENT: invoice | 2026-03-02 | Telekom | 119.00 EUR".
 enum DocumentLine {
+    /// Words a model writes for a kind besides the listed ones: German, and other English names.
+    private static let kindWords: [String: DocumentKind] = [
+        "rechnung": .invoice, "bill": .invoice, "faktura": .invoice,
+        "quittung": .receipt, "kassenbon": .receipt, "kassenbeleg": .receipt, "beleg": .receipt, "bon": .receipt,
+        "vertrag": .contract, "vereinbarung": .contract, "agreement": .contract,
+        "brief": .letter, "schreiben": .letter, "anschreiben": .letter,
+        "kontoauszug": .statement, "auszug": .statement,
+        "gehaltsabrechnung": .payslip, "lohnabrechnung": .payslip, "entgeltabrechnung": .payslip, "pay slip": .payslip,
+        "bescheid": .notice, "official notice": .notice,
+        "bescheinigung": .certificate, "zeugnis": .certificate, "zertifikat": .certificate, "urkunde": .certificate,
+        "angebot": .offer, "kostenvoranschlag": .offer, "quote": .offer, "quotation": .offer,
+        "versicherung": .insurance, "versicherungsschein": .insurance, "police": .insurance, "policy": .insurance,
+        "sonstiges": .other, "andere": .other, "anderes": .other,
+    ]
+
+    /// The kind a word names; nil for one that is not known.
+    static func kindWord(_ word: String) -> DocumentKind? {
+        let key = word.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        return DocumentKind(rawValue: key) ?? kindWords[key]
+    }
+
     /// The line added to the prompt of a summary of a file or an image.
     static var prompt: String {
         let kinds = DocumentKind.allCases.map(\.rawValue).joined(separator: " | ")
@@ -340,7 +367,8 @@ enum DocumentLine {
         }
         guard !fields.isEmpty else { return nil }
         var info = DocumentInfo()
-        if let kind = fields[0] { info.kind = DocumentKind(rawValue: kind.lowercased()) ?? .other }
+        // A kind the model made up says nothing: unknown, so the device's guess stays.
+        if let kind = fields[0] { info.kind = kindWord(kind) }
         if fields.count > 1, let day = fields[1] { info.day = DocumentExtractor.dates(in: day).first }
         if fields.count > 2, let sender = fields[2], sender.count <= 80 { info.correspondent = sender }
         if fields.count > 3, let amount = fields[3] { info.amount = DocumentExtractor.amount(in: "total " + amount)?.value }
