@@ -187,8 +187,6 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_APP_SANDBOX: NO
-        # scripts/testflight-mac.sh sets DISTRIBUTION_CONDITIONS; on the command line a condition would reach the packages too.
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) $(DISTRIBUTION_CONDITIONS)
         COMBINE_HIDPI_IMAGES: YES
   PorridgeTests:
     type: bundle.unit-test

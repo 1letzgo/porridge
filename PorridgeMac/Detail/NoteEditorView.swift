@@ -203,11 +203,7 @@ final class NoteEditorView: NSView {
         window?.makeFirstResponder(textView)
     }
 
-    var textViewForFocus: NSTextView { textView }
-
     // MARK: Format commands (Format menu, format bar)
-
-    private var canFormat: Bool { isEditable && window != nil }
 
     @objc func toggleBold(_ sender: Any?) { controller.perform(.toggleInline("**")) }
     @objc func toggleItalic(_ sender: Any?) { controller.perform(.toggleInline("*")) }

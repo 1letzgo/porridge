@@ -1855,7 +1855,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge;
 				PRODUCT_NAME = Porridge;
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) $(DISTRIBUTION_CONDITIONS)";
 			};
 			name = Debug;
 		};
@@ -1877,7 +1876,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = de.letzgo.porridge;
 				PRODUCT_NAME = Porridge;
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) $(DISTRIBUTION_CONDITIONS)";
 			};
 			name = Release;
 		};

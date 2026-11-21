@@ -2,18 +2,9 @@ import FluidAudio
 import Foundation
 
 /// Where summaries are written: a model on the device, or a cloud provider with the user's own key.
-enum SummaryBilling: String, CaseIterable, Identifiable {
+enum SummaryBilling: String {
     case local
     case byok
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .local: "On-Device"
-        case .byok: "Cloud"
-        }
-    }
 }
 
 enum SpeechEngine: String, CaseIterable, Identifiable {
@@ -21,13 +12,6 @@ enum SpeechEngine: String, CaseIterable, Identifiable {
     case apple
 
     var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .parakeet: "Parakeet v3"
-        case .apple: "Apple (built in)"
-        }
-    }
 
     /// Short name for the settings switcher.
     var shortLabel: String {

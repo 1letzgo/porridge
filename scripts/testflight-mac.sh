@@ -41,7 +41,7 @@ xcodegen generate --quiet
 xcodebuild -project Porridge.xcodeproj -scheme "$SCHEME" -configuration Release \
   -destination 'generic/platform=macOS' -archivePath "$OUT/$SCHEME.xcarchive" \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" CODE_SIGN_ENTITLEMENTS=PorridgeMac/PorridgeMacBeta.entitlements \
-  ENABLE_APP_SANDBOX=YES DISTRIBUTION_CONDITIONS=TESTFLIGHT \
+  ENABLE_APP_SANDBOX=YES \
   "${AUTH[@]}" archive -quiet
 
 cat > "$OUT/ExportOptions.plist" <<'PLIST'

@@ -579,16 +579,6 @@ struct NotesView: View {
         }
     }
 
-    private func dateSections(_ grouped: [(title: String, label: String, notes: [Note])], isFirst: Bool) -> some View {
-        ForEach(grouped, id: \.title) { group in
-            Section {
-                ForEach(group.notes) { note in row(note, isLast: note.id == group.notes.last?.id) }
-            } header: {
-                ListHeader(title: group.title, tint: .brandSky, isFirst: isFirst && group.title == grouped.first?.title)
-            }
-        }
-    }
-
     private func row(_ note: Note, isLast: Bool) -> some View {
         NoteListRow(note: note) { remove(note) }
             .lastInSection(isLast)

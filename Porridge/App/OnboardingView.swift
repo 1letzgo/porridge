@@ -7,7 +7,6 @@ struct OnboardingView: View {
 
     @Environment(ModelManager.self) private var models
     @AppStorage(AppSettings.speechEngineKey) private var engine = SpeechEngine.parakeet
-    @AppStorage(AppSettings.languageKey) private var language = "auto"
     @AppStorage(AppSettings.speakerDetectionKey) private var speakerDetection = true
 
     @State private var step = 0

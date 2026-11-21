@@ -49,9 +49,6 @@ enum AudioStore {
     /// The root of the iCloud container, once found (`resolveCloudContainer`); nil without iCloud.
     static var cloudRoot: URL? { lock.withLock { resolvedCloud } }
 
-    /// Whether finished files move into iCloud: sync is iCloud and the container is there.
-    static var syncsFiles: Bool { SyncMode.active == .iCloud && cloudRoot != nil }
-
     static var locations: FileLocations { FileLocations(local: directory, cloud: cloudRoot) }
 
     /// Finds the iCloud container off the main thread (that call can take a while) and keeps it. Called at launch;

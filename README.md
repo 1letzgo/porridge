@@ -14,12 +14,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/home.png" width="240" alt="Home list with projects and notes">
+  <img src="docs/screenshots/home.png" width="240" alt="Home list with bowls and notes">
   <img src="docs/screenshots/summary.png" width="240" alt="A meeting with its summary">
   <img src="docs/screenshots/transcript.png" width="240" alt="A transcript with speakers">
 </p>
 
-Porridge records what is said in a meeting, writes it down with speaker names and turns it into a summary with tasks. Speech recognition runs on your device and summaries can too, so a recording does not have to leave it. Notes, saved links and projects live in one quiet list.
+Porridge records what is said in a meeting, writes it down with speaker names and turns it into a summary with tasks. Speech recognition runs on your device and summaries can too, so a recording does not have to leave it. Notes, saved links and bowls live in one quiet list.
 
 ## What it does
 
@@ -29,9 +29,9 @@ Porridge records what is said in a meeting, writes it down with speaker names an
 - **Dictation:** Dictate into any note. On the Mac, a global shortcut types into whatever app you are using.
 - **Notes:** Headings, lists and checklists as you type, stored as Markdown.
 - **Links:** Share a page to Porridge to save its text and summarize it.
-- **Projects:** Keep notes, meetings and links together, with pinned projects at the top.
+- **Bowls:** Keep notes, meetings and links together, with pinned bowls at the top.
 - **Search:** Search notes, transcripts, summaries and saved pages, narrowed by kind or tag.
-- **Sync:** iCloud across your iPhone, iPad and Mac. Recordings stay on the device that made them.
+- **Sync:** iCloud across your iPhone, iPad and Mac, recordings and attachments included. It can be turned off in Settings.
 - **Plaud import without the cloud:** Copy recordings straight from a Plaud recorder over Bluetooth, so they do not have to go through Plaud's cloud. You sign in to Plaud once in Settings to connect the recorder, then import from the plus button; the transcript and summary then come from Porridge.
 
 <p align="center">
@@ -47,7 +47,7 @@ Porridge records what is said in a meeting, writes it down with speaker names an
 | **Speakers** | pyannote | |
 | **Summaries** | Nemotron 3.5 Bolt, Qwen3 4B or Qwen3 1.7B, recommended to suit your device; Apple Intelligence on Apple devices | Your own key for OpenRouter, OpenAI, Anthropic, Google, Mistral, Groq or a compatible server |
 
-Models download once and then work offline. Audio stays on the device that recorded it.
+Models download once and then work offline. Recordings leave the device only through your own iCloud sync.
 
 ## Get it
 

@@ -23,18 +23,9 @@ enum DataLocation {
 
 /// Whether the notes sync through iCloud. Chosen in the settings; a change takes effect at the next launch
 /// (the SwiftData store is set up with or without CloudKit when the app starts).
-enum SyncMode: String, CaseIterable, Identifiable {
+enum SyncMode: String {
     case off
     case iCloud = "icloud"
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .off: "Off"
-        case .iCloud: "iCloud"
-        }
-    }
 
     static let key = "syncMode"
 

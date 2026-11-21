@@ -18,8 +18,6 @@ enum SettingsArea: String, CaseIterable {
 
 struct SettingsView: View {
     @Environment(ModelManager.self) private var models
-    @Environment(\.modelContext) private var context
-    @Environment(ProcessingService.self) private var processing
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage(AppSettings.languageKey) private var language = "auto"

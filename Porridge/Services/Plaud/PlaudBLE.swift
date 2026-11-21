@@ -768,12 +768,6 @@ final class PlaudBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private func le32(_ d: Data, _ i: Data.Index) -> UInt32 {
         UInt32(d[i]) | (UInt32(d[i + 1]) << 8) | (UInt32(d[i + 2]) << 16) | (UInt32(d[i + 3]) << 24)
     }
-    private func le64(_ d: Data, _ o: Int) -> UInt64 {
-        let i = d.startIndex.advanced(by: o)
-        var v: UInt64 = 0
-        for k in 0..<8 { v |= UInt64(d[i + k]) << (8 * k) }
-        return v
-    }
 
     // MARK: clock
 

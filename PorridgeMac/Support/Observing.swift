@@ -7,7 +7,6 @@ import Observation
 @MainActor
 final class Observing {
     private var body: (@MainActor () -> Void)?
-    private var scheduled = false
 
     init(_ body: @escaping @MainActor () -> Void) {
         self.body = body

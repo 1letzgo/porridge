@@ -59,7 +59,6 @@ final class RecordingSettingsPane: SettingsPane {
 
     private var engineRow: NSGridRow?
     private var engineLabelRow: NSGridRow?
-    private var appleRowContainer: NSView?
     private var voiceRows: [NSGridRow] = []
 
     override func build() {
