@@ -31,7 +31,7 @@ installed apps refuse updates signed with another one. Keep a backup of `porridg
 
 ## Releases (GitHub, in-app update)
 
-`scripts/release-android.sh` (like `scripts/release-mac.sh`): tag `android-v<version>`, asset
+`scripts/release-android.sh`: tag `android-v<version>`, asset
 `Porridge-android-<version>.apk` in the public repo `1letzgo/porridge`. It refuses a dirty tree and an existing tag,
 runs the unit tests, builds the signed sideload APK, tags, pushes, creates the release and checks the uploaded
 digest. `--dry-run` builds only.

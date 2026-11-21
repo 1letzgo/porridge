@@ -36,56 +36,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.add("Open Porridge") { (NSApp.delegate as? AppDelegate)?.showMainWindow(nil) }
         menu.add("Settings…") { (NSApp.delegate as? AppDelegate)?.showSettings(nil) }
-        if let release = AppUpdate.shared.available {
-            menu.addItem(.separator())
-            menu.add("Download Porridge \(release.version)…") { AppUpdate.shared.download() }
-        }
         menu.addItem(.separator())
         menu.add("Quit Porridge") { NSApp.terminate(nil) }
     }
 }
 
-/// Tells about a newer version once it is found. "Later" keeps quiet for this run; "Skip" until the version after it.
-@MainActor
-final class UpdateNotice {
-    private var observing: Observing?
-    private var shownTag: String?
-    /// The notice is on screen: a second one for the same release is not stacked on it.
-    private var isShowing = false
-
-    init() {
-        observing = Observing { [weak self] in
-            guard let release = AppUpdate.shared.available else { return }
-            Task { @MainActor in self?.show(release) }
-        }
-    }
-
-    /// `again`: the user asked (Check for Updates…), so a release shown before is shown once more.
-    func show(_ release: AppUpdate.Release, again: Bool = false) {
-        guard !isShowing, again || release.tag != shownTag else { return }
-        shownTag = release.tag
-        isShowing = true
-        let alert = NSAlert()
-        alert.messageText = "Porridge \(release.version) Available"
-        alert.informativeText = release.notes.isEmpty
-            ? "You have \(AppUpdate.currentVersion). The download is a zip with the new app; replace the old one in Applications."
-            : release.notes
-        alert.addButton(withTitle: "Download")
-        alert.addButton(withTitle: "Skip This Version")
-        let later = alert.addButton(withTitle: "Later")
-        later.keyEquivalent = "\u{1b}"
-        let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            self?.isShowing = false
-            switch response {
-            case .alertFirstButtonReturn: AppUpdate.shared.download()
-            case .alertSecondButtonReturn: AppUpdate.shared.skip()
-            default: break
-            }
-        }
-        if let window = MainWindowController.frontIfAny?.window, window.attachedSheet == nil {
-            alert.beginSheetModal(for: window, completionHandler: handle)
-        } else {
-            handle(alert.runModal())
-        }
-    }
-}

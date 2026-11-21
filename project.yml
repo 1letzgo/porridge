@@ -61,6 +61,8 @@ targets:
           - iCloud.de.letzgo.porridge
         com.apple.developer.icloud-services:
           - CloudKit
+        # Every build, Debug included, uses the Production CloudKit database (the one TestFlight uses).
+        com.apple.developer.icloud-container-environment: Production
         com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
     info:
       path: Porridge/Info.plist
@@ -128,7 +130,6 @@ targets:
           - Info.plist
           - PorridgeMac.entitlements
           - PorridgeMacBeta.entitlements
-          - PorridgeMacRelease.entitlements
     dependencies:
       - package: FluidAudio
       - package: MLXSwiftLM
@@ -138,9 +139,8 @@ targets:
       - package: HuggingFace
       - package: SwiftTransformers
         product: Tokenizers
-    # Local runs (Debug) use the Development CloudKit database. The GitHub build (scripts/release-mac.sh) signs with
-    # PorridgeMac/PorridgeMacRelease.entitlements (the same plus icloud-container-environment Production, kept by hand),
-    # TestFlight (scripts/testflight-mac.sh) with PorridgeMacBeta.entitlements; both reach the Production database.
+    # Every build (Debug and TestFlight) uses the Production CloudKit database. TestFlight (scripts/testflight-mac.sh)
+    # signs with PorridgeMac/PorridgeMacBeta.entitlements, kept by hand: the same plus the sandbox; keep it in step.
     entitlements:
       path: PorridgeMac/PorridgeMac.entitlements
       properties:
@@ -148,6 +148,7 @@ targets:
           - iCloud.de.letzgo.porridge
         com.apple.developer.icloud-services:
           - CloudKit
+        com.apple.developer.icloud-container-environment: Production
         com.apple.developer.aps-environment: development
         com.apple.security.device.audio-input: true
         com.apple.security.personal-information.calendars: true
@@ -156,7 +157,6 @@ targets:
       path: PorridgeMac/Info.plist
       properties:
         CFBundleDisplayName: Porridge
-        # The version shown in the app and compared with the GitHub releases (scripts/release-mac.sh).
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity

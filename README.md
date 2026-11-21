@@ -76,10 +76,10 @@ Use the `Porridge` scheme for iPhone and iPad and `PorridgeMac` for the Mac. You
 | `Porridge/Models` | SwiftData models |
 | `Porridge/Services` | Recording, transcription, summaries, search, sync, Plaud |
 | `Porridge/Views`, `Porridge/Design` | SwiftUI views and the shared look |
-| `PorridgeMac` | Mac app: dictation shortcut, menu bar, updates |
+| `PorridgeMac` | Mac app: dictation shortcut, menu bar |
 | `PorridgeWidgets`, `PorridgeShare` | Widgets, Live Activity and the share extension |
 | `android` | Native Android app in Kotlin and Compose |
-| `scripts` | Release scripts for Mac, Android and TestFlight |
+| `scripts` | Release scripts for Android and the Mac TestFlight build |
 
 The look and its rules are written down in [DESIGN.md](DESIGN.md).
 

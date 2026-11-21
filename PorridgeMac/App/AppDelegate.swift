@@ -1,12 +1,12 @@
 import AppKit
 import SwiftData
 
-/// The app: the menu bar, the main windows, Settings, the dictation in the menu bar, and the update check.
+/// The app: the menu bar, the main windows, Settings and the dictation in the menu bar.
+/// Updates come through TestFlight.
 /// Closing the last window keeps Porridge running in the menu bar, so the dictation shortcut stays available.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
-    private var updates: UpdateNotice?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         setvbuf(stdout, nil, _IONBF, 0)
@@ -26,10 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         #if DEBUG
         DebugDriver.start()
         #endif
-        updates = UpdateNotice()
         // The shortcut works even when no window is open.
         DictationController.shared.reloadShortcut()
-        AppUpdate.shared.start()
         Task { @MainActor in
             await Library.shared.start()
             // Loading the speech model takes a moment; do it before the first dictation.
@@ -114,32 +112,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         controller.window?.makeKeyAndOrderFront(nil)
     }
 
-    /// Asked by the user, so the result is always told: a newer version, up to date, or what went wrong.
-    @objc func checkForUpdates(_ sender: Any?) {
-        Task { @MainActor in
-            let outcome = await AppUpdate.shared.check(manual: true)
-            let window = MainWindowController.frontIfAny?.window
-            switch outcome {
-            case .available(let release):
-                updates?.show(release, again: true)
-            case .upToDate:
-                Alerts.inform("Porridge Is Up to Date", message: "Version \(AppUpdate.currentVersion) is the newest one.", in: window)
-            case .failed(let reason):
-                Alerts.inform("Could Not Check for Updates", message: reason, in: window)
-            case .alreadyChecking:
-                Alerts.inform("Already Checking for Updates", message: "Porridge is looking for a newer version right now. Try again in a moment.", in: window)
-            }
-        }
-    }
-
     /// File › New Note with no window open.
     @objc func newNote(_ sender: Any?) {
         showMainWindow(nil)
         MainWindowController.front.newNote(sender)
-    }
-
-    func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(checkForUpdates(_:)) { return !AppUpdate.shared.checking }
-        return true
     }
 }

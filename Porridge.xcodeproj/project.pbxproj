@@ -119,7 +119,6 @@
 		585F5364410E33606BADF30A /* PorridgeShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CA34303F4D0BAC2C94BD8F69 /* PorridgeShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		58D276FF94FDED5EC26CAE74 /* PlaudProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 899112051F381E37B77B95FC /* PlaudProtocol.swift */; };
 		59F5596A81C875D183FFA518 /* RollingRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE0B07929BC2A88C738323E9 /* RollingRecognizer.swift */; };
-		5A26E5D30FCA741EF5401FF1 /* AppUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545E56590DAC3E1D46D55236 /* AppUpdate.swift */; };
 		5A67253515C963D12315F595 /* AcknowledgementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FAC460C197FDF52B669FB24 /* AcknowledgementsView.swift */; };
 		5A7B9BE9EB0170F1333AB154 /* AIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C83E04FA0DB9A9049AD28D /* AIProvider.swift */; };
 		5A8F2671AA290930D46AF5A5 /* ForegroundWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B02B4E249462F80C900BEF /* ForegroundWork.swift */; };
@@ -434,7 +433,6 @@
 		50D5387B8FDB2327EE19DAAC /* PlaudAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudAccount.swift; sourceTree = "<group>"; };
 		52C78A4C0BCA055F861C25B4 /* NoteKindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteKindTests.swift; sourceTree = "<group>"; };
 		536E6D547A46DCF6768AE6C5 /* NoteFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteFolder.swift; sourceTree = "<group>"; };
-		545E56590DAC3E1D46D55236 /* AppUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdate.swift; sourceTree = "<group>"; };
 		56347D6DCA553B0BFCD0F0A3 /* SummaryTasks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryTasks.swift; sourceTree = "<group>"; };
 		56FD02EAB29161B15D0292BF /* VoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesView.swift; sourceTree = "<group>"; };
 		57BF795A84D83E11A08E94D4 /* QuickActionWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionWidgets.swift; sourceTree = "<group>"; };
@@ -625,14 +623,6 @@
 				56FD02EAB29161B15D0292BF /* VoicesView.swift */,
 			);
 			path = Settings;
-			sourceTree = "<group>";
-		};
-		03B1688EBDFF976D3AB6A003 /* Update */ = {
-			isa = PBXGroup;
-			children = (
-				545E56590DAC3E1D46D55236 /* AppUpdate.swift */,
-			);
-			path = Update;
 			sourceTree = "<group>";
 		};
 		0B72D1D456342B56706397B6 /* Settings */ = {
@@ -909,7 +899,6 @@
 				0B72D1D456342B56706397B6 /* Settings */,
 				B6F9DB6BE85BC9504913BA6C /* Sidebar */,
 				13E11629501E9EDA05E8CE1E /* Support */,
-				03B1688EBDFF976D3AB6A003 /* Update */,
 				B687236632F81F9B9E8CE97B /* Window */,
 			);
 			path = PorridgeMac;
@@ -1482,7 +1471,6 @@
 				5FBC840F2DB4173FB6D80E66 /* AppDelegate.swift in Sources */,
 				3B2330EAAE10C23C747B0E33 /* AppMenu.swift in Sources */,
 				D9049BB1247F9D188B44D1A2 /* AppSettings.swift in Sources */,
-				5A26E5D30FCA741EF5401FF1 /* AppUpdate.swift in Sources */,
 				C7AB1B933FD3CA7B65591D62 /* AppleLLM.swift in Sources */,
 				6383679114584EAB9E25C603 /* AppleSpeech.swift in Sources */,
 				897B01E43B820618B85B33F3 /* Attachment.swift in Sources */,
