@@ -34,7 +34,8 @@ class IntakeModelTest {
         val note = Note()
         assertTrue(note.isInInbox)
         assertTrue(note.copy(filedAt = 1).isInInbox)
-        assertFalse(note.copy(archivedAt = 1).isInInbox)
+        // Notizen werden nicht archiviert: ein altes `archivedAt` nimmt sie nicht aus dem Eingang.
+        assertTrue(note.copy(archivedAt = 1).isInInbox)
         assertFalse(note.copy(projectIDs = listOf("P")).isInInbox)
         assertFalse(note.copy(deletedAt = 1).isInInbox)
         // Auch ein leerer Kanal steht im JSON: Daran erkennt die andere Seite Einträge neuer Versionen.

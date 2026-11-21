@@ -49,7 +49,7 @@ fun SearchBar(
             for ((tag, count) in tags) if (tag.lowercase() !in tokens) AssistChip(onClick = { onTokens(tokens + tag.lowercase()) }, label = { Text("#$tag  $count") })
         }
         if (text.isBlank() && tokens.isEmpty() && kind == null) {
-            Text("Search your notes, meetings and links, archived ones too.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
+            Text("Search your notes, meetings and links, also those in archived buckets.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
         }
     }
 }

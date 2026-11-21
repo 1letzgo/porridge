@@ -1,10 +1,10 @@
 package de.letzgo.porridge.store
 
 import de.letzgo.porridge.data.Projects
+import de.letzgo.porridge.logic.HomeListLogic
 import de.letzgo.porridge.logic.Todos
 import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
-import de.letzgo.porridge.model.TodoState
 import java.util.concurrent.TimeUnit
 
 /** iOS: `NoteStore` — Papierkorb, Wiederherstellen, endgültiges Löschen und Ordnerpflege. */
@@ -39,18 +39,13 @@ class NoteStore(private val db: PorridgeDatabase = PorridgeDatabase.shared) {
         update(note.id) { it.copy(deletedAt = null, folderID = if (folderGone) null else it.folderID) }
     }
 
-    /** Archiviert die Notiz, auf dem frischen Stand der Datenbank. */
-    suspend fun archive(note: Note) = setArchived(note, System.currentTimeMillis())
-
-    suspend fun unarchive(note: Note) = setArchived(note, null)
-
-    private suspend fun setArchived(note: Note, archivedAt: Long?) {
-        // iOS: `Archive.set` — im Archiv ist nichts angeheftet. Ein To-do, das an einem früheren Tag erledigt wurde, ist von
-        // selbst aus den Listen: aus dem Archiv geholt, ist es wieder offen.
-        update(note.id) {
-            val reopened = if (archivedAt == null && it.isPutAway) it.copy(todoStateRaw = TodoState.OPEN.raw, todoDoneAt = null) else it
-            reopened.copy(archivedAt = archivedAt, isPinned = if (archivedAt != null) false else it.isPinned)
-        }
+    /**
+     * Einmalig beim Start (idempotent): Archiviert werden nur noch Buckets, archivierte Notizen kommen zurück. `updatedAt`
+     * bleibt, damit nichts als frisch geändert nach oben rückt; `archivedAt` bleibt im Modell und im Sync.
+     */
+    suspend fun unarchiveNotes() {
+        val changed = HomeListLogic.unarchived(db.notes().all())
+        if (changed.isNotEmpty()) db.notes().upsertAll(changed)
     }
 
     // To-dos (iOS: `Todos.setTodo`, `setDone`, `toggleSubtask`, `create(fromTask:)`), auf dem frischen Stand der Datenbank

@@ -132,18 +132,28 @@ class TodosTest {
         assertEquals("- [x] a\n- [x] b", note.text)
     }
 
-    @Test fun doneTodosAreArchivedFromTheNextDay() {
+    /** Erledigte To-dos werden nie archiviert: Ab dem nächsten Tag fehlen sie nur unter „Done Today“. */
+    @Test fun doneYesterdayWithoutBucketStaysInTheInbox() {
         val now = System.currentTimeMillis()
         var note = Note(todoStateRaw = "done", todoDoneAt = now)
-        assertFalse(note.isArchived)
+        assertFalse(note.isPutAway)
         assertTrue(note.isInInbox)
 
         note = note.copy(todoDoneAt = now - 24L * 3600 * 1000)
         assertTrue(note.isPutAway)
-        assertTrue(note.isArchived)
-        assertFalse(note.isInInbox)
-        assertEquals(listOf(note.id), HomeListLogic.archivedNotes(listOf(note)).map { it.id })
-        // Aus dem Archiv geholt ist es wieder offen: `NoteStore.unarchive` (dieselbe Regel, geprüft über die Datenbank in der App).
+        assertTrue(note.isInInbox)
+        assertEquals(listOf(note.id), InboxLogic.notes(listOf(note)).map { it.id })
+    }
+
+    @Test fun doneYesterdayInABucketStaysInTheBucketList() {
+        val now = System.currentTimeMillis()
+        val done = Note(id = "done", projectIDs = listOf("B1"), todoStateRaw = "done", todoDoneAt = now - 24L * 3600 * 1000, updatedAt = 2)
+        val other = Note(id = "other", projectIDs = listOf("B1"), updatedAt = 1)
+        assertTrue(done.isPutAway)
+        assertFalse(done.isInInbox)
+        // Nach der letzten Änderung einsortiert, wie alles im Bucket.
+        assertEquals(listOf("done", "other"), ProjectsLogic.ordered(ProjectsLogic.elements("B1", listOf(other, done))).map { it.id })
+        assertEquals(0, ProjectsLogic.openTodos("B1", listOf(other, done)))
     }
 
     @Test fun summaryTaskBecomesATodoInTheSameBuckets() {

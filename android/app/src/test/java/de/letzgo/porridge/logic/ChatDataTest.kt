@@ -71,7 +71,7 @@ class ChatDataTest {
                 .withAttachments(listOf(Attachment(fileName = "m.pdf", name = "Mietvertrag.pdf", kindRaw = "pdf"))),
         )
         add(Note(title = "Geheimes Projekt", text = "Codename Falke startet im Frühjahr.", createdAt = day(15), deletedAt = day(16)))
-        add(Note(title = "Altes Rezept", text = "Pfannkuchen mit Milch, Mehl und Eiern.", createdAt = day(1, month = 3), archivedAt = day(1, month = 4)))
+        add(Note(title = "Altes Rezept", text = "Pfannkuchen mit Milch, Mehl und Eiern.", createdAt = day(1, month = 3)))
         return Fixture(notes)
     }
 
@@ -107,20 +107,19 @@ class ChatDataTest {
             "«Swift Concurrency Guide» — Link (swift.org) · created Wed 18 Nov 2026 · Inbox · https://www.swift.org/documentation/concurrency",
             header(ChatDocument.of(f.notes.getValue("Swift Concurrency Guide"))),
         )
-        assertTrue(header(ChatDocument.of(f.notes.getValue("Altes Rezept"))).contains(" · archived"))
+        assertFalse("notes are never archived", header(ChatDocument.of(f.notes.getValue("Altes Rezept"))).contains("archived"))
         assertEquals("Beschlüsse: Budget 20.000 Euro. Launch im Februar.", ChatDocument.of(f.notes.getValue("Kickoff Website")).snippet)
         assertEquals("Schlauch hinten tauschen.", ChatDocument.of(f.notes.getValue("Fahrrad reparieren")).snippet)
     }
 
-    @Test fun theEntryChangesWithBucketsArchiveAndState() {
+    @Test fun theEntryChangesWithBucketsAndState() {
         var note = makeFixture().notes.getValue("Packliste Norwegen")
         val before = NoteIndex.indexHash(note)
         note = note.copy(projectIDs = listOf(house))
         val moved = NoteIndex.indexHash(note)
         assertNotEquals("moving it to another bucket cuts it again", before, moved)
         note = note.copy(archivedAt = now)
-        assertNotEquals("archiving it too", moved, NoteIndex.indexHash(note))
-        assertTrue(ChatDocument.of(note).archived)
+        assertNotEquals("a note cleared by NoteStore.unarchiveNotes is cut again", moved, NoteIndex.indexHash(note))
     }
 
     // Die Frage lesen
@@ -238,13 +237,13 @@ class ChatDataTest {
         assertEquals(setOf(f["Weekly"]), listed(context("Welche Meetings hatten wir letzte Woche?", f)))
     }
 
-    /** 12. Gelöschte Einträge erreichen den Chat nie; archivierte schon, markiert. */
-    @Test fun deletedNeverArchivedMarked() {
+    /** 12. Gelöschte Einträge erreichen den Chat nie; alte schon, ohne Markierung (Notizen werden nie archiviert). */
+    @Test fun deletedNeverReachesTheChat() {
         val f = makeFixture()
         assertFalse(f["Geheimes Projekt"] in all(context("Was weißt du über Codename Falke?", f)))
         val pancakes = context("Wie mache ich Pfannkuchen?", f)
         assertEquals(f["Altes Rezept"], pancakes.items.first().noteID)
-        assertTrue(pancakes.items.first().header.endsWith(" · archived"))
+        assertFalse(pancakes.items.first().header.contains("archived"))
     }
 
     /** 13. Ein Chat über einen Bucket sieht nur ihn. */

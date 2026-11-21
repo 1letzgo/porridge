@@ -19,9 +19,9 @@ object ProjectsLogic {
         else -> Kind.NOTE
     }
 
-    /** Alles eines Projekts, neueste zuerst; Gelöschtes und Archiviertes fehlen. */
+    /** Alles eines Projekts, neueste zuerst; Gelöschtes fehlt. Erledigte To-dos bleiben, auch von früheren Tagen. */
     fun elements(projectID: String, notes: List<Note>): List<Note> =
-        notes.filter { !it.isDeleted && !it.isArchived && projectID in it.projectIDs }.sortedByDescending { it.updatedAt }
+        notes.filter { !it.isDeleted && projectID in it.projectIDs }.sortedByDescending { it.updatedAt }
 
     /**
      * iOS: `ProjectContent` — die Liste eines Buckets, flach und ohne Abschnitte. [filter] null („All“): alle Arten

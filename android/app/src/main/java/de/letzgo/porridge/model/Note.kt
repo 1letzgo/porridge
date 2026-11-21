@@ -57,7 +57,7 @@ data class Note(
     val audioFileName: String? = null,
     val speakersData: String? = null,
     val segmentsData: String? = null,
-    /** Gesetzt, solange die Notiz im Archiv liegt; übersteht den Papierkorb. */
+    /** Altlast: Notizen werden nicht mehr archiviert (nur Buckets). Bleibt fürs Sync; der Start leert es (`NoteStore.unarchiveNotes`). */
     val archivedAt: Long? = null,
     // Alles, was in die App kommt, ist ein Eingang: Er hat einen Kanal, wartet im Eingang und wird in Buckets abgelegt.
     /** Der Kanal, über den die Notiz kam ([NoteSource]); "" bei Notizen aus der Zeit davor. */
@@ -96,10 +96,10 @@ data class Note(
         copy(attachmentsData = if (value.isEmpty()) null else PorridgeJson.encodeToString(AttachmentJson.list, value))
 
     /** Im Eingang: in keinem Bucket. Alles bleibt dort, bis es in einen kommt, und ist zurück, wenn es seinen letzten verlässt. */
-    val isInInbox: Boolean get() = projectIDs.isEmpty() && deletedAt == null && !isArchived
+    val isInInbox: Boolean get() = projectIDs.isEmpty() && deletedAt == null
 
-    /** iOS: `Note.isArchived` — von Hand archiviert, oder ein To-do, das vor heute erledigt wurde ([isPutAway]). */
-    val isArchived: Boolean get() = archivedAt != null || isPutAway
+    // Archiviert werden nur Buckets (iOS: Porridge/Models/Note.swift). Notizen nie: `archivedAt` bleibt nur fürs Sync im
+    // Modell und wird beim Start geleert (`NoteStore.unarchiveNotes`); erledigte To-dos bleiben in ihrem Bucket bzw. im Eingang.
 
     // Die Notiz als To-do (iOS: `extension Note` in Services/Todos.swift)
 
@@ -113,7 +113,7 @@ data class Note(
     val todoProgress: de.letzgo.porridge.logic.Todos.Progress
         get() = if (isTodo) de.letzgo.porridge.logic.Todos.progress(text) else de.letzgo.porridge.logic.Todos.Progress(0, 0)
 
-    /** Ein To-do, das vor heute erledigt wurde: aus den Listen wie eine archivierte Notiz. */
+    /** Ein To-do, das vor heute erledigt wurde: fällt aus „Done Today“ des To-do-Ordners, bleibt aber in Bucket und Eingang. */
     val isPutAway: Boolean get() = isDone && de.letzgo.porridge.logic.Todos.isPutAway(todoDoneAt)
 
     /** Der fällige Tag, solange er gilt: gesetzt und die Notiz ist ein To-do. Wieder zur Notiz gemacht bleibt er gespeichert, ungezeigt. */

@@ -68,13 +68,11 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -226,6 +224,8 @@ fun NotesScreen(
         NoteStore().purgeExpired()
         // Ordner werden Projekte (einmalig; danach hat keine Notiz mehr einen Ordner).
         Projects.migrateFolders()
+        // Archiviert werden nur Buckets: archivierte Notizen kommen zurück (einmalig, `updatedAt` bleibt).
+        NoteStore().unarchiveNotes()
         ProcessingService.resumePending()
     }
     // Der Index folgt den Notizen: nur Geändertes wird neu geschnitten und eingebettet.
@@ -323,7 +323,7 @@ fun NotesScreen(
                 shown == ListPage.Chat -> de.letzgo.porridge.ui.chat.ChatPage(notes, folders, chatNavigation, onOpen, listModifier.imePadding().navigationBarsPadding())
                 shown == ListPage.Inbox -> InboxList(notes, folders, stages, onOpen, scroll, listModifier)
                 shown == ListPage.Todos -> TodosFolderList(notes, folders, stages, onOpen, scroll, listModifier)
-                shown == ListPage.Archive -> ArchiveList(notes, folders, stages, onOpen, { list.page = ListPage.Project(it) }, scroll, listModifier)
+                shown == ListPage.Archive -> ArchiveList(notes, folders, { list.page = ListPage.Project(it) }, scroll, listModifier)
                 else -> TrashList(trash, stages, onOpen, scroll, listModifier)
             }
         }
@@ -377,7 +377,7 @@ private fun HomeList(
     val projects = remember(folders, notes, list.showAllProjects) {
         HomeListLogic.shownProjects(HomeListLogic.activeProjects(folders), list.showAllProjects) { ProjectsLogic.lastChange(it, notes) }
     }
-    val archiveCount = remember(folders, notes) { HomeListLogic.archiveCount(folders, notes) }
+    val archiveCount = remember(folders) { HomeListLogic.archiveCount(folders) }
     // iOS: `InboxRow` unter der Kopfzeile „Inbox“ in `NotesView.home`.
     val waiting = remember(notes) { InboxLogic.notes(notes) }
     val todoFolder = remember(notes) { Todos.folder(notes) }
@@ -404,26 +404,22 @@ private fun HomeList(
     }
 }
 
-/** Das Archiv: Projekte (sie lassen sich öffnen), dann Notizen nach Datum. */
+/** Das Archiv: nur archivierte Buckets (sie lassen sich öffnen). Notizen werden nicht archiviert. */
 @Composable
 private fun ArchiveList(
-    notes: List<Note>, folders: List<NoteFolder>, stages: Map<String, String>,
-    onOpen: (String) -> Unit, onProject: (String) -> Unit, state: LazyListState, modifier: Modifier,
+    notes: List<Note>, folders: List<NoteFolder>,
+    onProject: (String) -> Unit, state: LazyListState, modifier: Modifier,
 ) {
     val projects = remember(folders) { HomeListLogic.archivedProjects(folders).sortedByName() }
-    val archived = remember(notes) { HomeListLogic.archivedNotes(notes) }
-    if (projects.isEmpty() && archived.isEmpty()) {
+    if (projects.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            EmptyState("Nothing Archived", "Archive buckets and notes you are done with. They stay in the search.", Icons.Filled.Archive)
+            EmptyState("Nothing Archived", "Archive buckets you are done with. Their notes stay in the search.", Icons.Filled.Archive)
         }
         return
     }
     LazyColumn(modifier.fillMaxWidth(), state = state, contentPadding = PaddingValues(bottom = 110.dp)) {
-        if (projects.isNotEmpty()) {
-            item(key = "h-projects") { SectionHeader("Buckets", color = Brand.project) }
-            projectRows(projects, notes, onProject = onProject)
-        }
-        dateGroups(archived, stages, onOpen)
+        item(key = "h-projects") { SectionHeader("Buckets", color = Brand.project) }
+        projectRows(projects, notes, onProject = onProject)
     }
 }
 
@@ -525,8 +521,9 @@ private fun PageRow(title: String, count: Int?, color: Color, onClick: () -> Uni
 }
 
 /**
- * iOS: Zeile mit Wischen — nach rechts archivieren (im Archiv zurückholen, im Papierkorb wiederherstellen), nach links
- * löschen. Anpinnen geht über das lange Drücken. [projectID]: das Projekt der offenen Seite, aus dem sie sich nehmen lässt.
+ * iOS: Zeile mit Wischen — nach links löschen; im Papierkorb nach rechts wiederherstellen. Notizen werden nicht archiviert
+ * (nur Buckets), darum wischt eine lebende Zeile nur nach links. Anpinnen geht über das lange Drücken. [projectID]: das
+ * Projekt der offenen Seite, aus dem sie sich nehmen lässt.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -540,14 +537,8 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
         val latest = current
         when (value) {
             SwipeToDismissBoxValue.StartToEnd -> {
-                coroutines.launch {
-                    when {
-                        latest.isDeleted -> store.restore(latest)
-                        latest.isArchived -> store.unarchive(latest)
-                        else -> store.archive(latest)
-                    }
-                }
-                // Die Zeile federt zurück: in der Suche bleibt sie stehen.
+                // Nur im Papierkorb möglich (siehe `enableDismissFromStartToEnd`); die Zeile federt zurück.
+                if (latest.isDeleted) coroutines.launch { store.restore(latest) }
                 false
             }
             SwipeToDismissBoxValue.EndToStart -> {
@@ -573,16 +564,16 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
         dismissButton = { TextButton(onClick = { confirmDeleteNow = false }) { Text("Cancel") } },
     )
     if (choosing) ProjectChooser(note.projectIDs, onToggle = { id -> coroutines.launch { Projects.toggle(note, id) } }, onDismiss = { choosing = false })
-    val archived = note.isArchived
     SwipeToDismissBox(
         state = state,
+        enableDismissFromStartToEnd = note.isDeleted,
         backgroundContent = {
             val toStart = state.dismissDirection == SwipeToDismissBoxValue.EndToStart
             Box(
-                Modifier.fillMaxSize().background(if (toStart) Brand.danger else if (note.isDeleted || archived) Brand.sky else Brand.navy).padding(horizontal = 24.dp),
+                Modifier.fillMaxSize().background(if (toStart) Brand.danger else Brand.sky).padding(horizontal = 24.dp),
                 contentAlignment = if (toStart) Alignment.CenterEnd else Alignment.CenterStart,
             ) {
-                Icon(if (toStart) Icons.Outlined.Delete else if (note.isDeleted) Icons.Outlined.Undo else if (archived) Icons.Outlined.Unarchive else Icons.Outlined.Archive, null, tint = if (!toStart && (note.isDeleted || archived)) Brand.onFill else Color.White)
+                Icon(if (toStart) Icons.Outlined.Delete else Icons.Outlined.Undo, null, tint = if (toStart) Color.White else Brand.onFill)
             }
         },
     ) {
@@ -601,13 +592,8 @@ internal fun NoteSwipeRow(note: Note, stage: String?, onOpen: (String) -> Unit, 
                         leadingIcon = { Icon(Icons.Outlined.CalendarToday, null) },
                         onClick = { menu = false; dueMenu = true },
                     )
-                    if (!archived) DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { NoteStore().update(note.id, touch = false) { it.copy(isPinned = !it.isPinned) } } })
+                    DropdownMenuItem(text = { Text(if (note.isPinned) "Unpin" else "Pin") }, onClick = { menu = false; coroutines.launch { NoteStore().update(note.id, touch = false) { it.copy(isPinned = !it.isPinned) } } })
                     if (note.canBeTodo) DropdownMenuItem(text = { Text(if (note.isTodo) "Convert to Note" else "Convert to To-do") }, onClick = { menu = false; coroutines.launch { store.setTodo(note, !note.isTodo) } })
-                    // Ein To-do, das an einem früheren Tag erledigt wurde, ist von selbst weggeräumt: Herausholen ist hier
-                    // „Mark as Not Done“ (oben), das es wieder öffnet (iOS: dieselbe Stelle heißt so).
-                    if (!(note.isPutAway && note.archivedAt == null)) {
-                        DropdownMenuItem(text = { Text(if (archived) "Unarchive" else "Archive") }, onClick = { menu = false; coroutines.launch { if (archived) store.unarchive(note) else store.archive(note) } })
-                    }
                     DropdownMenuItem(text = { Text("Buckets…") }, onClick = { menu = false; choosing = true })
                     if (projectID != null) DropdownMenuItem(text = { Text("Remove from Bucket") }, onClick = { menu = false; coroutines.launch { Projects.toggle(note, projectID) } })
                     DropdownMenuItem(text = { Text("Delete", color = Brand.dangerText) }, onClick = { menu = false; coroutines.launch { store.trash(note) } })

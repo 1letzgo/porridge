@@ -31,19 +31,29 @@ class HomeListLogicTest {
         assertEquals(listOf("image"), shown(ProjectsLogic.Kind.IMAGE))
     }
 
-    @Test fun archivingANoteTakesItOffTheHomeList() {
+    /** Archiviert werden nur Buckets: ein altes `archivedAt` einer Notiz zählt nicht mehr, sie bleibt in Eingang und Bucket. */
+    @Test fun aLegacyArchivedNoteStaysInTheLists() {
         val note = Note(id = "N", archivedAt = 1)
-        assertEquals(emptyList<Note>(), InboxLogic.notes(listOf(note)))
-        assertEquals(emptyList<Note>(), ProjectsLogic.elements("ACTIVE", listOf(note.copy(projectIDs = listOf("ACTIVE")))))
+        assertEquals(listOf("N"), InboxLogic.notes(listOf(note)).map { it.id })
+        assertEquals(listOf("N"), ProjectsLogic.elements("ACTIVE", listOf(note.copy(projectIDs = listOf("ACTIVE")))).map { it.id })
+    }
+
+    @Test fun startupCleanupUnarchivesNotesWithoutTouchingUpdatedAt() {
+        val notes = listOf(Note(id = "A", archivedAt = 5, updatedAt = 3), Note(id = "B", updatedAt = 4))
+        val changed = HomeListLogic.unarchived(notes)
+        assertEquals(listOf("A"), changed.map { it.id })
+        assertEquals(null, changed.single().archivedAt)
+        assertEquals(3L, changed.single().updatedAt)
+        // Idempotent: ein zweiter Lauf findet nichts mehr.
+        assertEquals(emptyList<Note>(), HomeListLogic.unarchived(listOf(changed.single(), notes[1])))
     }
 
     @Test fun archivingAProjectLeavesItsElementsInIt() {
         val shared = Note(id = "shared", projectIDs = listOf("ACTIVE", "ARCHIVED"))
         val only = Note(id = "only", projectIDs = listOf("ARCHIVED"))
         val notes = listOf(shared, only)
-        // Weder auf der Startseite noch im Archiv; sie bleiben in ihren Projekten.
+        // Nicht im Eingang; sie bleiben in ihren Projekten.
         assertEquals(emptyList<Note>(), InboxLogic.notes(notes))
-        assertEquals(emptyList<Note>(), HomeListLogic.archivedNotes(notes))
         assertEquals(listOf("shared"), ProjectsLogic.elements("ACTIVE", notes).map { it.id })
         assertEquals(setOf("shared", "only"), ProjectsLogic.elements("ARCHIVED", notes).map { it.id }.toSet())
     }
@@ -75,35 +85,24 @@ class HomeListLogicTest {
         assertTrue(PorridgeJson.decodeFromString(NoteFolder.serializer(), text).isPinned)
     }
 
-    @Test fun projectPagesHideArchivedContents() {
-        val notes = listOf(Note(id = "N", projectIDs = listOf("P")), Note(id = "A", projectIDs = listOf("P"), archivedAt = 1))
-        assertEquals(listOf("N"), ProjectsLogic.elements("P", notes).map { it.id })
-        assertEquals(mapOf("P" to 1), ProjectsLogic.counts(listOf("P"), notes))
-    }
-
-    @Test fun archiveListsWhatIsArchivedAndNotDeleted() {
+    @Test fun projectPagesHideOnlyDeletedContents() {
         val notes = listOf(
-            Note(id = "old", archivedAt = 1, updatedAt = 1),
-            Note(id = "new", archivedAt = 2, updatedAt = 2, projectIDs = listOf("ACTIVE")),
-            Note(id = "trashed", archivedAt = 3, deletedAt = 4),
-            Note(id = "open"),
-            Note(id = "D", deletedAt = 1),
+            Note(id = "N", projectIDs = listOf("P"), updatedAt = 2),
+            Note(id = "A", projectIDs = listOf("P"), archivedAt = 1, updatedAt = 1),
+            Note(id = "D", projectIDs = listOf("P"), deletedAt = 1),
         )
-        assertEquals(listOf("new", "old"), HomeListLogic.archivedNotes(notes).map { it.id })
-        assertEquals(3, HomeListLogic.archiveCount(folders, notes))
+        assertEquals(listOf("N", "A"), ProjectsLogic.elements("P", notes).map { it.id })
+        assertEquals(mapOf("P" to 2), ProjectsLogic.counts(listOf("P"), notes))
     }
 
-    @Test fun trashingAndRestoringKeepsTheArchive() {
-        // NoteStore.trash und restore ändern nur `deletedAt` (und den Pin).
-        val note = Note(id = "N", archivedAt = 7)
-        val trashed = note.copy(deletedAt = 9, isPinned = false)
-        assertEquals(emptyList<Note>(), HomeListLogic.archivedNotes(listOf(trashed)))
-        val restored = trashed.copy(deletedAt = null)
-        assertEquals(listOf("N"), HomeListLogic.archivedNotes(listOf(restored)).map { it.id })
-        assertEquals(emptyList<Note>(), InboxLogic.notes(listOf(restored)))
+    @Test fun archiveListsOnlyBuckets() {
+        // Notizen mit (altem) `archivedAt` zählen nicht: Das Archiv hält nur Buckets.
+        assertEquals(1, HomeListLogic.archiveCount(folders))
+        assertEquals(listOf("ARCHIVED"), HomeListLogic.archivedProjects(folders).map { it.id })
+        assertEquals(0, HomeListLogic.archiveCount(listOf(active)))
     }
 
-        @Test fun searchFindsArchivedNotesByKindAndTag() {
+        @Test fun searchFindsNotesByKindAndTag() {
         val notes = listOf(
             Note(id = "note", text = "hello #work", updatedAt = 3),
             Note(id = "archived", text = "hello", archivedAt = 1, updatedAt = 2),

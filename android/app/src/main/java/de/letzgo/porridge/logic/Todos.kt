@@ -208,7 +208,10 @@ object Todos {
 
     // Listen
 
-    /** Ein erledigtes To-do bleibt für den Rest des Tages in seiner Liste, abgehakt; ab dem nächsten Tag gilt es als archiviert. */
+    /**
+     * Ein erledigtes To-do steht für den Rest des Tages unter „Done Today“ im To-do-Ordner; ab dem nächsten Tag fällt es dort
+     * heraus. Archiviert wird es nie: In seinem Bucket bzw. im Eingang bleibt es (iOS: Porridge/Services/Todos.swift).
+     */
     fun isPutAway(doneAt: Long?, now: Long = System.currentTimeMillis()): Boolean {
         if (doneAt == null) return false
         val startOfDay = Calendar.getInstance().apply {
@@ -420,7 +423,7 @@ object Todos {
     data class Folder(
         val groups: List<Pair<String, List<Note>>>,
         val doneToday: List<Note>,
-        /** Offene To-dos (nicht erledigt, nicht gelöscht, nicht archiviert). */
+        /** Offene To-dos (nicht erledigt, nicht gelöscht). */
         val open: Int,
         /** Davon die, die vor heute fällig waren. */
         val overdue: Int,
@@ -429,7 +432,7 @@ object Todos {
     }
 
     fun folder(notes: List<Note>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): Folder {
-        val living = notes.filter { it.isTodo && !it.isDeleted && it.archivedAt == null }
+        val living = notes.filter { it.isTodo && !it.isDeleted }
         val open = living.filter { !it.isDone }
         // Erledigte bleiben für den Rest des Tages, an dem sie erledigt wurden, wie in jeder Liste.
         val startOfDay = Instant.ofEpochMilli(now).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()

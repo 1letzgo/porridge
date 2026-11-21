@@ -4,7 +4,8 @@ import de.letzgo.porridge.model.Note
 import de.letzgo.porridge.model.NoteFolder
 
 /**
- * iOS: `HomeList` — was die Startseite von den Buckets zeigt, was im Archiv liegt und was die Suche findet.
+ * iOS: `HomeList` (Porridge/Services/HomeList.swift) — was die Startseite von den Buckets zeigt, was im Archiv liegt und
+ * was die Suche findet. Archiviert werden nur Buckets; Notizen nie.
  */
 object HomeListLogic {
     fun activeProjects(folders: List<NoteFolder>): List<NoteFolder> = folders.filter { it.archivedAt == null }
@@ -26,16 +27,18 @@ object HomeListLogic {
         return ShownProjects(pinned + (if (showAll) others else others.take(RECENT_PROJECTS)), maxOf(0, others.size - RECENT_PROJECTS))
     }
 
-    /** Archivierte Notizen; im Papierkorb gelten sie als gelöscht und kommen beim Wiederherstellen zurück. */
-    fun archivedNotes(notes: List<Note>): List<Note> =
-        notes.filter { !it.isDeleted && it.isArchived }.sortedByDescending { it.updatedAt }
-
-    /** Die Anzahl in der Zeile „Archive“: was die Seite zeigt. */
-    fun archiveCount(folders: List<NoteFolder>, notes: List<Note>): Int =
-        archivedProjects(folders).size + archivedNotes(notes).size
+    /** Die Anzahl in der Zeile „Archive“: was die Seite zeigt, nur archivierte Buckets. */
+    fun archiveCount(folders: List<NoteFolder>): Int = archivedProjects(folders).size
 
     /**
-     * Treffer unter den Notizen, auch archivierte. [indexIDs]: die Treffer des Suchindex; solange er nicht bereit ist
+     * Einmalige Bereinigung: Notizen werden nicht mehr archiviert. Gibt die Notizen mit `archivedAt` zurück, geleert und
+     * mit unverändertem `updatedAt`; danach ist nichts mehr zu tun (idempotent).
+     */
+    fun unarchived(notes: List<Note>): List<Note> =
+        notes.filter { it.archivedAt != null }.map { it.copy(archivedAt = null) }
+
+    /**
+     * Treffer unter den Notizen. [indexIDs]: die Treffer des Suchindex; solange er nicht bereit ist
      * (null), wird der Text selbst durchsucht.
      */
     fun searchNotes(notes: List<Note>, query: String, tags: List<String>, kind: ProjectsLogic.Kind?, indexIDs: Set<String>?): List<Note> {
@@ -48,10 +51,10 @@ object HomeListLogic {
         }.sortedByDescending { it.updatedAt }
     }
 
-    /** iOS: `SearchKind.matches` — „Open To-dos“ findet nur offene, nicht weggeräumte To-dos. */
+    /** iOS: `SearchKind.matches` — „Open To-dos“ findet nur offene To-dos. */
     fun matchesKind(note: Note, kind: ProjectsLogic.Kind?): Boolean = when (kind) {
         null -> true
-        ProjectsLogic.Kind.TODO -> note.isTodo && !note.isDone && !note.isArchived
+        ProjectsLogic.Kind.TODO -> note.isTodo && !note.isDone
         else -> ProjectsLogic.kind(note) == kind
     }
 

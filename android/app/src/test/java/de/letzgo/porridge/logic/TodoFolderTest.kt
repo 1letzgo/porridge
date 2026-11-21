@@ -26,14 +26,15 @@ class TodoFolderTest {
         val doneToday = todo("done today", done = now - 3_600_000)
         val doneEarlier = todo("done yesterday", done = now - 24 * 3_600_000)
         val deleted = todo("deleted", due = "2026-11-01").copy(deletedAt = now)
-        val archived = todo("archived").copy(archivedAt = now)
+        // Notizen werden nicht archiviert: ein altes `archivedAt` zählt nicht, das To-do ist offen.
+        val archived = todo("legacy archived").copy(archivedAt = now)
         val plain = Note(title = "a note")
 
         val folder = Todos.folder(listOf(undated, later, plain, doneEarlier, today, deleted, late, archived, doneToday, filed), now, berlin)
         assertEquals(listOf("Overdue", "Today", "Upcoming", "No Due Date"), folder.groups.map { it.first })
-        assertEquals(listOf(listOf("filed in a bucket", "late"), listOf("today"), listOf("later"), listOf("undated")), folder.groups.map { g -> g.second.map { it.title } })
+        assertEquals(listOf(listOf("filed in a bucket", "late"), listOf("today"), listOf("later"), listOf("undated", "legacy archived")), folder.groups.map { g -> g.second.map { it.title } })
         assertEquals(listOf("done today"), folder.doneToday.map { it.title })
-        assertEquals(5, folder.open)
+        assertEquals(6, folder.open)
         assertEquals(2, folder.overdue)
         assertFalse(folder.isEmpty)
 

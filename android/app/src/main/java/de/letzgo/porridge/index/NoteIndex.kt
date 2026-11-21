@@ -168,8 +168,9 @@ class NoteIndex(
             note.todoStateRaw?.let { digest.update("todo|$it|${note.todoDueDay.orEmpty()}|${note.todoDoneAt ?: ""}|${if (note.isOverdue) "overdue" else ""}".toByteArray()) }
             // Links bekamen eine eigene Passage (ihre Adresse): ihre Passagen werden einmal neu geschnitten.
             if (note.url != null) digest.update("link-passage".toByteArray())
-            // Der Eintrag des Chats (`ChatDocument`) hält auch Kanal, Buckets und Archiv; „chat-doc-1“ schneidet jede Notiz
-            // einmal neu, als der Eintrag kam.
+            // Der Eintrag des Chats (`ChatDocument`) hält auch Kanal und Buckets; „chat-doc-1“ schneidet jede Notiz einmal
+            // neu, als der Eintrag kam. `archivedAt` (für Notizen nicht mehr benutzt) bleibt im Hash: Was
+            // `NoteStore.unarchiveNotes` leert, wird ohne seine alte Markierung „archived“ neu geschnitten.
             for (part in listOf("chat-doc-1", note.sourceRaw, note.projectIDs.joinToString(","), note.archivedAt?.toString().orEmpty())) {
                 digest.update(part.toByteArray())
                 digest.update(0)

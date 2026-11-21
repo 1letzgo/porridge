@@ -32,8 +32,6 @@ data class ChatDocument(
     val doneAt: Long? = null,
     val subtasksDone: Int = 0,
     val subtasksTotal: Int = 0,
-    /** Von Hand archiviert (`archivedAt`): aus den Listen, im Chat weiter da. */
-    val archived: Boolean = false,
     val tags: List<String> = emptyList(),
     /** Der Anfang des Eintrags: seine Zusammenfassung, sonst sein Text, seine Seite oder sein Transkript; höchstens 200 Zeichen. */
     val snippet: String = "",
@@ -48,7 +46,7 @@ data class ChatDocument(
 
     /**
      * Die Zeile, die den Eintrag dem Modell vorstellt:
-     * `«Title» — To-do, open, due 12 December 2026, overdue, 1 of 3 subtasks done · created Tue 17 Nov 2026 · Bucket: Travel · archived`
+     * `«Title» — To-do, open, due 12 December 2026, overdue, 1 of 3 subtasks done · created Tue 17 Nov 2026 · Bucket: Travel`
      * und für einen Link `«Title» — Link (example.com) · created … · Inbox · https://example.com/a`.
      */
     fun header(bucketNames: Map<String, String>, now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): String {
@@ -67,7 +65,6 @@ data class ChatDocument(
         val names = bucketIDs.mapNotNull { bucketNames[it] }
         parts += if (names.isEmpty()) "Inbox" else (if (names.size == 1) "Bucket: " else "Buckets: ") + names.joinToString(", ")
         if (tags.isNotEmpty()) parts += tags.joinToString(" ") { "#$it" }
-        if (archived) parts += "archived"
         url?.let { parts += it }
         return "«$title» — " + parts.joinToString(" · ")
     }
@@ -115,7 +112,6 @@ data class ChatDocument(
                 doneAt = if (note.isDone) note.todoDoneAt else null,
                 subtasksDone = progress.done,
                 subtasksTotal = progress.total,
-                archived = note.archivedAt != null,
                 tags = note.tags,
                 snippet = if (joined.length > SNIPPET_LENGTH) joined.take(SNIPPET_LENGTH - 1) + "…" else joined,
             )
