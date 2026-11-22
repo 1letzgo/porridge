@@ -79,7 +79,8 @@ targets:
         NSSupportsLiveActivities: true
         # Bowls can be shared with other iCloud users (CloudKit share links open the app).
         CKSharingSupported: true
-        # porridge://entry/<UUID> opens that entry (links between entries, widgets; EntryLinkRouter).
+        # porridge:// links (EntryLinkRouter): entry/<UUID> opens that entry (links between entries, widgets);
+        # new, meeting, inbox, todos and search?q=… come from the widgets (`QuickAction(url:)`).
         CFBundleURLTypes:
           - CFBundleURLName: de.letzgo.porridge
             CFBundleURLSchemes:
@@ -246,6 +247,13 @@ targets:
     sources:
       - path: PorridgeWidgets
       - path: Shared
+    # The app group: the widgets read the app's copy of the notes there and queue the to-dos ticked in them
+    # (`WidgetStore`), and see what the share sheet and shortcuts left in the inbox (`ShareInbox`).
+    entitlements:
+      path: PorridgeWidgets/PorridgeWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.de.letzgo.porridge
     info:
       path: PorridgeWidgets/Info.plist
       properties:

@@ -16,6 +16,11 @@ enum ShareInbox {
         /// The bowl chosen in the share sheet (`NoteFolder.id` as uppercase string).
         var projectID: String?
         var date: Date = Date()
+        /// Where it came from: `ownWords` for text dictated or typed into a shortcut ("Add to Porridge Inbox"),
+        /// which becomes a note of the user's own; nil = shared from another app.
+        var source: String?
+
+        static let ownWords = "note"
 
         var isEmpty: Bool { url == nil && (text ?? "").isEmpty && files.isEmpty }
     }

@@ -2,7 +2,8 @@ import Foundation
 
 /// The app's own links: `porridge://entry/<UUID>` opens that entry (a note, to-do, link, file or meeting). Both apps
 /// register the `porridge` scheme; links between entries are stored in this form in the note's Markdown
-/// (`EntryLinks`), and widgets or shortcuts may hand the app the same URL.
+/// (`EntryLinks`), and the widgets link entries the same way (`QuickAction.openNote`). Only this form counts as a
+/// link between entries; `EntryLinkRouter` also opens the older `porridge://note/<UUID>`.
 enum PorridgeURL {
     static let scheme = "porridge"
     static let entryHost = "entry"
@@ -26,16 +27,23 @@ extension Notification.Name {
     static let porridgeOpenEntry = Notification.Name("de.letzgo.porridge.openEntry")
 }
 
-/// Holds an entry to open until a window can show it: on a cold launch the URL comes before any view exists.
+/// The one router of the app's `porridge://` links, for the iPhone app (`onOpenURL`) and the Mac
+/// (`application(_:open:)`). `porridge://entry/<UUID>` (and the older `porridge://note/<UUID>`) opens that entry
+/// and waits here until a window can show it: on a cold launch the URL comes before any view exists. The other
+/// routes (`new`, `meeting`, `inbox`, `todos`, `search?q=…`, see `QuickAction`) go to `QuickActionCenter`.
 @MainActor
 enum EntryLinkRouter {
     private static var pending: UUID?
 
-    /// Handles `url` when it is an entry link of the app. Returns false for any other URL.
+    /// Handles `url` when it is a link of the app. Returns false for any other URL.
     @discardableResult
     static func handle(_ url: URL) -> Bool {
-        guard let id = PorridgeURL.entryID(from: url) else { return false }
-        request(id)
+        guard let action = QuickAction(url: url) else { return false }
+        if case .openNote(let id) = action {
+            request(id)
+        } else {
+            QuickActionCenter.request(action)
+        }
         return true
     }
 

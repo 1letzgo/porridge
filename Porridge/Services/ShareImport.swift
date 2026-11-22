@@ -77,7 +77,8 @@ enum ShareImport {
             }
         } else if entry.url == nil, !text.isEmpty {
             let note = Note()
-            note.source = .share
+            // Words of the user's own from a shortcut are a note like one written in the app.
+            note.source = entry.source == ShareInbox.Entry.ownWords ? .note : .share
             note.text = text
             note.title = entry.title ?? ""
             note.createdAt = entry.date

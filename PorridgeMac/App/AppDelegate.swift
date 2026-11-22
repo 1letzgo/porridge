@@ -22,6 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(forName: .porridgeOpenEntry, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { AppDelegate.openRequestedEntry() }
         }
+        // The other `porridge://` links (new, meeting, inbox, todos, search): the same in the window in front.
+        NotificationCenter.default.addObserver(forName: .porridgeQuickAction, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { AppDelegate.runQuickAction() }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -121,6 +125,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = MainWindowController.front
         controller.window?.makeKeyAndOrderFront(nil)
         controller.state.reveal(note)
+    }
+
+    /// A `porridge://` link other than an entry (made for the iPhone's widgets, but they mean the same here).
+    static func runQuickAction() {
+        guard let action = QuickActionCenter.take() else { return }
+        NSApp.activate()
+        let controller = MainWindowController.front
+        controller.window?.makeKeyAndOrderFront(nil)
+        switch action {
+        case .newNote: controller.newNote(nil)
+        case .startMeeting: controller.recordMeeting(nil)
+        case .openInbox: controller.showInbox(nil)
+        case .openTodos: controller.showTodos(nil)
+        case .search(let query): controller.search(for: query)
+        case .openNote(let id): EntryLinkRouter.request(id)
+        }
     }
 
     /// An invitation to a shared bowl was opened: the bowl joins the sidebar.

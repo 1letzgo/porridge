@@ -327,6 +327,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
+    /// A `porridge://search?q=…` link: the search with this text.
+    func search(for text: String) {
+        searchField?.stringValue = text
+        if state.page != .search { state.page = .search }
+        state.searchText = text
+        focusSearch(nil)
+    }
+
     // MARK: Pages
 
     @objc func showInbox(_ sender: Any?) { state.page = .inbox }

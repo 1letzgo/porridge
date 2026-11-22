@@ -207,4 +207,21 @@ final class EntryLinksTests: XCTestCase {
         XCTAssertFalse(EntryLinkRouter.handle(URL(string: "https://example.com")!))
         XCTAssertNil(EntryLinkRouter.take())
     }
+
+    /// One router for every `porridge://` link: the older `note/<id>` opens the entry too, the widgets' other routes
+    /// go to `QuickActionCenter` (and never open an entry).
+    func testRouterTakesTheOlderNoteFormAndHandsOnTheOtherRoutes() {
+        _ = EntryLinkRouter.take()
+        let posted = expectation(forNotification: .porridgeOpenEntry, object: nil)
+        XCTAssertTrue(EntryLinkRouter.handle(URL(string: "porridge://note/\(a.uuidString)")!))
+        wait(for: [posted], timeout: 1)
+        XCTAssertNil(EntryLinkRouter.take().flatMap { $0 == a ? nil : $0 })
+
+        let action = expectation(forNotification: .porridgeQuickAction, object: nil)
+        XCTAssertTrue(EntryLinkRouter.handle(URL(string: "porridge://search?q=plan")!))
+        wait(for: [action], timeout: 1)
+        XCTAssertNil(EntryLinkRouter.take())
+        XCTAssertNil(QuickActionCenter.take().flatMap { $0 == .search("plan") ? nil : $0 })
+        XCTAssertFalse(EntryLinkRouter.handle(URL(string: "porridge://elsewhere")!))
+    }
 }

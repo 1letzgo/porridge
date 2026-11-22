@@ -76,7 +76,8 @@ struct PorridgeApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                // `porridge://entry/<UUID>` opens that entry.
+                // `porridge://` links (EntryLinkRouter): `entry/<UUID>` opens that entry (links between entries,
+                // the widgets); `new`, `meeting`, `inbox`, `todos` and `search?q=…` go to `QuickActionCenter`.
                 .onOpenURL { EntryLinkRouter.handle($0) }
                 .environment(processing)
                 .environment(ModelManager.shared)
