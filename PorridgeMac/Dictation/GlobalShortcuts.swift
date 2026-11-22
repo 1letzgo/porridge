@@ -118,7 +118,7 @@ final class GlobalShortcuts {
     static func recordMeetingNow() {
         NSApp.activate()
         let state = WindowState()
-        Capture.startRecording(title: nil, state: state)
+        Capture.startRecording(for: nil, state: state)
     }
 
     // MARK: Conflicts
