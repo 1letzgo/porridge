@@ -102,7 +102,7 @@ struct ProjectRow: View {
     }
 }
 
-/// One of the two buttons of "Up Next" on the home list: filled in the color of its symbol, half the row wide.
+/// One of the two buttons of "Up Next" on the home list: in the color of its symbol, as the row icons, half the row wide.
 struct UpNextTile<Detail: View>: View {
     let title: String
     let systemImage: String
@@ -115,19 +115,22 @@ struct UpNextTile<Detail: View>: View {
             VStack(alignment: .leading, spacing: 6) {
                 Image(systemName: systemImage)
                     .font(.title3.weight(.semibold))
+                    .foregroundStyle(tint.readable)
                 Text(title)
                     .font(.headline)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                 detail
                     .font(.subheadline)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .opacity(0.9)
             }
-            .foregroundStyle(tint.onFill)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
             .frame(maxHeight: .infinity, alignment: .top)
-            .background(tint, in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
+            // As the symbols in front of the rows: a wash of the color with a border of it.
+            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous).strokeBorder(tint.opacity(0.55), lineWidth: 1.5))
             .contentShape(RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
         }
         .buttonStyle(UpNextTileStyle())
@@ -163,7 +166,9 @@ struct UpNextRow: View {
                     Text(folder.open == 0 ? String(localized: "Nothing open") : folder.open == 1 ? String(localized: "1 open") : String(localized: "\(folder.open) open"))
                     if folder.overdue > 0 {
                         Text(" · ")
-                        Text(String(localized: "\(folder.overdue) overdue")).fontWeight(.bold)
+                        Text(String(localized: "\(folder.overdue) overdue"))
+                            .foregroundStyle(Color.brandDangerText)
+                            .fontWeight(.semibold)
                     }
                 }
             }
