@@ -72,6 +72,10 @@ struct PorridgeApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     Task { await ModelManager.shared.releaseLLM() }
                 }
+                // `porridge://` links: from the widgets (an entry, the inbox, a new note) and from outside.
+                .onOpenURL { url in
+                    if let action = QuickAction(url: url) { QuickActionCenter.request(action) }
+                }
                 .task {
                     await ModelManager.clearCompiledModelsAfterUpdate()
                     LiveRecording.endStale()

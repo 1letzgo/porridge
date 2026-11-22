@@ -1,12 +1,58 @@
 import Foundation
 #if os(iOS)
 import AppIntents
+import WidgetKit
 #endif
 
-/// What a widget, a control or a shortcut asks the app to do when it opens.
-enum QuickAction: String {
+/// What a widget, a control, a shortcut or a `porridge://` link asks the app to do when it opens.
+enum QuickAction: Equatable {
     case newNote
     case startMeeting
+    case openInbox
+    case openTodos
+    /// The search page with this query.
+    case search(String)
+    /// One entry (`Note.id`).
+    case openNote(UUID)
+
+    static let scheme = "porridge"
+
+    /// The link that asks for this action: `porridge://new`, `porridge://meeting`, `porridge://inbox`,
+    /// `porridge://todos`, `porridge://search?q=…`, `porridge://note/<id>`.
+    var url: URL {
+        var components = URLComponents()
+        components.scheme = Self.scheme
+        switch self {
+        case .newNote: components.host = "new"
+        case .startMeeting: components.host = "meeting"
+        case .openInbox: components.host = "inbox"
+        case .openTodos: components.host = "todos"
+        case .search(let query):
+            components.host = "search"
+            components.queryItems = [URLQueryItem(name: "q", value: query)]
+        case .openNote(let id):
+            components.host = "note"
+            components.path = "/" + id.uuidString
+        }
+        return components.url!
+    }
+
+    init?(url: URL) {
+        guard url.scheme?.lowercased() == Self.scheme,
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        switch components.host?.lowercased() {
+        case "new": self = .newNote
+        case "meeting": self = .startMeeting
+        case "inbox": self = .openInbox
+        case "todos": self = .openTodos
+        case "search":
+            self = .search(components.queryItems?.first { $0.name == "q" }?.value ?? "")
+        case "note":
+            guard let id = UUID(uuidString: url.lastPathComponent) else { return nil }
+            self = .openNote(id)
+        default: return nil
+        }
+    }
 }
 
 extension Notification.Name {
@@ -53,6 +99,41 @@ struct StartMeetingIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         QuickActionCenter.request(.startMeeting)
+        return .result()
+    }
+}
+
+/// The box of a to-do in the To-dos widget. It runs where the system runs it: in the widget extension it queues the
+/// tick for the app (`WidgetStore`); in the app with its list on screen it is applied at once (`WidgetBridge`).
+/// Either way the app applies it with `Todos.setDone`, so repeat rules and view-only bowls are kept.
+struct CompleteTodoIntent: AppIntent {
+    static let title: LocalizedStringResource = "Complete To-do"
+    static let isDiscoverable = false
+
+    /// `Note.id` as uppercase string.
+    @Parameter(title: "To-do")
+    var todoID: String
+
+    /// The due day the widget showed ("yyyy-MM-dd"), empty without one.
+    @Parameter(title: "Due Day")
+    var due: String
+
+    init() {}
+
+    init(todoID: String, due: String?) {
+        self.todoID = todoID
+        self.due = due ?? ""
+    }
+
+    func perform() async throws -> some IntentResult {
+        let completion = WidgetStore.Completion(id: todoID, due: due.isEmpty ? nil : due)
+        let applied = await MainActor.run { WidgetBridge.complete?(completion) ?? false }
+        if !applied {
+            WidgetStore.queueCompletion(completion)
+            WidgetStore.notifyApp()
+        }
+        WidgetCenter.shared.reloadTimelines(ofKind: WidgetStore.Kind.todos)
+        WidgetCenter.shared.reloadTimelines(ofKind: WidgetStore.Kind.todoCount)
         return .result()
     }
 }

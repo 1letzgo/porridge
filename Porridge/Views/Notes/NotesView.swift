@@ -298,6 +298,8 @@ struct NotesView: View {
         // From a widget, a control or a shortcut; on a cold launch the action waits until the list appears.
         .onReceive(NotificationCenter.default.publisher(for: .porridgeQuickAction)) { _ in runQuickAction() }
         .onAppear { runQuickAction() }
+        // The widgets' copy of the notes, and what was ticked in a widget or added by a shortcut.
+        .modifier(WidgetSyncModifier(notes: notes))
         .confirmationDialog("Delete All in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
             Button("Delete All", role: .destructive) {
                 if let selection, notes.first(where: { $0.id == selection })?.isDeleted == true { self.selection = nil }
@@ -1142,6 +1144,18 @@ struct NotesView: View {
             } else {
                 startRecording(titled: nil)
             }
+        case .openInbox:
+            selection = nil
+            page = .inbox
+        case .openTodos:
+            selection = nil
+            page = .todos
+        case .search(let query):
+            selection = nil
+            page = .search
+            search = query
+        case .openNote(let id):
+            openNote(id)
         case nil:
             break
         }

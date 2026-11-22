@@ -79,6 +79,11 @@ targets:
         NSSupportsLiveActivities: true
         # Bowls can be shared with other iCloud users (CloudKit share links open the app).
         CKSharingSupported: true
+        # porridge:// links: the widgets open an entry, the inbox, the to-dos or a new note (`QuickAction(url:)`).
+        CFBundleURLTypes:
+          - CFBundleURLName: de.letzgo.porridge
+            CFBundleURLSchemes:
+              - porridge
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your device.
         NSCameraUsageDescription: Porridge scans letters, receipts and other documents with the camera and reads their text on your device.
         NSCalendarsFullAccessUsageDescription: Porridge reads your calendars to name recorded meetings after their appointment, offer the people invited as speaker names, and alert you shortly before a meeting so you can record it. It never changes your calendars.
@@ -236,6 +241,13 @@ targets:
     sources:
       - path: PorridgeWidgets
       - path: Shared
+    # The app group: the widgets read the app's copy of the notes there and queue the to-dos ticked in them
+    # (`WidgetStore`), and see what the share sheet and shortcuts left in the inbox (`ShareInbox`).
+    entitlements:
+      path: PorridgeWidgets/PorridgeWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.de.letzgo.porridge
     info:
       path: PorridgeWidgets/Info.plist
       properties:

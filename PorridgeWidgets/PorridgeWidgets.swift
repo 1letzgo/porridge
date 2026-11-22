@@ -8,6 +8,11 @@ struct PorridgeWidgets: WidgetBundle {
     var body: some Widget {
         RecordingLiveActivity()
         QuickActionsWidget()
+        TodosWidget()
+        InboxWidget()
+        InboxCountWidget()
+        TodoCountWidget()
+        NewNoteAccessoryWidget()
         NewNoteControl()
         StartMeetingControl()
     }

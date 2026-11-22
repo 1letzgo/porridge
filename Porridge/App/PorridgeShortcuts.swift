@@ -16,6 +16,30 @@ struct PorridgeShortcuts: AppShortcutsProvider {
             shortTitle: "New Note",
             systemImageName: "square.and.pencil"
         )
+        AppShortcut(
+            intent: AddToInboxIntent(),
+            phrases: ["Add to \(.applicationName) inbox", "Add to my \(.applicationName) inbox", "Capture in \(.applicationName)"],
+            shortTitle: "Add to Inbox",
+            systemImageName: "tray.and.arrow.down"
+        )
+        AppShortcut(
+            intent: GetOpenTodosIntent(),
+            phrases: ["Get open to-dos from \(.applicationName)", "What are my to-dos in \(.applicationName)", "Show my \(.applicationName) to-dos"],
+            shortTitle: "Open To-dos",
+            systemImageName: "checklist"
+        )
+        AppShortcut(
+            intent: SearchPorridgeIntent(),
+            phrases: ["Search \(.applicationName)", "Search in \(.applicationName)"],
+            shortTitle: "Search",
+            systemImageName: "magnifyingglass"
+        )
+        AppShortcut(
+            intent: OpenInboxIntent(),
+            phrases: ["Open \(.applicationName) inbox", "Open my inbox in \(.applicationName)"],
+            shortTitle: "Open Inbox",
+            systemImageName: "tray.fill"
+        )
     }
 }
 #endif
