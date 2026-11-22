@@ -16,7 +16,6 @@ final class NoteEditorView: NSView {
     private let scroll = NoteScrollView()
     private let placeholder = NSTextField.label(color: .placeholderTextColor)
     private let formatBar = NSStackView()
-    private var observing: Observing?
 
     var placeholderText: String {
         get { placeholder.stringValue }
@@ -161,10 +160,8 @@ final class NoteEditorView: NSView {
             placeholder.topAnchor.constraint(equalTo: scroll.topAnchor, constant: 7),
             placeholder.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
         ])
-        observing = Observing { [weak self] in
-            guard let self else { return }
-            self.placeholder.isHidden = !self.controller.isEmpty
-        }
+        // The text view shows and hides the placeholder with every change of its text (`updateEmpty`).
+        textView.placeholderView = placeholder
         tables = Observing { [weak self] in
             guard let self, let request = self.controller.tableRequest else { return }
             self.presentTableEditor(request)

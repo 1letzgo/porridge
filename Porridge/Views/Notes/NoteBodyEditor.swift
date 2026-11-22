@@ -15,8 +15,9 @@ struct NoteBodyEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NoteTextView(text: $text, isEditable: isEditable, controller: controller, growsWithText: growsWithText)
-                .overlay(alignment: .topLeading) { placeholderText }
+            // The text view shows the placeholder itself: an overlay here read `controller.isEmpty`, which the
+            // editor sets while SwiftUI is updating (loading a note), and could stay over the text.
+            NoteTextView(text: $text, isEditable: isEditable, controller: controller, placeholder: placeholder, growsWithText: growsWithText)
         }
         .modifier(NoteEditorPresentations(controller: controller))
         .overlay(alignment: .bottom) {
@@ -26,15 +27,6 @@ struct NoteBodyEditor: View {
                     .padding(.horizontal, -4)
                     .padding(.bottom, -10)
             }
-        }
-    }
-
-    @ViewBuilder private var placeholderText: some View {
-        if let placeholder, controller.isEmpty {
-            Text(placeholder)
-                .foregroundStyle(.tertiary)
-                .padding(.top, 4)
-                .allowsHitTesting(false)
         }
     }
 

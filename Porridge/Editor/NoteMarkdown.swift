@@ -335,17 +335,30 @@ enum NoteMarkdown {
         return style
     }
 
+    /// Font and color of a run. Quotes and code get no `.backgroundColor`: their bar and tint are drawn per
+    /// paragraph (`NoteLayoutFragment`), across the whole width and every line.
     static func inlineAttributes(kind: NoteBlock.Kind, bold: Bool, italic: Bool) -> [NSAttributedString.Key: Any] {
-        var attributes: [NSAttributedString.Key: Any] = [.font: font(kind: kind, bold: bold, italic: italic), .foregroundColor: textColor(kind: kind)]
-        if kind == .code { attributes[.backgroundColor] = codeBackground }
-        return attributes
+        [.font: font(kind: kind, bold: bold, italic: italic), .foregroundColor: textColor(kind: kind)]
     }
 
+    /// The bar beside a quote.
+    static var quoteBarColor: PlatformColor {
+        #if os(macOS)
+        .tertiaryLabelColor
+        #else
+        .tertiaryLabel
+        #endif
+    }
+
+    /// The tint behind a code block.
+    /// Opaque (light and dark), so the tints of two code lines may overlap by a point without a darker seam.
     static var codeBackground: PlatformColor {
         #if os(macOS)
-        NSColor.labelColor.withAlphaComponent(0.07)
+        NSColor(name: "PorridgeCodeBackground") { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.17, alpha: 1) : NSColor(white: 0.94, alpha: 1)
+        }
         #else
-        UIColor.label.withAlphaComponent(0.07)
+        UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.13, alpha: 1) : UIColor(white: 0.94, alpha: 1) }
         #endif
     }
 
@@ -380,10 +393,12 @@ enum NoteMarkdown {
     /// `#tags` in the accent color; the rest in the color of the kind. `range` is the text after the marker.
     static func colorTags(in text: NSMutableAttributedString, range: NSRange, kind: NoteBlock.Kind) {
         guard range.length > 0 else { return }
-        text.addAttribute(.foregroundColor, value: textColor(kind: kind), range: range)
+        let line = (text.string as NSString).substring(with: range)
+        // The fences of a code block ("```") are dimmed: they frame the code, they are not part of it.
+        let isFence = kind == .code && NoteRichText.isFence(line.trimmingCharacters(in: .newlines))
+        text.addAttribute(.foregroundColor, value: isFence ? secondaryColor : textColor(kind: kind), range: range)
         // In code a "#" is no tag (`NoteText.tags` skips fenced blocks too).
         guard kind != .code else { return }
-        let line = (text.string as NSString).substring(with: range)
         for tag in NoteText.tagRanges(in: line) {
             text.addAttribute(.foregroundColor, value: tagColor, range: NSRange(location: range.location + tag.location, length: tag.length))
         }

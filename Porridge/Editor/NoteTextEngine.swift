@@ -42,7 +42,10 @@ enum NoteEditorCommand {
 final class NoteTextCoordinator: NSObject {
     var text: NoteTextBinding
     let controller: NoteEditorController
-    weak var textView: NotePlatformTextView?
+    weak var textView: NotePlatformTextView? {
+        // Quotes get their bar and code blocks their tint from the layout fragments (`NoteLayoutDecorator`).
+        didSet { textView?.textLayoutManager?.delegate = NoteLayoutDecorator.shared }
+    }
     /// The Markdown this editor wrote last; a different `text` came from outside (dictation, sync).
     var lastWritten: String
     private var pendingCommit: Task<Void, Never>?
@@ -64,7 +67,7 @@ final class NoteTextCoordinator: NSObject {
         isAdjusting = true
         storage.setAttributedString(NoteMarkdown.attributed(from: markdown))
         isAdjusting = false
-        controller.isEmpty = storage.length == 0
+        updateEmpty()
         textView.selectedRange = NSRange(location: min(selected.location, storage.length), length: 0)
         resetTypingAttributes()
         forgetUndo()
@@ -105,11 +108,20 @@ final class NoteTextCoordinator: NSObject {
     /// notes list update while typing, which costs letters.
     func commit() {
         pendingCommit?.cancel()
-        controller.isEmpty = textView?.noteStorage?.length == 0
+        updateEmpty()
         pendingCommit = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(400))
             if !Task.isCancelled { self?.flush() }
         }
+    }
+
+    /// Whether the editor has any text: the placeholder shows only when it has none. The text view shows or hides
+    /// it right away (not through a SwiftUI update, which may be under way while a note is loaded and then misses
+    /// the change, leaving the placeholder over the text).
+    func updateEmpty() {
+        let isEmpty = (textView?.noteStorage?.length ?? 0) == 0
+        if controller.isEmpty != isEmpty { controller.isEmpty = isEmpty }
+        textView?.showsPlaceholder = isEmpty
     }
 
     func flush() {
@@ -216,8 +228,8 @@ final class NoteTextCoordinator: NSObject {
             let italic = font.map(NoteMarkdown.isItalic) ?? false
             storage.addAttribute(.font, value: NoteMarkdown.font(kind: kind, bold: bold, italic: italic), range: runRange)
         }
+        // Older text may still carry a background on code runs; the tint is drawn per paragraph now.
         storage.removeAttribute(.backgroundColor, range: text)
-        if kind == .code { storage.addAttribute(.backgroundColor, value: NoteMarkdown.codeBackground, range: text) }
         let content = contentRange(of: range)
         NoteMarkdown.colorTags(in: storage, range: NSRange(location: text.location, length: max(0, content.location + content.length - text.location)), kind: kind)
         storage.endEditing()
@@ -300,7 +312,7 @@ final class NoteTextCoordinator: NSObject {
         typing[.noteChecked] = nil
         typing[.noteRawBlock] = nil
         typing[.kern] = nil
-        if NoteMarkdown.kind(of: typing).0 != .code { typing[.backgroundColor] = nil }
+        typing[.backgroundColor] = nil
         textView.typingAttributes = typing
     }
 
@@ -344,8 +356,29 @@ final class NoteTextCoordinator: NSObject {
                 textView.didRestyle()
                 commit()
                 return false
-            case .heading, .quote:
-                // The line after a heading or quote is plain text.
+            case .quote:
+                // Return in a quote goes on with the quote (consecutive "> " lines are one quote); Return on an
+                // empty quote line ends it.
+                if textLength == 0 {
+                    restyle(paragraph, kind: .paragraph, indent: 0)
+                    commit()
+                    return false
+                }
+                var quote = NoteMarkdown.inlineAttributes(kind: .quote, bold: false, italic: false)
+                quote.merge(NoteMarkdown.paragraphAttributes(kind: .quote, indent: 0)) { $1 }
+                isAdjusting = true
+                storage.replaceCharacters(in: range, with: NSAttributedString(string: "\n", attributes: quote))
+                isAdjusting = false
+                textView.selectedRange = NSRange(location: range.location + 1, length: 0)
+                // An empty last line has no characters to carry the kind: what is typed next gets it.
+                textView.typingAttributes = quote
+                forgetUndo()
+                resetTypingAttributes()
+                textView.didRestyle()
+                commit()
+                return false
+            case .heading:
+                // The line after a heading is plain text.
                 isAdjusting = true
                 storage.replaceCharacters(in: range, with: NSAttributedString(string: "\n", attributes: textView.typingAttributes))
                 isAdjusting = false
@@ -392,6 +425,8 @@ final class NoteTextCoordinator: NSObject {
         }
 
         if replacement == "\t" {
+            // In code a tab is text.
+            if kind == .code { return true }
             if kind.isList { shift(deeper: true) }
             return false
         }
@@ -588,8 +623,10 @@ final class NoteTextCoordinator: NSObject {
         storage.replaceCharacters(in: NSRange(location: at, length: 0), with: piece)
         isAdjusting = false
         forgetUndo()
-        // On the line after the block.
+        // On the line after the block, as plain text (an empty last line has no characters to read its kind from,
+        // and the typing attributes may still be those of a quote or code line before the block).
         textView.selectedRange = NSRange(location: min(blockLocation + 2, storage.length), length: 0)
+        textView.typingAttributes = plainAttributes
         resetTypingAttributes()
         renumberIfNeeded()
         textView.didRestyle()
@@ -900,6 +937,22 @@ final class NotePlatformTextView: NSTextView {
     weak var coordinator: NoteTextCoordinator?
     var noteStorage: NSTextStorage? { textStorage }
 
+    /// The placeholder shown over the empty editor (owned by the view around it); the coordinator shows and hides it.
+    weak var placeholderView: NSView? {
+        didSet { placeholderView?.isHidden = !showsPlaceholder }
+    }
+
+    /// Kept as its opposite: no stored default values here, `init(usingTextLayoutManager:)` may not set them.
+    private var hidesPlaceholder = false
+
+    var showsPlaceholder: Bool {
+        get { !hidesPlaceholder }
+        set {
+            hidesPlaceholder = !newValue
+            placeholderView?.isHidden = hidesPlaceholder
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let index = characterIndexForInsertion(at: point)
@@ -1042,6 +1095,61 @@ extension NoteTextCoordinator: NSTextViewDelegate {
 final class NotePlatformTextView: UITextView {
     weak var coordinator: NoteTextCoordinator?
     var noteStorage: NSTextStorage? { textStorage }
+
+    // No stored default values in this class: `init(usingTextLayoutManager:)` is a factory of UIKit's that does not
+    // run Swift's property initializers, so their storage stays zero (nil, false).
+
+    /// Shown over the empty editor, where the first line starts.
+    var placeholder: String? {
+        didSet { updatePlaceholder() }
+    }
+
+    /// Kept as its opposite, so that zero means "shown".
+    private var hidesPlaceholder = false
+
+    /// Set by the coordinator whenever the text changes (see `NoteTextCoordinator.updateEmpty`).
+    var showsPlaceholder: Bool {
+        get { !hidesPlaceholder }
+        set {
+            guard newValue == hidesPlaceholder else { return }
+            hidesPlaceholder = !newValue
+            updatePlaceholder()
+        }
+    }
+
+    private(set) var placeholderLabel: UILabel?
+
+    /// The placeholder is on screen.
+    var isShowingPlaceholder: Bool {
+        guard let placeholderLabel else { return false }
+        return !placeholderLabel.isHidden && placeholderLabel.superview === self
+    }
+
+    private func updatePlaceholder() {
+        let visible = showsPlaceholder && !(placeholder ?? "").isEmpty
+        if visible, placeholderLabel == nil {
+            let label = UILabel()
+            label.textColor = .tertiaryLabel
+            label.font = NoteMarkdown.baseFont(kind: .paragraph)
+            label.numberOfLines = 0
+            label.isUserInteractionEnabled = false
+            label.isAccessibilityElement = false
+            addSubview(label)
+            placeholderLabel = label
+        }
+        placeholderLabel?.text = placeholder
+        placeholderLabel?.isHidden = !visible
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let placeholderLabel, !placeholderLabel.isHidden else { return }
+        let x = textContainerInset.left + textContainer.lineFragmentPadding
+        let width = max(0, bounds.width - x - textContainerInset.right - textContainer.lineFragmentPadding)
+        let height = placeholderLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        placeholderLabel.frame = CGRect(x: x, y: textContainerInset.top, width: width, height: height)
+    }
 
     func endEditing() {
         resignFirstResponder()

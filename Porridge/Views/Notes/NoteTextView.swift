@@ -11,6 +11,8 @@ struct NoteTextView: UIViewRepresentable {
     @Binding var text: String
     var isEditable = true
     let controller: NoteEditorController
+    /// Shown in the empty editor, by the text view itself (so it follows every change of the text at once).
+    var placeholder: String?
     /// As tall as its text, inside a page that scrolls as a whole; at least `minimumGrowingHeight`, so a tap below a short text still lands here.
     var growsWithText = false
     private let minimumGrowingHeight: CGFloat = 480
@@ -33,6 +35,7 @@ struct NoteTextView: UIViewRepresentable {
         textView.allowsEditingTextAttributes = false
         textView.smartQuotesType = .no
         textView.smartDashesType = .no
+        textView.placeholder = placeholder
         let tap = UITapGestureRecognizer(target: textView, action: #selector(NotePlatformTextView.handleTap(_:)))
         tap.cancelsTouchesInView = false
         tap.delegate = context.coordinator
@@ -50,6 +53,7 @@ struct NoteTextView: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.text = NoteTextBinding($text)
         textView.isEditable = isEditable
+        if textView.placeholder != placeholder { textView.placeholder = placeholder }
         guard text != coordinator.lastWritten else { return }
         if coordinator.hasPendingCommit {
             Self.mergeTicks(from: text, into: textView, coordinator: coordinator)
