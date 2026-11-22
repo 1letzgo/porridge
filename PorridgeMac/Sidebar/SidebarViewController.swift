@@ -335,6 +335,9 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             chat.representedObject = project
             chat.target = self
             BowlShareMac.shared.addItems(for: project, to: menu, in: view.window)
+            let export = menu.addItem(withTitle: "Export Bowl…", action: #selector(exportBowl(_:)), keyEquivalent: "")
+            export.representedObject = project
+            export.target = self
             menu.addItem(.separator())
             // A bowl someone shared with me is left, not deleted (`BucketActions.confirmDelete` asks which).
             let title = BowlSharing.shared.isSharedWithMe(project.id) ? "Leave Bowl…" : "Delete Bowl…"
@@ -353,6 +356,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         project.isPinned.toggle()
         project.updatedAt = Date()
         library.save()
+    }
+
+    @objc private func exportBowl(_ sender: NSMenuItem) {
+        guard let project = sender.representedObject as? NoteFolder else { return }
+        ExportSheetController.export(.bowl(project.id), title: String(localized: "Export “\(project.name)”"), in: view.window)
     }
 
     @objc private func toggleArchive(_ sender: NSMenuItem) {

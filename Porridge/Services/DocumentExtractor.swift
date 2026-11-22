@@ -8,12 +8,16 @@ enum DocumentExtractor {
     /// pages after are small print.
     static let readLength = 6_000
 
-    static func extract(from text: String, name: String = "", now: Date = Date()) -> DocumentInfo {
+    /// `senderHint` and `dayHint` come from around the document (the mail it was attached to): taken only when the
+    /// document itself names no sender or date, the sender only for a paper (a PDF or office file, or one whose kind
+    /// was found), so a holiday photo sent by a friend does not become a document of theirs.
+    static func extract(from text: String, name: String = "", senderHint: String? = nil, dayHint: String? = nil, now: Date = Date()) -> DocumentInfo {
         let head = String(text.prefix(readLength))
         let kind = kind(in: head, name: name)
         var info = DocumentInfo(kind: kind)
-        info.day = day(in: head, now: now)
-        info.correspondent = correspondent(in: head)
+        info.day = day(in: head, now: now) ?? dayHint
+        let isPaper = kind != nil || Attachment.documentExtensions.contains((name as NSString).pathExtension.lowercased())
+        info.correspondent = correspondent(in: head) ?? (isPaper ? senderHint.flatMap { $0.isEmpty ? nil : String($0.prefix(80)) } : nil)
         let found = amount(in: head)
         if let found, found.labelled || (kind?.hasAmount ?? false) { info.amount = found.value }
         return info

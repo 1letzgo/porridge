@@ -183,6 +183,14 @@ targets:
           NSAllowsLocalNetworking: true
         NSAppleEventsUsageDescription: Porridge pastes the dictated text into the app you are using.
         ITSAppUsesNonExemptEncryption: false
+        # Mails (.eml) can be opened with Porridge and dropped on its Dock icon: each becomes an inbox entry.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Email Message
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.apple.mail.email
+              - public.email-message
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.letzgo.porridge
@@ -260,12 +268,18 @@ targets:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
           NSExtensionAttributes:
-            NSExtensionActivationRule:
-              NSExtensionActivationSupportsWebURLWithMaxCount: 1
-              NSExtensionActivationSupportsText: true
-              NSExtensionActivationSupportsImageWithMaxCount: 20
-              NSExtensionActivationSupportsMovieWithMaxCount: 5
-              NSExtensionActivationSupportsFileWithMaxCount: 20
+            # Links, text, pictures, movies, audio, any file, and mails (`public.email-message` is no `public.data`,
+            # so the keys of the simple rule would not offer Porridge for a mail a mail app shares as its source).
+            NSExtensionActivationRule: >-
+              SUBQUERY (extensionItems, $extensionItem, SUBQUERY ($extensionItem.attachments, $attachment,
+              ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.data"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.email-message"
+              ).@count >= 1).@count >= 1
     settings:
       base:
         MARKETING_VERSION: $(TESTFLIGHT_MARKETING_VERSION)

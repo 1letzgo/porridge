@@ -41,8 +41,16 @@ enum ShareImport {
     ) -> [Note] {
         var notes: [Note] = []
         var attachments: [Attachment] = []
+        var mails = 0
         for file in entry.files {
             guard let source = ShareInbox.url(of: file, in: entry), FileManager.default.fileExists(atPath: source.path) else { continue }
+            // A mail (shared from a mail app as .eml) is an entry of its own: its text, its files attached.
+            if MailNote.isMail(name: file.name) || MailNote.isMail(source),
+               let note = MailImport.save(source, date: entry.date, context: context, processing: processing) {
+                notes.append(note)
+                mails += 1
+                continue
+            }
             if file.kind == .audio {
                 if let note = try? NoteStore.importAudio(from: source, title: file.name, source: .share, save: false, context: context, processing: processing) {
                     notes.append(note)
@@ -52,6 +60,8 @@ enum ShareImport {
             }
         }
         let text = (entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // What a mail app shares along with the mail (its subject, a link to it) is in the mail's entry already.
+        if mails > 0, attachments.isEmpty { return notes }
         if !attachments.isEmpty {
             for (index, attachment) in attachments.enumerated() {
                 let note = Note()
@@ -85,7 +95,8 @@ enum ShareImport {
         return notes
     }
 
-    /// Files picked or dropped in the app: audio becomes a recording, everything else a file each.
+    /// Files picked or dropped in the app: audio becomes a recording, a mail (.eml) an entry with its text and its
+    /// files, everything else a file each.
     /// Returns the one to open.
     @discardableResult
     static func add(files: [URL], project: String?, context: ModelContext, processing: ProcessingService) -> Note? {
@@ -93,6 +104,10 @@ enum ShareImport {
         var first: Note?
         for url in files {
             let type = UTType(filenameExtension: url.pathExtension)
+            if MailNote.isMail(url), let note = MailImport.save(url, project: project, context: context, processing: processing) {
+                first = first ?? note
+                continue
+            }
             if let type, type.conforms(to: .audio) || type.conforms(to: .movie) {
                 let note = try? NoteStore.importAudio(from: url, context: context, processing: processing)
                 if let project, let note { note.projectIDs = [project] }

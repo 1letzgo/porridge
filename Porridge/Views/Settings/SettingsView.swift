@@ -177,6 +177,7 @@ struct SettingsView: View {
             youCard
             plaudCard
             SyncCard()
+            ExportCard()
             aboutCard
         case .recording:
             transcriptionCard
