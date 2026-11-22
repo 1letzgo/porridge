@@ -113,6 +113,18 @@ final class ChatService {
 
     @ObservationIgnored private var usedLocalModel = false
 
+    /// The changes proposed under an answer (`ChatEntry.id`), with their state. Kept on this device only, like the
+    /// chats (`ChatActionStore`).
+    private(set) var actions: [UUID: [ChatAction]] = ChatActionStore.load()
+
+    /// The changes just made, with the way back; shown for `ChatUndoToast.duration` seconds.
+    private(set) var toast: ChatUndoToast?
+
+    /// How the model proposes changes: with native tools (cloud), with ACTION lines (on the device), or not at all.
+    enum ActionMode: Equatable {
+        case none, tools, inline
+    }
+
     /// Frees the model's memory again (when the chat is closed).
     func release() {
         guard thinking == nil, usedLocalModel else { return }
@@ -153,7 +165,7 @@ final class ChatService {
             status = ""
         }
 
-        func answer(_ text: String, sources: [ChatSource] = [], isError: Bool = false) {
+        func answer(_ text: String, sources: [ChatSource] = [], isError: Bool = false, actions: [ChatAction] = []) {
             // The chat was deleted while the model was working: there is nothing to write to.
             guard thread.modelContext != nil else { return }
             let entry = ChatEntry(threadID: threadID, role: .assistant, text: text, isError: isError)
@@ -161,6 +173,7 @@ final class ChatService {
             context.insert(entry)
             thread.updatedAt = Date()
             try? context.save()
+            if !actions.isEmpty { setActions(actions, for: entry.id) }
         }
 
         // Whatever came in since the last look is read into the index first.
@@ -173,23 +186,128 @@ final class ChatService {
         // The model chosen for the chat ("Chat Model"), else the default; its room decides how much context it gets.
         let model = SummaryModel.chat
         let found = await index.context(for: question, within: within, bucketNames: names, budget: .for(model))
-        guard !found.isEmpty || found.matched != nil else {
+        // "Create a note …" needs no entry to answer from.
+        guard !found.isEmpty || found.matched != nil || ChatActionTools.asksForChange(question) else {
             answer(thread.projectID == nil ? "There is nothing in your notes yet." : "There is nothing in this bowl yet.")
             return
         }
 
+        // The entries earlier answers named (their sources and what their actions were about): "move it to Taxes"
+        // may mean one of them. They are listed after this question's items, numbered on.
+        let numbered = Self.numbered(found)
+        let shownIDs = Set(numbered.map(\.noteID))
+        var earlierIDs: [UUID] = []
+        for entry in earlier.reversed() where entry.role == .assistant {
+            let ids = entry.sources.map(\.noteID) + (actions[entry.id] ?? []).compactMap(\.operation.noteID)
+            for id in ids where !shownIDs.contains(id) && !earlierIDs.contains(id) { earlierIDs.append(id) }
+            if earlierIDs.count >= 8 { break }
+        }
+        let byID = Dictionary(scope.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let earlierNotes = earlierIDs.prefix(8).compactMap { byID[$0] }
+        let earlierLines = earlierNotes.map { ChatDocument(note: $0).header(bucketNames: names) }
+
+        // Cloud models get the actions as tools; on-device ones as ACTION lines, and only when the question asks for
+        // a change.
+        let mode: ActionMode = switch model {
+        case .cloud: .tools
+        case .local: ChatActionTools.asksForChange(question) ? .inline : .none
+        }
+
         do {
             if case .local = model { usedLocalModel = true }
-            let text = try await Self.complete(
-                question: question, history: history, context: found,
-                bucket: thread.projectID.flatMap { names[$0] }, model: model
+            let reply = try await Self.complete(
+                question: question, history: history, context: found, earlier: earlierLines,
+                bucket: thread.projectID.flatMap { names[$0] }, model: model, actions: mode
             ) { [weak self] status in
                 self?.status = status
             }
-            answer(text, sources: Self.sources(in: text, items: found.items, wordsNotFound: found.wordsNotFound))
+            let parsed = ChatActionParser.extract(from: reply.text)
+            let calls = reply.calls + parsed.calls
+            guard !calls.isEmpty else {
+                answer(reply.text, sources: Self.sources(in: reply.text, items: found.items, wordsNotFound: found.wordsNotFound))
+                return
+            }
+            let actionScope = ChatActionScope(
+                numbered: numbered.map(\.noteID) + earlierNotes.map(\.id),
+                referenced: shownIDs.union(earlierNotes.map(\.id)),
+                question: question, notes: scope, bowls: projects
+            )
+            let resolved = ChatActionResolver.resolve(calls, in: actionScope)
+            var text = parsed.text
+            if !resolved.remarks.isEmpty { text += (text.isEmpty ? "" : "\n\n") + resolved.remarks.joined(separator: "\n") }
+            if text.isEmpty { text = resolved.actions.count == 1 ? "Confirm this change:" : "Confirm these changes:" }
+            // The entries the actions are about are its sources; the answer's own numbers first.
+            var sources = Self.sources(in: parsed.text, items: found.items, wordsNotFound: true)
+            for action in resolved.actions {
+                guard let id = action.operation.noteID, !sources.contains(where: { $0.noteID == id }), let note = byID[id] else { continue }
+                sources.append(ChatSource(noteID: id, title: note.displayTitle, date: note.createdAt))
+            }
+            answer(text, sources: sources, actions: resolved.actions)
         } catch {
             answer(Self.message(for: error, model: model), isError: true)
         }
+    }
+
+    // MARK: Actions
+
+    func actions(for entryID: UUID) -> [ChatAction] { actions[entryID] ?? [] }
+
+    /// Puts the changes under an answer (none: takes them away).
+    func setActions(_ list: [ChatAction], for entryID: UUID) {
+        actions[entryID] = list.isEmpty ? nil : list
+        ChatActionStore.save(actions)
+    }
+
+    /// Makes the confirmed changes of an answer (all pending ones when `ids` is nil) and offers the way back.
+    func confirm(_ ids: Set<UUID>? = nil, in entryID: UUID, context: ModelContext) {
+        let list = actions(for: entryID)
+        let chosen = list.filter { $0.status == .pending && (ids?.contains($0.id) ?? true) }
+        guard !chosen.isEmpty else { return }
+        let run = ChatActionRunner.run(chosen, in: context)
+        var updated = list
+        for action in run.actions {
+            if let index = updated.firstIndex(where: { $0.id == action.id }) { updated[index] = action }
+        }
+        setActions(updated, for: entryID)
+        let done = run.actions.filter { $0.status == .done }
+        guard !done.isEmpty, !run.undo.isEmpty else { return }
+        showToast(ChatUndoToast(entryID: entryID, actionIDs: done.map(\.id), message: ChatUndoToast.message(for: done), undo: run.undo))
+    }
+
+    func cancel(_ ids: Set<UUID>? = nil, in entryID: UUID) {
+        var list = actions(for: entryID)
+        for index in list.indices where list[index].status == .pending && (ids?.contains(list[index].id) ?? true) {
+            list[index].status = .cancelled
+        }
+        setActions(list, for: entryID)
+    }
+
+    /// Takes back what the toast offers.
+    func undoToast(context: ModelContext) {
+        guard let toast else { return }
+        EntryActions.undo(toast.undo, in: context)
+        var list = actions(for: toast.entryID)
+        for index in list.indices where toast.actionIDs.contains(list[index].id) { list[index].status = .undone }
+        setActions(list, for: toast.entryID)
+        self.toast = nil
+    }
+
+    func dismissToast() { toast = nil }
+
+    private func showToast(_ toast: ChatUndoToast) {
+        self.toast = toast
+        let id = toast.id
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(ChatUndoToast.duration))
+            if self?.toast?.id == id { self?.toast = nil }
+        }
+    }
+
+    /// The items of a context by the numbers the prompt gives them (`prompt`): the listed entries (when there is a
+    /// list), then the passages, then the passages from outside.
+    static func numbered(_ context: ChatContext) -> [ChatContextItem] {
+        let listing = context.matched == nil ? [] : context.items.filter(\.isListing)
+        return listing + context.items.filter { !$0.isListing && !$0.isOutside } + context.items.filter(\.isOutside)
     }
 
     /// An error as the chat says it: what went wrong with which service, and what to do.
@@ -239,9 +357,9 @@ final class ChatService {
     /// matches first (the model is told how many were left out), then the passages, the best first.
     static func prompt(
         question: String, history: [(role: ChatEntry.Role, text: String)], context: ChatContext,
-        bucket: String?, limit: Int = .max, now: Date = Date()
+        earlier: [String] = [], bucket: String?, limit: Int = .max, actions: ActionMode = .none, now: Date = Date()
     ) -> (system: String, user: String) {
-        let system = """
+        var system = """
         Today is \(now.formatted(date: .complete, time: .omitted)) (\(ChatDocument.dayText(now))).
         You are the assistant of a private notes app. Answer the question only from the entries and excerpts below; do not use outside knowledge and do not guess. They are taken from the user's notes, meetings (transcripts and summaries), to-dos, saved web links (with the text of the page), images and files (with the text read out of them)\(bucket.map { ", all of them filed in the bowl \"\($0)\"" } ?? "").
         Every item starts with a number in brackets and a header: «title» — kind (for a to-do its state, due day and subtasks), the day it was created, its bowl (or Inbox), tags, and for a link its address. Use the header for questions about kind, dates, bowls and to-dos.
@@ -250,6 +368,7 @@ final class ChatService {
         If the items do not contain the answer, say plainly that you found nothing about it in the notes.
         Always answer in the language the question is written in (a German question gets a German answer). Be concise.
         """
+        if actions != .none { system += "\n" + ChatActionTools.promptNote(inline: actions == .inline) }
         var user = ""
         if !history.isEmpty {
             user += "Conversation so far:\n"
@@ -293,18 +412,25 @@ final class ChatService {
         let plain = context.wordsNotFound ? "No entry contains the words of the question. The newest entries, only in case they answer it:" : "Excerpts:"
         block(context.matched == nil ? plain : "Excerpts from the matching entries:", inside, start: number)
         block(context.matched == nil ? "Excerpts:" : "Excerpts from other entries (they do not match \(context.filter); use them only if they answer the question):", outside, start: number + inside.count)
+        if !earlier.isEmpty {
+            let start = number + inside.count + outside.count
+            user += "Entries named earlier in this chat:\n"
+            for (offset, header) in earlier.enumerated() { user += "[\(start + offset + 1)] \(header)\n" }
+            user += "\n"
+        }
         user += "Question: \(question)"
         return (system, user)
     }
 
     private static func complete(
-        question: String, history: [(role: ChatEntry.Role, text: String)], context: ChatContext,
-        bucket: String?, model: SummaryModel, progress: @escaping (String) -> Void
-    ) async throws -> String {
+        question: String, history: [(role: ChatEntry.Role, text: String)], context: ChatContext, earlier: [String],
+        bucket: String?, model: SummaryModel, actions: ActionMode, progress: @escaping (String) -> Void
+    ) async throws -> (text: String, calls: [ChatActionCall]) {
+        let limit = ChatBudget.for(model).promptLimit
         switch model {
         case .local(let local):
             // The Apple model has room for far fewer excerpts.
-            let prompt = prompt(question: question, history: history, context: context, bucket: bucket, limit: ChatBudget.for(model).promptLimit)
+            let prompt = prompt(question: question, history: history, context: context, earlier: earlier, bucket: bucket, limit: limit, actions: actions)
             // A question never starts a download of gigabytes on its own: the model is fetched in Settings.
             guard local.isInstalled else { throw SummaryError.provider(Self.noModel) }
             ModelManager.shared.beginLLMUse()
@@ -312,13 +438,25 @@ final class ChatService {
             progress("Loading model…")
             try await ModelManager.shared.ensureLLM(local) { _ in }
             progress("Thinking…")
-            return try await LocalLLM.shared.generate(model: local, system: prompt.system, user: prompt.user, maxTokens: 700)
+            // ACTION lines take a few tokens more.
+            let text = try await LocalLLM.shared.generate(model: local, system: prompt.system, user: prompt.user, maxTokens: actions == .inline ? 900 : 700)
+            return (text, [])
         case .cloud(let provider, let id):
-            let prompt = prompt(question: question, history: history, context: context, bucket: bucket, limit: ChatBudget.for(model).promptLimit)
             let key = provider.apiKey
             if provider.requiresKey, key.isEmpty { throw SummaryError.missingAPIKey(provider.label) }
             progress("Thinking…")
-            return try await CloudLLM.complete(provider: provider, apiKey: key, model: id, system: prompt.system, user: prompt.user)
+            if actions == .tools {
+                let prompt = prompt(question: question, history: history, context: context, earlier: earlier, bucket: bucket, limit: limit, actions: .tools)
+                do {
+                    let reply = try await CloudLLM.chat(provider: provider, apiKey: key, model: id, system: prompt.system, user: prompt.user, tools: ChatActionTools.all)
+                    return (reply.text, reply.calls.compactMap { ChatActionCall(name: $0.name, json: $0.arguments) })
+                } catch is CloudLLM.ToolsUnsupported {
+                    // A model or server without tool calling: the actions as ACTION lines instead.
+                }
+            }
+            let inline: ActionMode = actions == .none ? .none : .inline
+            let prompt = prompt(question: question, history: history, context: context, earlier: earlier, bucket: bucket, limit: limit, actions: inline)
+            return (try await CloudLLM.complete(provider: provider, apiKey: key, model: id, system: prompt.system, user: prompt.user), [])
         }
     }
 }
