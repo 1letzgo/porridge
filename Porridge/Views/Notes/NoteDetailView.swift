@@ -24,6 +24,7 @@ struct NoteDetailView: View {
     @Environment(ProcessingService.self) private var processing
     @Environment(ModelManager.self) private var models
     @Environment(\.allNotes) private var allNotes
+    @Environment(\.openNote) private var openNote
     @State private var dictation = InlineDictation()
     @State private var didStartRecording = false
     @State private var showExport = false
@@ -144,6 +145,8 @@ struct NoteDetailView: View {
 
             // The entries most like this one, at the end of the page; not while typing in it.
             if !note.isDeleted, !editor.isEditing, !focused, dictation.phase == .idle, note.modelContext != nil {
+                // The entries that link here, and those that name it without a link.
+                EntryLinksSection(note: note)
                 SimilarEntriesSection(note: note)
             }
         }
@@ -153,9 +156,16 @@ struct NoteDetailView: View {
         .modifier(NotePageScroll(following: liveText, isEditing: editor.isEditing))
         .overlay(alignment: .bottom) {
             if editor.isEditing, !isLocked, tab == .note, dictation.phase == .idle {
-                NoteKeyboardBar(controller: editor)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 6)
+                VStack(spacing: 8) {
+                    // After "[[": the entries to link.
+                    if editor.linkSearch != nil, !editor.linkResults.isEmpty {
+                        EntryLinkSuggestions(controller: editor)
+                    }
+                    NoteKeyboardBar(controller: editor)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 6)
+                .animation(.snappy, value: editor.linkResults.map(\.id))
             }
         }
         .background(Color.appBackground)
@@ -199,6 +209,12 @@ struct NoteDetailView: View {
                 NoteImageAttaching.attach(url, to: note, context: context, processing: processing)
             }
             editor.hasAttachment = { [note] name in note.attachments.contains { $0.fileName == name } }
+            // "[[" links another entry; a tap on a link opens it.
+            editor.linkCandidates = { [note, allNotes] query in EntryLinks.candidates(for: query, among: allNotes, excluding: note.id) }
+            editor.openEntry = { [openNote] id in
+                commitTyping()
+                openNote(id)
+            }
             // What someone else added or changed: said once more here, and seen from now on.
             if !didAppear { openedActivity = BowlSharing.shared.activityLine(for: note) }
             BowlSharing.shared.markSeen(note)

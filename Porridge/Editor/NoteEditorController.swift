@@ -7,7 +7,9 @@ import Observation
 final class NoteEditorController {
     @ObservationIgnored private weak var coordinator: NoteTextCoordinator?
     /// The body is being edited (the format bar is showing above the keyboard).
-    var isEditing = false
+    var isEditing = false {
+        didSet { if !isEditing { updateLinkSearch(nil) } }
+    }
     /// Nothing typed: follows every key press, while the note hears of the text only shortly after.
     var isEmpty = true
 
@@ -50,6 +52,56 @@ final class NoteEditorController {
     func perform(_ command: NoteEditorCommand) { coordinator?.perform(command) }
 
     func bind(_ coordinator: NoteTextCoordinator) { self.coordinator = coordinator }
+
+    // MARK: Links to entries
+
+    /// "[[" was typed: the text after it, and where the "[[" starts. The screen offers `linkResults` for it.
+    private(set) var linkSearch: EntryLinkSearch?
+    /// The entries offered for `linkSearch`, best first.
+    private(set) var linkResults: [EntryLinks.Candidate] = []
+    /// The offered entry that Return links (arrow keys on the Mac move it).
+    var linkHighlight = 0
+    /// Set by the note's screen: the entries to offer for what was typed after "[[" (never the note itself).
+    /// Without it nothing is offered.
+    @ObservationIgnored var linkCandidates: ((String) -> [EntryLinks.Candidate])?
+    /// Set by the note's screen: opens an entry, for a tap or click on a link.
+    @ObservationIgnored var openEntry: ((UUID) -> Void)?
+    /// Where the search was closed with Escape: not offered again until "[[" is typed somewhere else.
+    @ObservationIgnored var dismissedLinkSearch: Int?
+
+    /// The editor found "[[" before the cursor (or none any more).
+    func updateLinkSearch(_ search: EntryLinkSearch?) {
+        guard search != linkSearch else { return }
+        if search == nil || search?.range.location != linkSearch?.range.location { linkHighlight = 0 }
+        linkSearch = search
+        linkResults = search.flatMap { search in linkCandidates?(search.query) } ?? []
+        linkHighlight = min(linkHighlight, max(0, linkResults.count - 1))
+    }
+
+    /// Links the entry in place of "[[" and what was typed after it.
+    func chooseLink(_ candidate: EntryLinks.Candidate) {
+        guard let search = linkSearch else { return }
+        coordinator?.insertEntryLink(candidate, replacing: search.range)
+        updateLinkSearch(nil)
+    }
+
+    /// Return while entries are offered. False when none are.
+    func chooseHighlightedLink() -> Bool {
+        guard linkSearch != nil, linkResults.indices.contains(linkHighlight) else { return false }
+        chooseLink(linkResults[linkHighlight])
+        return true
+    }
+
+    func moveLinkHighlight(by step: Int) {
+        guard !linkResults.isEmpty else { return }
+        linkHighlight = (linkHighlight + step + linkResults.count) % linkResults.count
+    }
+
+    /// Escape: the offer goes away and stays away for this "[[".
+    func dismissLinkSearch() {
+        dismissedLinkSearch = linkSearch?.range.location
+        updateLinkSearch(nil)
+    }
 
     // MARK: Insert menu
 
@@ -151,4 +203,10 @@ struct TableEditRequest: Identifiable, Equatable {
     var location: Int
     var source: String
     var isNew: Bool
+}
+
+/// "[[" and the text typed after it, up to the cursor: `range` covers both, in the editor's text.
+struct EntryLinkSearch: Equatable {
+    var query: String
+    var range: NSRange
 }

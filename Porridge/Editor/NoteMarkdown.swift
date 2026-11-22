@@ -115,7 +115,9 @@ enum NoteMarkdown {
             guard head == "•" || isNumber else { return 0 }
             return (text[...tab] as NSString).length
         case .checklist:
-            return attributed.attribute(.attachment, at: paragraph.location, effectiveRange: nil) != nil ? 1 : 0
+            let isBox = attributed.attribute(.attachment, at: paragraph.location, effectiveRange: nil) != nil
+                && attributed.attribute(.noteEntryLink, at: paragraph.location, effectiveRange: nil) == nil
+            return isBox ? 1 : 0
         default:
             return 0
         }
@@ -126,10 +128,13 @@ enum NoteMarkdown {
         // Code is shown as typed.
         if kind == .code { return NSAttributedString(string: text, attributes: inlineAttributes(kind: kind, bold: false, italic: false)) }
         let result = NSMutableAttributedString()
-        let characters = Array(text)
+        // Links to entries stand in the text as one placeholder each; their labels hold no marks.
+        var links = EntryLinks.links(in: text)
+        let plain = links.isEmpty ? text : EntryLinks.rewrite(text) { _ in "\u{FFFC}" }
+        let characters = Array(plain)
         // Marks are only marks when they come in pairs; otherwise the stars are text.
-        let strong = occurrences(of: "**", in: text)
-        let emphasis = occurrences(of: "*", in: text) - 2 * strong
+        let strong = occurrences(of: "**", in: plain)
+        let emphasis = occurrences(of: "*", in: plain) - 2 * strong
         let strongPairs = strong % 2 == 0 && strong > 0
         let emphasisPairs = emphasis % 2 == 0 && emphasis > 0
         var bold = false, italic = false
@@ -145,6 +150,11 @@ enum NoteMarkdown {
                 flush(); bold.toggle(); i += 2
             } else if emphasisPairs, characters[i] == "*" {
                 flush(); italic.toggle(); i += 1
+            } else if characters[i] == "\u{FFFC}", !links.isEmpty {
+                flush()
+                let link = links.removeFirst()
+                result.append(entryLinkString(id: link.id, label: link.label, attributes: inlineAttributes(kind: kind, bold: bold, italic: italic)))
+                i += 1
             } else {
                 run.append(characters[i]); i += 1
             }
@@ -220,6 +230,9 @@ enum NoteMarkdown {
     static func codeText(_ attributed: NSAttributedString, range: NSRange) -> String {
         var out = ""
         attributed.enumerateAttribute(.attachment, in: range, options: []) { value, runRange, _ in
+            if value is EntryLinkAttachment {
+                for offset in 0..<runRange.length { out += entryLinkMarkdown(in: attributed, at: runRange.location + offset) ?? "" }
+            }
             guard value == nil else { return }
             out += (attributed.string as NSString).substring(with: runRange)
         }
@@ -254,8 +267,11 @@ enum NoteMarkdown {
         var headingBold = false
         if case .heading = kind { headingBold = true }
         attributed.enumerateAttributes(in: range, options: []) { attributes, runRange, _ in
-            guard attributes[.attachment] == nil else { return }
-            let text = (attributed.string as NSString).substring(with: runRange)
+            let isLink = attributes[.noteEntryLink] != nil
+            guard attributes[.attachment] == nil || isLink else { return }
+            let text = isLink
+                ? (0..<runRange.length).compactMap { entryLinkMarkdown(in: attributed, at: runRange.location + $0) }.joined()
+                : (attributed.string as NSString).substring(with: runRange)
             let font = attributes[.font] as? PlatformFont
             let runBold = !headingBold && (font.map(isBold) ?? false)
             let runItalic = font.map(isItalic) ?? false

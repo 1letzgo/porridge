@@ -79,6 +79,11 @@ targets:
         NSSupportsLiveActivities: true
         # Bowls can be shared with other iCloud users (CloudKit share links open the app).
         CKSharingSupported: true
+        # porridge://entry/<UUID> opens that entry (links between entries, widgets; EntryLinkRouter).
+        CFBundleURLTypes:
+          - CFBundleURLName: de.letzgo.porridge
+            CFBundleURLSchemes:
+              - porridge
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your device.
         NSCameraUsageDescription: Porridge scans letters, receipts and other documents with the camera and reads their text on your device.
         NSCalendarsFullAccessUsageDescription: Porridge reads your calendars to name recorded meetings after their appointment, offer the people invited as speaker names, and alert you shortly before a meeting so you can record it. It never changes your calendars.
@@ -176,6 +181,11 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         # Bowls can be shared with other iCloud users (CloudKit share links open the app).
         CKSharingSupported: true
+        # porridge://entry/<UUID> opens that entry (links between entries, widgets; EntryLinkRouter).
+        CFBundleURLTypes:
+          - CFBundleURLName: de.letzgo.porridge
+            CFBundleURLSchemes:
+              - porridge
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your Mac. For dictation it listens while you hold the shortcut.
         # Meetings record the Mac's sound too (Core Audio process tap, SystemAudioTap): the other side of a call.
         NSAudioCaptureUsageDescription: Porridge records the sound of your Mac during a meeting, such as the other side of a Zoom, Meet or Teams call, and transcribes it on your Mac, so the transcript has everyone.

@@ -16,6 +16,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = AppMenu.build()
         // The store is opened before windows are restored.
         _ = Library.shared
+        // Links between entries show the current title of the entry they point to.
+        EntryLinks.install { Library.shared.note($0) }
+        // `porridge://entry/<UUID>`: the entry is shown in the window in front.
+        NotificationCenter.default.addObserver(forName: .porridgeOpenEntry, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { AppDelegate.openRequestedEntry() }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -105,6 +111,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in urls where url.scheme == "http" || url.scheme == "https" {
             Intake.addLink(url.absoluteString, project: controller.state.projectForNew, state: controller.state)
         }
+        for url in urls where url.scheme == PorridgeURL.scheme { EntryLinkRouter.handle(url) }
+    }
+
+    /// Shows the entry an entry link asked for, when this Mac has it.
+    static func openRequestedEntry() {
+        guard let id = EntryLinkRouter.take(), let note = Library.shared.note(id) else { return }
+        NSApp.activate()
+        let controller = MainWindowController.front
+        controller.window?.makeKeyAndOrderFront(nil)
+        controller.state.reveal(note)
     }
 
     /// An invitation to a shared bowl was opened: the bowl joins the sidebar.

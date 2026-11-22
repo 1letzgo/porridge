@@ -82,6 +82,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private lazy var playerBar = PlayerBarView(player: player)
     /// The entries most like this one, under the page.
     private let similar = SimilarEntriesView()
+    /// The entries that link here, and those that name it without a link.
+    private let entryLinks = EntryLinksView()
     private let fetchBar = NSStackView()
     private let fetchButton = PillButton(title: "Download Recording", symbol: "arrow.down.circle", tint: .brandSky, target: nil, action: nil)
     private let fetchMessage = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .brandDangerText)
@@ -179,7 +181,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         fetchBar.spacing = 6
         playerBar.onDelete = { [weak self] in self?.confirmDeleteRecording() }
         similar.onOpen = { [weak self] other in self?.state.reveal(other) }
-        let bottom = NSStackView.vertical([similar, playerBar, fetchBar], spacing: 8, alignment: .leading)
+        entryLinks.onOpen = { [weak self] other in self?.state.reveal(other) }
+        entryLinks.onChange = { [weak self] in self?.renderEntryLinks() }
+        let bottom = NSStackView.vertical([entryLinks, similar, playerBar, fetchBar], spacing: 8, alignment: .leading)
 
         page.addSubview(head)
         page.addSubview(content)
@@ -228,6 +232,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             playerBar.widthAnchor.constraint(equalTo: bottom.widthAnchor),
             // Room on the right for the microphone's button, which lies over the corner.
             similar.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -72),
+            entryLinks.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -72),
             fetchBar.widthAnchor.constraint(equalTo: bottom.widthAnchor),
             micButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -22),
             micButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -18),
@@ -246,6 +251,16 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             return NoteImageAttaching.attach(url, to: note, context: self.library.context, processing: self.processing)
         }
         editor.controller.hasAttachment = { name in note.attachments.contains { $0.fileName == name } }
+        // "[[" links another entry; a click on a link opens it.
+        editor.controller.linkCandidates = { [weak self] query in
+            guard let self else { return [] }
+            return EntryLinks.candidates(for: query, among: self.library.notes, excluding: note.id)
+        }
+        editor.controller.openEntry = { [weak self] id in
+            guard let self, let other = self.library.note(id), !other.isDeleted else { return }
+            self.editor.flush()
+            self.state.reveal(other)
+        }
         addSubtask.setHandler { [weak self] in self?.editor.appendChecklistItem() }
         addSubtask.isBordered = false
         addSubtask.contentTintColor = .brandTaskText
@@ -417,7 +432,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             guard self.note.modelContext == nil || self.library.note(self.note.id) != nil else { return }
             self.render()
             self.renderSimilar()
+            self.renderEntryLinks()
         }
+        renderEntryLinks()
         // The similar entries follow the index (worked out again only when it changed).
         observers.append(Observing { [weak self] in
             _ = NoteIndex.shared.version
@@ -638,6 +655,19 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
         showErrors()
         (view.window?.windowController as? NoteWindowController)?.window?.title = note.displayTitle
+    }
+
+    private func renderEntryLinks() {
+        guard !note.isDeleted, note.modelContext != nil else {
+            entryLinks.show(linkedFrom: [], mentions: [], target: nil)
+            return
+        }
+        let notes = library.notes
+        entryLinks.show(
+            linkedFrom: EntryLinks.backlinks(to: note.id, among: notes),
+            mentions: EntryLinks.mentions(of: note, among: notes),
+            target: note
+        )
     }
 
     private func renderSimilar() {

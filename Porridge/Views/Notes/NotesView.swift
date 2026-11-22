@@ -298,6 +298,8 @@ struct NotesView: View {
         // From a widget, a control or a shortcut; on a cold launch the action waits until the list appears.
         .onReceive(NotificationCenter.default.publisher(for: .porridgeQuickAction)) { _ in runQuickAction() }
         .onAppear { runQuickAction() }
+        // A `porridge://entry/<UUID>` link (another app, a widget); on a cold launch it waits until the list appears.
+        .modifier(EntryLinkOpening(open: openRequestedEntry))
         .confirmationDialog("Delete All in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
             Button("Delete All", role: .destructive) {
                 if let selection, notes.first(where: { $0.id == selection })?.isDeleted == true { self.selection = nil }
@@ -1127,6 +1129,12 @@ struct NotesView: View {
         column = .detail
     }
 
+    /// Opens the entry an entry link asked for, when this device has it.
+    private func openRequestedEntry() {
+        guard let id = EntryLinkRouter.take(), notes.contains(where: { $0.id == id }) else { return }
+        openNote(id)
+    }
+
     private func runQuickAction() {
         switch QuickActionCenter.take() {
         case .newNote:
@@ -1413,6 +1421,17 @@ extension EnvironmentValues {
     @Entry var openNote: (UUID) -> Void = { _ in }
     /// Every note of the list, for views that look up others (the to-dos made from a summary).
     @Entry var allNotes: [Note] = []
+}
+
+/// Opens the entry of a `porridge://entry/<UUID>` link (`EntryLinkRouter`), now or once the list is on screen.
+private struct EntryLinkOpening: ViewModifier {
+    let open: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .porridgeOpenEntry)) { _ in open() }
+            .onAppear { open() }
+    }
 }
 
 /// Files come into the list through a picker ("Photo or File") or by dropping them on it (Mac, iPad).

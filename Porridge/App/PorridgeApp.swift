@@ -59,6 +59,15 @@ struct PorridgeApp: App {
         MainActor.assumeIsolated { CloudFiles.start(container) }
         // Shared bowls: follows the zones of the bowls this person shares and of those shared with them.
         MainActor.assumeIsolated { BowlSharing.shared.start(container) }
+        // Links between entries show the current title of the entry they point to.
+        MainActor.assumeIsolated {
+            let context = container.mainContext
+            EntryLinks.install { id in
+                var descriptor = FetchDescriptor<Note>(predicate: #Predicate { $0.id == id })
+                descriptor.fetchLimit = 1
+                return try? context.fetch(descriptor).first
+            }
+        }
         #if DEBUG
         MainActor.assumeIsolated { TestSeed.run(container) }
         #endif
@@ -67,6 +76,8 @@ struct PorridgeApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // `porridge://entry/<UUID>` opens that entry.
+                .onOpenURL { EntryLinkRouter.handle($0) }
                 .environment(processing)
                 .environment(ModelManager.shared)
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
