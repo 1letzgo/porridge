@@ -499,18 +499,25 @@ private struct SyncCard: View {
     }
 }
 
-/// How many bowls the home list shows before "More": the pinned ones always, then the latest changed.
+/// How the home list orders its bowls and how many it shows before "More": the pinned ones always first.
 private struct HomeCard: View {
     @AppStorage(HomeList.recentProjectsKey) private var recent = HomeList.defaultRecentProjects
+    @AppStorage(HomeList.bowlOrderKey) private var order = HomeList.BowlOrder.lastChange
 
     var body: some View {
         SettingsCard(title: "Home") {
+            MenuRow(
+                title: "Sort Bowls By",
+                selection: $order,
+                options: HomeList.BowlOrder.allCases.map { (value: $0, title: $0.title) }
+            )
+            CardDivider()
             MenuRow(
                 title: "Bowls Before “More”",
                 selection: $recent,
                 options: HomeList.recentProjectsChoices.map { (value: $0, title: $0 == 0 ? String(localized: "All") : "\($0)") }
             )
-            Text("Pinned bowls are always shown. The others follow by their last change.")
+            Text("Pinned bowls are always shown first.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

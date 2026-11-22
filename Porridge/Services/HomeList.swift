@@ -9,6 +9,22 @@ enum HomeList {
     static let defaultRecentProjects = 5
     static let recentProjectsChoices = [3, 5, 10, 20, 0]
 
+    /// How the home list orders the bowls that are not pinned (Settings › General, on this device). The pinned
+    /// ones come first in the same order.
+    enum BowlOrder: String, CaseIterable {
+        case lastChange, created, name
+
+        var title: String {
+            switch self {
+            case .lastChange: String(localized: "Last Change")
+            case .created: String(localized: "Created")
+            case .name: String(localized: "Name")
+            }
+        }
+    }
+
+    static let bowlOrderKey = "homeBowlOrder"
+
     static var recentProjects: Int {
         UserDefaults.standard.object(forKey: recentProjectsKey) as? Int ?? defaultRecentProjects
     }
@@ -25,18 +41,27 @@ enum HomeList {
         projects.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    /// The projects the list shows: all pinned ones, then the latest changed others, up to `recentProjects`
+    /// The projects the list shows: all pinned ones, then the others in `order`, up to `recentProjects`
     /// (`limit`, 0 for all) unless all are asked for. `hidden` is how many others that leaves out when not all are shown.
     static func shownProjects(
-        _ projects: [NoteFolder], showAll: Bool, limit: Int = recentProjects, lastChange: (NoteFolder) -> Date
+        _ projects: [NoteFolder], showAll: Bool, limit: Int = recentProjects, order: BowlOrder = .lastChange,
+        lastChange: (NoteFolder) -> Date
     ) -> (shown: [NoteFolder], hidden: Int) {
-        let latest = projects
-            .map { (project: $0, date: lastChange($0)) }
-            .sorted { a, b in
-                if a.date != b.date { return a.date > b.date }
-                return a.project.name.localizedStandardCompare(b.project.name) == .orderedAscending
-            }
-            .map(\.project)
+        func byName(_ a: NoteFolder, _ b: NoteFolder) -> Bool {
+            a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+        let latest: [NoteFolder]
+        switch order {
+        case .lastChange:
+            latest = projects
+                .map { (project: $0, date: lastChange($0)) }
+                .sorted { a, b in a.date != b.date ? a.date > b.date : byName(a.project, b.project) }
+                .map(\.project)
+        case .created:
+            latest = projects.sorted { a, b in a.createdAt != b.createdAt ? a.createdAt > b.createdAt : byName(a, b) }
+        case .name:
+            latest = projects.sorted(by: byName)
+        }
         let pinned = latest.filter(\.isPinned)
         let others = latest.filter { !$0.isPinned }
         if showAll || limit <= 0 { return (pinned + others, limit <= 0 ? 0 : max(0, others.count - limit)) }

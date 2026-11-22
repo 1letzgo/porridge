@@ -179,6 +179,25 @@ final class TodosTests: XCTestCase {
         XCTAssertEqual(expanded.hidden, 4)
     }
 
+    /// The bowls by last change, by creation or by name; the pinned ones first in the same order.
+    func testHomeListBowlOrder() throws {
+        let a = NoteFolder(name: "Alpha"), b = NoteFolder(name: "beta"), c = NoteFolder(name: "Gamma")
+        a.createdAt = Date(timeIntervalSince1970: 3)
+        b.createdAt = Date(timeIntervalSince1970: 1)
+        c.createdAt = Date(timeIntervalSince1970: 2)
+        c.isPinned = true
+        let changed: [String: Double] = ["Alpha": 1, "beta": 3, "Gamma": 2]
+        let date: (NoteFolder) -> Date = { Date(timeIntervalSince1970: changed[$0.name]!) }
+        func names(_ order: HomeList.BowlOrder) -> [String] {
+            HomeList.shownProjects([a, b, c], showAll: true, limit: 0, order: order, lastChange: date).shown.map(\.name)
+        }
+        XCTAssertEqual(names(.lastChange), ["Gamma", "beta", "Alpha"])
+        XCTAssertEqual(names(.created), ["Gamma", "Alpha", "beta"])
+        XCTAssertEqual(names(.name), ["Gamma", "Alpha", "beta"])
+        c.isPinned = false
+        XCTAssertEqual(names(.name), ["Alpha", "beta", "Gamma"])
+    }
+
     func testNotesArchivedByEarlierVersionsComeBackWithoutAChange() throws {
         let context = try TestStore.context()
         let bucket = NoteFolder(name: "Garden")
