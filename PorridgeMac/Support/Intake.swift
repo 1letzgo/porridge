@@ -43,18 +43,27 @@ enum Intake {
         var files: [URL] = []
         /// Folders and packages (apps, bundles): they are not taken, and the user is told so.
         var skipped: [URL] = []
+        /// Files another app writes once they are dropped (a mail dragged out of Mail, a photo out of Photos).
+        var promises: [NSFilePromiseReceiver] = []
         var link: String?
         var hasImage = false
         var text: String?
 
-        var canImport: Bool { !files.isEmpty || link != nil || hasImage || text != nil }
+        var canImport: Bool { !files.isEmpty || !promises.isEmpty || link != nil || hasImage || text != nil }
 
-        /// "3 files", "a picture", "a link", "the text".
+        /// "3 files", "a mail", "a picture", "a link", "the text".
         var summary: String {
             if !files.isEmpty {
                 let audio = files.allSatisfy(Intake.isRecording)
-                if files.count == 1 { return audio ? "a recording" : "a file" }
-                return audio ? "\(files.count) recordings" : "\(files.count) files"
+                let mail = files.allSatisfy(MailNote.isMail)
+                if files.count == 1 { return audio ? "a recording" : mail ? "a mail" : "a file" }
+                return audio ? "\(files.count) recordings" : mail ? "\(files.count) mails" : "\(files.count) files"
+            }
+            if !promises.isEmpty {
+                let types = promises.flatMap(\.fileTypes).compactMap { UTType($0) }
+                let mail = !types.isEmpty && types.allSatisfy { $0.conforms(to: .emailMessage) }
+                if promises.count == 1 { return mail ? "a mail" : "a file" }
+                return mail ? "\(promises.count) mails" : "\(promises.count) files"
             }
             if link != nil { return "a link" }
             if hasImage { return "a picture" }
@@ -84,6 +93,12 @@ enum Intake {
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
            let web = urls.first(where: { $0.scheme == "http" || $0.scheme == "https" }) {
             plan.link = web.absoluteString
+            return plan
+        }
+        // Mails dragged out of Mail (and files out of other apps that write them only on the drop). After the
+        // link: a picture dragged out of a web page stays the link it was.
+        if let receivers = pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self]) as? [NSFilePromiseReceiver], !receivers.isEmpty {
+            plan.promises = receivers
             return plan
         }
         if pasteboard.availableType(from: [.png, .tiff]) != nil {
@@ -138,6 +153,10 @@ enum Intake {
             }
             return imported
         }
+        if !plan.promises.isEmpty {
+            receive(plan.promises, project: project, state: state)
+            return true
+        }
         if let link = plan.link {
             addLink(link, project: project, state: state)
             return true
@@ -186,6 +205,27 @@ enum Intake {
         return true
     }
 
+    /// Has the dragging app write its promised files (a mail from Mail as .eml), then takes each like a dropped file.
+    private static func receive(_ receivers: [NSFilePromiseReceiver], project: String?, state: WindowState?) {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Dropped-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for receiver in receivers {
+            receiver.receivePromisedFiles(atDestination: folder, options: [:], operationQueue: promiseQueue) { url, error in
+                if let error {
+                    print("[intake] promised file not received: \(error.localizedDescription)")
+                    return
+                }
+                Task { @MainActor in addFiles([url], project: project, state: state) }
+            }
+        }
+    }
+
+    private static let promiseQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.qualityOfService = .userInitiated
+        return queue
+    }()
+
     /// Saves a web page as a note; it is fetched and summarized in the queue. It never becomes a to-do.
     static func addLink(_ address: String, project: String?, state: WindowState?) {
         let library = Library.shared
@@ -233,6 +273,7 @@ enum Intake {
     }
 
     static let pasteboardTypes: [NSPasteboard.PasteboardType] = [.fileURL, .URL, .string, .png, .tiff]
+        + NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) }
 }
 
 extension NSImage {

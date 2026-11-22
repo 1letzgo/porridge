@@ -281,6 +281,9 @@ enum BucketActions {
             Archive.set(!project.isArchived, project, in: library.context)
         }
         BowlShareMac.shared.addItems(for: project, to: menu, in: window)
+        menu.add("Export Bowl…", symbol: "square.and.arrow.up") {
+            ExportSheetController.export(.bowl(project.id), title: String(localized: "Export “\(project.name)”"), in: window)
+        }
         menu.addSeparator()
         let leaves = BowlSharing.shared.isSharedWithMe(project.id)
         menu.add(leaves ? "Leave Bowl…" : "Delete Bowl…", symbol: leaves ? "rectangle.portrait.and.arrow.right" : "trash", isDestructive: true) {

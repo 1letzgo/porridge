@@ -23,6 +23,12 @@ final class GeneralSettingsPane: SettingsPane {
         form.row("", iCloudSync)
         form.separator()
 
+        form.row("Export", NSButton.push("Export Everything…") { [weak self] in
+            ExportSheetController.export(.everything, title: String(localized: "Export Everything"), in: self?.view.window)
+        })
+        form.note("A Markdown file for each entry with its attachments and recordings next to it, and all data as JSON, in a folder.")
+        form.separator()
+
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
         form.row("Version", NSTextField.label(version, color: .secondaryLabelColor))
         form.row("Acknowledgements", NSButton.push("Show…") { [weak self] in

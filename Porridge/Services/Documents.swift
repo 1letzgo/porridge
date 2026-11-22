@@ -105,7 +105,10 @@ enum Documents {
     static func read(_ note: Note, text: String, now: Date = Date()) -> Bool {
         guard note.isStored, let first = note.attachments.first, first.document?.edited != true,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        let guess = DocumentExtractor.extract(from: text, name: first.name, now: now)
+        // A document that came with a mail: the mail's sender and day help where the document names none.
+        let guess = DocumentExtractor.extract(
+            from: text, name: first.name, senderHint: MailNote.sender(in: note.text), dayHint: MailNote.day(in: note.text), now: now
+        )
         let before = note.documentInfo
         note.documentInfo = before.map { guess.merged(with: $0) } ?? guess
         return before != note.documentInfo
@@ -156,7 +159,9 @@ enum Documents {
         var count = 0
         for note in notes where note.isStored {
             guard let first = note.attachments.first, first.document == nil else { continue }
-            note.documentInfo = DocumentExtractor.extract(from: note.pageText ?? "", name: first.name, now: now)
+            note.documentInfo = DocumentExtractor.extract(
+                from: note.pageText ?? "", name: first.name, senderHint: MailNote.sender(in: note.text), dayHint: MailNote.day(in: note.text), now: now
+            )
             count += 1
         }
         if count > 0 { try? context.save() }

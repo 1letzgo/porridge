@@ -111,6 +111,13 @@ final class ShareViewController: UIViewController {
     }
 
     private func take(_ provider: NSItemProvider, into entry: inout ShareInbox.Entry, folder: URL) async {
+        // A mail (from a mail app, as its source): kept as an .eml, the app reads it into one entry with its files.
+        if provider.hasItemConformingToTypeIdentifier(UTType.emailMessage.identifier) {
+            if let file = await copy(provider, type: .emailMessage, kind: .file, folder: folder, forcedExtension: "eml") {
+                entry.files.append(file)
+            }
+            return
+        }
         // Files first: a file is a URL too.
         let fileTypes: [(UTType, ShareInbox.File.Kind)] = [(.pdf, .pdf), (.image, .image), (.audio, .audio), (.movie, .audio)]
         for (type, kind) in fileTypes where provider.hasItemConformingToTypeIdentifier(type.identifier) {
@@ -143,13 +150,15 @@ final class ShareViewController: UIViewController {
     }
 
     /// Copies the shared file next to the entry, without reading it into memory (the extension has little of it).
-    private func copy(_ provider: NSItemProvider, type: UTType, kind: ShareInbox.File.Kind, folder: URL) async -> ShareInbox.File? {
+    private func copy(
+        _ provider: NSItemProvider, type: UTType, kind: ShareInbox.File.Kind, folder: URL, forcedExtension: String? = nil
+    ) async -> ShareInbox.File? {
         await withCheckedContinuation { continuation in
             provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
                 guard let url else { return continuation.resume(returning: nil) }
                 // The file is only there until this block returns.
                 var ext = url.pathExtension.lowercased()
-                if ext.isEmpty { ext = type.preferredFilenameExtension ?? "" }
+                if let forcedExtension { ext = forcedExtension } else if ext.isEmpty { ext = type.preferredFilenameExtension ?? "" }
                 let stored = UUID().uuidString + (ext.isEmpty ? "" : "." + ext)
                 do {
                     try FileManager.default.copyItem(at: url, to: folder.appendingPathComponent(stored))

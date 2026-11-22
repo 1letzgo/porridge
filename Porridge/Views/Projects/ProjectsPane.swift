@@ -58,6 +58,7 @@ struct ProjectRow: View {
             Button(action: onRename) { Label("Rename", systemImage: "pencil") }
             archiveButton
             BowlShareMenuItems(project: project)
+            ExportBowlButton(project: project)
             Divider()
             deleteButton
         }
