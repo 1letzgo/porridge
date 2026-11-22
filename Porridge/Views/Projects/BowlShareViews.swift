@@ -140,7 +140,7 @@ struct BowlShareMenuItems: View {
                 Button { BowlShareController.shared.manage(project) } label: {
                     Label("Manage Sharing…", systemImage: "person.2")
                 }
-                if info.role == .owner {
+                if info.role == .owner, info.endingSince == nil {
                     Button(role: .destructive) { BowlShareController.shared.confirmStopSharing(project) } label: {
                         Label("Stop Sharing…", systemImage: "person.2.slash")
                     }

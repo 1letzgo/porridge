@@ -192,10 +192,51 @@ final class BowlSharingTests: XCTestCase {
         meeting.attachments = [Attachment(fileName: "cloud.pdf", name: "Cloud.pdf", kindRaw: "pdf")]
         var info = info()
         info.fileNames = ["old.jpg"]
+        info.fileOwners = ["old.jpg": meeting.id.uuidString]
         let plan = SharedBowlPlanner.plan(bowlID: bowlID, bowlName: nil, info: info, notes: [meeting]) { $0 == "here.m4a" }
         XCTAssertEqual(plan.fileSaves, ["here.m4a"])
         XCTAssertEqual(plan.filesToDownload, ["cloud.pdf"])
-        XCTAssertEqual(plan.fileDeletes, ["old.jpg"])
+        XCTAssertEqual(plan.fileDeletes, ["old.jpg"], "its note is here and no longer has it")
+        XCTAssertEqual(plan.fileOwners, ["here.m4a": meeting.id.uuidString, "cloud.pdf": meeting.id.uuidString])
+    }
+
+    func testPlanKeepsZoneFilesWhoseNoteIsNotHereOrUnknown() {
+        let other = UUID()
+        var info = info()
+        info.fileNames = ["unknown.m4a", "notHere.m4a"]
+        info.fileOwners = ["notHere.m4a": other.uuidString]
+        // A note of the zone not in the store yet (the owner's own, still on its way through the private sync).
+        let plan = SharedBowlPlanner.plan(bowlID: bowlID, bowlName: nil, info: info, notes: []) { _ in true }
+        XCTAssertEqual(plan.fileDeletes, [])
+    }
+
+    func testPlanDeletesTheFilesOfANoteThatLeavesTheZone() {
+        let left = note("left", in: false)
+        left.audioFileName = "rec.m4a"
+        var info = info()
+        info.noteHashes[left.id.uuidString] = "x"
+        info.fileNames = ["rec.m4a"]
+        info.fileOwners = ["rec.m4a": left.id.uuidString]
+        let plan = SharedBowlPlanner.plan(bowlID: bowlID, bowlName: nil, info: info, notes: [left]) { _ in true }
+        XCTAssertEqual(plan.noteDeletes, [left.id])
+        XCTAssertEqual(plan.fileDeletes, ["rec.m4a"])
+    }
+
+    func testNoFileLeavesTheZoneWhileANoteCouldNotBeRead() {
+        let kept = note("kept")
+        var info = info()
+        info.fileNames = ["old.jpg"]
+        info.fileOwners = ["old.jpg": kept.id.uuidString]
+        info.unreadNotes = ["some-note"]
+        let plan = SharedBowlPlanner.plan(bowlID: bowlID, bowlName: nil, info: info, notes: [kept]) { _ in true }
+        XCTAssertEqual(plan.fileDeletes, [])
+    }
+
+    func testNothingIsSentWhileTheShareEnds() {
+        var info = info()
+        info.endingSince = Date()
+        let plan = SharedBowlPlanner.plan(bowlID: bowlID, bowlName: "Garden", info: info, notes: [note()]) { _ in true }
+        XCTAssertTrue(plan.isEmpty)
     }
 
     func testPlanSendsTheBowlWhenItsNameChanged() {
@@ -216,37 +257,86 @@ final class BowlSharingTests: XCTestCase {
 
     // MARK: What comes in
 
+    private func decide(_ local: Note?, inBowl: Bool = true, lastSynced: String?, _ incoming: SharedNotePayload, mayInsert: Bool = true) -> SharedBowlMerge.Decision {
+        SharedBowlMerge.decide(local: local, isInBowl: inBowl, lastSynced: lastSynced, incoming: incoming, mayInsert: mayInsert)
+    }
+
     func testDecideInsertsApplyOrKeepsTheLaterChange() {
         let incomingNote = note("incoming", minutesAgo: 5)
         let incoming = SharedNotePayload(incomingNote)
-        XCTAssertEqual(SharedBowlMerge.decide(local: nil, lastSynced: nil, incoming: incoming), .insert)
+        XCTAssertEqual(decide(nil, lastSynced: nil, incoming), .insert)
 
         // Nothing changed here since the last version from the zone: taken.
         let local = note("local", minutesAgo: 0)
         local.id = incomingNote.id
         let synced = SharedNotePayload(local).fingerprint
-        XCTAssertEqual(SharedBowlMerge.decide(local: local, lastSynced: synced, incoming: incoming), .apply)
+        XCTAssertEqual(decide(local, lastSynced: synced, incoming), .apply)
 
         // Changed here later than the zone's version, not sent yet: stays.
-        XCTAssertEqual(SharedBowlMerge.decide(local: local, lastSynced: "older", incoming: incoming), .keepLocal)
+        XCTAssertEqual(decide(local, lastSynced: "older", incoming), .keepLocal)
 
         // Changed here, but the zone's version is later: the zone wins.
         local.updatedAt = Date(timeIntervalSince1970: 1_600_000_000)
-        XCTAssertEqual(SharedBowlMerge.decide(local: local, lastSynced: "older", incoming: incoming), .apply)
+        XCTAssertEqual(decide(local, lastSynced: "older", incoming), .apply)
     }
 
-    func testRemovalMovesTheOwnersNoteToTheInboxAndDropsTheCopy() {
-        XCTAssertEqual(SharedBowlMerge.removal(role: .owner, isInBowl: true), .moveToInbox)
-        XCTAssertEqual(SharedBowlMerge.removal(role: .participant, isInBowl: true), .delete)
-        XCTAssertEqual(SharedBowlMerge.removal(role: .participant, isInBowl: false), .none, "taken out here already: it is mine")
-        XCTAssertTrue(SharedBowlMerge.keepsLocalCopy(role: .owner))
-        XCTAssertFalse(SharedBowlMerge.keepsLocalCopy(role: .participant))
+    func testANoteTakenOutOfTheBowlHereIsNotPulledBack() {
+        let incoming = SharedNotePayload(note("incoming"))
+        let local = note("local", in: false)
+        local.id = incoming.id
+        // Taken out here (its delete not sent yet): the zone's change does not put it back.
+        XCTAssertEqual(decide(local, inBowl: false, lastSynced: SharedNotePayload(local).fingerprint, incoming), .keepOut)
+        // Never in the zone as far as this device knows: the zone's version may bring it in (the later change wins).
+        XCTAssertEqual(decide(local, inBowl: false, lastSynced: nil, incoming), .apply)
     }
 
-    func testRemovalsWaitBeforeTheyAreDone() {
-        let now = Date()
-        let pending = ["a": now.addingTimeInterval(-SharedBowlMerge.removalDelay - 1), "b": now.addingTimeInterval(-10)]
-        XCTAssertEqual(SharedBowlMerge.dueRemovals(pending, now: now), ["a"])
+    func testTheOwnerNeverAddsCopiesOfItsOwnNotes() {
+        XCTAssertTrue(SharedBowlMerge.mayInsert(role: .participant, createdByMe: true))
+        XCTAssertTrue(SharedBowlMerge.mayInsert(role: .participant, createdByMe: false))
+        XCTAssertTrue(SharedBowlMerge.mayInsert(role: .owner, createdByMe: false), "notes the other person made")
+        XCTAssertFalse(SharedBowlMerge.mayInsert(role: .owner, createdByMe: true), "they come through the private sync")
+        XCTAssertEqual(decide(nil, lastSynced: nil, SharedNotePayload(note()), mayInsert: false), .skip)
+    }
+
+    func testRemovalNeverDeletes() {
+        XCTAssertEqual(SharedBowlMerge.removal(isInBowl: true), .moveToInbox)
+        XCTAssertEqual(SharedBowlMerge.removal(isInBowl: false), .none, "taken out here already: it is mine")
+    }
+
+    func testWhenAShareEndsOnlyCopiesGo() {
+        XCTAssertEqual(SharedBowlMerge.shareEnd(role: .owner, isCopy: true), .none)
+        XCTAssertEqual(SharedBowlMerge.shareEnd(role: .owner, isCopy: false), .none)
+        XCTAssertEqual(SharedBowlMerge.shareEnd(role: .participant, isCopy: true), .deleteCopy)
+        XCTAssertEqual(SharedBowlMerge.shareEnd(role: .participant, isCopy: false), .moveToInbox, "what I made myself stays mine")
+    }
+
+    func testRemovalsWaitForThePrivateSyncNotForTime() {
+        let removed = Date(timeIntervalSince1970: 1000)
+        let pending = ["a": removed, "b": Date(timeIntervalSince1970: 3000)]
+        XCTAssertEqual(SharedBowlMerge.dueRemovals(pending, lastImport: nil), [], "not at launch, before the private sync spoke")
+        XCTAssertEqual(SharedBowlMerge.dueRemovals(pending, lastImport: Date(timeIntervalSince1970: 2000)), ["a"])
+        XCTAssertEqual(SharedBowlMerge.dueRemovals(pending, lastImport: Date(timeIntervalSince1970: 4000)), ["a", "b"])
+    }
+
+    // MARK: Dates
+
+    func testDatesCountInWholeMilliseconds() {
+        let fine = note()
+        fine.updatedAt = Date(timeIntervalSince1970: 1_700_000_000.123456)
+        let cut = note()
+        cut.id = fine.id
+        cut.updatedAt = Date(timeIntervalSince1970: 1_700_000_000.123)
+        // The same note after a trip through CloudKit (milliseconds) has the same fingerprint.
+        XCTAssertEqual(SharedNotePayload(fine).fingerprint, SharedNotePayload(cut).fingerprint)
+        // And a payload read back and written again is the same bytes.
+        let payload = SharedNotePayload(fine)
+        let decoded = try? XCTUnwrap(SharedNotePayload.decode(payload.encoded()))
+        XCTAssertEqual(decoded?.encoded(), payload.encoded())
+        XCTAssertEqual(decoded?.fingerprint, payload.fingerprint)
+        for ms: Int64 in [0, 1, 999, 1_700_000_000_001, 1_700_000_000_123, 1_799_999_999_999] {
+            let date = Date(timeIntervalSince1970: Double(ms) / 1000)
+            XCTAssertEqual(SharedNotePayload.milliseconds(date), ms, "a whole millisecond stays on it")
+        }
     }
 
     // MARK: Duplicates
@@ -298,6 +388,31 @@ final class BowlSharingTests: XCTestCase {
         XCTAssertTrue(guest.summary.contains("Clara"))
     }
 
+    func testSummaryWhileEnding() {
+        var owner = info()
+        owner.endingSince = Date()
+        XCTAssertEqual(owner.summary, String(localized: "Stopping sharing…"))
+        var guest = SharedBowlInfo(bowlID: bowlID, role: .participant, zoneOwnerName: "_owner")
+        guest.endingSince = Date()
+        XCTAssertEqual(guest.summary, String(localized: "Leaving…"))
+    }
+
+    func testStateOfTheFirstVersionStillReads() throws {
+        // What 00ff34c wrote: without endingSince, unreadNotes and fileOwners.
+        let json = """
+        {"bowls":[{"bowlID":"11111111-2222-3333-4444-555555555555","role":"owner","zoneName":"Bowl-11111111-2222-3333-4444-555555555555",
+        "zoneOwnerName":"__defaultOwner__","name":"Garden","people":[],"noteHashes":{"n":"h"},"fileNames":["f.m4a"],
+        "systemFields":{},"pendingRemovals":{}}]}
+        """
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("shared-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(json.utf8).write(to: url)
+        let loaded = SharedBowlStore(url: url).load().bowls
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.noteHashes, ["n": "h"])
+        XCTAssertNil(loaded.first?.endingSince)
+    }
+
     func testStateIsKeptInItsFile() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("shared-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -307,6 +422,9 @@ final class BowlSharingTests: XCTestCase {
         info.noteHashes["n"] = "h"
         info.fileNames = ["f.m4a"]
         info.pendingRemovals["p"] = Date(timeIntervalSince1970: 5)
+        info.endingSince = Date(timeIntervalSince1970: 6)
+        info.unreadNotes = ["u"]
+        info.fileOwners = ["f.m4a": "n"]
         store.save(SharedBowlStore.Saved(bowls: [info]))
         XCTAssertEqual(store.load().bowls, [info])
     }

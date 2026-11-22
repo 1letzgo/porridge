@@ -74,7 +74,7 @@ final class BowlShareMac: NSObject, @preconcurrency NSCloudSharingServiceDelegat
         guard BowlSharing.isAvailable else { return }
         if let info = BowlSharing.shared.info(for: bowl.id) {
             menu.add(String(localized: "Manage Sharing…"), symbol: "person.2") { self.manage(bowl, in: window) }
-            if info.role == .owner {
+            if info.role == .owner, info.endingSince == nil {
                 menu.add(String(localized: "Stop Sharing…"), symbol: "person.2.slash") { self.confirmStopSharing(bowl, in: window) }
             }
         } else {

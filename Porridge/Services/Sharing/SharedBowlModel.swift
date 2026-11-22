@@ -172,10 +172,32 @@ struct SharedNotePayload: Codable, Equatable {
         note.folderID = nil
     }
 
+    /// Dates as whole milliseconds: CloudKit keeps dates to the millisecond, so a note that reached another device of
+    /// the same person through the private sync has its dates cut there. Written finer, the same note would have
+    /// another fingerprint on each device and be sent back and forth for ever.
+    static func milliseconds(_ date: Date) -> Int64 {
+        // The small addition keeps a date that already is whole milliseconds on its millisecond (k / 1000 * 1000 can
+        // come out a hair below k).
+        Int64((date.timeIntervalSince1970 * 1000 + 0.001).rounded(.down))
+    }
+
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(milliseconds(date))
+        }
         return encoder
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let value = try decoder.singleValueContainer().decode(Int64.self)
+            return Date(timeIntervalSince1970: Double(value) / 1000)
+        }
+        return decoder
     }()
 
     func encoded() -> Data {
@@ -183,7 +205,7 @@ struct SharedNotePayload: Codable, Equatable {
     }
 
     static func decode(_ data: Data) -> SharedNotePayload? {
-        guard let payload = try? JSONDecoder().decode(SharedNotePayload.self, from: data) else { return nil }
+        guard let payload = try? decoder.decode(SharedNotePayload.self, from: data) else { return nil }
         return payload
     }
 
@@ -245,10 +267,19 @@ struct SharedBowlInfo: Codable, Equatable {
     /// The system fields of each record as the zone last had them (by record name), so a change is sent on top of
     /// the server's version.
     var systemFields: [String: Data] = [:]
-    /// Notes the zone dropped while they are still in the bowl here (by id, since when). They are taken out here only
-    /// a while later (`SharedBowlMerge.removalDelay`): when one of my own devices took the note out of the bowl, the
-    /// private sync brings that move in the meantime, and the note must not be moved a second time.
+    /// Notes the zone dropped while they are still in the bowl here (by id, since when). They are taken out of the
+    /// bowl only after the private sync brought something newer (`SharedBowlMerge.dueRemovals`): when one of my own
+    /// devices took the note out of the bowl (into another one), that move arrives first and is not undone.
     var pendingRemovals: [String: Date] = [:]
+    /// Set while the zone is being deleted (sharing stopped, or the bowl deleted) and the server has not confirmed it
+    /// yet: nothing is sent or taken for the bowl, and the deletion is tried again until it went through.
+    var endingSince: Date?
+    /// Notes whose record could not be read (a newer version wrote it, or its file did not come): their files are
+    /// unknown, so no file leaves the zone while there are such notes.
+    var unreadNotes: Set<String>?
+    /// Which note (id) each file of the zone belongs to, as far as this device saw it. A file leaves the zone only
+    /// when the note it belongs to is here and no longer has it, or when that note leaves the zone.
+    var fileOwners: [String: String]?
 
     init(bowlID: UUID, role: SharedBowlRole, zoneOwnerName: String, name: String = "") {
         self.bowlID = bowlID
@@ -263,6 +294,9 @@ struct SharedBowlInfo: Codable, Equatable {
 
     /// "Shared with Anna and Ben", "Shared by Anna", or, before anyone joined, "Shared, waiting for others to join".
     var summary: String {
+        if endingSince != nil {
+            return role == .owner ? String(localized: "Stopping sharing…") : String(localized: "Leaving…")
+        }
         switch role {
         case .owner:
             let joined = others.filter { !$0.isPending }.map(\.name)
@@ -286,6 +320,8 @@ struct SharedBowlOutgoing: Equatable {
     var fileDeletes: [String] = []
     /// Files the zone should have that are not readable here yet (in iCloud, not downloaded): fetched first.
     var filesToDownload: [String] = []
+    /// The note each file of the notes here belongs to (kept in `SharedBowlInfo.fileOwners`).
+    var fileOwners: [String: String] = [:]
 
     var isEmpty: Bool {
         !saveBowl && noteSaves.isEmpty && noteDeletes.isEmpty && fileSaves.isEmpty && fileDeletes.isEmpty
@@ -305,6 +341,7 @@ enum SharedBowlPlanner {
         bowlID: UUID, bowlName: String?, info: SharedBowlInfo, notes: [Note], isReadable: (String) -> Bool
     ) -> SharedBowlOutgoing {
         var result = SharedBowlOutgoing()
+        guard info.endingSince == nil else { return result }
         let key = SharedBowlNames.bowlKey(bowlID)
         if let bowlName, SharedBowlNames.bowlFingerprint(name: bowlName) != info.bowlHash { result.saveBowl = true }
 
@@ -319,6 +356,7 @@ enum SharedBowlPlanner {
             let files = ([note.audioFileName, note.pendingAudioFileName].compactMap { $0 } + note.audioFileNames
                 + note.attachments.map(\.fileName)).filter(FileLocations.isPlainName)
             referenced.formUnion(files)
+            for file in files { result.fileOwners[file] = id }
             guard isSendable(note), info.pendingRemovals[id] == nil else { continue }
             if SharedNotePayload(note).fingerprint != info.noteHashes[id], !saves.contains(note.id) { saves.append(note.id) }
             wanted.formUnion(files)
@@ -328,7 +366,16 @@ enum SharedBowlPlanner {
         for name in wanted.subtracting(info.fileNames).sorted() {
             if isReadable(name) { result.fileSaves.append(name) } else { result.filesToDownload.append(name) }
         }
-        result.fileDeletes = info.fileNames.subtracting(referenced).sorted()
+        // A file leaves the zone only when it is known whose it is and that note let go of it: it is here and no
+        // longer has it, or it leaves the zone now. Never while a note of the zone could not be read.
+        let leaving = Set(result.noteDeletes.map(\.uuidString))
+        if (info.unreadNotes ?? []).isEmpty {
+            let owners = info.fileOwners ?? [:]
+            result.fileDeletes = info.fileNames.subtracting(referenced).filter { file in
+                guard let owner = owners[file] else { return false }
+                return present.contains(owner) || leaving.contains(owner)
+            }.sorted()
+        }
         return result
     }
 }
@@ -338,6 +385,11 @@ enum SharedBowlMerge {
     enum Decision: Equatable {
         /// The note is not here: it is added.
         case insert
+        /// The note is not here and is not added: the owner's own notes come through the private sync, never as a
+        /// copy (a copy could bring back a note deleted on another device).
+        case skip
+        /// The note was taken out of the bowl here and that is not sent yet: it stays out.
+        case keepOut
         /// The zone's version replaces the one here.
         case apply
         /// The note changed here after the zone's version and the change was not sent yet: it stays and is sent.
@@ -345,8 +397,10 @@ enum SharedBowlMerge {
     }
 
     /// `lastSynced`: the fingerprint of the zone's version this device knew before (`SharedBowlInfo.noteHashes`).
-    static func decide(local: Note?, lastSynced: String?, incoming: SharedNotePayload) -> Decision {
-        guard let local else { return .insert }
+    /// `isInBowl`: the note here is in the shared bowl. `mayInsert`: see `mayInsert(role:createdByMe:)`.
+    static func decide(local: Note?, isInBowl: Bool, lastSynced: String?, incoming: SharedNotePayload, mayInsert: Bool) -> Decision {
+        guard let local else { return mayInsert ? .insert : .skip }
+        if !isInBowl, lastSynced != nil { return .keepOut }
         let localPrint = SharedNotePayload(local).fingerprint
         // Nothing changed here since the zone's last version, or both say the same: the zone's version is taken.
         if localPrint == lastSynced || localPrint == incoming.fingerprint { return .apply }
@@ -354,32 +408,41 @@ enum SharedBowlMerge {
         return incoming.updatedAt >= local.updatedAt ? .apply : .keepLocal
     }
 
-    /// How long a note the zone dropped stays here before it is taken out of the bowl (`SharedBowlInfo.pendingRemovals`).
-    static let removalDelay: TimeInterval = 120
+    /// Whether a note of the zone that is not here is added. The other person's notes always are. On the owner's
+    /// devices only notes someone else made: the owner's own come through the private sync (and one deleted there
+    /// must not come back as a copy).
+    static func mayInsert(role: SharedBowlRole, createdByMe: Bool) -> Bool {
+        role == .participant || !createdByMe
+    }
 
-    /// The notes whose wait is over at `now`.
-    static func dueRemovals(_ pending: [String: Date], now: Date) -> [String] {
-        pending.filter { now.timeIntervalSince($0.value) >= removalDelay }.map(\.key).sorted()
+    /// The removals that may be done now: those the private sync brought something newer since (`lastImport`). A
+    /// removal is never done on time alone, nor at launch before the private sync spoke.
+    static func dueRemovals(_ pending: [String: Date], lastImport: Date?) -> [String] {
+        guard let lastImport else { return [] }
+        return pending.filter { lastImport > $0.value }.map(\.key).sorted()
     }
 
     enum Removal: Equatable {
         case none
-        /// The owner keeps the note: it leaves the bowl and is back in the inbox.
+        /// The note leaves the bowl and is back in the inbox; nothing of it is deleted.
         case moveToInbox
-        /// The note was the owner's: the copy of the other person goes.
-        case delete
+        /// A copy taken from the zone goes; its files stay.
+        case deleteCopy
     }
 
     /// A note left the zone (taken out of the bowl, or deleted for good, by someone). Only a note that is still in
-    /// the bowl here is touched: one taken out of it here already belongs to this person alone.
-    static func removal(role: SharedBowlRole, isInBowl: Bool) -> Removal {
-        guard isInBowl else { return .none }
-        return role == .owner ? .moveToInbox : .delete
+    /// the bowl here is touched, and only moved to the inbox: deleting it could delete what another of my devices
+    /// just moved into another bowl.
+    static func removal(isInBowl: Bool) -> Removal {
+        isInBowl ? .moveToInbox : .none
     }
 
-    /// The bowl and its entries end for me (the owner stopped sharing, or I left): my copies of the owner's bowl go.
-    /// The owner's own bowl stays as it is.
-    static func keepsLocalCopy(role: SharedBowlRole) -> Bool { role == .owner }
+    /// The share ended for me (the owner stopped sharing, or I left). Mine (the owner's) stays as it is. Of a bowl
+    /// shared with me, the copies taken from the zone go (never their files); what I made myself goes to my inbox.
+    static func shareEnd(role: SharedBowlRole, isCopy: Bool) -> Removal {
+        guard role == .participant else { return .none }
+        return isCopy ? .deleteCopy : .moveToInbox
+    }
 
     /// The same note or bowl (same id) can end up twice in the store: two devices of one person both took it from
     /// the zone, and the private sync brings each one the other's copy. Every device has to keep the same one, or

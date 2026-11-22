@@ -28,11 +28,22 @@ struct SharedBowlStore {
 enum BowlSharingError: LocalizedError {
     case unavailable
     case notShared
+    /// Sharing of the bowl is being stopped (or the bowl left) and the server has not confirmed it yet.
+    case ending
+    /// The zone could not be deleted now; it is tried again. Until then the others keep their access.
+    case stopPending(String)
+    /// The shared zone could not be left now; it is tried again. Until then I stay in the bowl.
+    case leavePending(String)
 
     var errorDescription: String? {
         switch self {
         case .unavailable: String(localized: "Sharing needs iCloud Sync. Turn it on in Settings › General.")
         case .notShared: String(localized: "This bowl is not shared any more.")
+        case .ending: String(localized: "Sharing of this bowl is still being stopped. Try again in a moment.")
+        case .stopPending(let reason):
+            String(localized: "Porridge could not reach iCloud to stop sharing (\(reason)). Until it does, the people you shared the bowl with keep their access. It tries again by itself.")
+        case .leavePending(let reason):
+            String(localized: "Porridge could not reach iCloud to leave the bowl (\(reason)). Until it does, you stay in it. It tries again by itself.")
         }
     }
 }
@@ -42,6 +53,9 @@ enum BowlSharingError: LocalizedError {
 /// Two `CKSyncEngine`s: one on the private database for the bowls I share (their zones are mine), one on the shared
 /// database for the bowls shared with me. Changes in the store are looked for after each save (`scan`): what differs
 /// from what the zone has is sent; what the zones bring is written into the store. Only with iCloud sync on.
+///
+/// Sharing never deletes what someone may still want: an entry that leaves a shared bowl goes to the inbox; only
+/// copies taken from someone else's bowl are deleted, when that share ends, and never the files of anything.
 @MainActor
 @Observable
 final class BowlSharing {
@@ -78,6 +92,13 @@ final class BowlSharing {
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     /// Shares accepted before the app was ready for them.
     @ObservationIgnored private var waitingShares: [CKShare.Metadata] = []
+    /// When the private sync last brought something (in this run): removals wait for it (`SharedBowlMerge.dueRemovals`).
+    @ObservationIgnored private var lastImport: Date?
+    /// Zone deletions being tried right now, and when each was last tried.
+    @ObservationIgnored private var endingAttempts: [UUID: Date] = [:]
+    @ObservationIgnored private var endingRunning: Set<UUID> = []
+    /// Records whose conflict is being resolved by fetching them whole.
+    @ObservationIgnored private var refetching: Set<String> = []
 
     private var temporaryDirectory: URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("SharedBowlPayloads", isDirectory: true)
@@ -110,14 +131,19 @@ final class BowlSharing {
         makeEngines()
 
         let center = NotificationCenter.default
-        for name in [ModelContext.didSave, Notification.Name.NSPersistentStoreRemoteChange] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in
-                MainActor.assumeIsolated { BowlSharing.shared.scanSoon() }
-            })
-        }
+        observers.append(center.addObserver(forName: ModelContext.didSave, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { BowlSharing.shared.scanSoon() }
+        })
+        observers.append(center.addObserver(forName: .NSPersistentStoreRemoteChange, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                BowlSharing.shared.lastImport = Date()
+                BowlSharing.shared.scanSoon()
+            }
+        })
         let waiting = waitingShares
         waitingShares = []
         for metadata in waiting { Task { await accept(metadata) } }
+        retryEndings()
         scanSoon(after: .seconds(3))
         Task { await refreshPeople() }
     }
@@ -139,66 +165,112 @@ final class BowlSharing {
         scope == .private ? privateEngine : sharedEngine
     }
 
+    /// An engine replaced after an account change may still be finishing: what it says is not listened to.
+    func isCurrent(_ engine: CKSyncEngine, scope: CKDatabase.Scope) -> Bool {
+        self.engine(for: scope) === engine
+    }
+
+    private func database(for role: SharedBowlRole) -> CKDatabase? {
+        role == .owner ? cloud?.privateCloudDatabase : cloud?.sharedCloudDatabase
+    }
+
     private var context: ModelContext? { modelContainer?.mainContext }
 
-    // MARK: - Sharing, stopping, leaving
+    /// Stores the bowl's state only when it changed (every change redraws what shows it).
+    private func store(_ info: SharedBowlInfo) {
+        if bowls[info.bowlID] != info { bowls[info.bowlID] = info }
+    }
+
+    // MARK: - Sharing
 
     /// The share of the bowl, made now if it is not shared yet: the bowl gets its own zone, its entries are copied
     /// into it, and the zone is shared as a whole. Hand the share to the system's sharing sheet.
     func share(_ bowl: NoteFolder) async throws -> CKShare {
-        guard let cloud, privateEngine != nil else { throw BowlSharingError.unavailable }
+        guard let database = cloud?.privateCloudDatabase, privateEngine != nil else { throw BowlSharingError.unavailable }
         let bowlID = bowl.id
-        if let info = bowls[bowlID] { return try await fetchShare(info) }
+        if let info = bowls[bowlID] {
+            guard info.endingSince == nil else { throw BowlSharingError.ending }
+            return try await fetchShare(info)
+        }
         preparing.insert(bowlID)
         defer { preparing.remove(bowlID) }
         let info = SharedBowlInfo(bowlID: bowlID, role: .owner, zoneOwnerName: CKCurrentUserDefaultName, name: bowl.name)
         let zoneID = SharedBowlRecords.zoneID(info)
-        let database = cloud.privateCloudDatabase
-        let zones = try await database.modifyRecordZones(saving: [CKRecordZone(zoneID: zoneID)], deleting: [])
-        if case .failure(let error)? = zones.saveResults[zoneID] { throw error }
+        let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
+
+        // Shared already from another of my devices: that share is the one (a second one cannot be made).
+        if let existing = try await existingShare(shareID, in: database) { return adopt(existing, info) }
+
+        var madeZone = false
+        do {
+            _ = try await database.recordZone(for: zoneID)
+        } catch let error as CKError where error.code == .zoneNotFound || error.code == .userDeletedZone {
+            let zones = try await database.modifyRecordZones(saving: [CKRecordZone(zoneID: zoneID)], deleting: [])
+            if case .failure(let error)? = zones.saveResults[zoneID] { throw error }
+            madeZone = true
+        }
         do {
             let share = CKShare(recordZoneID: zoneID)
             share[CKShare.SystemFieldKey.title] = bowl.name
             share.publicPermission = .none
             let saved = try await database.modifyRecords(saving: [share], deleting: [])
             guard let result = saved.saveResults[share.recordID] else { throw BowlSharingError.notShared }
-            let savedShare = (try result.get() as? CKShare) ?? share
-            var shared = info
-            shared.people = SharedBowlRecords.people(of: savedShare)
-            bowls[bowlID] = shared
-            persist()
-            // The bowl and its entries go into the zone right away, before anyone joins.
-            scan()
-            Task { try? await privateEngine?.sendChanges() }
-            return savedShare
+            switch result {
+            case .success(let record):
+                return adopt((record as? CKShare) ?? share, info)
+            case .failure(let error):
+                // Made at the same moment on another of my devices: that one is taken.
+                if (error as? CKError)?.code == .serverRecordChanged, let existing = try await existingShare(shareID, in: database) {
+                    return adopt(existing, info)
+                }
+                throw error
+            }
         } catch {
-            _ = try? await database.deleteRecordZone(withID: zoneID)
+            // Only a zone this call made is taken back; an existing one may be shared and in use.
+            if madeZone { _ = try? await database.deleteRecordZone(withID: zoneID) }
             throw error
         }
     }
 
+    private func existingShare(_ id: CKRecord.ID, in database: CKDatabase) async throws -> CKShare? {
+        do {
+            return try await database.record(for: id) as? CKShare
+        } catch let error as CKError where [.unknownItem, .zoneNotFound, .userDeletedZone].contains(error.code) {
+            return nil
+        }
+    }
+
+    /// The bowl is shared with this share from now on; its entries go into the zone right away.
+    private func adopt(_ share: CKShare, _ fresh: SharedBowlInfo) -> CKShare {
+        var info = bowls[fresh.bowlID] ?? fresh
+        info.people = SharedBowlRecords.people(of: share)
+        store(info)
+        persist()
+        scan()
+        let engine = privateEngine
+        Task { try? await engine?.sendChanges() }
+        return share
+    }
+
     /// The share of a shared bowl as the server has it now; also brings the people of it up to date.
     func fetchShare(_ info: SharedBowlInfo) async throws -> CKShare {
-        guard let cloud else { throw BowlSharingError.unavailable }
-        let database = info.role == .owner ? cloud.privateCloudDatabase : cloud.sharedCloudDatabase
+        guard let database = database(for: info.role) else { throw BowlSharingError.unavailable }
         let id = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: SharedBowlRecords.zoneID(info))
         guard let share = try await database.record(for: id) as? CKShare else { throw BowlSharingError.notShared }
         updatePeople(info.bowlID, SharedBowlRecords.people(of: share))
         return share
     }
 
-    /// The people of every shared bowl, from the server (who joined, who left).
+    /// The people of every shared bowl, from the server (who joined, who left). Only a zone the server says is gone
+    /// ends a share here; a missing share alone never does (another of my devices may be making it right now).
     func refreshPeople() async {
-        for info in bowls.values {
+        for info in bowls.values where info.endingSince == nil {
             do {
                 _ = try await fetchShare(info)
             } catch let error as CKError where [.zoneNotFound, .userDeletedZone].contains(error.code) {
-                end(info)
-            } catch let error as CKError where error.code == .unknownItem && info.role == .owner {
-                // The share was stopped (from the system's sheet on another device): the zone goes too.
-                try? await stopSharing(info.bowlID)
+                if let current = bowls[info.bowlID], current.endingSince == nil { end(current) }
             } catch {
-                // Offline or another passing failure: the next time.
+                // No share (yet), offline, or another passing failure: asked again the next time.
             }
         }
     }
@@ -206,67 +278,106 @@ final class BowlSharing {
     private func updatePeople(_ bowlID: UUID, _ people: [SharedBowlPerson]) {
         guard var info = bowls[bowlID], info.people != people else { return }
         info.people = people
-        bowls[bowlID] = info
+        store(info)
         persist()
     }
 
-    /// Mine: nobody else sees the bowl any more. Its entries stay here as they are.
+    // MARK: - Stopping and leaving
+
+    /// Mine: nobody else sees the bowl any more. Its entries stay here as they are. The bowl counts as shared until
+    /// the server confirmed it; if it cannot be reached now, it is tried again and the error says so.
     func stopSharing(_ bowlID: UUID) async throws {
         guard let info = bowls[bowlID], info.role == .owner else { return }
-        end(info)
-        guard let cloud else { return }
-        do {
-            _ = try await cloud.privateCloudDatabase.deleteRecordZone(withID: SharedBowlRecords.zoneID(info))
-        } catch let error as CKError where [.zoneNotFound, .userDeletedZone].contains(error.code) {}
+        try await deleteZone(of: beginEnding(info))
     }
 
-    /// Shared with me: I leave it, and its entries are removed from my devices. The owner keeps them.
+    /// Shared with me: I leave it, and the copies of its entries are removed from my devices (what I made myself
+    /// goes to my inbox). The owner keeps everything.
     func leave(_ bowlID: UUID) async throws {
         guard let info = bowls[bowlID], info.role == .participant else { return }
-        if let cloud {
-            do {
-                _ = try await cloud.sharedCloudDatabase.deleteRecordZone(withID: SharedBowlRecords.zoneID(info))
-            } catch let error as CKError where [.zoneNotFound, .userDeletedZone].contains(error.code) {}
-        }
-        end(info)
+        try await deleteZone(of: beginEnding(info))
     }
 
-    /// The bowl is being deleted here: mine stops being shared first, so its entries do not leave the zone one by one.
+    /// The bowl is being deleted here: its sharing ends first (and is tried again until it did), so its entries do
+    /// not leave the zone one by one while the bowl is taken apart.
     func bowlWillBeDeleted(_ bowlID: UUID) {
         guard let info = bowls[bowlID] else { return }
-        end(info, removingCopy: false)
-        guard let cloud else { return }
-        let database = info.role == .owner ? cloud.privateCloudDatabase : cloud.sharedCloudDatabase
-        Task { _ = try? await database.deleteRecordZone(withID: SharedBowlRecords.zoneID(info)) }
+        let ending = beginEnding(info)
+        Task { try? await deleteZone(of: ending) }
     }
 
-    /// The share ended (stopped, left, or gone on the server): it is forgotten here, nothing more is sent for it, and
-    /// my copy of someone else's bowl goes.
-    private func end(_ info: SharedBowlInfo, removingCopy: Bool = true) {
-        bowls[info.bowlID] = nil
-        if let engine = engine(for: info.role) {
-            let zoneID = SharedBowlRecords.zoneID(info)
-            let pending = engine.state.pendingRecordZoneChanges.filter { change in
-                switch change {
-                case .saveRecord(let id), .deleteRecord(let id): id.zoneID == zoneID
-                @unknown default: false
-                }
-            }
-            if !pending.isEmpty { engine.state.remove(pendingRecordZoneChanges: pending) }
+    /// From now on nothing is sent or taken for the bowl: its pending changes are dropped.
+    private func beginEnding(_ original: SharedBowlInfo) -> SharedBowlInfo {
+        var info = original
+        if info.endingSince == nil { info.endingSince = Date() }
+        dropPending(info)
+        store(info)
+        persist()
+        return info
+    }
+
+    /// Deletes the bowl's zone (mine) or leaves it (someone else's). Only once the server confirmed it (or the zone
+    /// is gone already) is the share forgotten here.
+    private func deleteZone(of info: SharedBowlInfo) async throws {
+        guard let database = database(for: info.role) else { throw BowlSharingError.unavailable }
+        endingRunning.insert(info.bowlID)
+        endingAttempts[info.bowlID] = Date()
+        defer { endingRunning.remove(info.bowlID) }
+        do {
+            _ = try await database.deleteRecordZone(withID: SharedBowlRecords.zoneID(info))
+        } catch let error as CKError where [.zoneNotFound, .userDeletedZone].contains(error.code) {
+            // Gone already.
+        } catch {
+            throw info.role == .owner
+                ? BowlSharingError.stopPending(error.localizedDescription)
+                : BowlSharingError.leavePending(error.localizedDescription)
         }
-        if removingCopy, !SharedBowlMerge.keepsLocalCopy(role: info.role) { removeLocalCopy(info) }
+        if let current = bowls[info.bowlID] { end(current) }
+    }
+
+    /// Zone deletions that did not go through yet are tried again (at launch, then at most once a minute).
+    private func retryEndings() {
+        let now = Date()
+        for info in bowls.values where info.endingSince != nil && !endingRunning.contains(info.bowlID) {
+            if let last = endingAttempts[info.bowlID], now.timeIntervalSince(last) < 60 { continue }
+            Task { try? await deleteZone(of: info) }
+        }
+    }
+
+    private func dropPending(_ info: SharedBowlInfo) {
+        guard let engine = engine(for: info.role) else { return }
+        let zoneID = SharedBowlRecords.zoneID(info)
+        let pending = engine.state.pendingRecordZoneChanges.filter { change in
+            switch change {
+            case .saveRecord(let id), .deleteRecord(let id): id.zoneID == zoneID
+            @unknown default: false
+            }
+        }
+        if !pending.isEmpty { engine.state.remove(pendingRecordZoneChanges: pending) }
+    }
+
+    /// The share ended (stopped, left, or gone on the server): it is forgotten here and nothing more is sent for it.
+    /// Of a bowl shared with me, the copies go (`SharedBowlMerge.shareEnd`).
+    private func end(_ info: SharedBowlInfo) {
+        bowls[info.bowlID] = nil
+        dropPending(info)
+        removeLocalCopy(info)
         persist()
     }
 
     private func removeLocalCopy(_ info: SharedBowlInfo) {
-        guard let context else { return }
+        guard info.role == .participant, let context else { return }
         let key = SharedBowlNames.bowlKey(info.bowlID)
         for note in (try? context.fetch(FetchDescriptor<Note>())) ?? [] where note.projectIDs.contains(key) {
-            note.storedFileNames.forEach(AudioStore.delete)
-            context.delete(note)
+            switch SharedBowlMerge.shareEnd(role: info.role, isCopy: note.shareCopyToken != nil) {
+            case .deleteCopy: context.delete(note)
+            case .moveToInbox: note.projectIDs.removeAll { $0 == key }
+            case .none: break
+            }
         }
         let bowlID = info.bowlID
-        for folder in (try? context.fetch(FetchDescriptor<NoteFolder>(predicate: #Predicate { $0.id == bowlID }))) ?? [] {
+        for folder in (try? context.fetch(FetchDescriptor<NoteFolder>(predicate: #Predicate { $0.id == bowlID }))) ?? []
+        where folder.shareCopyToken != nil {
             context.delete(folder)
         }
         try? context.save()
@@ -294,7 +405,7 @@ final class BowlSharing {
                 let title = (metadata.share[CKShare.SystemFieldKey.title] as? String) ?? ""
                 var info = SharedBowlInfo(bowlID: bowlID, role: .participant, zoneOwnerName: zoneID.ownerName, name: title)
                 info.people = SharedBowlRecords.people(of: metadata.share)
-                bowls[bowlID] = info
+                store(info)
                 persist()
             }
             try await sharedEngine.fetchChanges()
@@ -316,15 +427,16 @@ final class BowlSharing {
     }
 
     /// Works out for every shared bowl what has to be sent (`SharedBowlPlanner`) and hands it to its engine; takes out
-    /// what the zone dropped a while ago; and keeps one of every entry that is in the store twice.
+    /// of the bowl what the zone dropped once the private sync spoke; and keeps one of every entry that is in the
+    /// store twice.
     private func scan() {
         guard let context, !bowls.isEmpty else { return }
+        retryEndings()
         var notes = (try? context.fetch(FetchDescriptor<Note>())) ?? []
         let folders = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
         var changed = false
         var removed = Set<ObjectIdentifier>()
-        let now = Date()
-        for (bowlID, original) in bowls {
+        for (bowlID, original) in bowls where original.endingSince == nil {
             var info = original
             let key = SharedBowlNames.bowlKey(bowlID)
             let bowlFolders = folders.filter { $0.id == bowlID }
@@ -341,43 +453,42 @@ final class BowlSharing {
                     changed = true
                 }
             }
-            for id in SharedBowlMerge.dueRemovals(info.pendingRemovals, now: now) {
+            // What the zone dropped leaves the bowl (to the inbox) once the private sync brought something newer.
+            // Its last change stays, so a move another of my devices made (and that is still on its way) wins.
+            for id in SharedBowlMerge.dueRemovals(info.pendingRemovals, lastImport: lastImport) {
                 info.pendingRemovals[id] = nil
                 guard info.noteHashes[id] == nil else { continue }
                 for note in inBowl where note.id.uuidString == id && !removed.contains(ObjectIdentifier(note)) {
-                    switch SharedBowlMerge.removal(role: info.role, isInBowl: true) {
-                    case .none: break
-                    case .moveToInbox:
-                        note.projectIDs = []
-                        note.updatedAt = Date()
-                    case .delete:
-                        note.storedFileNames.forEach(AudioStore.delete)
-                        context.delete(note)
-                        removed.insert(ObjectIdentifier(note))
+                    if SharedBowlMerge.removal(isInBowl: note.projectIDs.contains(key)) == .moveToInbox {
+                        note.projectIDs.removeAll { $0 == key }
+                        changed = true
                     }
-                    changed = true
                 }
             }
             notes.removeAll { removed.contains(ObjectIdentifier($0)) }
             let folder = bowlFolders.first { !removed.contains(ObjectIdentifier($0)) }
             if let folder, info.name != folder.name { info.name = folder.name }
-            bowls[bowlID] = info
             // The bowl is not in the store (yet, on a device the private sync has not reached): nothing is sent.
-            guard let folder else { continue }
-            let kinds = Self.fileKinds(notes.filter { $0.projectIDs.contains(key) })
-            let plan = SharedBowlPlanner.plan(bowlID: bowlID, bowlName: folder.name, info: info, notes: notes) { name in
-                AudioStore.exists(name, kind: kinds[name] ?? .recording)
-            }
-            enqueue(plan, info: info)
-            for name in plan.filesToDownload where !downloading.contains(name) && AudioStore.isInCloud(name, kind: kinds[name] ?? .recording) {
-                downloading.insert(name)
-                let kind = kinds[name] ?? .recording
-                Task {
-                    _ = try? await AudioStore.download(name, kind: kind)
-                    downloading.remove(name)
-                    scanSoon()
+            if let folder {
+                let kinds = Self.fileKinds(notes.filter { $0.projectIDs.contains(key) })
+                let plan = SharedBowlPlanner.plan(bowlID: bowlID, bowlName: folder.name, info: info, notes: notes) { name in
+                    AudioStore.exists(name, kind: kinds[name] ?? .recording)
+                }
+                if !plan.fileOwners.isEmpty {
+                    info.fileOwners = (info.fileOwners ?? [:]).merging(plan.fileOwners) { _, new in new }
+                }
+                enqueue(plan, info: info)
+                for name in plan.filesToDownload where !downloading.contains(name) && AudioStore.isInCloud(name, kind: kinds[name] ?? .recording) {
+                    downloading.insert(name)
+                    let kind = kinds[name] ?? .recording
+                    Task {
+                        _ = try? await AudioStore.download(name, kind: kind)
+                        downloading.remove(name)
+                        scanSoon()
+                    }
                 }
             }
+            store(info)
         }
         if changed { try? context.save() }
         persist()
@@ -431,7 +542,7 @@ final class BowlSharing {
 
     private func makeRecord(for id: CKRecord.ID) -> CKRecord? {
         guard let context, let bowlID = SharedBowlNames.bowlID(fromZoneName: id.zoneID.zoneName), let info = bowls[bowlID],
-              let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { return nil }
+              info.endingSince == nil, let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { return nil }
         let key = SharedBowlNames.bowlKey(bowlID)
         let record = SharedBowlRecords.base(kind, id: id, systemFields: info.systemFields[id.recordName])
         switch kind {
@@ -460,7 +571,8 @@ final class BowlSharing {
 
     // MARK: - Events of the engines
 
-    func handle(_ event: CKSyncEngine.Event, scope: CKDatabase.Scope) {
+    func handle(_ event: CKSyncEngine.Event, scope: CKDatabase.Scope, from engine: CKSyncEngine) {
+        guard isCurrent(engine, scope: scope) else { return }
         switch event {
         case .stateUpdate(let update):
             if scope == .private { engineStates.private = update.stateSerialization } else { engineStates.shared = update.stateSerialization }
@@ -497,13 +609,14 @@ final class BowlSharing {
         }
     }
 
+    /// The only places a share becomes known here are this one (a zone of mine, or one accepted on another of my
+    /// devices) and `accept`.
     private func databaseChanged(_ changes: CKSyncEngine.Event.FetchedDatabaseChanges, scope: CKDatabase.Scope) {
         var learned = false
         for modification in changes.modifications {
             let zoneID = modification.zoneID
             guard let bowlID = SharedBowlNames.bowlID(fromZoneName: zoneID.zoneName), bowls[bowlID] == nil else { continue }
-            // Mine, shared from another of my devices; or someone else's, accepted on another of my devices.
-            bowls[bowlID] = SharedBowlInfo(bowlID: bowlID, role: scope == .private ? .owner : .participant, zoneOwnerName: zoneID.ownerName)
+            store(SharedBowlInfo(bowlID: bowlID, role: scope == .private ? .owner : .participant, zoneOwnerName: zoneID.ownerName))
             learned = true
         }
         for deletion in changes.deletions {
@@ -516,49 +629,63 @@ final class BowlSharing {
         if learned { Task { await refreshPeople() } }
     }
 
+    /// The bowl a record of a zone belongs to, if this device follows that share (and it is not ending).
+    private func followed(_ zoneID: CKRecordZone.ID) -> SharedBowlInfo? {
+        guard let bowlID = SharedBowlNames.bowlID(fromZoneName: zoneID.zoneName), let info = bowls[bowlID],
+              info.endingSince == nil, info.zoneOwnerName == zoneID.ownerName else { return nil }
+        return info
+    }
+
     private func apply(_ changes: CKSyncEngine.Event.FetchedRecordZoneChanges, scope: CKDatabase.Scope) {
         guard let context else { return }
         for modification in changes.modifications {
             let record = modification.record
-            let zoneID = record.recordID.zoneID
-            guard let bowlID = SharedBowlNames.bowlID(fromZoneName: zoneID.zoneName) else { continue }
-            let role: SharedBowlRole = scope == .private ? .owner : .participant
-            var info = bowls[bowlID] ?? SharedBowlInfo(bowlID: bowlID, role: role, zoneOwnerName: zoneID.ownerName)
+            guard var info = followed(record.recordID.zoneID) else { continue }
             if let share = record as? CKShare {
                 info.people = SharedBowlRecords.people(of: share)
-                bowls[bowlID] = info
+                store(info)
                 continue
             }
             guard let kind = SharedBowlNames.kind(ofRecordName: record.recordID.recordName) else { continue }
+            var taken = true
             switch kind {
             case .bowl: applyBowl(record, info: &info, in: context)
-            case .note(let id): applyNote(record, id: id, info: &info, in: context)
+            case .note(let id): taken = applyNote(record, id: id, info: &info, in: context)
             case .file(let name): applyFile(record, name: name, info: &info)
             }
-            info.systemFields[record.recordID.recordName] = SharedBowlRecords.systemFields(of: record)
-            bowls[bowlID] = info
+            // A record that could not be read keeps the old system fields: a change sent on top of it would replace
+            // what it holds without anyone having seen it.
+            if taken { info.systemFields[record.recordID.recordName] = SharedBowlRecords.systemFields(of: record) }
+            store(info)
         }
         for deletion in changes.deletions {
-            let id = deletion.recordID
-            guard let bowlID = SharedBowlNames.bowlID(fromZoneName: id.zoneID.zoneName), var info = bowls[bowlID],
-                  let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { continue }
-            info.systemFields[id.recordName] = nil
-            switch kind {
-            case .note(let noteID):
-                let key = noteID.uuidString
-                info.noteHashes[key] = nil
-                let bowlKey = SharedBowlNames.bowlKey(bowlID)
-                let local = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == noteID }))) ?? []
-                if local.contains(where: { $0.projectIDs.contains(bowlKey) }) { info.pendingRemovals[key] = Date() }
-            case .file(let name):
-                info.fileNames.remove(name)
-            case .bowl:
-                break
-            }
-            bowls[bowlID] = info
+            guard var info = followed(deletion.recordID.zoneID) else { continue }
+            recordWasDeleted(deletion.recordID, info: &info, in: context)
+            store(info)
         }
         try? context.save()
         persist()
+    }
+
+    /// A record left the zone (someone deleted it): what this device knew of it goes; a note still in the bowl here
+    /// waits to be moved to the inbox (`scan`).
+    private func recordWasDeleted(_ id: CKRecord.ID, info: inout SharedBowlInfo, in context: ModelContext) {
+        guard let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { return }
+        info.systemFields[id.recordName] = nil
+        switch kind {
+        case .note(let noteID):
+            let key = noteID.uuidString
+            info.noteHashes[key] = nil
+            info.unreadNotes?.remove(key)
+            let bowlKey = SharedBowlNames.bowlKey(info.bowlID)
+            let local = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == noteID }))) ?? []
+            if local.contains(where: { $0.projectIDs.contains(bowlKey) }) { info.pendingRemovals[key] = Date() }
+        case .file(let name):
+            info.fileNames.remove(name)
+            info.fileOwners?[name] = nil
+        case .bowl:
+            info.bowlHash = nil
+        }
     }
 
     private func applyBowl(_ record: CKRecord, info: inout SharedBowlInfo, in context: ModelContext) {
@@ -569,6 +696,8 @@ final class BowlSharing {
         info.bowlHash = SharedBowlNames.bowlFingerprint(name: name)
         if !name.isEmpty { info.name = name }
         if folders.isEmpty {
+            // The owner's own bowl comes through the private sync, never as a copy.
+            guard info.role == .participant else { return }
             let folder = NoteFolder(name: name.isEmpty ? String(localized: "Shared Bowl") : name)
             folder.id = bowlID
             folder.shareCopyToken = UUID().uuidString
@@ -583,30 +712,53 @@ final class BowlSharing {
         }
     }
 
-    private func applyNote(_ record: CKRecord, id: UUID, info: inout SharedBowlInfo, in context: ModelContext) {
-        guard let payload = SharedBowlRecords.payload(of: record), payload.id == id else { return }
-        let key = SharedBowlNames.bowlKey(info.bowlID)
+    /// Writes a note of the zone into the store. Returns false when its record could not be read (then nothing of
+    /// it is known here, and no file leaves the zone until it is).
+    @discardableResult
+    private func applyNote(_ record: CKRecord, id: UUID, info: inout SharedBowlInfo, in context: ModelContext) -> Bool {
+        let key = id.uuidString
+        guard let payload = SharedBowlRecords.payload(of: record), payload.id == id else {
+            info.unreadNotes = (info.unreadNotes ?? []).union([key])
+            return false
+        }
+        info.unreadNotes?.remove(key)
+        if info.unreadNotes?.isEmpty == true { info.unreadNotes = nil }
+        let bowlKey = SharedBowlNames.bowlKey(info.bowlID)
         var matches = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == id }))) ?? []
         for extra in SharedBowlMerge.duplicatesToDelete(matches, token: \.shareCopyToken) {
             context.delete(extra)
             matches.removeAll { $0 === extra }
         }
         let local = matches.first
-        switch SharedBowlMerge.decide(local: local, lastSynced: info.noteHashes[id.uuidString], incoming: payload) {
+        let createdByMe = record.creatorUserRecordID.map { $0.recordName == CKCurrentUserDefaultName } ?? true
+        let decision = SharedBowlMerge.decide(
+            local: local, isInBowl: local?.projectIDs.contains(bowlKey) ?? false, lastSynced: info.noteHashes[key],
+            incoming: payload, mayInsert: SharedBowlMerge.mayInsert(role: info.role, createdByMe: createdByMe)
+        )
+        switch decision {
         case .insert:
             let note = Note()
-            payload.apply(to: note, bowlKey: key)
+            payload.apply(to: note, bowlKey: bowlKey)
             note.shareCopyToken = UUID().uuidString
             context.insert(note)
         case .apply:
-            if let local, SharedNotePayload(local) != payload || local.projectIDs != [key] {
-                payload.apply(to: local, bowlKey: key)
+            if let local, SharedNotePayload(local).fingerprint != payload.fingerprint || local.projectIDs != [bowlKey] {
+                payload.apply(to: local, bowlKey: bowlKey)
             }
-        case .keepLocal:
+        case .keepLocal, .keepOut:
             break
+        case .skip:
+            // Not here (yet): nothing is known of it here, so nothing is sent or deleted for it.
+            return true
         }
-        info.noteHashes[id.uuidString] = payload.fingerprint
-        info.pendingRemovals[id.uuidString] = nil
+        info.noteHashes[key] = payload.fingerprint
+        info.pendingRemovals[key] = nil
+        if !payload.fileNames.isEmpty {
+            var owners = info.fileOwners ?? [:]
+            for file in payload.fileNames { owners[file] = key }
+            info.fileOwners = owners
+        }
+        return true
     }
 
     private func applyFile(_ record: CKRecord, name: String, info: inout SharedBowlInfo) {
@@ -623,21 +775,25 @@ final class BowlSharing {
         for record in sent.savedRecords {
             let id = record.recordID
             let sentPrint = inFlight.removeValue(forKey: Self.flightKey(id))
-            guard let bowlID = SharedBowlNames.bowlID(fromZoneName: id.zoneID.zoneName), var info = bowls[bowlID],
-                  let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { continue }
+            guard var info = followed(id.zoneID), let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { continue }
             info.systemFields[id.recordName] = SharedBowlRecords.systemFields(of: record)
             switch kind {
             case .bowl: if let sentPrint { info.bowlHash = sentPrint }
             case .note(let noteID): if let sentPrint { info.noteHashes[noteID.uuidString] = sentPrint }
             case .file(let name): info.fileNames.insert(name)
             }
-            bowls[bowlID] = info
+            store(info)
         }
         for failure in sent.failedRecordSaves {
             let id = failure.record.recordID
             inFlight[Self.flightKey(id)] = nil
-            guard let bowlID = SharedBowlNames.bowlID(fromZoneName: id.zoneID.zoneName), var info = bowls[bowlID],
-                  let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { continue }
+            guard var info = followed(id.zoneID), let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else {
+                if failure.error.code == .zoneNotFound || failure.error.code == .userDeletedZone,
+                   let bowlID = SharedBowlNames.bowlID(fromZoneName: id.zoneID.zoneName), let info = bowls[bowlID], info.endingSince == nil {
+                    end(info)
+                }
+                continue
+            }
             switch failure.error.code {
             case .serverRecordChanged:
                 // Someone else changed it first: the later change wins (`SharedBowlMerge`).
@@ -645,50 +801,87 @@ final class BowlSharing {
                 switch kind {
                 case .bowl:
                     applyBowl(server, info: &info, in: context)
+                    info.systemFields[id.recordName] = SharedBowlRecords.systemFields(of: server)
+                    let bowlID = info.bowlID
                     let folder = (try? context.fetch(FetchDescriptor<NoteFolder>(predicate: #Predicate { $0.id == bowlID })))?.first
                     if let folder, SharedBowlNames.bowlFingerprint(name: folder.name) != info.bowlHash { again.append(.saveRecord(id)) }
                 case .note(let noteID):
-                    applyNote(server, id: noteID, info: &info, in: context)
-                    // The change here was the later one and stayed: it goes on top of the server's version.
-                    let local = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == noteID })))?.first
-                    if let local, SharedNotePayload(local).fingerprint != info.noteHashes[noteID.uuidString] {
-                        again.append(.saveRecord(id))
+                    if applyNote(server, id: noteID, info: &info, in: context) {
+                        info.systemFields[id.recordName] = SharedBowlRecords.systemFields(of: server)
+                        // The change here was the later one and stayed: it goes on top of the server's version.
+                        if localDiffers(noteID, from: info, in: context) { again.append(.saveRecord(id)) }
+                    } else {
+                        // The server's version is in a file the error did not bring: it is fetched whole first.
+                        refetch(id, scope: scope)
                     }
                 case .file(let name):
                     info.fileNames.insert(name)
+                    info.systemFields[id.recordName] = SharedBowlRecords.systemFields(of: server)
                 }
-                info.systemFields[id.recordName] = SharedBowlRecords.systemFields(of: server)
             case .zoneNotFound, .userDeletedZone:
                 end(info)
                 continue
             case .unknownItem:
-                // Deleted on the server meanwhile: sent again as a new record.
-                info.systemFields[id.recordName] = nil
-                again.append(.saveRecord(id))
+                // Deleted on the server meanwhile: that is someone's removal, not something to bring back.
+                switch kind {
+                case .bowl:
+                    info.systemFields[id.recordName] = nil
+                    again.append(.saveRecord(id))
+                case .note, .file:
+                    recordWasDeleted(id, info: &info, in: context)
+                }
             default:
                 // Passing failures (network, busy server, rate limits) are tried again by the engine itself.
                 print("[sharing] could not save \(id.recordName): \(failure.error)")
             }
-            bowls[bowlID] = info
+            store(info)
         }
         let deleted = sent.deletedRecordIDs + sent.failedRecordDeletes.filter { $0.value.code == .unknownItem }.map(\.key)
         for id in deleted {
-            guard let bowlID = SharedBowlNames.bowlID(fromZoneName: id.zoneID.zoneName), var info = bowls[bowlID],
-                  let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { continue }
+            guard var info = followed(id.zoneID), let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { continue }
             info.systemFields[id.recordName] = nil
             switch kind {
             case .note(let noteID): info.noteHashes[noteID.uuidString] = nil
-            case .file(let name): info.fileNames.remove(name)
+            case .file(let name):
+                info.fileNames.remove(name)
+                info.fileOwners?[name] = nil
             case .bowl: break
             }
-            bowls[bowlID] = info
+            store(info)
         }
         for (id, error) in sent.failedRecordDeletes where [.zoneNotFound, .userDeletedZone].contains(error.code) {
-            if let bowlID = SharedBowlNames.bowlID(fromZoneName: id.zoneID.zoneName), let info = bowls[bowlID] { end(info) }
+            if let info = followed(id.zoneID) { end(info) }
         }
         if !again.isEmpty { engine(for: scope)?.state.add(pendingRecordZoneChanges: again) }
         try? context.save()
         persist()
+        // Changes made while their record was on its way were skipped then: they go now.
+        scanSoon()
+    }
+
+    private func localDiffers(_ noteID: UUID, from info: SharedBowlInfo, in context: ModelContext) -> Bool {
+        let key = SharedBowlNames.bowlKey(info.bowlID)
+        let local = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == noteID })))?.first { $0.projectIDs.contains(key) }
+        guard let local else { return false }
+        return SharedNotePayload(local).fingerprint != info.noteHashes[noteID.uuidString]
+    }
+
+    /// Fetches a record whole (with its files) to settle a conflict, then merges it like a fetched change.
+    private func refetch(_ id: CKRecord.ID, scope: CKDatabase.Scope) {
+        let key = Self.flightKey(id)
+        guard !refetching.contains(key), let database = engine(for: scope)?.database else { return }
+        refetching.insert(key)
+        Task {
+            defer { refetching.remove(key) }
+            guard let record = try? await database.record(for: id), let context,
+                  var info = followed(id.zoneID), case .note(let noteID)? = SharedBowlNames.kind(ofRecordName: id.recordName) else { return }
+            guard applyNote(record, id: noteID, info: &info, in: context) else { return }
+            info.systemFields[id.recordName] = SharedBowlRecords.systemFields(of: record)
+            if localDiffers(noteID, from: info, in: context) { engine(for: scope)?.state.add(pendingRecordZoneChanges: [.saveRecord(id)]) }
+            store(info)
+            try? context.save()
+            persist()
+        }
     }
 
     // MARK: - Saving what this device knows
@@ -708,7 +901,8 @@ final class BowlSharing {
     }
 }
 
-/// Hands the events of a sync engine to `BowlSharing`, on the main actor.
+/// Hands the events of a sync engine to `BowlSharing`, on the main actor. Events of an engine that was replaced
+/// (after an account change) are dropped there.
 final class SharingEngineDelegate: CKSyncEngineDelegate, @unchecked Sendable {
     let scope: CKDatabase.Scope
 
@@ -718,10 +912,12 @@ final class SharingEngineDelegate: CKSyncEngineDelegate, @unchecked Sendable {
 
     func handleEvent(_ event: CKSyncEngine.Event, syncEngine: CKSyncEngine) async {
         let scope = scope
-        await MainActor.run { BowlSharing.shared.handle(event, scope: scope) }
+        await MainActor.run { BowlSharing.shared.handle(event, scope: scope, from: syncEngine) }
     }
 
     func nextRecordZoneChangeBatch(_ context: CKSyncEngine.SendChangesContext, syncEngine: CKSyncEngine) async -> CKSyncEngine.RecordZoneChangeBatch? {
+        let scope = scope
+        guard await MainActor.run(body: { BowlSharing.shared.isCurrent(syncEngine, scope: scope) }) else { return nil }
         let pending = syncEngine.state.pendingRecordZoneChanges.filter { context.options.scope.contains($0) }
         guard !pending.isEmpty else { return nil }
         return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: pending) { id in
