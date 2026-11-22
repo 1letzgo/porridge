@@ -58,6 +58,8 @@ struct NoteDetailView: View {
     @State private var lastSplit: BowlChange?
     /// The screen was shown before: coming back (from Quick Look, a sheet) keeps the open tab.
     @State private var didAppear = false
+    /// What someone else did to the note in a shared bowl, as it was when the note was opened ("Changed by Ben").
+    @State private var openedActivity: String?
     @FocusState private var focused: Bool
     /// Height of one line of the title (title2, bold), as the text field lays it out: the box stands centered on it.
     @ScaledMetric(relativeTo: .title2) private var titleLineHeight: CGFloat = 28
@@ -86,10 +88,12 @@ struct NoteDetailView: View {
 
             if note.isDeleted { deletedBanner }
 
+            if isReadOnly { readOnlyBanner }
+
             if !note.isDeleted { tagRow }
 
             if note.attachmentsData != nil, !note.stripAttachments.isEmpty {
-                AttachmentStrip(note: note, onRemove: note.isDeleted ? nil : { removeAttachment($0) })
+                AttachmentStrip(note: note, onRemove: isLocked ? nil : { removeAttachment($0) })
             }
 
             statusView
@@ -125,14 +129,14 @@ struct NoteDetailView: View {
                 } else {
                     if processing.canUndoEnhance(note) { enhancedBanner }
                     NoteBodyEditor(
-                        text: $note.text, isEditable: !note.isDeleted && !isEnhancing, controller: editor,
+                        text: $note.text, isEditable: !isLocked && !isEnhancing, controller: editor,
                         placeholder: note.isTodo ? "Notes and subtasks…" : "Start typing or dictate…", growsWithText: true
                     )
-                    if note.isTodo, !note.isDeleted, !isEnhancing {
+                    if note.isTodo, !isLocked, !isEnhancing {
                         addSubtaskButton
                     }
                     // Lines that read like tasks, offered as to-dos (never on links or saved files).
-                    if TaskDetection.applies(to: note), !isEnhancing {
+                    if TaskDetection.applies(to: note), !isLocked, !isEnhancing {
                         TaskDetectionBar(note: note, beforeChange: commitTyping)
                     }
                 }
@@ -143,7 +147,7 @@ struct NoteDetailView: View {
         .frame(maxWidth: .infinity)
         .modifier(NotePageScroll(following: liveText, isEditing: editor.isEditing))
         .overlay(alignment: .bottom) {
-            if editor.isEditing, !note.isDeleted, tab == .note, dictation.phase == .idle {
+            if editor.isEditing, !isLocked, tab == .note, dictation.phase == .idle {
                 NoteKeyboardBar(controller: editor)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 6)
@@ -176,7 +180,7 @@ struct NoteDetailView: View {
         }
         .toolbar(onBack == nil ? .automatic : .hidden, for: .navigationBar)
         .overlay(alignment: .bottomTrailing) {
-            if tab == .note, processing.stages[note.id] == nil, !note.isDeleted {
+            if tab == .note, processing.stages[note.id] == nil, !isLocked {
                 DictationButton(dictation: dictation) {
                     Task { await toggleDictation() }
                 }
@@ -189,6 +193,9 @@ struct NoteDetailView: View {
             editor.attachImage = { [note, context, processing] url in
                 NoteImageAttaching.attach(url, to: note, context: context, processing: processing)
             }
+            // What someone else added or changed: said once more here, and seen from now on.
+            if !didAppear { openedActivity = BowlSharing.shared.activityLine(for: note) }
+            BowlSharing.shared.markSeen(note)
             // Loading the same file again keeps the player where it was.
             if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
             guard !didAppear else { return }
@@ -342,7 +349,7 @@ struct NoteDetailView: View {
                         commitTyping()
                         withAnimation(.snappy) { Todos.setDone(done, note, in: context) }
                     }
-                    .disabled(note.isDeleted)
+                    .disabled(isLocked)
                     .frame(minHeight: titleLineHeight)
                 }
                 TextField(note.isTodo ? "To-do" : "Title", text: Binding(
@@ -357,7 +364,7 @@ struct NoteDetailView: View {
                 .strikethrough(note.isDone, color: .secondary)
                 .accessibilityIdentifier("Title")
                 .focused($focused)
-                .disabled(note.isDeleted)
+                .disabled(isLocked)
             }
 
             if let source = todoSource {
@@ -380,7 +387,25 @@ struct NoteDetailView: View {
             Text(metaLine)
             .font(.subheadline)
             .foregroundStyle(.secondary)
+
+            if let openedActivity, !note.isDeleted {
+                SharedActivityLabel(text: openedActivity)
+            }
         }
+    }
+
+    /// In a bowl shared with me to see only: nothing of the entry can be changed here.
+    private var isReadOnly: Bool { !note.isDeleted && BowlSharing.shared.isReadOnly(note) }
+
+    /// Nothing can be changed: the note is in Recently Deleted, or in a bowl I may only see.
+    private var isLocked: Bool { note.isDeleted || isReadOnly }
+
+    private var readOnlyBanner: some View {
+        Label("Shared with you to view only", systemImage: "eye")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.brandNavy)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .flatPanel(.gray)
     }
 
     /// One text, so a long line wraps as a line and not column by column.
@@ -476,7 +501,7 @@ struct NoteDetailView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .disabled(note.isDeleted)
+                    .disabled(isLocked)
                     .accessibilityLabel("Rename \(speaker.name)")
                 }
             }
@@ -516,7 +541,7 @@ struct NoteDetailView: View {
                         withAnimation(.snappy) { Inbox.dismissSuggestions(note, in: context) }
                     }
                 }
-                if note.isTodo, !note.isDeleted {
+                if note.isTodo, !isLocked {
                     DueDateChip(note: note, isPicking: $pickingDue)
                 }
                 ProjectPills(
@@ -524,12 +549,13 @@ struct NoteDetailView: View {
                     onChoose: { Inbox.file(note, into: Projects.key($0), in: context) },
                     onRemove: { Projects.remove($0, from: note, in: context) }
                 )
+                .disabled(isReadOnly)
                 // A stored file: what it is as a document, after its bowls; a tap sets it (and so marks it as one).
-                if note.isStored, !note.isDeleted {
+                if note.isStored, !isLocked {
                     DocumentChip(note: note)
                 }
                 ForEach(note.tags, id: \.self) { tag in
-                    let removable = note.labels.contains { $0.lowercased() == tag.lowercased() }
+                    let removable = !isReadOnly && note.labels.contains { $0.lowercased() == tag.lowercased() }
                     HStack(spacing: 6) {
                         Text("#\(tag)").font(.subheadline.weight(.semibold))
                         if removable {
@@ -545,19 +571,21 @@ struct NoteDetailView: View {
                     .padding(.vertical, 7)
                     .chunkyPill(fill: .brandSky)
                 }
-                Button {
-                    newTag = ""
-                    addingTag = true
-                } label: {
-                    Label("Tag", systemImage: "plus")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.brandNavy)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .chunkyPill(fill: .gray)
+                if !isReadOnly {
+                    Button {
+                        newTag = ""
+                        addingTag = true
+                    } label: {
+                        Label("Tag", systemImage: "plus")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.brandNavy)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .chunkyPill(fill: .gray)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Add Tag")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Add Tag")
             }
             .padding(.bottom, 4)
         }
@@ -610,6 +638,19 @@ struct NoteDetailView: View {
         Menu {
             if note.isDeleted {
                 Button { restore() } label: { Label("Recover", systemImage: "arrow.uturn.backward") }
+            } else if isReadOnly {
+                // A bowl I may only see: the pin is my own; nothing of the entry changes.
+                Button { note.isPinned.toggle(); try? context.save() } label: {
+                    Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
+                }
+                if note.summary != nil {
+                    Button { copySummary() } label: { Label("Copy Summary", systemImage: "doc.on.doc") }
+                }
+                if !note.segments.isEmpty {
+                    Button { Clipboard.copy(note.transcriptText()) } label: {
+                        Label("Copy Transcript", systemImage: "doc.on.doc")
+                    }
+                }
             } else {
                 Button { note.isPinned.toggle(); try? context.save() } label: {
                     Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
@@ -650,7 +691,7 @@ struct NoteDetailView: View {
                         }
                     }
                 }
-                if NoteSplitter.canSplit(note) {
+                if !isLocked, NoteSplitter.canSplit(note) {
                     Button {
                         commitTyping()
                         showSplit = true
@@ -880,7 +921,7 @@ struct NoteDetailView: View {
                             } label: {
                                 Label("Copy", systemImage: "doc.on.doc")
                             }
-                            if speakers.count > 1, !note.isDeleted {
+                            if speakers.count > 1, !isLocked {
                                 Section("Assign Speaker") {
                                     ForEach(speakers) { speaker in
                                         Button(speaker.name) { reassign(segment, to: speaker) }
@@ -952,19 +993,19 @@ struct NoteDetailView: View {
                 let suggestions = note.pendingTodoSuggestions(made: made)
                 VStack(spacing: 16) {
                     // The tasks of the summary offered as to-dos, first thing on the page; never from a saved page.
-                    if !suggestions.isEmpty {
+                    if !suggestions.isEmpty, !isReadOnly {
                         SuggestedTodosCard(note: note, suggestions: suggestions)
                     }
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
                             MarkdownText(
                                 markdown: summary,
-                                onToggleTask: note.isDeleted || note.isSaved ? nil : { toggleSummaryTask(line: $0) },
+                                onToggleTask: isLocked || note.isSaved ? nil : { toggleSummaryTask(line: $0) },
                                 isTakenTask: note.isSaved ? nil : { text in
                                     TodoSuggestions.isTaken(text, states: TodoSuggestions.states(note.todoSuggestionsRaw), madeTitles: made.map(\.title))
                                 }
                             )
-                            if !note.isDeleted {
+                            if !isLocked {
                                 Menu {
                                     Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
                                     Button { insertSummary() } label: { Label("Insert into Note", systemImage: "text.insert") }
@@ -1001,7 +1042,7 @@ struct NoteDetailView: View {
                     Text(summarizeMessage)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
-                    if !note.isDeleted {
+                    if !isLocked {
                         Button {
                             requestSummary()
                         } label: {

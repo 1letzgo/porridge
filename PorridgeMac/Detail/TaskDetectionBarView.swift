@@ -42,7 +42,7 @@ final class TaskDetectionBarView: NSView {
     func schedule(for note: Note, immediately: Bool = false) {
         self.note = note
         pending?.cancel()
-        guard TaskDetection.applies(to: note) else {
+        guard TaskDetection.applies(to: note), !BowlSharing.shared.isReadOnly(note) else {
             show([])
             return
         }

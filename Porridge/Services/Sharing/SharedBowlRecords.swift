@@ -137,12 +137,31 @@ enum SharedBowlRecords {
             let formatted = identity.nameComponents.map { PersonNameComponentsFormatter.localizedString(from: $0, style: .default) }
             let name = [formatted, identity.lookupInfo?.emailAddress, identity.lookupInfo?.phoneNumber]
                 .compactMap { $0 }.first { !$0.isEmpty } ?? String(localized: "Someone")
+            let isOwner = participant.role == .owner
             return SharedBowlPerson(
                 name: name,
-                isOwner: participant.role == .owner,
+                isOwner: isOwner,
                 isCurrentUser: current.map { $0 == participant } ?? false,
-                isPending: participant.acceptanceStatus == .pending
+                isPending: participant.acceptanceStatus == .pending,
+                canEdit: canEdit(isOwner: isOwner, permission: participant.permission),
+                userRecordName: identity.userRecordID?.recordName
             )
         }
+    }
+
+    /// The owner may always edit; anyone else as the share says ("Can edit" or "Can view"); nil when it says neither.
+    static func canEdit(isOwner: Bool, permission: CKShare.ParticipantPermission) -> Bool? {
+        if isOwner { return true }
+        switch permission {
+        case .readWrite: return true
+        case .readOnly: return false
+        default: return nil
+        }
+    }
+
+    /// Whether the share lets me only see the bowl; nil when it does not say (I am not among its people).
+    static func isReadOnlyForMe(_ share: CKShare) -> Bool? {
+        guard let me = share.currentUserParticipant else { return nil }
+        return canEdit(isOwner: me.role == .owner, permission: me.permission).map { !$0 }
     }
 }

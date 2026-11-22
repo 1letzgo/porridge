@@ -23,6 +23,8 @@ final class NoteChipsView: NSView {
     @MainActor
     func show(_ note: Note, library: Library) {
         self.note = note
+        // Nothing changes on a note in Recently Deleted, or in a bowl shared with me to view only.
+        let locked = note.isDeleted || BowlSharing.shared.isReadOnly(note)
         var views: [NSView] = []
         // A to-do's due day comes first.
         if note.isTodo {
@@ -55,11 +57,11 @@ final class NoteChipsView: NSView {
             guard let project = library.project(key: key) else { continue }
             shownBowls += 1
             let pill = PillButton(title: project.name, symbol: "folder.fill", tint: .brandProject, target: self, action: #selector(showBuckets(_:)))
-            pill.isEnabled = !note.isDeleted
+            pill.isEnabled = !locked
             pill.setAccessibilityLabel("Bowl \(project.name)")
             pill.toolTip = "Change Bowl"
             views.append(pill)
-            if !note.isDeleted {
+            if !locked {
                 let remove = NSButton(image: .symbol("xmark", size: 10, weight: .bold, label: "Remove from \(project.name)"), target: self, action: #selector(removeBucket(_:)))
                 remove.isBordered = false
                 remove.contentTintColor = .brandProject
@@ -68,14 +70,14 @@ final class NoteChipsView: NSView {
                 views.append(remove)
             }
         }
-        if !note.isDeleted, shownBowls == 0 {
+        if !locked, shownBowls == 0 {
             let add = PillButton(title: "Bowl", symbol: "plus", tint: .brandProject, target: self, action: #selector(showBuckets(_:)))
             add.setAccessibilityLabel("Add to Bowl")
             views.append(add)
         }
         // A stored file: what it is as a document, after its bowls ("Invoice · Telekom" in orange, or an
         // outlined "+ Document" to mark it as one); a click sets it.
-        if note.isStored, !note.isDeleted {
+        if note.isStored, !locked {
             let info = note.documentInfo ?? DocumentInfo()
             let label = info.shortLabel
             let title = info.isEmpty ? String(localized: "Document") : (label.count > 40 ? String(label.prefix(39)) + "…" : label)
@@ -112,13 +114,13 @@ final class NoteChipsView: NSView {
             }
         }
         for tag in note.tags {
-            let removable = note.labels.contains { $0.lowercased() == tag.lowercased() } && !note.isDeleted
+            let removable = note.labels.contains { $0.lowercased() == tag.lowercased() } && !locked
             let pill = PillButton(title: "#\(tag)", symbol: removable ? "xmark" : nil, tint: .brandSky, target: self, action: removable ? #selector(removeTag(_:)) : nil)
             pill.identifier = .init(tag)
             pill.setAccessibilityLabel(removable ? "Remove Tag \(tag)" : "Tag \(tag)")
             views.append(pill)
         }
-        if !note.isDeleted {
+        if !locked {
             let add = PillButton(title: "Tag", symbol: "plus", tint: .systemGray, target: self, action: #selector(addTag))
             add.setAccessibilityLabel("Add Tag")
             views.append(add)

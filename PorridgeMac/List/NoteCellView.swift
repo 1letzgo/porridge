@@ -108,7 +108,7 @@ final class NoteCellView: NSTableCellView {
         todoBox.isHidden = !isTodo
         if isTodo {
             todoBox.isDone = TodoBridge.isDone(note)
-            todoBox.isEnabled = !note.isDeleted
+            todoBox.isEnabled = !note.isDeleted && !BowlSharing.shared.isReadOnly(note)
         }
         // A done to-do is struck through and grey.
         let done = isTodo && TodoBridge.isDone(note)
@@ -234,6 +234,10 @@ final class NoteCellView: NSTableCellView {
         if note.isRecording, note.duration > 0 {
             add(note.duration.durationText)
             if note.speakers.count > 1 { add(String(localized: "\(note.speakers.count) speakers")) }
+        }
+        // Someone else added or changed it in a shared bowl, and it was not opened here since.
+        if let activity = BowlSharing.shared.activityLine(for: note) {
+            add(activity, symbol: "person.crop.circle.badge.exclamationmark", color: .brandProject.readable, bold: true)
         }
         // One line, cut at the end (an attributed text would wrap by default).
         let style = NSMutableParagraphStyle()

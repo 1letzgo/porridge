@@ -115,6 +115,52 @@ final class BowlSharing {
     /// Shared with me (not mine).
     func isSharedWithMe(_ bowlID: UUID?) -> Bool { info(for: bowlID)?.role == .participant }
 
+    /// Shared with me to see only ("Can view"): its entries are shown and cannot be changed here.
+    func isReadOnly(_ bowlID: UUID?) -> Bool { info(for: bowlID)?.isReadOnly ?? false }
+
+    /// The note is in a bowl I may only see.
+    func isReadOnly(_ note: Note) -> Bool {
+        guard !bowls.isEmpty else { return false }
+        return note.projectIDs.contains { isReadOnly(UUID(uuidString: $0)) }
+    }
+
+    /// The bowl of a note, if it is a shared one (an entry is in one bowl at most).
+    private func sharedBowl(of note: Note) -> SharedBowlInfo? {
+        guard !bowls.isEmpty else { return nil }
+        return note.projectIDs.lazy.compactMap { UUID(uuidString: $0).flatMap { self.bowls[$0] } }.first
+    }
+
+    // MARK: - Who changed what
+
+    /// "New from Anna", "Changed by Ben": what someone else did to the note and this device has not shown yet.
+    func activityLine(for note: Note) -> String? {
+        guard let info = sharedBowl(of: note), let activity = info.activity?[note.id.uuidString] else { return nil }
+        return SharedBowlActivity.line(activity, in: info)
+    }
+
+    /// The note was opened here: it is no longer new.
+    func markSeen(_ note: Note) {
+        guard var info = sharedBowl(of: note), info.activity?[note.id.uuidString] != nil else { return }
+        SharedBowlActivity.seen(note.id.uuidString, in: &info)
+        store(info)
+        persist()
+    }
+
+    /// Someone else added or changed something in the bowl since its page was last open here.
+    func hasNewSinceLastVisit(_ bowlID: UUID?) -> Bool {
+        info(for: bowlID).map(SharedBowlActivity.hasNewSinceLastVisit) ?? false
+    }
+
+    /// The bowl's page is open (or was left): what was new is seen as far as the bowl goes; its entries keep their
+    /// mark until each is opened.
+    func markVisited(_ bowlID: UUID?) {
+        // Only when something was new: every change of `bowls` redraws whatever shows a shared bowl.
+        guard var info = info(for: bowlID), SharedBowlActivity.hasNewSinceLastVisit(info) else { return }
+        info.lastVisit = Date()
+        store(info)
+        persist()
+    }
+
     // MARK: - Start
 
     /// At launch (both apps): finds the shared bowls of this device and starts following them.
@@ -244,6 +290,8 @@ final class BowlSharing {
     private func adopt(_ share: CKShare, _ fresh: SharedBowlInfo) -> CKShare {
         var info = bowls[fresh.bowlID] ?? fresh
         info.people = SharedBowlRecords.people(of: share)
+        // What happened before the bowl was shared is nobody else's doing.
+        if info.watchingSince == nil { info.watchingSince = Date() }
         store(info)
         persist()
         scan()
@@ -257,7 +305,7 @@ final class BowlSharing {
         guard let database = database(for: info.role) else { throw BowlSharingError.unavailable }
         let id = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: SharedBowlRecords.zoneID(info))
         guard let share = try await database.record(for: id) as? CKShare else { throw BowlSharingError.notShared }
-        updatePeople(info.bowlID, SharedBowlRecords.people(of: share))
+        take(share, for: info.bowlID)
         return share
     }
 
@@ -275,11 +323,27 @@ final class BowlSharing {
         }
     }
 
-    private func updatePeople(_ bowlID: UUID, _ people: [SharedBowlPerson]) {
-        guard var info = bowls[bowlID], info.people != people else { return }
-        info.people = people
+    /// The people of the share and what I may do in the bowl, as the share says now. Allowed to only see it, the
+    /// changes waiting to be sent are dropped (they stay here); allowed to edit again, what differs is sent.
+    private func take(_ share: CKShare, for bowlID: UUID) {
+        guard var info = bowls[bowlID] else { return }
+        let wasSending = info.maySend
+        info.people = SharedBowlRecords.people(of: share)
+        if info.role == .participant, let readOnly = SharedBowlRecords.isReadOnlyForMe(share) { info.readOnly = readOnly }
+        guard info != bowls[bowlID] else { return }
         store(info)
         persist()
+        permissionChanged(info, wasSending: wasSending)
+    }
+
+    private func permissionChanged(_ info: SharedBowlInfo, wasSending: Bool) {
+        if wasSending, !info.maySend { dropPending(info) }
+        if !wasSending, info.maySend { scanSoon() }
+    }
+
+    /// The zones (`SharedBowlNames.zoneKey`) whose changes may not be sent (`SharedBowlInfo.maySend`).
+    func zonesNotToSend() -> Set<String> {
+        Set(bowls.values.filter { !$0.maySend }.map { SharedBowlNames.zoneKey(zoneName: $0.zoneName, ownerName: $0.zoneOwnerName) })
     }
 
     // MARK: - Stopping and leaving
@@ -405,6 +469,8 @@ final class BowlSharing {
                 let title = (metadata.share[CKShare.SystemFieldKey.title] as? String) ?? ""
                 var info = SharedBowlInfo(bowlID: bowlID, role: .participant, zoneOwnerName: zoneID.ownerName, name: title)
                 info.people = SharedBowlRecords.people(of: metadata.share)
+                info.readOnly = SharedBowlRecords.canEdit(isOwner: false, permission: metadata.participantPermission).map { !$0 }
+                    ?? SharedBowlRecords.isReadOnlyForMe(metadata.share)
                 store(info)
                 persist()
             }
@@ -542,7 +608,7 @@ final class BowlSharing {
 
     private func makeRecord(for id: CKRecord.ID) -> CKRecord? {
         guard let context, let bowlID = SharedBowlNames.bowlID(fromZoneName: id.zoneID.zoneName), let info = bowls[bowlID],
-              info.endingSince == nil, let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { return nil }
+              info.endingSince == nil, info.maySend, let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { return nil }
         let key = SharedBowlNames.bowlKey(bowlID)
         let record = SharedBowlRecords.base(kind, id: id, systemFields: info.systemFields[id.recordName])
         switch kind {
@@ -585,6 +651,8 @@ final class BowlSharing {
             apply(changes, scope: scope)
         case .sentRecordZoneChanges(let sent):
             handleSent(sent, scope: scope)
+        case .didFetchRecordZoneChanges(let fetched):
+            if fetched.error == nil { startWatching(fetched.zoneID) }
         case .didFetchChanges:
             scanSoon()
         default:
@@ -629,6 +697,14 @@ final class BowlSharing {
         if learned { Task { await refreshPeople() } }
     }
 
+    /// The zone's first fetch is done: from now on what others add or change counts as new here.
+    private func startWatching(_ zoneID: CKRecordZone.ID) {
+        guard var info = followed(zoneID), info.watchingSince == nil else { return }
+        info.watchingSince = Date()
+        store(info)
+        persist()
+    }
+
     /// The bowl a record of a zone belongs to, if this device follows that share (and it is not ending).
     private func followed(_ zoneID: CKRecordZone.ID) -> SharedBowlInfo? {
         guard let bowlID = SharedBowlNames.bowlID(fromZoneName: zoneID.zoneName), let info = bowls[bowlID],
@@ -642,8 +718,8 @@ final class BowlSharing {
             let record = modification.record
             guard var info = followed(record.recordID.zoneID) else { continue }
             if let share = record as? CKShare {
-                info.people = SharedBowlRecords.people(of: share)
-                store(info)
+                // Someone joined or left, or the owner changed what I may do.
+                take(share, for: info.bowlID)
                 continue
             }
             guard let kind = SharedBowlNames.kind(ofRecordName: record.recordID.recordName) else { continue }
@@ -677,6 +753,7 @@ final class BowlSharing {
             let key = noteID.uuidString
             info.noteHashes[key] = nil
             info.unreadNotes?.remove(key)
+            SharedBowlActivity.seen(key, in: &info)
             let bowlKey = SharedBowlNames.bowlKey(info.bowlID)
             let local = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == noteID }))) ?? []
             if local.contains(where: { $0.projectIDs.contains(bowlKey) }) { info.pendingRemovals[key] = Date() }
@@ -751,6 +828,13 @@ final class BowlSharing {
             // Not here (yet): nothing is known of it here, so nothing is sent or deleted for it.
             return true
         }
+        // Someone else added or changed it: shown with the entry until it is opened here.
+        let modifiedBy = record.lastModifiedUserRecordID?.recordName
+        if let modifiedBy, let kind = SharedBowlActivity.change(
+            modifiedBy: modifiedBy, lastSynced: info.noteHashes[key], incoming: payload.fingerprint, applied: decision != .keepOut, info: info
+        ) {
+            SharedBowlActivity.note(kind, noteID: key, by: modifiedBy, at: Date(), in: &info)
+        }
         info.noteHashes[key] = payload.fingerprint
         info.pendingRemovals[key] = nil
         if !payload.fileNames.isEmpty {
@@ -821,6 +905,9 @@ final class BowlSharing {
             case .zoneNotFound, .userDeletedZone:
                 end(info)
                 continue
+            case .permissionFailure:
+                // The server says I may not change the bowl (the owner made it "Can view"): nothing more is sent.
+                refused(&info)
             case .unknownItem:
                 // Deleted on the server meanwhile: that is someone's removal, not something to bring back.
                 switch kind {
@@ -841,7 +928,9 @@ final class BowlSharing {
             guard var info = followed(id.zoneID), let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { continue }
             info.systemFields[id.recordName] = nil
             switch kind {
-            case .note(let noteID): info.noteHashes[noteID.uuidString] = nil
+            case .note(let noteID):
+                info.noteHashes[noteID.uuidString] = nil
+                SharedBowlActivity.seen(noteID.uuidString, in: &info)
             case .file(let name):
                 info.fileNames.remove(name)
                 info.fileOwners?[name] = nil
@@ -852,11 +941,24 @@ final class BowlSharing {
         for (id, error) in sent.failedRecordDeletes where [.zoneNotFound, .userDeletedZone].contains(error.code) {
             if let info = followed(id.zoneID) { end(info) }
         }
+        for (id, error) in sent.failedRecordDeletes where error.code == .permissionFailure {
+            guard var info = followed(id.zoneID) else { continue }
+            refused(&info)
+            store(info)
+        }
         if !again.isEmpty { engine(for: scope)?.state.add(pendingRecordZoneChanges: again) }
         try? context.save()
         persist()
         // Changes made while their record was on its way were skipped then: they go now.
         scanSoon()
+    }
+
+    /// A change of a bowl shared with me was refused: I may only see it. What waits to be sent is dropped (it stays
+    /// here); the share's next word on it (`take`) can allow it again.
+    private func refused(_ info: inout SharedBowlInfo) {
+        guard info.role == .participant, info.readOnly != true else { return }
+        info.readOnly = true
+        dropPending(info)
     }
 
     private func localDiffers(_ noteID: UUID, from info: SharedBowlInfo, in context: ModelContext) -> Bool {
@@ -918,7 +1020,17 @@ final class SharingEngineDelegate: CKSyncEngineDelegate, @unchecked Sendable {
     func nextRecordZoneChangeBatch(_ context: CKSyncEngine.SendChangesContext, syncEngine: CKSyncEngine) async -> CKSyncEngine.RecordZoneChangeBatch? {
         let scope = scope
         guard await MainActor.run(body: { BowlSharing.shared.isCurrent(syncEngine, scope: scope) }) else { return nil }
-        let pending = syncEngine.state.pendingRecordZoneChanges.filter { context.options.scope.contains($0) }
+        // A bowl I may only see sends nothing, whatever is still pending for it.
+        let blocked = await MainActor.run { BowlSharing.shared.zonesNotToSend() }
+        let pending = syncEngine.state.pendingRecordZoneChanges.filter { change in
+            guard context.options.scope.contains(change) else { return false }
+            switch change {
+            case .saveRecord(let id), .deleteRecord(let id):
+                return !blocked.contains(SharedBowlNames.zoneKey(zoneName: id.zoneID.zoneName, ownerName: id.zoneID.ownerName))
+            @unknown default:
+                return true
+            }
+        }
         guard !pending.isEmpty else { return nil }
         return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: pending) { id in
             await MainActor.run { BowlSharing.shared.record(for: id) }

@@ -15,6 +15,8 @@ struct NoteListRow: View {
     @State private var pickingDue = false
 
     var body: some View {
+        // In a bowl shared with me to view only: the pin (my own) and sharing the text, nothing that changes it.
+        let readOnly = !note.isDeleted && BowlSharing.shared.isReadOnly(note)
         ListRowLink(value: note.id) {
             NoteRow(note: note, stage: processing.stages[note.id], buckets: buckets)
         }
@@ -23,7 +25,7 @@ struct NoteListRow: View {
                 Button { NoteStore.restore(note, in: context) } label: { Label("Recover", systemImage: "arrow.uturn.backward") }
                     .tint(.brandSky)
             } else {
-                if note.isTodo {
+                if note.isTodo, !readOnly {
                     doneButton.tint(.brandTask)
                 }
                 Button { togglePin() } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
@@ -31,14 +33,21 @@ struct NoteListRow: View {
             }
         }
         .swipeActions(edge: .trailing) {
-            Button(role: .destructive, action: onRemove) {
-                Label(note.isDeleted ? "Delete Now" : "Delete", systemImage: "trash")
+            if !readOnly {
+                Button(role: .destructive, action: onRemove) {
+                    Label(note.isDeleted ? "Delete Now" : "Delete", systemImage: "trash")
+                }
             }
         }
         .contextMenu {
             if note.isDeleted {
                 Button { NoteStore.restore(note, in: context) } label: { Label("Recover", systemImage: "arrow.uturn.backward") }
                 Button(role: .destructive, action: onRemove) { Label("Delete Now", systemImage: "trash") }
+            } else if readOnly {
+                Button { togglePin() } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
+                ShareLink(item: note.exportText) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
             } else {
                 if note.isTodo {
                     doneButton
