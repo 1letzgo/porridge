@@ -446,16 +446,11 @@ struct NotesView: View {
         let archived = HomeList.archivedProjects(projects).count
         let isEmpty = folders.isEmpty && waiting.isEmpty
         return List(selection: $selection) {
-            // "Up Next" is the first category: the Inbox (what is new or in no bowl) and below it the to-dos folder,
-            // while there are to-dos to show: a view of every open one, wherever it is filed.
+            // "Up Next" is the first category: the Inbox (what is new or in no bowl) and the to-dos folder (a view of
+            // every open to-do, wherever it is filed), as two buttons side by side.
             let todoFolder = Todos.folder(notes)
             Section {
-                InboxRow(waiting: waiting) { page = .inbox }
-                    .lastInSection(todoFolder.isEmpty)
-                if !todoFolder.isEmpty {
-                    TodoFolderRow(folder: todoFolder) { page = .todos }
-                        .lastInSection(true)
-                }
+                UpNextRow(waiting: waiting, folder: todoFolder, onInbox: { page = .inbox }, onTodos: { page = .todos })
             } header: {
                 ListHeader(title: "Up Next", tint: .brandSky, isFirst: true)
             }

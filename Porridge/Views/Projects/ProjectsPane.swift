@@ -102,75 +102,78 @@ struct ProjectRow: View {
     }
 }
 
-/// The inbox as the one entry of its category on the home list: what is new or in no bowl, with its own symbol.
-struct InboxRow: View {
-    let waiting: [Note]
+/// One of the two buttons of "Up Next" on the home list: filled in the color of its symbol, half the row wide.
+struct UpNextTile<Detail: View>: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
     var onOpen: () -> Void
+    @ViewBuilder var detail: Detail
 
     var body: some View {
         Button(action: onOpen) {
-            HStack(alignment: .top, spacing: 12) {
-                ThingsRowIcon(systemImage: "tray.fill", tint: .brandSky)
-                    .padding(.top, 1)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Inbox")
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(waiting.isEmpty ? "Nothing waiting" : "\(waiting.count) waiting")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if let last = waiting.first?.createdAt {
-                    Text(last.formatted(.dateTime.day().month(.abbreviated)))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize()
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.title3.weight(.semibold))
+                Text(title)
+                    .font(.headline)
+                    .lineLimit(1)
+                detail
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .opacity(0.9)
             }
-            .contentShape(Rectangle())
+            .foregroundStyle(tint.onFill)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(tint, in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .cardListRow()
-        .accessibilityIdentifier("InboxCategory")
+        .buttonStyle(UpNextTileStyle())
     }
 }
 
-/// The to-dos folder as an entry of the "Up Next" section, under the Inbox: every open to-do, how many there are and how many are late.
-struct TodoFolderRow: View {
+/// Pressed, a tile dims a little and shrinks a touch.
+private struct UpNextTileStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+/// "Up Next" on the home list: the Inbox (what is new or in no bowl) and the to-dos folder (every open to-do,
+/// wherever it is filed) as two buttons that share the row.
+struct UpNextRow: View {
+    let waiting: [Note]
     let folder: Todos.Folder
-    var onOpen: () -> Void
+    var onInbox: () -> Void
+    var onTodos: () -> Void
 
     var body: some View {
-        Button(action: onOpen) {
-            HStack(alignment: .top, spacing: 12) {
-                ThingsRowIcon(systemImage: "checklist", tint: .brandTask)
-                    .padding(.top, 1)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("To-dos")
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    HStack(spacing: 0) {
-                        Text(folder.open == 0 ? String(localized: "Nothing open") : folder.open == 1 ? String(localized: "1 open") : String(localized: "\(folder.open) open"))
-                            .foregroundStyle(.secondary)
-                        if folder.overdue > 0 {
-                            Text(" · ").foregroundStyle(.secondary)
-                            Text(String(localized: "\(folder.overdue) overdue"))
-                                .foregroundStyle(Color.brandDangerText)
-                                .fontWeight(.semibold)
-                        }
-                    }
-                    .font(.subheadline)
-                    .lineLimit(1)
-                }
-                Spacer(minLength: 0)
+        HStack(spacing: 12) {
+            UpNextTile(title: String(localized: "Inbox"), systemImage: "tray.fill", tint: .brandSky, onOpen: onInbox) {
+                Text(waiting.isEmpty ? "Nothing waiting" : "\(waiting.count) waiting")
             }
-            .contentShape(Rectangle())
+            .accessibilityIdentifier("InboxCategory")
+            UpNextTile(title: String(localized: "To-dos"), systemImage: "checklist", tint: .brandTask, onOpen: onTodos) {
+                HStack(spacing: 0) {
+                    Text(folder.open == 0 ? String(localized: "Nothing open") : folder.open == 1 ? String(localized: "1 open") : String(localized: "\(folder.open) open"))
+                    if folder.overdue > 0 {
+                        Text(" · ")
+                        Text(String(localized: "\(folder.overdue) overdue")).fontWeight(.bold)
+                    }
+                }
+            }
+            .accessibilityIdentifier("TodosFolder")
         }
-        .buttonStyle(.plain)
-        .cardListRow()
-        .accessibilityIdentifier("TodosFolder")
+        // Both as high as the taller one.
+        .fixedSize(horizontal: false, vertical: true)
+        .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 12, trailing: 20))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 }
 
