@@ -13,6 +13,8 @@ struct RootView: View {
                 UndoToastView()
                     .padding(.bottom, 92)
             }
+            // The progress of an export and what to do with the archive.
+            .modifier(ExportSheetHost())
             .fullScreenCoverOrSheet(isPresented: .init(get: { !onboardingDone }, set: { onboardingDone = !$0 })) {
                 OnboardingView { onboardingDone = true }
             }

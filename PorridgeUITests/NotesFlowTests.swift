@@ -108,4 +108,51 @@ final class NotesFlowTests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
     }
+
+    /// After an export from Settings and going back, the bar of the home screen shows its Import button right away.
+    /// (Presented by UIKit over the root, the export sheet left the Import menu without its label for seconds.)
+    func testImportButtonShowsAfterExport() throws {
+        let app = launchApp()
+        let importButton = app.buttons["Import"]
+        let settings = app.buttons["Settings"]
+        XCTAssertTrue(importButton.waitForExistence(timeout: 30), "import button missing")
+        settings.tap()
+        XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
+        app.buttons["General"].firstMatch.tap()
+        let export = app.buttons["Export…"].firstMatch
+        XCTAssertTrue(app.reveal(export), "export button missing")
+        export.tap()
+        let done = app.buttons["Done"].firstMatch
+        XCTAssertTrue(done.waitForExistence(timeout: 120), "export did not finish")
+        done.tap()
+        XCTAssertTrue(done.waitForNonExistence(timeout: 10), "export sheet did not close")
+        app.buttons["Back"].firstMatch.tap()
+        XCTAssertTrue(settings.waitForExistence(timeout: 10), "home missing after going back")
+        // The button is in the tree all along; what went missing was its picture. Compared with the gear next to it.
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            let shown = Self.inkedPixels(importButton.screenshot().image)
+            let reference = Self.inkedPixels(settings.screenshot().image)
+            XCTAssertGreaterThan(shown, reference / 3, "import button drawn without its icon (\(shown) of \(reference))")
+            if shown <= reference / 3 { break }
+        }
+    }
+
+    /// Pixels that differ clearly from the top left corner (the bar behind the button).
+    private static func inkedPixels(_ image: UIImage) -> Int {
+        guard let cgImage = image.cgImage else { return 0 }
+        let width = cgImage.width, height = cgImage.height
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(data: &data, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return 0 }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let background = (Int(data[0]), Int(data[1]), Int(data[2]))
+        var count = 0
+        for index in stride(from: 0, to: data.count, by: 4) {
+            let difference = abs(Int(data[index]) - background.0) + abs(Int(data[index + 1]) - background.1) + abs(Int(data[index + 2]) - background.2)
+            if difference > 120 { count += 1 }
+        }
+        return count
+    }
 }

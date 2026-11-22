@@ -3,40 +3,34 @@ import SwiftUI
 import UIKit
 
 /// Exporting on iOS: everything (Settings) or one bowl (its menu) is written as a .zip in the app's temporary
-/// folder while a sheet shows the progress; then it is saved to Files or shared. Presented by UIKit over whatever is
-/// on screen, like the sharing of a bowl, so every place that offers it uses one call.
+/// folder while a sheet shows the progress; then it is saved to Files or shared. Every place that offers it uses one
+/// call; the sheet is SwiftUI's own, on the root view (`ExportSheetHost`). Presented by UIKit over the root view
+/// controller instead, the Import menu of the home bar came back without its label for a moment afterwards.
 @MainActor
+@Observable
 final class ExportPresenter {
     static let shared = ExportPresenter()
 
-    private var run: ExportRun?
-    private weak var sheet: UIViewController?
+    /// The export the sheet shows, while it is up.
+    private(set) var run: ExportRun?
+    @ObservationIgnored private var directory: URL?
 
     func export(_ scope: FullExport.Scope, title: String, context: ModelContext) {
-        guard run?.isRunning != true, let presenter = Self.topViewController() else { return }
+        guard run == nil else { return }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Exports/\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let run = ExportRun(scope: scope, title: title)
         self.run = run
-        let sheet = UIHostingController(rootView: ExportSheet(run: run) { [weak self] in
-            self?.finish(directory: directory)
-        })
-        sheet.isModalInPresentation = true
-        if let controller = sheet.sheetPresentationController {
-            controller.detents = [.medium()]
-            controller.prefersGrabberVisible = false
-        }
-        self.sheet = sheet
-        presenter.present(sheet, animated: true)
+        self.directory = directory
         run.start(context: context, into: directory, zip: true)
     }
 
     /// The sheet closed: a running export stops, the temporary copy goes (what was saved is a copy of it).
-    private func finish(directory: URL) {
+    func close() {
         run?.cancel()
         run = nil
-        sheet?.presentingViewController?.dismiss(animated: true)
-        try? FileManager.default.removeItem(at: directory)
+        if let directory { try? FileManager.default.removeItem(at: directory) }
+        directory = nil
     }
 
     func save(_ url: URL) {
@@ -62,6 +56,20 @@ final class ExportPresenter {
         var top = window?.rootViewController
         while let presented = top?.presentedViewController, !presented.isBeingDismissed { top = presented }
         return top
+    }
+}
+
+extension ExportRun: Identifiable {}
+
+/// Shows the sheet of `ExportPresenter` (on the root view).
+struct ExportSheetHost: ViewModifier {
+    func body(content: Content) -> some View {
+        content.sheet(item: Binding(get: { ExportPresenter.shared.run }, set: { if $0 == nil { ExportPresenter.shared.close() } })) { run in
+            ExportSheet(run: run) { ExportPresenter.shared.close() }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.hidden)
+                .interactiveDismissDisabled()
+        }
     }
 }
 
