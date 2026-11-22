@@ -10,21 +10,24 @@ enum Capture {
             return
         }
         let state = controller.state
-        let sheet = RecordMeetingViewController { title in
-            startRecording(title: title, state: state)
+        let sheet = RecordMeetingViewController { appointment in
+            startRecording(for: appointment, state: state)
         }
         controller.window?.contentViewController?.presentAsSheet(sheet)
     }
 
     /// A recorded meeting becomes a note that is transcribed with speakers; it opens in the window it was started from.
-    static func startRecording(title: String?, state: WindowState) {
+    /// For an appointment (from the sheet or the alert before a meeting) the meeting is named after it and remembers
+    /// its people for the speakers (`MeetingLinks`).
+    static func startRecording(for appointment: CalendarAppointment?, state: WindowState) {
         let project = state.projectForNew
+        let title = appointment?.title
         RecordingWindowController.start(title: title) { finished in
-            addMeeting(finished, title: title, project: project, state: state)
+            addMeeting(finished, title: title, appointment: appointment, project: project, state: state)
         }
     }
 
-    private static func addMeeting(_ finished: RecordingWindowController.Finished, title: String?, project: String?, state: WindowState?) {
+    private static func addMeeting(_ finished: RecordingWindowController.Finished, title: String?, appointment: CalendarAppointment? = nil, project: String?, state: WindowState?) {
         let result = finished.result
         let note = Note()
         note.source = .meeting
@@ -48,6 +51,7 @@ enum Capture {
             note.segments = [TranscriptSegment(speakerId: nil, start: 0, end: result.duration, text: finished.liveText)]
         }
         if let project { note.projectIDs = [project] }
+        if let appointment { MeetingLinks.remember(appointment, for: note.id) }
         let library = Library.shared
         library.context.insert(note)
         library.save()

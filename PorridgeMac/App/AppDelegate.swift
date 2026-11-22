@@ -24,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainWindowController.open()
         }
         statusItem = StatusItemController()
+        // The alert a minute before a meeting, and the countdown in the menu bar.
+        MeetingAlertController.shared.onTick = { [weak self] in self?.statusItem?.refreshCountdown() }
+        MeetingAlertController.shared.start()
         #if DEBUG
         DebugDriver.start()
         #endif

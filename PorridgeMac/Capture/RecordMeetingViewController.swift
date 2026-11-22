@@ -2,7 +2,7 @@ import AppKit
 
 /// Today's appointments as a sheet: picking one starts a recording named after it, "New Meeting" one without.
 final class RecordMeetingViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
-    private let onStart: (String?) -> Void
+    private let onStart: (CalendarAppointment?) -> Void
     private var appointments: [CalendarAppointment] = []
     private let table = NSTableView()
     private let message = NSTextField.label(color: .secondaryLabelColor, lines: 0)
@@ -13,8 +13,8 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
     }
     private let spinner = NSProgressIndicator()
 
-    /// `onStart` gets the appointment's title, or nil for a meeting that is not in the calendar.
-    init(onStart: @escaping (String?) -> Void) {
+    /// `onStart` gets the appointment, or nil for a meeting that is not in the calendar.
+    init(onStart: @escaping (CalendarAppointment?) -> Void) {
         self.onStart = onStart
         super.init(nibName: nil, bundle: nil)
         title = "Record Meeting"
@@ -141,6 +141,6 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
             return
         }
         dismiss(nil)
-        onStart(appointments[row].title)
+        onStart(appointments[row])
     }
 }

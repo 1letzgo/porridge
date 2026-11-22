@@ -3,7 +3,7 @@ import AVFoundation
 import SwiftData
 
 /// Recording: the speech model and language (transcription always runs on this Mac), the microphone, and who said
-/// what: speaker detection with its model, then the known voices.
+/// what: speaker detection with its model, then the known voices; last the alert before meetings.
 final class RecordingSettingsPane: SettingsPane {
     private let models = ModelManager.shared
     private let failures = FailureWatch()
@@ -57,6 +57,33 @@ final class RecordingSettingsPane: SettingsPane {
         self?.presentSheet(VoicesSheetController())
     }
 
+    private lazy var meetingAlerts = SettingsCheckbox("Alert Before Meetings") { [weak self] on in
+        if on {
+            Task { @MainActor in
+                await MeetingAlertScheduler.shared.enable()
+                self?.render()
+            }
+        } else {
+            MeetingAlertScheduler.shared.disable()
+        }
+    }
+    private lazy var countdown = SettingsCheckbox("Show Countdown in Menu Bar") {
+        UserDefaults.standard.set($0, forKey: MeetingAlerts.countdownKey)
+        MeetingAlertController.shared.tick()
+    }
+    private let calendarList = NSStackView.vertical([], spacing: 6)
+    private var calendarIDs: [String] = []
+    private lazy var calendarAccessOff = NSStackView.vertical([
+        SettingsForm.footnote("Calendar access is off. Allow it in System Settings to get meeting alerts."),
+        NSButton.push("Open Privacy Settings") {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+                NSWorkspace.shared.open(url)
+            }
+        },
+    ], spacing: 8)
+    private var meetingRows: [NSGridRow] = []
+    private var accessRow: NSGridRow?
+
     private var engineRow: NSGridRow?
     private var engineLabelRow: NSGridRow?
     private var voiceRows: [NSGridRow] = []
@@ -80,6 +107,12 @@ final class RecordingSettingsPane: SettingsPane {
         form.row("", detectSpeakers)
         voiceRows.append(form.row("", recognizeVoices))
         voiceRows.append(form.row("Known Voices", NSStackView.horizontal([voiceCount, voicesButton], spacing: 12)))
+        form.separator()
+        form.row("Meetings", meetingAlerts)
+        form.note("A small window a minute before an appointment with other people or a video call, with Record and Join. Porridge only reads your calendars.")
+        meetingRows.append(form.row("Calendars", calendarList, top: true))
+        meetingRows.append(form.row("", countdown))
+        accessRow = form.row("", calendarAccessOff)
 
         libraryToken = Library.shared.observe { [weak self] in self?.setNeedsRender() }
     }
@@ -117,8 +150,43 @@ final class RecordingSettingsPane: SettingsPane {
             contentChanged()
         }
 
+        renderMeetingAlerts()
+
         if let message = failures.newFailure(["asr": models.asr, "spare": models.spareParakeet, "diarizer": models.diarizer]) {
             Alerts.inform("Download Failed", message: message, in: view.window)
+        }
+    }
+
+    private func renderMeetingAlerts() {
+        let enabled = MeetingAlerts.isEnabled
+        meetingAlerts.isOn = enabled
+        countdown.isOn = MeetingAlerts.showsCountdown
+        let access = CalendarAccess.status
+        let calendars = access == .granted ? CalendarAccess.eventCalendars() : []
+        if calendars.map(\.id) != calendarIDs {
+            calendarIDs = calendars.map(\.id)
+            calendarList.setViews(calendars.map { calendar in
+                let title = calendar.account.isEmpty ? calendar.title : "\(calendar.title) (\(calendar.account))"
+                let box = SettingsCheckbox(title) { on in
+                    var excluded = MeetingAlerts.excludedCalendars
+                    if on { excluded.remove(calendar.id) } else { excluded.insert(calendar.id) }
+                    MeetingAlerts.excludedCalendars = excluded
+                    MeetingAlertScheduler.shared.refresh()
+                }
+                box.identifier = .init(calendar.id)
+                return box
+            }, in: .top)
+        }
+        let excluded = MeetingAlerts.excludedCalendars
+        for case let box as SettingsCheckbox in calendarList.arrangedSubviews {
+            box.isOn = !excluded.contains(box.identifier?.rawValue ?? "")
+        }
+        let showsList = enabled && access == .granted
+        let showsAccess = enabled && access == .denied
+        if meetingRows.first?.isHidden != !showsList || accessRow?.isHidden != !showsAccess {
+            meetingRows.forEach { $0.isHidden = !showsList }
+            accessRow?.isHidden = !showsAccess
+            contentChanged()
         }
     }
 

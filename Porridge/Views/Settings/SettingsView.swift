@@ -181,6 +181,7 @@ struct SettingsView: View {
         case .recording:
             transcriptionCard
             speakersCard
+            MeetingAlertsCard()
         case .ai:
             summaryCard
             chatCard
