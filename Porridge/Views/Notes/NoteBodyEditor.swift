@@ -146,6 +146,13 @@ private struct NoteEditorPresentations: ViewModifier {
                 }
                 .interactiveDismissDisabled()
             }
+            .sheet(item: $controller.rewriteRequest) { request in
+                AIRewriteView(request: request) { text, insertBelow in
+                    controller.finishRewrite(request, text: text, insertBelow: insertBelow)
+                } close: {
+                    controller.rewriteRequest = nil
+                }
+            }
             .photosPicker(isPresented: picking(.photos), selection: $photo, matching: .images, preferredItemEncoding: .compatible)
             .fileImporter(isPresented: picking(.files), allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
                 guard case .success(let urls) = result else { return }

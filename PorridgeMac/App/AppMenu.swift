@@ -141,6 +141,8 @@ enum AppMenu {
         menu.addItem(.separator())
         item(menu, "Move Line Up", #selector(NoteEditorView.moveLineUp(_:)), String(UnicodeScalar(NSUpArrowFunctionKey)!), [.command, .option])
         item(menu, "Move Line Down", #selector(NoteEditorView.moveLineDown(_:)), String(UnicodeScalar(NSDownArrowFunctionKey)!), [.command, .option])
+        menu.addItem(.separator())
+        item(menu, "Rewrite with AI…", #selector(NoteEditorView.rewriteWithAI(_:)), "j", symbol: "wand.and.stars")
         return menu
     }
 

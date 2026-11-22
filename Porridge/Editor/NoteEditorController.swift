@@ -15,6 +15,8 @@ final class NoteEditorController {
     var tableRequest: TableEditRequest?
     /// iOS: where to pick an image from; the screen shows the photo picker or the file importer.
     var imagePicker: ImagePickerSource?
+    /// A selection to rewrite with AI: the screen shows `AIRewriteView` for it.
+    var rewriteRequest: RewriteRequest?
 
     /// Set by the note's screen: puts an image file on the note as an attachment and returns it. Without it (a
     /// summary, a note that cannot take files) images cannot be inserted.
@@ -61,6 +63,23 @@ final class NoteEditorController {
     func perform(_ command: NoteEditorCommand) { coordinator?.perform(command) }
 
     func bind(_ coordinator: NoteTextCoordinator) { self.coordinator = coordinator }
+
+    // MARK: Rewrite with AI
+
+    /// Whether there is a selection that can be rewritten (something selected, the note can be written to).
+    var canRewrite: Bool { coordinator?.rewriteTarget() != nil }
+
+    /// Opens the rewrite sheet for the selection; nothing happens without one.
+    func beginRewrite() {
+        guard let target = coordinator?.rewriteTarget() else { return }
+        rewriteRequest = RewriteRequest(target: target)
+    }
+
+    /// The rewrite goes into the note (one step of Undo). False when the selection is not there anymore.
+    @discardableResult
+    func finishRewrite(_ request: RewriteRequest, text: String, insertBelow: Bool) -> Bool {
+        coordinator?.applyRewrite(request.target, text: text, insertBelow: insertBelow) ?? false
+    }
 
     // MARK: Insert menu
 
