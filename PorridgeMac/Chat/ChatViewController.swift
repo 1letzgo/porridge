@@ -22,7 +22,10 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
     private var shownEntries: [UUID] = []
     private var shownThread: UUID?
     private var shownThinking = false
+    private var shownActions: [UUID: [ChatAction]] = [:]
     private var hasRendered = false
+    /// What was just changed from the chat, with Undo.
+    private let toastBar = ChatUndoToastBar()
 
     private let examples = [
         "What did we decide in the last meetings?",
@@ -82,7 +85,17 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         root.addSubview(modelPopUp)
         root.addSubview(scroll)
         root.addSubview(inputRow)
+        toastBar.isHidden = true
+        toastBar.onUndo = { [weak self] in
+            guard let self else { return }
+            self.service.undoToast(context: self.library.context)
+        }
+        root.addSubview(toastBar)
         NSLayoutConstraint.activate([
+            toastBar.bottomAnchor.constraint(equalTo: scroll.bottomAnchor, constant: -8),
+            toastBar.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            toastBar.widthAnchor.constraint(lessThanOrEqualTo: root.widthAnchor, constant: -48),
+            toastBar.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
             scopeRow.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: 12),
             scopeRow.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
             modelPopUp.centerYAnchor.constraint(equalTo: scopeRow.centerYAnchor),
@@ -111,8 +124,17 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         token = library.observe { [weak self] in self?.render() }
         observers.append(Observing { [weak self] in
             guard let self else { return }
-            _ = (self.state.chatID, self.state.chatScope, self.service.thinking, self.service.status)
+            _ = (self.state.chatID, self.state.chatScope, self.service.thinking, self.service.status, self.service.actions)
             self.render()
+        })
+        observers.append(Observing { [weak self] in
+            guard let self else { return }
+            if let toast = self.service.toast {
+                self.toastBar.show(toast.message)
+                self.toastBar.isHidden = false
+            } else {
+                self.toastBar.isHidden = true
+            }
         })
     }
 
@@ -199,14 +221,18 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         let entries = entries
         let ids = entries.map(\.id)
         let thinking = isThinking
-        guard !hasRendered || ids != shownEntries || thread?.id != shownThread || thinking != shownThinking || thinking else {
+        let actions = Dictionary(ids.compactMap { id in service.actions[id].map { (id, $0) } }, uniquingKeysWith: { first, _ in first })
+        guard !hasRendered || ids != shownEntries || thread?.id != shownThread || thinking != shownThinking || thinking || actions != shownActions else {
             send.isEnabled = service.thinking == nil
             return
         }
+        // Only a card changed: the place in the transcript stays.
+        let onlyCards = hasRendered && ids == shownEntries && thread?.id == shownThread && thinking == shownThinking && !thinking
         hasRendered = true
         shownEntries = ids
         shownThread = thread?.id
         shownThinking = thinking
+        shownActions = actions
         transcript.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if entries.isEmpty { addIntro() }
         for entry in entries { addBubble(entry) }
@@ -220,8 +246,13 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         }
         send.isEnabled = service.thinking == nil
         // The newest message stays in view; an empty chat starts at the top.
+        let scrollPosition = scroll.contentView.bounds.origin
         DispatchQueue.main.async { [weak self] in
             guard let self, !entries.isEmpty else { return }
+            if onlyCards {
+                self.scroll.contentView.scroll(to: scrollPosition)
+                return
+            }
             self.scroll.documentView?.scroll(NSPoint(x: 0, y: max(0, (self.scroll.documentView?.frame.height ?? 0) - self.scroll.contentSize.height)))
         }
     }
@@ -265,6 +296,20 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
                 let text = SummaryTextView()
                 text.show(entry.text)
                 parts.append(text)
+                // The changes the answer proposes, to confirm.
+                let actions = service.actions(for: entry.id)
+                if !actions.isEmpty {
+                    let cards = ChatActionCardsView(actions: actions)
+                    let entryID = entry.id
+                    cards.onConfirm = { [weak self] id in
+                        guard let self else { return }
+                        self.service.confirm(id.map { [$0] }, in: entryID, context: self.library.context)
+                    }
+                    cards.onCancel = { [weak self] id in
+                        self?.service.cancel(id.map { [$0] }, in: entryID)
+                    }
+                    parts.append(cards)
+                }
             }
             let sources = entry.sources
             if !sources.isEmpty {

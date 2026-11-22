@@ -17,11 +17,78 @@ enum CloudLLM {
 
     /// `truncated`: the provider stopped at its output limit, so the text ends in the middle.
     static func completion(provider: AIProvider, apiKey: String, model: String, system: String, user: String) async throws -> (text: String, truncated: Bool) {
+        let reply = try await respond(provider: provider, apiKey: apiKey, model: model, system: system, user: user, tools: [])
+        return (reply.text, reply.truncated)
+    }
+
+    // MARK: - Tools
+
+    /// A tool the model called, with its arguments.
+    struct ToolCall {
+        let name: String
+        let arguments: [String: Any]
+    }
+
+    /// The provider (or the model behind it) does not take tools: the caller asks again without them.
+    struct ToolsUnsupported: Error {}
+
+    /// The answer and the tools the model wants called (the chat's actions). They are not run here and not answered:
+    /// the user confirms them first. A provider that refuses tools throws `ToolsUnsupported`.
+    static func chat(
+        provider: AIProvider, apiKey: String, model: String, system: String, user: String, tools: [ChatActionTools.Tool]
+    ) async throws -> (text: String, calls: [ToolCall]) {
+        let reply = try await respond(provider: provider, apiKey: apiKey, model: model, system: system, user: user, tools: tools)
+        return (reply.text, reply.calls)
+    }
+
+    /// The tools as the provider's request names them.
+    static func toolsBody(_ tools: [ChatActionTools.Tool], style: AIProvider.Style) -> Any {
+        switch style {
+        case .openAICompatible:
+            tools.map { ["type": "function", "function": ["name": $0.name, "description": $0.description, "parameters": $0.parameters]] }
+        case .anthropic:
+            tools.map { ["name": $0.name, "description": $0.description, "input_schema": $0.parameters] }
+        case .google:
+            [["functionDeclarations": tools.map { ["name": $0.name, "description": $0.description, "parameters": $0.parameters] }]]
+        }
+    }
+
+    /// The tool calls in a provider's answer: `tool_calls` (OpenAI style, arguments as a JSON string), `tool_use`
+    /// blocks (Anthropic), `functionCall` parts (Google).
+    static func toolCalls(in json: [String: Any], style: AIProvider.Style) -> [ToolCall] {
+        switch style {
+        case .openAICompatible:
+            let message = (json["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any]
+            return (message?["tool_calls"] as? [[String: Any]] ?? []).compactMap { call in
+                guard let function = call["function"] as? [String: Any], let name = function["name"] as? String else { return nil }
+                var arguments = function["arguments"] as? [String: Any] ?? [:]
+                if let text = function["arguments"] as? String, let data = text.data(using: .utf8) {
+                    arguments = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+                }
+                return ToolCall(name: name, arguments: arguments)
+            }
+        case .anthropic:
+            return (json["content"] as? [[String: Any]] ?? []).compactMap { block in
+                guard block["type"] as? String == "tool_use", let name = block["name"] as? String else { return nil }
+                return ToolCall(name: name, arguments: block["input"] as? [String: Any] ?? [:])
+            }
+        case .google:
+            let parts = (((json["candidates"] as? [[String: Any]])?.first?["content"] as? [String: Any])?["parts"]) as? [[String: Any]] ?? []
+            return parts.compactMap { part in
+                guard let call = part["functionCall"] as? [String: Any], let name = call["name"] as? String else { return nil }
+                return ToolCall(name: name, arguments: call["args"] as? [String: Any] ?? [:])
+            }
+        }
+    }
+
+    private static func respond(
+        provider: AIProvider, apiKey: String, model: String, system: String, user: String, tools: [ChatActionTools.Tool]
+    ) async throws -> (text: String, truncated: Bool, calls: [ToolCall]) {
         guard let base = provider.resolvedBaseURL else { throw SummaryError.missingBaseURL }
         guard !model.isEmpty else { throw SummaryError.missingModel }
 
         var request: URLRequest
-        let body: [String: Any]
+        var body: [String: Any]
 
         switch provider.style {
         case .openAICompatible:
@@ -57,12 +124,18 @@ enum CloudLLM {
             ]
         }
 
+        if !tools.isEmpty {
+            body["tools"] = toolsBody(tools, style: provider.style)
+            if provider.style == .openAICompatible { body["tool_choice"] = "auto" }
+        }
+
         request.httpMethod = "POST"
         request.timeoutInterval = 240
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let json = try await send(request, provider: provider)
+        let json = try await send(request, provider: provider, withTools: !tools.isEmpty)
+        let calls = tools.isEmpty ? [] : toolCalls(in: json, style: provider.style)
         let text: String? = switch provider.style {
         case .openAICompatible:
             ((json["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"] as? String
@@ -73,13 +146,14 @@ enum CloudLLM {
             ((((json["candidates"] as? [[String: Any]])?.first?["content"] as? [String: Any])?["parts"]) as? [[String: Any]])?
                 .compactMap { $0["text"] as? String }.joined()
         }
-        guard let text, !text.isEmpty else { throw SummaryError.emptyResponse }
+        // Only tool calls and no words is an answer too.
+        guard (text?.isEmpty == false) || !calls.isEmpty else { throw SummaryError.emptyResponse }
         let stop: String? = switch provider.style {
         case .openAICompatible: (json["choices"] as? [[String: Any]])?.first?["finish_reason"] as? String
         case .anthropic: json["stop_reason"] as? String
         case .google: (json["candidates"] as? [[String: Any]])?.first?["finishReason"] as? String
         }
-        return (text, isTruncation(stop))
+        return (text ?? "", isTruncation(stop), calls)
     }
 
     /// "length" (OpenAI style), "max_tokens" (Anthropic), "MAX_TOKENS" (Google).
@@ -145,9 +219,11 @@ enum CloudLLM {
         }
     }
 
-    private static func send(_ request: URLRequest, provider: AIProvider) async throws -> [String: Any] {
+    private static func send(_ request: URLRequest, provider: AIProvider, withTools: Bool = false) async throws -> [String: Any] {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        // A request with tools that is refused as such (a model or server without tool calling): asked again without.
+        if withTools, [400, 404, 405, 422, 501].contains(status) { throw ToolsUnsupported() }
         guard (200..<300).contains(status) else {
             let message = (try? JSONDecoder().decode(ErrorEnvelope.self, from: data))?.error?.message ?? "HTTP \(status)"
             throw CloudLLM.error(status: status, message: message, provider: provider)
