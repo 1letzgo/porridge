@@ -129,13 +129,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// A `porridge://` link other than an entry (made for the iPhone's widgets, but they mean the same here).
     static func runQuickAction() {
-        guard let action = QuickActionCenter.take() else { return }
+        guard let (action, fromLink) = QuickActionCenter.takeRequest() else { return }
         NSApp.activate()
         let controller = MainWindowController.front
         controller.window?.makeKeyAndOrderFront(nil)
         switch action {
         case .newNote: controller.newNote(nil)
-        case .startMeeting: controller.recordMeeting(nil)
+        case .startMeeting:
+            // Any app or website can open a `porridge://meeting` link: Porridge is in front and asks first.
+            if fromLink {
+                let alert = NSAlert()
+                alert.messageText = String(localized: "Start Recording?")
+                alert.informativeText = String(localized: "A link asked Porridge to record a meeting.")
+                alert.addButton(withTitle: String(localized: "Start Recording"))
+                let cancel = alert.addButton(withTitle: String(localized: "Cancel"))
+                cancel.keyEquivalent = "\u{1b}"
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+            }
+            controller.recordMeeting(nil)
         case .openInbox: controller.showInbox(nil)
         case .openTodos: controller.showTodos(nil)
         case .search(let query): controller.search(for: query)

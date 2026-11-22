@@ -1165,6 +1165,13 @@ final class NotePlatformTextView: UITextView {
 
     private(set) var placeholderLabel: UILabel?
 
+    /// The placeholder is no element of its own (VoiceOver would find it over the text); like a text field's, it is
+    /// the empty editor's value instead, read and found (UI tests) only while it shows.
+    override var accessibilityValue: String? {
+        get { isShowingPlaceholder ? placeholder : super.accessibilityValue }
+        set { super.accessibilityValue = newValue }
+    }
+
     /// The placeholder is on screen.
     var isShowingPlaceholder: Bool {
         guard let placeholderLabel else { return false }

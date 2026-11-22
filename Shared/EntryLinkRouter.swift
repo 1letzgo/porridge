@@ -30,7 +30,8 @@ extension Notification.Name {
 /// The one router of the app's `porridge://` links, for the iPhone app (`onOpenURL`) and the Mac
 /// (`application(_:open:)`). `porridge://entry/<UUID>` (and the older `porridge://note/<UUID>`) opens that entry
 /// and waits here until a window can show it: on a cold launch the URL comes before any view exists. The other
-/// routes (`new`, `meeting`, `inbox`, `todos`, `search?q=…`, see `QuickAction`) go to `QuickActionCenter`.
+/// routes (`new`, `meeting`, `inbox`, `todos`, `search?q=…`, see `QuickAction`) go to `QuickActionCenter`; any app
+/// or website can open these, so `meeting` only asks whether to start recording.
 @MainActor
 enum EntryLinkRouter {
     private static var pending: UUID?
@@ -42,7 +43,8 @@ enum EntryLinkRouter {
         if case .openNote(let id) = action {
             request(id)
         } else {
-            QuickActionCenter.request(action)
+            // From outside the app: a meeting recording waits for a confirmation (`fromLink`).
+            QuickActionCenter.request(action, fromLink: true)
         }
         return true
     }

@@ -292,7 +292,8 @@ enum AIRewrite {
         let system = """
         You are a writing assistant in a notes app. You rewrite the passage the user selected, following the instruction.
         - Answer with the rewritten passage only: no introduction, no explanation, no quotation marks around it, no code block.
-        - The passage is Markdown. Keep its marks ("# " headings, "- " and "1. " lists, "- [ ] " and "- [x] " checkboxes, "> " quotes, **bold**, *italic*, links, [[links]], #tags) unless the instruction asks for another form.
+        - The passage is Markdown. Keep its marks ("# " headings, "- " and "1. " lists, "- [ ] " and "- [x] " checkboxes, "> " quotes, **bold**, *italic*, links, #tags) unless the instruction asks for another form.
+        - Tokens like [[L1]] stand for links to other notes: keep each one exactly as written, where it belongs in the text.
         - Keep tables, images and "---" dividers exactly as they are.
         - Do not add facts that are not in the passage.
         - The passage is written in \(language.name). Unless the instruction asks for another language, write in \(language.name).
@@ -332,10 +333,14 @@ enum AIRewrite {
     /// The rewritten passage, with the model chosen in the sheet (by default the one of the settings).
     @MainActor
     static func run(instruction: String, target: RewriteTarget, model: SummaryModel, progress: @escaping (String) -> Void = { _ in }) async throws -> String {
-        let selection = target.selected
+        // Links to entries go to the model as short tokens and come back whole (`RewriteLinks`).
+        let (selection, links) = RewriteLinks.protect(target.selected)
         guard selection.count <= limit(for: model) else { throw AIRewriteError.tooLong(limit(for: model)) }
         let context = target.context(limit: contextLimit(for: model))
-        let prompt = prompt(instruction: instruction, selection: selection, before: context.before, after: context.after)
+        let prompt = prompt(
+            instruction: instruction, selection: selection,
+            before: RewriteLinks.plain(context.before), after: RewriteLinks.plain(context.after)
+        )
         let raw: String
         switch model {
         case .local(let local):
@@ -358,9 +363,58 @@ enum AIRewrite {
             if answer.truncated { throw SummaryError.provider("The model stopped before it was finished. Try a shorter selection or another model.") }
             raw = answer.text
         }
-        let text = clean(raw, original: selection)
-        guard !text.isEmpty else { throw SummaryError.emptyResponse }
+        let text = RewriteLinks.restore(clean(raw, original: selection), links: links)
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw SummaryError.emptyResponse }
         return text
+    }
+}
+
+// MARK: - Links to entries
+
+/// Links to other entries (`[Title](porridge://entry/<UUID>)`) in a rewritten passage: the model sees each as a
+/// token (`[[L1]]`, …) it is told to keep, so it cannot break the URL or change the entry, and each token in the
+/// answer becomes the link again. A link whose token the model left out is not added back; the sheet says so.
+enum RewriteLinks {
+    static func token(_ number: Int) -> String { "[[L\(number)]]" }
+
+    /// The passage with its links as tokens, and the links (Markdown) in token order.
+    static func protect(_ text: String) -> (text: String, links: [String]) {
+        let found = EntryLinks.links(in: text)
+        guard !found.isEmpty else { return (text, []) }
+        let ns = text as NSString
+        let links = found.map { ns.substring(with: $0.range) }
+        let result = NSMutableString(string: text)
+        for (index, link) in found.enumerated().reversed() {
+            result.replaceCharacters(in: link.range, with: token(index + 1))
+        }
+        return (result as String, links)
+    }
+
+    /// The answer with each token back as its link.
+    static func restore(_ text: String, links: [String]) -> String {
+        var result = text
+        // From the highest number down, so "[[L1]]" never matches inside "[[L12]]" (it cannot, but stays safe).
+        for (index, link) in links.enumerated().reversed() {
+            result = result.replacingOccurrences(of: token(index + 1), with: link)
+        }
+        return result
+    }
+
+    /// Context around the passage: links as their labels (no URLs, no tokens the model could copy).
+    static func plain(_ text: String) -> String {
+        EntryLinks.plain(text)
+    }
+
+    /// How many links of `original` are not in `rewritten` (each counted as often as it was there).
+    static func removedCount(original: String, rewritten: String) -> Int {
+        let ns = rewritten as NSString
+        var left = EntryLinks.links(in: rewritten).map { ns.substring(with: $0.range) }
+        let old = original as NSString
+        var removed = 0
+        for link in EntryLinks.links(in: original).map({ old.substring(with: $0.range) }) {
+            if let index = left.firstIndex(of: link) { left.remove(at: index) } else { removed += 1 }
+        }
+        return removed
     }
 }
 

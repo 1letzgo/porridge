@@ -234,6 +234,12 @@ struct AIRewriteView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
+        let removedLinks = RewriteLinks.removedCount(original: selection, rewritten: text)
+        if removedLinks > 0 {
+            Text(removedLinks == 1 ? "1 link to an entry was removed." : "\(removedLinks) links to entries were removed.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
         if applyFailed {
             Text("The selected text changed in the meantime, so the note was left as it is.")
                 .font(.footnote)

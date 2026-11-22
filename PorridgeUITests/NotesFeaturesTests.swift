@@ -52,10 +52,14 @@ final class NotesFeaturesTests: XCTestCase {
         app.newNote()
         let editor = app.bodyEditor
         editor.tap()
-        XCTAssertTrue(app.staticTexts["Start typing or dictate…"].exists, "placeholder missing in the empty note")
+        // The placeholder is the empty editor's value (no element of its own, so VoiceOver never reads it over text).
+        let placeholder = "Start typing or dictate…"
+        XCTAssertEqual(editor.value as? String, placeholder, "placeholder missing in the empty note")
         app.buttons["Checklist"].tap()
         app.typeText("Buy milk\nCall Maya\n")
-        XCTAssertFalse(app.staticTexts["Start typing or dictate…"].exists, "placeholder over the typed text")
+        let value = editor.value as? String ?? ""
+        XCTAssertTrue(value.contains("Buy milk"), "typed text missing: \(value)")
+        XCTAssertFalse(value.contains(placeholder), "placeholder over the typed text: \(value)")
     }
 
     func testPinAndTrash() throws {

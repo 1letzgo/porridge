@@ -252,4 +252,36 @@ final class AIRewriteTests: XCTestCase {
         textView.isEditable = false
         XCTAssertNil(coordinator.rewriteTarget(), "a view-only note is not rewritten")
     }
+
+    // MARK: Links to entries
+
+    func testLinksToEntriesGoToTheModelAsTokensAndComeBackWhole() {
+        let a = UUID(), b = UUID()
+        let first = EntryLinks.markdown(id: a, title: "Q3 [plan]")
+        let second = EntryLinks.markdown(id: b, title: "Budget")
+        let passage = "See \(first) and \(second), then \(first) again."
+        let (sent, links) = RewriteLinks.protect(passage)
+        XCTAssertEqual(sent, "See [[L1]] and [[L2]], then [[L3]] again.")
+        XCTAssertFalse(sent.contains("porridge://"))
+        XCTAssertEqual(links, [first, second, first])
+        // The model moved and kept the tokens: every link comes back, the URL unchanged.
+        let answer = RewriteLinks.restore("Then [[L2]]; see [[L1]] and [[L3]].", links: links)
+        XCTAssertEqual(answer, "Then \(second); see \(first) and \(first).")
+        XCTAssertEqual(EntryLinks.linkedIDs(in: answer), [a, b])
+        XCTAssertEqual(RewriteLinks.removedCount(original: passage, rewritten: answer), 0)
+        // A token left out: that link is not added back, and it is counted.
+        let shorter = RewriteLinks.restore("See [[L1]] and [[L2]].", links: links)
+        XCTAssertEqual(RewriteLinks.removedCount(original: passage, rewritten: shorter), 1)
+        // Nothing to protect: the text as it is.
+        XCTAssertEqual(RewriteLinks.protect("No links here").text, "No links here")
+        XCTAssertEqual(RewriteLinks.restore("No links here", links: []), "No links here")
+        // The context names the entries, without URLs.
+        XCTAssertEqual(RewriteLinks.plain("Before \(second)."), "Before Budget.")
+    }
+
+    func testThePromptAsksToKeepTheLinkTokens() {
+        let prompt = AIRewrite.prompt(instruction: "Shorter", selection: "See [[L1]].")
+        XCTAssertTrue(prompt.system.contains("[[L1]]"))
+        XCTAssertTrue(prompt.user.contains("See [[L1]]."))
+    }
 }

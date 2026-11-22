@@ -63,17 +63,27 @@ extension Notification.Name {
 @MainActor
 enum QuickActionCenter {
     private static var pending: QuickAction?
+    private static var pendingFromLink = false
 
-    static func request(_ action: QuickAction) {
+    /// `fromLink`: asked for by a `porridge://` URL, which any app or website can open (our own widgets and controls
+    /// run intents instead). Such a request may navigate, but a meeting recording starts only once confirmed.
+    static func request(_ action: QuickAction, fromLink: Bool = false) {
         pending = action
+        pendingFromLink = fromLink
         NotificationCenter.default.post(name: .porridgeQuickAction, object: nil)
     }
 
-    /// The waiting action, handed out once.
-    static func take() -> QuickAction? {
-        defer { pending = nil }
-        return pending
+    /// The waiting action and whether it came from a link, handed out once.
+    static func takeRequest() -> (action: QuickAction, fromLink: Bool)? {
+        defer {
+            pending = nil
+            pendingFromLink = false
+        }
+        return pending.map { ($0, pendingFromLink) }
     }
+
+    /// The waiting action, handed out once.
+    static func take() -> QuickAction? { takeRequest()?.action }
 }
 
 #if os(iOS)

@@ -34,6 +34,8 @@ struct NotesView: View {
     @State private var chatNavigation = ChatNavigation()
     @Query(sort: \ChatThread.updatedAt, order: .reverse) private var chatThreads: [ChatThread]
     @State private var confirmEmptyTrash = false
+    /// A `porridge://meeting` link (any app or website can open one) asks first before recording starts.
+    @State private var confirmLinkMeeting = false
     @State private var showRecorder = false
     @State private var showCalendar = false
     /// Dialog for a link typed or pasted by hand.
@@ -313,6 +315,16 @@ struct NotesView: View {
         .modifier(EntryLinkOpening(open: openRequestedEntry))
         // The widgets' copy of the notes, and what was ticked in a widget or added by a shortcut.
         .modifier(WidgetSyncModifier(notes: notes))
+        .alert("Start Recording?", isPresented: $confirmLinkMeeting) {
+            Button("Start Recording") {
+                guard !showRecorder else { return }
+                showCalendar = false
+                startRecording(titled: nil)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A link asked Porridge to record a meeting.")
+        }
         .confirmationDialog("Delete All in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
             Button("Delete All", role: .destructive) {
                 if let selection, notes.first(where: { $0.id == selection })?.isDeleted == true { self.selection = nil }
@@ -1182,7 +1194,12 @@ struct NotesView: View {
     }
 
     private func runQuickAction() {
-        switch QuickActionCenter.take() {
+        guard let (action, fromLink) = QuickActionCenter.takeRequest() else { return }
+        if action == .startMeeting, fromLink {
+            if !showRecorder { confirmLinkMeeting = true }
+            return
+        }
+        switch action {
         case .newNote:
             addNote()
         case .startMeeting:
@@ -1208,8 +1225,6 @@ struct NotesView: View {
             search = query
         case .openNote(let id):
             openNote(id)
-        case nil:
-            break
         }
     }
 
