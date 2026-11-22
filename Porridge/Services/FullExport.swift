@@ -379,7 +379,9 @@ enum FullExport {
     // MARK: - Markdown
 
     /// The entry as a Markdown file: YAML front matter, then title, text, summary and transcript, then links to its files.
-    static func markdown(for entry: Entry) -> String {
+    /// - Parameter links: the exported entries by id (`linkTargets`): links between entries in the text point to
+    ///   their Markdown files; links to entries not in the export stay `porridge://entry/…` links.
+    static func markdown(for entry: Entry, links: [String: LinkTarget] = [:]) -> String {
         var front: [String] = ["---"]
         front.append("id: \(entry.id)")
         front.append("title: \(yaml(entry.title))")
@@ -424,7 +426,7 @@ enum FullExport {
 
         var body: [String] = ["# " + entry.title.replacingOccurrences(of: "\n", with: " ")]
         if let url = entry.url { body.append("<\(url)>") }
-        let text = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = exportingLinks(in: entry.text, from: entry.markdown, targets: links).trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty { body.append(text) }
         if let summary = entry.summary?.trimmingCharacters(in: .whitespacesAndNewlines), !summary.isEmpty {
             body.append("## Summary\n\n" + summary)
@@ -442,6 +444,37 @@ enum FullExport {
             body.append("## Recordings\n\n" + entry.recordings.map(fileLine(from: entry.markdown)).joined(separator: "\n"))
         }
         return front.joined(separator: "\n") + "\n\n" + body.joined(separator: "\n\n") + "\n"
+    }
+
+    /// An exported entry a link can point to: its title now and its Markdown file.
+    struct LinkTarget: Equatable, Sendable {
+        var title: String
+        var markdown: String
+    }
+
+    /// The entries of the archive by id (upper case), for `markdown(for:links:)`.
+    static func linkTargets(of archive: Archive) -> [String: LinkTarget] {
+        Dictionary(archive.entries.map { ($0.id.uppercased(), LinkTarget(title: $0.title, markdown: $0.markdown)) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Links between entries (`EntryLinks`) as links to the exported Markdown files, relative to the file at
+    /// `markdown`, labelled with the entry's title. Entries not in the export keep their `porridge://` link.
+    static func exportingLinks(in text: String, from markdown: String, targets: [String: LinkTarget]) -> String {
+        EntryLinks.rewrite(text) { link in
+            guard let target = targets[link.id.uuidString.uppercased()] else {
+                return EntryLinks.markdown(id: link.id, title: link.label)
+            }
+            return "[\(EntryLinks.escape(target.title))](<\(relativePath(to: target.markdown, from: markdown))>)"
+        }
+    }
+
+    /// The path of `target` seen from the folder of the file at `from` (both relative to the export's root).
+    static func relativePath(to target: String, from: String) -> String {
+        let base = (from as NSString).deletingLastPathComponent.split(separator: "/").map(String.init)
+        let parts = target.split(separator: "/").map(String.init)
+        var common = 0
+        while common < base.count, common < parts.count - 1, base[common] == parts[common] { common += 1 }
+        return (Array(repeating: "..", count: base.count - common) + parts[common...]).joined(separator: "/")
     }
 
     private static func fileLine(from markdown: String) -> (File) -> String {
@@ -526,11 +559,12 @@ enum FullExport {
             await progress(done)
         }
 
+        let links = linkTargets(of: archive)
         for item in plan.markdown {
             try Task.checkCancellation()
             let url = root.appendingPathComponent(item.path)
             try manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Data(markdown(for: archive.entries[item.entry]).utf8).write(to: url, options: .atomic)
+            try Data(markdown(for: archive.entries[item.entry], links: links).utf8).write(to: url, options: .atomic)
             done += 1
             await progress(done)
         }

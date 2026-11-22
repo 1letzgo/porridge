@@ -263,7 +263,7 @@ struct TableLayout {
 
     private static func cell(_ text: String, bold: Bool, alignment: MarkdownTable.Alignment) -> NSAttributedString {
         let base = PlatformFont.preferredFont(forTextStyle: .callout)
-        let result = NSMutableAttributedString(attributedString: NoteMarkdown.inline(MarkdownTable.displayText(text), kind: .paragraph))
+        let result = NSMutableAttributedString(attributedString: NoteMarkdown.inline(EntryLinks.shownText(MarkdownTable.displayText(text)), kind: .paragraph))
         let whole = NSRange(location: 0, length: result.length)
         result.enumerateAttribute(.font, in: whole, options: []) { value, range, _ in
             let font = value as? PlatformFont

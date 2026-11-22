@@ -170,9 +170,25 @@ final class NoteEditorView: NSView {
             guard let self, let request = self.controller.rewriteRequest else { return }
             self.presentRewrite(request)
         }
+        // After "[[": the entries to link, under the cursor.
+        linkSuggestions = Observing { [weak self] in
+            guard let self else { return }
+            let results = self.controller.linkResults
+            let highlight = self.controller.linkHighlight
+            guard let search = self.controller.linkSearch, !results.isEmpty, let window = self.window else {
+                self.suggestionPanel.hide()
+                return
+            }
+            let caret = self.textView.firstRect(forCharacterRange: NSRange(location: search.range.location, length: 0), actualRange: nil)
+            self.suggestionPanel.show(results, highlight: highlight, under: caret, in: window) { [weak self] candidate in
+                self?.controller.chooseLink(candidate)
+            }
+        }
     }
 
     private var tables: Observing?
+    private var linkSuggestions: Observing?
+    private let suggestionPanel = EntryLinkSuggestionPanel()
     private weak var tableSheet: NSViewController?
     private var rewrites: Observing?
     private weak var rewriteSheet: NSViewController?
@@ -296,6 +312,8 @@ final class NoteEditorView: NSView {
     func stop() {
         flush()
         coordinator.stopObserving()
+        controller.updateLinkSearch(nil)
+        suggestionPanel.hide()
     }
 
     func focus() {

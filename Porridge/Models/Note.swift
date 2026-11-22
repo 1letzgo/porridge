@@ -317,6 +317,8 @@ enum NoteText {
             if let match = marks.firstMatch(in: line, range: range) {
                 line = (line as NSString).replacingCharacters(in: match.range, with: "")
             }
+            // Links to entries read as their labels (the stored ones: a title never asks other entries for theirs).
+            line = EntryLinks.plain(line)
             for mark in ["**", "~~", "`", "*"] { line = line.replacingOccurrences(of: mark, with: "") }
             line = line.trimmingCharacters(in: .whitespaces)
             return line.isEmpty ? nil : line

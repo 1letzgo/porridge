@@ -50,7 +50,7 @@ final class NoteTextCoordinator: NSObject {
     var lastWritten: String
     private var pendingCommit: Task<Void, Never>?
     /// The editor is changing the text itself (markers, renumbering): no rules, no commit.
-    private var isAdjusting = false
+    var isAdjusting = false
 
     init(text: NoteTextBinding, controller: NoteEditorController) {
         self.text = text
@@ -75,7 +75,7 @@ final class NoteTextCoordinator: NSObject {
 
     /// The editor changed the text itself (another note's text, a marker, new numbers). The undo steps recorded
     /// before point at places that have moved; replaying them would put text in the wrong spot.
-    private func forgetUndo() {
+    func forgetUndo() {
         textView?.undoManager?.removeAllActions()
     }
 
@@ -155,8 +155,8 @@ final class NoteTextCoordinator: NSObject {
 
     // MARK: Paragraphs
 
-    private var storage: NSTextStorage? { textView?.noteStorage }
-    private var string: NSString { (storage?.string ?? "") as NSString }
+    var storage: NSTextStorage? { textView?.noteStorage }
+    var string: NSString { (storage?.string ?? "") as NSString }
 
     /// The paragraph (with its newline) around `location`.
     func paragraphRange(at location: Int) -> NSRange {
@@ -311,6 +311,7 @@ final class NoteTextCoordinator: NSObject {
         typing[.attachment] = nil
         typing[.noteChecked] = nil
         typing[.noteRawBlock] = nil
+        typing[.noteEntryLink] = nil
         typing[.kern] = nil
         typing[.backgroundColor] = nil
         textView.typingAttributes = typing
@@ -326,6 +327,9 @@ final class NoteTextCoordinator: NSObject {
         let content = contentRange(of: paragraph)
         let start = textStart(of: paragraph)
         let textLength = max(0, content.location + content.length - start)
+
+        // Return while entries are offered after "[[": the highlighted one is linked.
+        if replacement == "\n", range.length == 0, controller.chooseHighlightedLink() { return false }
 
         if replacement == "\n", range.length == 0 {
             switch kind {
@@ -472,6 +476,7 @@ final class NoteTextCoordinator: NSObject {
         }
         renumberIfNeeded()
         recolor(paragraphRange(at: textView.selectedRange.location))
+        updateLinkSearch()
         commit()
     }
 
@@ -525,6 +530,7 @@ final class NoteTextCoordinator: NSObject {
             }
         }
         resetTypingAttributes()
+        updateLinkSearch()
     }
 
     /// A click on a checkbox ticks it. `index` is the insertion point nearest the click (either side of the box),
@@ -534,7 +540,8 @@ final class NoteTextCoordinator: NSObject {
         guard let storage, textView?.isEditable == true else { return false }
         for candidate in [index, index - 1] where candidate >= 0 && candidate < storage.length {
             guard storage.attribute(.attachment, at: candidate, effectiveRange: nil) != nil,
-                  storage.attribute(.noteRawBlock, at: candidate, effectiveRange: nil) == nil else { continue }
+                  storage.attribute(.noteRawBlock, at: candidate, effectiveRange: nil) == nil,
+                  storage.attribute(.noteEntryLink, at: candidate, effectiveRange: nil) == nil else { continue }
             // Without a layout to ask (never with TextKit 2) the nearest box counts, as before.
             if let box = frame(ofCharacterAt: candidate), !box.contains(point) { continue }
             let checked = storage.attribute(.noteChecked, at: candidate, effectiveRange: nil) as? Bool ?? false
@@ -548,7 +555,7 @@ final class NoteTextCoordinator: NSObject {
     }
 
     /// Where one character is laid out, in text container coordinates (the line's height, the glyph's width).
-    private func frame(ofCharacterAt location: Int) -> CGRect? {
+    func frame(ofCharacterAt location: Int) -> CGRect? {
         guard let layout = textView?.textLayoutManager, let content = layout.textContentManager,
               let start = content.location(content.documentRange.location, offsetBy: location),
               let end = content.location(start, offsetBy: 1),
@@ -730,7 +737,7 @@ final class NoteTextCoordinator: NSObject {
     func pasteMarkdown(_ pasted: String) -> Bool {
         guard let storage, let textView, textView.isEditable else { return false }
         let hasBlocks = NoteRichText.scan(pasted).contains { if case .block = $0 { true } else { false } }
-        guard hasBlocks else { return false }
+        guard hasBlocks || !EntryLinks.links(in: pasted).isEmpty else { return false }
         // Images of another note come along as files of this one.
         let pasted = controller.adoptingImages(in: pasted)
         let selection = textView.selectedRange
@@ -793,7 +800,7 @@ final class NoteTextCoordinator: NSObject {
     func selectedMarkdown() -> String? {
         guard let storage, let textView, textView.selectedRange.length > 0 else { return nil }
         let range = textView.selectedRange
-        guard hasBlock(range) else { return nil }
+        guard hasBlock(range) || hasEntryLink(range) else { return nil }
         return NoteMarkdown.markdown(from: storage.attributedSubstring(from: range))
     }
 
@@ -996,6 +1003,7 @@ final class NotePlatformTextView: NSTextView {
         let inContainer = CGPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
         if let coordinator, coordinator.toggleCheckbox(near: index, at: inContainer) { return }
         if let coordinator, coordinator.tapBlock(near: index, at: inContainer) { return }
+        if let coordinator, coordinator.tapEntryLink(near: index, at: inContainer) { return }
         super.mouseDown(with: event)
     }
 
@@ -1110,6 +1118,7 @@ extension NoteTextCoordinator: NSTextViewDelegate {
     }
 
     func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        if handleLinkSearchCommand(selector) { return true }
         switch selector {
         case #selector(NSResponder.insertTab(_:)):
             let (kind, _) = kind(of: paragraphRange(at: textView.selectedRange.location))
@@ -1202,7 +1211,11 @@ final class NotePlatformTextView: UITextView {
         let index = offset(from: beginningOfDocument, to: position)
         let inContainer = CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top)
         if coordinator?.toggleCheckbox(near: index, at: inContainer) == true { return }
-        _ = coordinator?.tapBlock(near: index, at: inContainer)
+        if coordinator?.tapBlock(near: index, at: inContainer) == true { return }
+        if coordinator?.tapEntryLink(near: index, at: inContainer) == true {
+            // A tap on a link opens its entry; it does not start typing here.
+            DispatchQueue.main.async { [weak self] in _ = self?.resignFirstResponder() }
+        }
     }
 
     // Tables, images and dividers are copied as their Markdown; Markdown with them is pasted as them, and a
