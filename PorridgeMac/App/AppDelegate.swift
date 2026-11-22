@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainWindowController.open()
         }
         statusItem = StatusItemController()
+        // The local MCP server, when it is turned on in Settings.
+        MCPService.shared.applySettings()
         #if DEBUG
         DebugDriver.start()
         #endif
