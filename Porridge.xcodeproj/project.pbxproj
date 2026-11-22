@@ -272,6 +272,7 @@
 		D484A5140AC294E5C2683844 /* ChatListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7FAA9C850963F5D3FD344E /* ChatListViewController.swift */; };
 		D4C2148E15E3035B7B32D447 /* AttachmentStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE91145DD729AA591C619B47 /* AttachmentStrip.swift */; };
 		D4E99A698DF7393E5659B0EE /* ChatModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3589CEAD998764D9D461E6 /* ChatModelTests.swift */; };
+		D73DAA282143233A2FA5FC12 /* PaymentStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE579B9EBDD8CD15531D391 /* PaymentStatusTests.swift */; };
 		D7E536A3D5CFEE0C6A218C48 /* AttachmentText.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E49FB1B40E76B0AE2F1219 /* AttachmentText.swift */; };
 		D8538F472A63388E0207249B /* NoteFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 536E6D547A46DCF6768AE6C5 /* NoteFolder.swift */; };
 		D9049BB1247F9D188B44D1A2 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E56BE573144212F81BA70AC /* AppSettings.swift */; };
@@ -426,6 +427,7 @@
 		28E351C35792659E6BC889F1 /* Thumbnails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Thumbnails.swift; sourceTree = "<group>"; };
 		29D0CE59D29E6AD1C1C19576 /* ShareImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareImportTests.swift; sourceTree = "<group>"; };
 		2B1CE0B6CCEDF3BFEB9D27B4 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		2DE579B9EBDD8CD15531D391 /* PaymentStatusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentStatusTests.swift; sourceTree = "<group>"; };
 		30A3283911FDEDADF5689EB3 /* DictationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationOverlay.swift; sourceTree = "<group>"; };
 		32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineDictation.swift; sourceTree = "<group>"; };
 		32A619A6A5CEB3607BF5EE1E /* RecordMeetingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordMeetingSheet.swift; sourceTree = "<group>"; };
@@ -823,6 +825,7 @@
 				52C78A4C0BCA055F861C25B4 /* NoteKindTests.swift */,
 				A2EF8775CF439144C3EC58B2 /* NoteStoreTests.swift */,
 				C74EAA32100EEC6B64A63D98 /* OpusOggDecoderTests.swift */,
+				2DE579B9EBDD8CD15531D391 /* PaymentStatusTests.swift */,
 				F451F8F127B225A94C03CC4B /* PDFToolsTests.swift */,
 				0AD0D880B770EA9F20337E25 /* ProjectOrderTests.swift */,
 				29D0CE59D29E6AD1C1C19576 /* ShareImportTests.swift */,
@@ -1705,6 +1708,7 @@
 				ED8E0E578CE44BBB0A5D99C5 /* NoteStoreTests.swift in Sources */,
 				E7930D2DFA603FB179DDA498 /* OpusOggDecoderTests.swift in Sources */,
 				65B28506A6CD76E403FD9E6E /* PDFToolsTests.swift in Sources */,
+				D73DAA282143233A2FA5FC12 /* PaymentStatusTests.swift in Sources */,
 				201C217F8E32741DCEE322B9 /* ProjectOrderTests.swift in Sources */,
 				12F183F86F60F25E874B2E76 /* ShareImportTests.swift in Sources */,
 				EC39F1B7F56E16FC802D3FC4 /* ShareInboxFixTests.swift in Sources */,

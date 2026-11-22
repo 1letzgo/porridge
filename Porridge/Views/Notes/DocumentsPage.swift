@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 /// Changes several entries of the Inbox or a bowl at once, while the list is in its selection mode: into a bowl or
-/// back to the Inbox, and for documents their kind and sender (as set by hand) or merging their PDFs into one.
+/// back to the Inbox, and for documents their kind and sender (as set by hand), paid or not, or merging their PDFs into one.
 struct NoteSelectionBar: View {
     /// The entries of the list, in its order.
     let notes: [Note]
@@ -64,6 +64,15 @@ struct NoteSelectionBar: View {
                     actionLabel("Sender", systemImage: "person.crop.square", isOn: allDocuments)
                 }
                 .disabled(!allDocuments)
+                // Bills of the selection marked as paid at once (other papers are left alone).
+                let canPay = !Documents.payable(chosenNotes).isEmpty
+                Menu {
+                    Button { change(.paid(true)) } label: { Label("Mark as Paid", systemImage: "checkmark.circle") }
+                    Button { change(.paid(false)) } label: { Label("Mark as Unpaid", systemImage: "creditcard") }
+                } label: {
+                    actionLabel("Paid", systemImage: "checkmark.circle", isOn: canPay)
+                }
+                .disabled(!canPay)
                 let canMerge = allDocuments && DocumentFiles.mergeable(chosenNotes).count >= 2
                 Button { choosingMergeTarget = true } label: {
                     actionLabel("Merge", systemImage: "arrow.triangle.merge", isOn: canMerge)
@@ -178,6 +187,14 @@ struct DocumentChip: View {
                         HStack(spacing: 6) {
                             Image(systemName: kind.symbol).font(.caption).foregroundStyle(Color.brandLinkText)
                             Text(info.shortLabel).lineLimit(1).foregroundStyle(.primary)
+                            // Open with its due day, overdue in a quiet red, paid in grey.
+                            if let status = info.paymentStatus(), let label = info.paymentLabel() {
+                                Text("·").foregroundStyle(.secondary)
+                                Text(label)
+                                    .lineLimit(1)
+                                    .foregroundStyle(status == .overdue ? Color.brandDangerText : status == .paid ? Color.secondary : Color.primary)
+                                    .layoutPriority(1)
+                            }
                         }
                         .contentShape(Rectangle())
                     }
@@ -191,13 +208,34 @@ struct DocumentChip: View {
                     .accessibilityLabel("Remove Document Details")
                 }
                 .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: 260)
+                .frame(maxWidth: info.paymentStatus() == nil ? 260 : 320)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(Color.brandLink.opacity(0.2), in: Capsule())
+                .contextMenu {
+                    if info.offersPaid { PaidButton(notes: [note]) }
+                }
             }
         }
         .sheet(isPresented: $editing) { DocumentInfoSheet(note: note) }
+    }
+}
+
+/// "Mark as Paid" for documents that can be paid, or "Mark as Unpaid" when all of them are paid already. For a
+/// row's or a chip's context menu and the selection bar.
+struct PaidButton: View {
+    let notes: [Note]
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        let payable = Documents.payable(notes)
+        let allPaid = !payable.isEmpty && payable.allSatisfy { $0.documentInfo?.paid == true }
+        Button {
+            withAnimation(.snappy) { _ = Documents.apply(.paid(!allPaid), to: payable, in: context) }
+        } label: {
+            Label(allPaid ? "Mark as Unpaid" : "Mark as Paid", systemImage: allPaid ? "creditcard" : "checkmark.circle")
+        }
+        .disabled(payable.isEmpty)
     }
 }
 
@@ -213,6 +251,10 @@ struct DocumentInfoSheet: View {
     @State private var sender = ""
     @State private var amount = ""
     @State private var currency: String?
+    @State private var hasDue = false
+    @State private var due = Date()
+    @State private var isPaid = false
+    @State private var paidDate = Date()
 
     static let currencies = ["EUR", "USD", "GBP", "CHF"]
 
@@ -252,6 +294,21 @@ struct DocumentInfoSheet: View {
                         Text("Not a number.").foregroundStyle(Color.brandDangerText)
                     }
                 }
+                // Only for a paper that asks for payment (or whose kind says nothing): the day to pay by, and paid.
+                if DocumentInfo(kind: kind).canBePaid {
+                    Section {
+                        Toggle("Due Date", isOn: $hasDue.animation())
+                        if hasDue {
+                            DatePicker("Pay By", selection: $due, displayedComponents: .date)
+                        }
+                        Toggle("Paid", isOn: $isPaid.animation())
+                        if isPaid {
+                            DatePicker("Paid On", selection: $paidDate, displayedComponents: .date)
+                        }
+                    } header: {
+                        Text("Payment")
+                    }
+                }
             }
             .brandNavigationTitle("Document")
             .toolbar {
@@ -285,14 +342,24 @@ struct DocumentInfoSheet: View {
         } else {
             currency = Locale.current.currency?.identifier ?? "EUR"
         }
+        if let dueDate = info.dueDate {
+            hasDue = true
+            due = dueDate
+        }
+        isPaid = info.paid
+        paidDate = DocumentInfo.date(fromDay: info.paidDay) ?? Date()
     }
 
     private func save() {
+        let payable = DocumentInfo(kind: kind).canBePaid
         let info = DocumentInfo(
             kind: kind,
             day: hasDate ? DocumentInfo.dayKey(date) : nil,
             correspondent: sender,
-            amount: DocumentExtractor.typedAmount(amount, currency: currency)
+            amount: DocumentExtractor.typedAmount(amount, currency: currency),
+            dueDay: payable && hasDue ? DocumentInfo.dayKey(due) : nil,
+            isPaid: payable && isPaid ? true : nil,
+            paidDay: payable && isPaid ? DocumentInfo.dayKey(paidDate) : nil
         )
         Documents.set(info, on: note, in: context)
     }

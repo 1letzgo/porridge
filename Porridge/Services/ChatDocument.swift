@@ -47,6 +47,11 @@ struct ChatDocument: Codable, Equatable {
     var correspondent: String?
     /// "119.00 EUR" (`DocumentInfo.amount`).
     var amount: String?
+    /// The day it is to be paid by, "yyyy-MM-dd" (`DocumentInfo.dueDay`).
+    var paymentDueDay: String?
+    /// Marked as paid; nil when not.
+    var isPaid: Bool?
+    var paidDay: String?
 
     static let snippetLength = 200
 
@@ -81,16 +86,29 @@ struct ChatDocument: Codable, Equatable {
             documentDay = info.day
             correspondent = info.correspondent
             amount = info.amount
+            paymentDueDay = info.dueDay
+            isPaid = info.isPaid
+            paidDay = info.paidDay
         }
     }
 
     var documentInfo: DocumentInfo? {
         guard let documentKind else { return nil }
-        return DocumentInfo(kind: DocumentKind(rawValue: documentKind), day: documentDay, correspondent: correspondent, amount: amount)
+        return DocumentInfo(
+            kind: DocumentKind(rawValue: documentKind), day: documentDay, correspondent: correspondent, amount: amount,
+            dueDay: paymentDueDay, isPaid: isPaid, paidDay: paidDay
+        )
     }
 
     /// The date a question's time is about for an entry that is not a to-do: the date on a document, else when it came in.
     var date: Date { DocumentInfo.date(fromDay: documentDay) ?? createdAt }
+
+    /// Day keys are Gregorian (`DocumentInfo.calendar`): a Gregorian calendar in the time zone of `calendar`.
+    static func gregorian(_ calendar: Calendar) -> Calendar {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        return gregorian
+    }
 
     var isOpenTodo: Bool { todoState == "open" }
     var isDoneTodo: Bool { todoState == "done" }
@@ -122,7 +140,16 @@ struct ChatDocument: Codable, Equatable {
         }
         var parts = [kindText]
         // "Document: Invoice from Telekom, dated 2 Mar 2026, amount 119,00 €".
-        if let info = documentInfo { parts.append("Document: " + info.sentence) }
+        // "…, payable by 16 Mar 2026, overdue (not paid)".
+        if let info = documentInfo {
+            var text = "Document: " + info.sentence
+            switch info.paymentStatus(now: now, calendar: ChatDocument.gregorian(calendar)) {
+            case .open: text += ", not paid yet"
+            case .overdue: text += ", overdue (not paid)"
+            case .paid, nil: break
+            }
+            parts.append(text)
+        }
         parts.append("created " + Self.dayText(createdAt, calendar: calendar))
         let names = bucketIDs.compactMap { bucketNames[$0] }
         parts.append(names.isEmpty ? "Inbox" : (names.count == 1 ? "Bowl: " : "Bowls: ") + names.joined(separator: ", "))
@@ -139,7 +166,7 @@ struct ChatDocument: Codable, Equatable {
 struct ChatQuery: Equatable {
     enum TodoFilter: String { case open, done, overdue }
     /// Which date of an entry the time is about.
-    enum DateField: String { case created, due, done, auto }
+    enum DateField: String { case created, due, done, auto, paymentDue }
 
     var kinds: Set<ChatDocument.Kind> = []
     var bucketIDs: Set<String> = []
@@ -157,12 +184,15 @@ struct ChatQuery: Equatable {
     /// Documents with an amount of at least / at most this much ("über 100 Euro", "under $50").
     var minAmount: Decimal?
     var maxAmount: Decimal?
+    /// Documents in this state of payment only ("offene Rechnungen", "unbezahlt", "überfällige Rechnungen"); open takes
+    /// overdue ones too.
+    var payment: DocumentInfo.PaymentStatus?
 
     var isStructured: Bool {
         !kinds.isEmpty || !bucketIDs.isEmpty || inbox || todo != nil || range != nil || isAboutDocuments
     }
 
-    var isAboutDocuments: Bool { !documentKinds.isEmpty || !senders.isEmpty || minAmount != nil || maxAmount != nil }
+    var isAboutDocuments: Bool { !documentKinds.isEmpty || !senders.isEmpty || minAmount != nil || maxAmount != nil || payment != nil }
 
     // Word lists. A word counts as a whole word of the question, hyphens kept ("to-dos").
     static let kindWords: [ChatDocument.Kind: Set<String>] = [
@@ -208,6 +238,14 @@ struct ChatQuery: Equatable {
             for (kind, list) in kindWords where list.contains(word) {
                 query.kinds.insert(kind)
                 take(index)
+            }
+            if DocumentInfo.strictPaymentWords.contains(word), let status = DocumentInfo.paymentWords[word] {
+                // "nicht bezahlt", "not paid": still open.
+                let negated = status == .paid && index > 0 && ["nicht", "not"].contains(all[index - 1])
+                query.payment = negated ? .open : (query.payment == .overdue ? .overdue : status)
+                take(index)
+                if negated { take(index - 1) }
+                continue
             }
             if openWords.contains(word) { query.todo = query.todo ?? .open; take(index) }
             if doneWords.contains(word) { query.todo = .done; take(index) }
@@ -280,7 +318,28 @@ struct ChatQuery: Equatable {
             }
         }
 
-        if let (range, consumed) = timeRange(all, question: question, future: query.dateField == .due || query.todo == .open, now: now, calendar: calendar) {
+        // "Offene / überfällige / erledigte Rechnungen": with a kind of document that asks for payment (or a payment
+        // word) and no word for to-dos, the state is the payment's, not a to-do's.
+        // "Fällige Rechnungen diese Woche": by the day they are to be paid by.
+        let asksForPayment = query.payment != nil || query.documentKinds.contains(where: \.asksForPayment)
+        if asksForPayment, !query.kinds.contains(.todo) {
+            switch query.todo {
+            case .open: query.payment = query.payment ?? .open
+            case .overdue: query.payment = .overdue
+            case .done: query.payment = .paid
+            case nil: break
+            }
+            query.todo = nil
+            if query.dateField == .due {
+                query.dateField = .paymentDue
+                query.payment = query.payment ?? .open
+            }
+        }
+
+        if let (range, consumed) = timeRange(
+            all, question: question, future: query.dateField == .due || query.dateField == .paymentDue || query.todo == .open || query.payment == .open,
+            now: now, calendar: calendar
+        ) {
             query.range = range
             consumed.forEach(take)
         }
@@ -433,6 +492,7 @@ struct ChatQuery: Equatable {
                 if let minAmount, value < minAmount { return false }
                 if let maxAmount, value > maxAmount { return false }
             }
+            if let payment, !info.matches(payment, now: now, calendar: ChatDocument.gregorian(calendar)) { return false }
         }
         if !bucketIDs.isEmpty || inbox {
             let inBucket = !bucketIDs.isDisjoint(with: document.bucketIDs)
@@ -456,6 +516,8 @@ struct ChatQuery: Equatable {
             case .created: date = document.createdAt
             // A document by the date on it.
             case .auto: date = document.kind == .todo ? (due ?? document.createdAt) : document.date
+            // A document by the day it is to be paid by.
+            case .paymentDue: date = DocumentInfo.date(fromDay: document.paymentDueDay, calendar: ChatDocument.gregorian(calendar))
             }
             guard let date, date >= range.start, date < range.end else { return false }
         }
@@ -473,6 +535,9 @@ struct ChatQuery: Equatable {
         if !senders.isEmpty { parts.append("from: " + senders.sorted().joined(separator: " or ")) }
         if let minAmount { parts.append("amount at least \(minAmount)") }
         if let maxAmount { parts.append("amount at most \(maxAmount)") }
+        if let payment {
+            parts.append("payment: " + (payment == .open ? "not paid yet (open or overdue)" : payment == .overdue ? "overdue (not paid, due day passed)" : "paid"))
+        }
         let names = bucketIDs.compactMap { bucketNames[$0] }.sorted() + (inbox ? ["Inbox"] : [])
         if !names.isEmpty { parts.append("in " + names.joined(separator: " or ")) }
         if let range {
@@ -481,6 +546,7 @@ struct ChatQuery: Equatable {
             case .due: "due"
             case .done: "done"
             case .created: "created"
+            case .paymentDue: "to be paid"
             case .auto: kinds == [.todo] ? "due (or created, without a due day)" : isAboutDocuments ? "dated (the date on the document)" : "created"
             }
             let from = ChatDocument.dayText(range.start, calendar: calendar), to = ChatDocument.dayText(last, calendar: calendar)
