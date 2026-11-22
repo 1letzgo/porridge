@@ -32,8 +32,8 @@ private final class SidebarNode: NSObject {
     }
 }
 
-/// The sidebar as a source list: Up Next (the Inbox and the to-dos folder), the bowls, then More (the chat, the
-/// archive and Recently Deleted).
+/// The sidebar as a source list: Up Next (the Inbox and the to-dos folder), the bowls, the smart filters (saved
+/// searches, while there are any), then More (the chat, the archive and Recently Deleted).
 /// Notes dropped on a bowl go into it; files dropped on it are brought in there.
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSTextFieldDelegate {
     private let state: WindowState
@@ -45,6 +45,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private var isSyncingSelection = false
     /// The bowl whose name is being edited in place.
     private var renaming: NoteFolder?
+    /// The smart filter whose name is being edited in place.
+    private var renamingFilter: SmartFilter?
 
     init(state: WindowState) {
         self.state = state
@@ -111,6 +113,13 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
                 self?.rebuild()
             }
         })
+        // The smart filters follow their file (changed here or on another device).
+        var firstFilters = true
+        observers.append(Observing { [weak self] in
+            _ = SmartFilterStore.shared.filters
+            guard !firstFilters else { firstFilters = false; return }
+            Task { @MainActor in self?.rebuild() }
+        })
     }
 
     // MARK: Content
@@ -126,6 +135,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         if !Todos.folder(notes).isEmpty || state.page == .todos { upNext.append(SidebarNode(.page(.todos))) }
         var top: [SidebarNode] = [SidebarNode(.group("Up Next"), children: upNext)]
         top.append(SidebarNode(.group("Bowls"), children: sorted.map { SidebarNode(.page(.project($0.id))) }))
+        let filters = SmartFilterStore.shared.filters
+        if !filters.isEmpty {
+            top.append(SidebarNode(.group("Smart Filters"), children: filters.map { SidebarNode(.page(.smartFilter($0.id))) }))
+        }
         // The chat is a place to go, not something waiting: it leads the other places under "More".
         var more: [SidebarNode] = [SidebarNode(.page(.chat))]
         let archived = HomeList.archivedProjects(library.projects).count
@@ -134,7 +147,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         if !more.isEmpty { top.append(SidebarNode(.group("More"), children: more)) }
         // An open bowl that is archived shows under the archive, but the sidebar still marks it.
         roots = top
-        guard renaming == nil else { return }
+        guard renaming == nil, renamingFilter == nil else { return }
         isSyncingSelection = true
         outline.reloadData()
         for node in roots where !node.children.isEmpty || node.kind == .group("Bowls") { outline.expandItem(node) }
@@ -170,6 +183,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             case .group(let name): return "[\(name)\(outline.isItemExpanded(node) ? "+" : "-")]"
             case .page(let page):
                 if case .project(let id) = page { return library.project(id)?.name ?? "?" }
+                if case .smartFilter(let id) = page { return SmartFilterStore.shared.filter(id)?.name ?? "?" }
                 return "\(page)"
             }
         }
@@ -248,6 +262,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
                 title: project?.name ?? "Bowl", symbol: "folder.fill", tint: .brandProject, badge: count, pinned: project?.isPinned == true,
                 shared: BowlSharing.shared.info(for: id)
             )
+        case .smartFilter(let id):
+            let filter = SmartFilterStore.shared.filter(id)
+            let count = filter.map { SmartFilters.results($0.criteria, in: notes).count } ?? 0
+            cell.configure(title: filter?.name ?? String(localized: "Smart Filter"), symbol: "line.3.horizontal.decrease", tint: .brandNavy, badge: count)
         case .archive:
             cell.configure(title: "Archive", symbol: "archivebox.fill", tint: .brandNavy, badge: 0)
         case .trash:
@@ -354,6 +372,14 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             let delete = menu.addItem(withTitle: title, action: #selector(deleteBucket(_:)), keyEquivalent: "")
             delete.representedObject = project
             delete.target = self
+        case .smartFilter(let id):
+            guard let filter = SmartFilterStore.shared.filter(id) else { return }
+            let window = view.window
+            let state = state
+            menu.add("Edit…", symbol: "slider.horizontal.3") { SmartFilterSheet.edit(filter, in: window) }
+            menu.add("Rename", symbol: "pencil") { [weak self] in self?.beginRenaming(filter) }
+            menu.addItem(.separator())
+            menu.add("Delete Smart Filter…", symbol: "trash", isDestructive: true) { SmartFilterSheet.confirmDelete(filter, state: state, in: window) }
         case .trash:
             menu.addItem(withTitle: "Delete All…", action: #selector(MainWindowController.emptyTrash(_:)), keyEquivalent: "")
         default:
@@ -395,9 +421,26 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     }
 
     @objc private func doubleClicked() {
-        guard let page = (outline.item(atRow: outline.clickedRow) as? SidebarNode)?.page, case .project(let id) = page,
-              let project = library.project(id) else { return }
+        guard let page = (outline.item(atRow: outline.clickedRow) as? SidebarNode)?.page else { return }
+        if case .smartFilter(let id) = page, let filter = SmartFilterStore.shared.filter(id) {
+            SmartFilterSheet.edit(filter, in: view.window)
+            return
+        }
+        guard case .project(let id) = page, let project = library.project(id) else { return }
         beginRenaming(project)
+    }
+
+    /// The smart filter's name becomes editable in place, as a bowl's.
+    func beginRenaming(_ filter: SmartFilter) {
+        guard let node = node(for: .smartFilter(filter.id)) else { return }
+        let row = outline.row(forItem: node)
+        guard row >= 0, let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: true) as? SidebarCell,
+              let field = cell.textField else { return }
+        renamingFilter = filter
+        field.isEditable = true
+        field.stringValue = filter.name
+        view.window?.makeFirstResponder(field)
+        field.currentEditor()?.selectAll(nil)
     }
 
     /// The bowl's name becomes editable in place, as in the Finder's sidebar.
@@ -414,6 +457,18 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
+        if let field = obj.object as? NSTextField, let filter = renamingFilter {
+            field.isEditable = false
+            renamingFilter = nil
+            let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty, name != filter.name {
+                SmartFilterStore.shared.rename(filter.id, to: name)
+            } else {
+                field.stringValue = filter.name
+            }
+            rebuild()
+            return
+        }
         guard let field = obj.object as? NSTextField, let project = renaming else { return }
         field.isEditable = false
         renaming = nil
@@ -428,6 +483,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
     /// Escape while renaming keeps the old name.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)), let filter = renamingFilter {
+            (control as? NSTextField)?.stringValue = filter.name
+            view.window?.makeFirstResponder(outline)
+            return true
+        }
         if commandSelector == #selector(NSResponder.cancelOperation(_:)), let project = renaming {
             (control as? NSTextField)?.stringValue = project.name
             view.window?.makeFirstResponder(outline)

@@ -77,6 +77,18 @@ enum NoteListContent {
                 emptyMessage: "Add meetings, notes and links to the bowl, or drop them on it in the sidebar.",
                 emptySymbol: "folder", kindCounts: counts
             )
+        case .smartFilter(let id):
+            guard let filter = SmartFilterStore.shared.filter(id) else {
+                return Built(sections: [], emptyTitle: "Smart Filter Deleted", emptyMessage: "This smart filter is gone.", emptySymbol: "line.3.horizontal.decrease")
+            }
+            // Only a view: the entries stay in their bowl or the Inbox.
+            let found = SmartFilters.results(filter.criteria, in: notes)
+            return Built(
+                sections: found.isEmpty ? [] : [(ListSection(id: "smart-filter", title: "", tint: .navy), found.map { .note($0.id) })],
+                emptyTitle: "Nothing Matches",
+                emptyMessage: "No entry fits this smart filter right now. Edit it to change what it looks for.",
+                emptySymbol: "line.3.horizontal.decrease"
+            )
         case .archive:
             // Archived bowls only: notes are never archived.
             let buckets = HomeList.archivedProjects(library.projects)

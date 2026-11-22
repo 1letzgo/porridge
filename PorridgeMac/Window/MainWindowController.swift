@@ -98,6 +98,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         // The open bowl was deleted on another device.
         if case .project(let id) = state.page, library.project(id) == nil { state.page = .inbox }
+        if case .smartFilter(let id) = state.page, SmartFilterStore.shared.filter(id) == nil { state.page = .inbox }
         // A note deleted for good (here or on another device) is no longer open.
         let kept = state.selection.filter { id in state.draft?.id == id || library.note(id) != nil }
         if kept != state.selection { state.selection = kept }
@@ -111,6 +112,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case .todos: "To-dos"
         case .chat: "Chat"
         case .project(let id): library.project(id)?.name ?? "Porridge"
+        case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Porridge"
         case .archive: "Archive"
         case .trash: "Recently Deleted"
         case .search: "Search"
@@ -565,6 +567,8 @@ private struct RestoredState: Codable {
     @MainActor
     func apply(to state: WindowState, library: Library) {
         if case .project(let id) = page, library.project(id) == nil {
+            state.page = .inbox
+        } else if case .smartFilter(let id) = page, SmartFilterStore.shared.filter(id) == nil {
             state.page = .inbox
         } else {
             state.page = page

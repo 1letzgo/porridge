@@ -11,6 +11,8 @@ enum SidebarPage: Hashable, Codable {
     case chat
     /// One bowl with everything in it.
     case project(UUID)
+    /// A saved search (`SmartFilter`): the entries that fit it, wherever they are.
+    case smartFilter(UUID)
     case archive
     case trash
     /// The search through everything (from the toolbar's field).
@@ -21,6 +23,10 @@ enum SidebarPage: Hashable, Codable {
 
     var projectID: UUID? {
         if case .project(let id) = self { id } else { nil }
+    }
+
+    var smartFilterID: UUID? {
+        if case .smartFilter(let id) = self { id } else { nil }
     }
 }
 
