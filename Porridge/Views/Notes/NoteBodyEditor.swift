@@ -1,4 +1,6 @@
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The body of a note: one text view with headings, lists, checklists and bold/italic, stored as Markdown
 /// (see `NoteMarkdown`). The format bar sits above the keyboard.
@@ -16,6 +18,7 @@ struct NoteBodyEditor: View {
             NoteTextView(text: $text, isEditable: isEditable, controller: controller, growsWithText: growsWithText)
                 .overlay(alignment: .topLeading) { placeholderText }
         }
+        .modifier(NoteEditorPresentations(controller: controller))
         .overlay(alignment: .bottom) {
             if controller.isEditing, isEditable, !growsWithText {
                 // The note screen has 16 pt of padding all around; the bar reaches out to 12 pt from the edge, 6 pt above the keyboard.
@@ -46,6 +49,8 @@ struct NoteKeyboardBar: View {
         HStack {
             buttons.formatMenu
             Spacer()
+            buttons.insertMenu
+            Spacer()
             buttons.checklistButton
             Spacer()
             buttons.outdentButton
@@ -62,6 +67,7 @@ struct NoteKeyboardBar: View {
     }
 }
 
+@MainActor
 private struct NoteFormatButtons {
     let controller: NoteEditorController
 
@@ -91,6 +97,19 @@ private struct NoteFormatButtons {
         .accessibilityLabel("Format")
     }
 
+    /// Heading, checklist, table, image, divider, quote, code: one tap puts it at the cursor.
+    var insertMenu: some View {
+        Menu {
+            let images = controller.canInsertImages
+            ForEach(NoteInsertItem.allCases.filter { images || !$0.isImage }) { item in
+                Button { controller.insert(item) } label: { Label(item.title, systemImage: item.systemImage) }
+            }
+        } label: {
+            Image(systemName: "plus.circle")
+        }
+        .accessibilityLabel("Insert")
+    }
+
     var checklistButton: some View {
         Button { controller.perform(.setKind(.checklist(checked: false))) } label: { Image(systemName: "checklist") }
             .accessibilityLabel("Checklist")
@@ -104,5 +123,41 @@ private struct NoteFormatButtons {
     var indentButton: some View {
         Button { controller.perform(.shift(deeper: true)) } label: { Image(systemName: "increase.indent") }
             .accessibilityLabel("Indent")
+    }
+}
+
+/// What the editor asks the screen to show: the table editor, the photo picker, the file importer. On the editor
+/// itself, so they stay while the keyboard and its bar go away.
+private struct NoteEditorPresentations: ViewModifier {
+    let controller: NoteEditorController
+
+    @State private var photo: PhotosPickerItem?
+
+    func body(content: Content) -> some View {
+        @Bindable var controller = controller
+        content
+            .sheet(item: $controller.tableRequest) { request in
+                TableEditorView(table: request.table, isNew: request.isNew) { table, delete in
+                    controller.finishTable(request, table: table, delete: delete)
+                }
+                .interactiveDismissDisabled()
+            }
+            .photosPicker(isPresented: picking(.photos), selection: $photo, matching: .images, preferredItemEncoding: .compatible)
+            .fileImporter(isPresented: picking(.files), allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
+                guard case .success(let urls) = result else { return }
+                for url in urls { controller.insertImage(fileAt: url) }
+            }
+            .onChange(of: photo) { _, item in
+                guard let item else { return }
+                photo = nil
+                Task { @MainActor in
+                    guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                    controller.insertImage(data: data, fileExtension: InlineImages.fileExtension(of: data), name: "Photo")
+                }
+            }
+    }
+
+    private func picking(_ source: ImagePickerSource) -> Binding<Bool> {
+        Binding(get: { controller.imagePicker == source }, set: { if !$0, controller.imagePicker == source { controller.imagePicker = nil } })
     }
 }

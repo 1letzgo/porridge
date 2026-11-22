@@ -32,6 +32,7 @@
 		0EEE5BCF1FE9AE0AAFC20327 /* ChatDataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7266962A43ED5C714064E64 /* ChatDataTests.swift */; };
 		0F0A72C2739E1FF2C23137D3 /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E94AD4FC0B51DF6A9B2680 /* Brand.swift */; };
 		0F13853AD161BFB70A9A0F07 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB0384279FBB5C1A2424DD1B /* SettingsView.swift */; };
+		0F4084ADEDD5C23D3A4A651B /* NoteRichBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19A30A5C6B8D192399339E62 /* NoteRichBlocks.swift */; };
 		101E685552267AC1595F1EAC /* TestSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED22CB7F8BD090E3031F71C /* TestSeed.swift */; };
 		104D58F405C650024CA8FA59 /* PorridgeShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10833D7F907B9A5F448D31C3 /* PorridgeShortcuts.swift */; };
 		10E80BF48B39E6739ADF174B /* BowlShareViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 180028AB41CE995AB41CE3F8 /* BowlShareViews.swift */; };
@@ -61,6 +62,7 @@
 		2337EF9768B3E546B1CA47E0 /* NoteMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */; };
 		23E846926253A0D2990F9CD8 /* AudioPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8EFBAAD626DEE8326A57573 /* AudioPlayback.swift */; };
 		2487F1CA6330738A38A66962 /* SummaryTemplateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07AAE9F8DA020CCDB79635EF /* SummaryTemplateTests.swift */; };
+		24DCDC2C454B7EE040D81F0A /* TodoRepeat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0132FE4589B6475010084FEE /* TodoRepeat.swift */; };
 		2519166D729750B7484FC464 /* SummarizingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD5DE3446BB24F676A9C147 /* SummarizingCard.swift */; };
 		25A1A7F6C3C605174985A00B /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41A4F0643EE9DC8196B8EBCD /* StatusItemController.swift */; };
 		2697AD78C33F37B438D36D46 /* TextInserter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C74B82A922F4E55F934519 /* TextInserter.swift */; };
@@ -76,6 +78,7 @@
 		30784B61C12A8B563C2D135B /* NoteFolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 536E6D547A46DCF6768AE6C5 /* NoteFolder.swift */; };
 		30CA02417900CF5C9687001E /* NoteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33144CDDD5CE1296F1220976 /* NoteDetailView.swift */; };
 		3429A25D4EF65DA7B58F988C /* DictationSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1353083C7CC5218CFF6FB9 /* DictationSettings.swift */; };
+		3452BEEE447C4B9659A7F569 /* NoteBlockAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08FE388D83F96FD390B1DE68 /* NoteBlockAttachment.swift */; };
 		3489B6C68561ADF129E7BB9C /* TodoViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB66B42946E5C12B53226492 /* TodoViews.swift */; };
 		36B30FC20E90D4B7715DE90E /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8971203514F93451723E779A /* Keychain.swift */; };
 		36D9EA5784C4F3E0959A776A /* PlaudCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = E144B5C4A5FF19E6E4CAB606 /* PlaudCrypto.swift */; };
@@ -85,7 +88,9 @@
 		3871B242DEFA0F2B4367E661 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B1CE0B6CCEDF3BFEB9D27B4 /* main.swift */; };
 		38B23287BF81DABBB03B2A36 /* SpeakerAssigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6A4C0487D0D0E8668554D5 /* SpeakerAssigner.swift */; };
 		3B2330EAAE10C23C747B0E33 /* AppMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB6219F5C02008C1A976313 /* AppMenu.swift */; };
+		3B2956CAE7E05B8B0C0972DF /* NoteImageAttaching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FDADE8C1BFCE48C9E9BD19 /* NoteImageAttaching.swift */; };
 		3D278378349ADC81BB92B11E /* AddModelSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27814E8416095568B1D5AFCC /* AddModelSheetController.swift */; };
+		3E7212F233976CDDE4D7A7CE /* NoteBlockAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08FE388D83F96FD390B1DE68 /* NoteBlockAttachment.swift */; };
 		3F59D0D8110810A3F5D35873 /* DocumentScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E1FEBE76E106C0631553E4 /* DocumentScanner.swift */; };
 		3FDE8583E5D07C2472D0629A /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8971203514F93451723E779A /* Keychain.swift */; };
 		40D90D0FAC4CF6313B6F4197 /* ShareImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B772FFEC2E55851B1638D012 /* ShareImport.swift */; };
@@ -192,9 +197,11 @@
 		8D3086BAD19B572EB7675FBB /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 1367D89BB806BE6B6ADEE7D7 /* MLXLMCommon */; };
 		8D6FDA68556EC145BEC5EBC0 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2141F7919F1EE60B134F704 /* MarkdownText.swift */; };
 		8E92A95213B7A6628B3B09FC /* TemplatesSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 803F8FA2ADF97C745A2BCDC1 /* TemplatesSheetController.swift */; };
+		8EAA4EC0CA6C02E36B51F55E /* TableEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05AA2D998EBC4E2A010B32E /* TableEditorView.swift */; };
 		8F4D91243FF50697DAFB8FFE /* DocumentInfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72F8AE2C57A9A29D0C4EB358 /* DocumentInfoSheet.swift */; };
 		8F8118B750229CF47A02CF93 /* SystemAudioMix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8938AD30A62950BFB2E15048 /* SystemAudioMix.swift */; };
 		8FF358692F372B899D81D1C6 /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65F0237052007B3FEEEBEB9 /* Transcript.swift */; };
+		916B8E5125104C19E80F0981 /* EditorBlocksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 590D2B61DE8B70B60D07AF75 /* EditorBlocksTests.swift */; };
 		91C7E544264CD3161DF19339 /* DocumentInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E5C28C8ABFB4B83D46FA9A /* DocumentInfo.swift */; };
 		91FC2BEA779454531B25DC71 /* AudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7798D6E60F456BEF335E6F48 /* AudioStore.swift */; };
 		92B3006D21C3C78C0354DF27 /* LinkFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FAB0F466A89E3E6D592CAA /* LinkFetcher.swift */; };
@@ -217,6 +224,7 @@
 		9D2861EFFABAC0F25E72B4B6 /* RecordingActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */; };
 		9E0A9779C5A4423238E8FA6C /* CloudFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 384C6BBDE385E2310196CF53 /* CloudFiles.swift */; };
 		9E5E6A5A761AA98AFD241DB3 /* DocumentExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F51C5E9B32E6036E0FCDBB /* DocumentExtractor.swift */; };
+		9EABDDE5258C50E7E60D43F2 /* NoteRichBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19A30A5C6B8D192399339E62 /* NoteRichBlocks.swift */; };
 		9EEB552B31A2CAB96CA6D452 /* AppHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC6A4EE051E358B40481C6B /* AppHelpers.swift */; };
 		9F0CAEC35F305D4614EBEF80 /* RecordingActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */; };
 		9F30118C94310D8B5444C267 /* NotesFeaturesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C9AA7BE3FF0CEDF2C2BDF86 /* NotesFeaturesTests.swift */; };
@@ -224,11 +232,13 @@
 		A09D17E28DD0230E04FBC0BE /* VoiceProfiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF66A6CA32B03260699EFDE /* VoiceProfiles.swift */; };
 		A0CFC442227905D1998B20B7 /* QuickActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE6FAD6923A33CEED95AFCE0 /* QuickActions.swift */; };
 		A174D2303CB962C9FB697F41 /* TodoSuggestionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D153A7F0D4CF14B20EC47A7 /* TodoSuggestionsTests.swift */; };
+		A254033B0103A9BA6D975847 /* TodoRepeat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0132FE4589B6475010084FEE /* TodoRepeat.swift */; };
 		A3816FC73735757FBE2A1728 /* DictationSettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF62328ED4B2789AFB2E0D9 /* DictationSettingsPane.swift */; };
 		A3A539C37FC6F5CA85019CE2 /* SummaryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19AE37613FD28FA0D9DA501C /* SummaryModel.swift */; };
 		A5E4141755D7BA8EFC7B8586 /* CloudFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 384C6BBDE385E2310196CF53 /* CloudFiles.swift */; };
 		A5FF3D1F2C04F7A95360E2FF /* RecordingJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E7511785C6CC41FB53AC539 /* RecordingJournal.swift */; };
 		A6DB3AC2F1C36ED950EB1C0C /* Chat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1829BFED7F73F13DDEFBC0 /* Chat.swift */; };
+		A72FB7E0C6CDF0166FD69E44 /* TableEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05AA2D998EBC4E2A010B32E /* TableEditorView.swift */; };
 		A769D65A736EE9B923A548F1 /* NoteCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C1E402B8027F34C87067F4 /* NoteCommand.swift */; };
 		A82761451E9F7DA554423BAF /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */; };
 		A960CBE9C4C443D4FE6B1927 /* TodoSuggestionsDateGuessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7FF1452B4C9F52060E78DA1 /* TodoSuggestionsDateGuessTests.swift */; };
@@ -236,6 +246,7 @@
 		AB929C4E5F1AB21F895243BE /* PDFTextLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C4BA1C675687EC6A2CF198 /* PDFTextLayer.swift */; };
 		AC1962552514CE1DAE41DAF0 /* Thumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28E351C35792659E6BC889F1 /* Thumbnails.swift */; };
 		AC8CCA7F17F3ECCDA003A704 /* AutoSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 455C1FF14CB20CF371B4364D /* AutoSummary.swift */; };
+		B1AFC996F0E1DFC3DC4A105F /* NoteImageAttaching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FDADE8C1BFCE48C9E9BD19 /* NoteImageAttaching.swift */; };
 		B2336A64EB596AC69B212C59 /* PlaudImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9252D20181C0B25CCC7F3D13 /* PlaudImporter.swift */; };
 		B2D38982B34590617CA67AEC /* DocumentExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F51C5E9B32E6036E0FCDBB /* DocumentExtractor.swift */; };
 		B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB2150AC1E2D50129B73B9 /* SummaryService.swift */; };
@@ -302,6 +313,7 @@
 		E084B7EC49D9B594EF056D8C /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF941D555D2BB61CC2812CAA /* AudioRecorder.swift */; };
 		E20F1184CF70593779A6BB58 /* AudioPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8EFBAAD626DEE8326A57573 /* AudioPlayback.swift */; };
 		E26FEE966269E7E624D86A11 /* DocumentFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F79426F803EB3F6FC98E78B /* DocumentFiles.swift */; };
+		E2D2F199C9B9DBDD9969384D /* TodoRepeatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC14015A2F2FE664AC0FE641 /* TodoRepeatTests.swift */; };
 		E3002DFA4AC2CB6F61BFF32A /* InlineDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32414C3CEEA797EEFFA6BDA4 /* InlineDictation.swift */; };
 		E3CFDECDF9B065FCDE2D43DA /* SummaryTasksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 800A5A3CB6D64E088C615782 /* SummaryTasksTests.swift */; };
 		E4ADE762004E14EE0DBDB5CC /* ImportDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA27233B657C5D94A0EAA955 /* ImportDropView.swift */; };
@@ -397,6 +409,7 @@
 /* Begin PBXFileReference section */
 		0022B3D3910DC719584688E7 /* NoteListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListRow.swift; sourceTree = "<group>"; };
 		009D026DE2F01FB10EE68519 /* GeneralSettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsPane.swift; sourceTree = "<group>"; };
+		0132FE4589B6475010084FEE /* TodoRepeat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoRepeat.swift; sourceTree = "<group>"; };
 		02AE4C8E6250AEF8C389CED0 /* RecordMeetingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordMeetingViewController.swift; sourceTree = "<group>"; };
 		05F68F49429875E63DC4CCB6 /* CloudLLM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudLLM.swift; sourceTree = "<group>"; };
 		06256EB296D7E31830725EB4 /* ChatViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewController.swift; sourceTree = "<group>"; };
@@ -406,6 +419,7 @@
 		083A5EA9DC62D07B9150CDAB /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		08CEA65413426393941A1ADA /* SystemAudioMixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioMixTests.swift; sourceTree = "<group>"; };
 		08E1FEBE76E106C0631553E4 /* DocumentScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentScanner.swift; sourceTree = "<group>"; };
+		08FE388D83F96FD390B1DE68 /* NoteBlockAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteBlockAttachment.swift; sourceTree = "<group>"; };
 		094EB23DBD700297500BB823 /* VoicesSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesSheetController.swift; sourceTree = "<group>"; };
 		0A5BA31269396F576ACB04B7 /* ShareInboxFixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareInboxFixTests.swift; sourceTree = "<group>"; };
 		0AD0D880B770EA9F20337E25 /* ProjectOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectOrderTests.swift; sourceTree = "<group>"; };
@@ -424,6 +438,7 @@
 		1871870FC6707C39D01FE52E /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
 		1903944E632E4C61AAFF4242 /* Intake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intake.swift; sourceTree = "<group>"; };
 		19743A48BFB08A4F1939EE6D /* ChatService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatService.swift; sourceTree = "<group>"; };
+		19A30A5C6B8D192399339E62 /* NoteRichBlocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRichBlocks.swift; sourceTree = "<group>"; };
 		19AE37613FD28FA0D9DA501C /* SummaryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryModel.swift; sourceTree = "<group>"; };
 		19E1E9FC1D1AD53F0633B275 /* ModifierKeyMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModifierKeyMonitor.swift; sourceTree = "<group>"; };
 		1AADB916819D9833BFAD3910 /* AuditFixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditFixTests.swift; sourceTree = "<group>"; };
@@ -480,6 +495,7 @@
 		56FD02EAB29161B15D0292BF /* VoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesView.swift; sourceTree = "<group>"; };
 		57BF795A84D83E11A08E94D4 /* QuickActionWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionWidgets.swift; sourceTree = "<group>"; };
 		58E5D27589A0149DC6CA925F /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		590D2B61DE8B70B60D07AF75 /* EditorBlocksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorBlocksTests.swift; sourceTree = "<group>"; };
 		5EFA3D813FB2B49041B87A57 /* IntakeFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntakeFlowTests.swift; sourceTree = "<group>"; };
 		5F0BC0DBAFDF678CBDCAC098 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5F165597B4025A92862665A9 /* Acknowledgements.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Acknowledgements.json; sourceTree = "<group>"; };
@@ -586,6 +602,7 @@
 		CA8EB30FBDE3C8A65AC0BA27 /* DocumentsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentsPage.swift; sourceTree = "<group>"; };
 		CB95557905E3820030DC941F /* PorridgeWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PorridgeWidgets.swift; sourceTree = "<group>"; };
 		CBB038AA5CA73FAFCB022177 /* InboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxTests.swift; sourceTree = "<group>"; };
+		CC14015A2F2FE664AC0FE641 /* TodoRepeatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoRepeatTests.swift; sourceTree = "<group>"; };
 		CC34B2F819480B429CF98E03 /* LiveTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriber.swift; sourceTree = "<group>"; };
 		CCDB3BA98ABE11334BB0297F /* TranscriptionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionEngine.swift; sourceTree = "<group>"; };
 		CD474FF11205A6CC122FBC7E /* TestStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestStore.swift; sourceTree = "<group>"; };
@@ -596,11 +613,13 @@
 		CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		D2859C602EE177C280F20034 /* AISettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsPane.swift; sourceTree = "<group>"; };
 		D2A5616AFD8592E91EE7A9D4 /* SummaryEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryEditorSheet.swift; sourceTree = "<group>"; };
+		D2FDADE8C1BFCE48C9E9BD19 /* NoteImageAttaching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteImageAttaching.swift; sourceTree = "<group>"; };
 		D4FD2A9BECD26688E68FAFE9 /* AppSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsTests.swift; sourceTree = "<group>"; };
 		D82B4E9F49C3FF2A1C1A65A9 /* DocumentChatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentChatTests.swift; sourceTree = "<group>"; };
 		DB032AAA624975E24BC692DD /* TodosTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodosTests.swift; sourceTree = "<group>"; };
 		DB98837989AF1EAA4CFBA892 /* RecordingActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingActivity.swift; sourceTree = "<group>"; };
 		DE1353083C7CC5218CFF6FB9 /* DictationSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSettings.swift; sourceTree = "<group>"; };
+		E05AA2D998EBC4E2A010B32E /* TableEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableEditorView.swift; sourceTree = "<group>"; };
 		E0C900D2E54C5D9AD70BAB41 /* PlaudBLE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudBLE.swift; sourceTree = "<group>"; };
 		E144B5C4A5FF19E6E4CAB606 /* PlaudCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudCrypto.swift; sourceTree = "<group>"; };
 		E2289A720E28E5BBD9740B6C /* ListHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListHeaderView.swift; sourceTree = "<group>"; };
@@ -843,6 +862,7 @@
 				D82B4E9F49C3FF2A1C1A65A9 /* DocumentChatTests.swift */,
 				47CBE1DE2ED18108D163A9FB /* DocumentsTests.swift */,
 				626752232CFE16964C150FE6 /* DocumentTextTests.swift */,
+				590D2B61DE8B70B60D07AF75 /* EditorBlocksTests.swift */,
 				CBB038AA5CA73FAFCB022177 /* InboxTests.swift */,
 				CF9B98C438AED2F5E6E75969 /* MeetingExportTests.swift */,
 				C928A8D3C81D267426EFBD42 /* MeetingFlowTests.swift */,
@@ -859,6 +879,7 @@
 				07AAE9F8DA020CCDB79635EF /* SummaryTemplateTests.swift */,
 				08CEA65413426393941A1ADA /* SystemAudioMixTests.swift */,
 				CD474FF11205A6CC122FBC7E /* TestStore.swift */,
+				CC14015A2F2FE664AC0FE641 /* TodoRepeatTests.swift */,
 				DB032AAA624975E24BC692DD /* TodosTests.swift */,
 				C7FF1452B4C9F52060E78DA1 /* TodoSuggestionsDateGuessTests.swift */,
 				0D153A7F0D4CF14B20EC47A7 /* TodoSuggestionsTests.swift */,
@@ -914,10 +935,13 @@
 		AF54DB3AA5D6E556BBAD6BDA /* Editor */ = {
 			isa = PBXGroup;
 			children = (
+				08FE388D83F96FD390B1DE68 /* NoteBlockAttachment.swift */,
 				A07E0454189B07BF9A51DD1C /* NoteBlocks.swift */,
 				ED30CBF3DB820F0340769C1A /* NoteEditorController.swift */,
 				14FED8C06993DE82444EF29D /* NoteMarkdown.swift */,
+				19A30A5C6B8D192399339E62 /* NoteRichBlocks.swift */,
 				11ADD3F08EBC69F30C2D942B /* NoteTextEngine.swift */,
+				E05AA2D998EBC4E2A010B32E /* TableEditorView.swift */,
 			);
 			path = Editor;
 			sourceTree = "<group>";
@@ -1042,6 +1066,7 @@
 				81E0001424169CACB4764CB4 /* MeetingAlertScheduler.swift */,
 				B5582F9A53CD62754BE769F6 /* MeetingExport.swift */,
 				EE2F58296E3FB7B2AA8C6D2F /* ModelManager.swift */,
+				D2FDADE8C1BFCE48C9E9BD19 /* NoteImageAttaching.swift */,
 				BE59B16FB8350F8617863947 /* NoteIndex.swift */,
 				0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */,
 				6B2572B8D2D94B28605C5CAB /* NoteStore.swift */,
@@ -1059,6 +1084,7 @@
 				4B340339B5F4B0D022E9A042 /* SummaryTemplate.swift */,
 				8938AD30A62950BFB2E15048 /* SystemAudioMix.swift */,
 				F348E2B8078890EB52DF60B6 /* TextEmbedder.swift */,
+				0132FE4589B6475010084FEE /* TodoRepeat.swift */,
 				F9F6629672192B55C1E9445B /* Todos.swift */,
 				E508B0B8E0AF9A491D60DBCF /* TodoSuggestions.swift */,
 				CCDB3BA98ABE11334BB0297F /* TranscriptionEngine.swift */,
@@ -1463,16 +1489,19 @@
 				57C92E9BB6FD62EC51FF26A7 /* MergeNotesSheet.swift in Sources */,
 				BBD6152CD6E81173947772C9 /* ModelManager.swift in Sources */,
 				7A4D4772B9D9191E708AC1A0 /* Note.swift in Sources */,
+				3452BEEE447C4B9659A7F569 /* NoteBlockAttachment.swift in Sources */,
 				9A2727F5DBA182E6AE864E0A /* NoteBlocks.swift in Sources */,
 				03DCEEDB98E0E488018ABD31 /* NoteBodyEditor.swift in Sources */,
 				30CA02417900CF5C9687001E /* NoteDetailView.swift in Sources */,
 				5D67CB3B5BE4E15C902FECC8 /* NoteEditorController.swift in Sources */,
 				D8538F472A63388E0207249B /* NoteFolder.swift in Sources */,
+				B1AFC996F0E1DFC3DC4A105F /* NoteImageAttaching.swift in Sources */,
 				7C6894DEEE8113190780FEB5 /* NoteIndex.swift in Sources */,
 				DAF9B19EA7925B8685B4109A /* NoteListRow.swift in Sources */,
 				4EF5A7FD06CACCEC5C64D6CF /* NoteMarkdown.swift in Sources */,
 				5B54E0B81456FF223843810B /* NoteMediaViews.swift in Sources */,
 				E53D3E365FE85257EF1B74A0 /* NoteMerger.swift in Sources */,
+				0F4084ADEDD5C23D3A4A651B /* NoteRichBlocks.swift in Sources */,
 				08D73ACE26E2EFCE1C8BF991 /* NoteStore.swift in Sources */,
 				2F6C4C40303406E0D5958193 /* NoteTextEngine.swift in Sources */,
 				837559DD06FF95DC5B55E02F /* NoteTextView.swift in Sources */,
@@ -1520,10 +1549,12 @@
 				EFE71E2A885E671A6C01EE88 /* SummaryTemplate.swift in Sources */,
 				141B3481B411793690F13676 /* SummaryTemplatesView.swift in Sources */,
 				8F8118B750229CF47A02CF93 /* SystemAudioMix.swift in Sources */,
+				A72FB7E0C6CDF0166FD69E44 /* TableEditorView.swift in Sources */,
 				45A382C805729BF2861341CD /* TestSeed.swift in Sources */,
 				8AA27980DB9CB7C62EAFC09C /* TextEmbedder.swift in Sources */,
 				48F3E5CBA82CC8CF5CB9E15B /* Theme.swift in Sources */,
 				C288EDA60E7FBB915FD15ED9 /* TimelineSearchBar.swift in Sources */,
+				A254033B0103A9BA6D975847 /* TodoRepeat.swift in Sources */,
 				B878847EE850C704B43A71B1 /* TodoSuggestions.swift in Sources */,
 				3489B6C68561ADF129E7BB9C /* TodoViews.swift in Sources */,
 				FCBCDFDB0DA7E384227DD169 /* Todos.swift in Sources */,
@@ -1628,6 +1659,7 @@
 				36FD98F4525C00F87F761EB3 /* ModelManager.swift in Sources */,
 				2316760D8F08477ACACBA86F /* ModifierKeyMonitor.swift in Sources */,
 				9A578A8C057C87985C1FC180 /* Note.swift in Sources */,
+				3E7212F233976CDDE4D7A7CE /* NoteBlockAttachment.swift in Sources */,
 				DEA545388889F0D4F4E8F8DD /* NoteBlocks.swift in Sources */,
 				632F2A02C1AB2A2C38F93258 /* NoteCellView.swift in Sources */,
 				EA51C9F4CDF95C4FBA387B66 /* NoteChipsView.swift in Sources */,
@@ -1636,12 +1668,14 @@
 				51BACD2E7CF486783AE86E11 /* NoteEditorController.swift in Sources */,
 				D0C14BFBE41660A18822A153 /* NoteEditorView.swift in Sources */,
 				30784B61C12A8B563C2D135B /* NoteFolder.swift in Sources */,
+				3B2956CAE7E05B8B0C0972DF /* NoteImageAttaching.swift in Sources */,
 				41AB354387CD2280E2711BBE /* NoteIndex.swift in Sources */,
 				0680ADD3D6EB28DE3A646BB2 /* NoteListContent.swift in Sources */,
 				B8BDF5603AF09CC98BF9EEBF /* NoteListViewController.swift in Sources */,
 				40F62EBDB3BDD2EE0DC6D533 /* NoteMarkdown.swift in Sources */,
 				2337EF9768B3E546B1CA47E0 /* NoteMerger.swift in Sources */,
 				9FD56AF839ACDC849B1AC8DB /* NoteOperations.swift in Sources */,
+				9EABDDE5258C50E7E60D43F2 /* NoteRichBlocks.swift in Sources */,
 				79DAAFE4855C7C47E04AA9D1 /* NoteSheets.swift in Sources */,
 				80B6E0734E3D8CC1F45294AA /* NoteStore.swift in Sources */,
 				608857F350BE62238D3BE0DE /* NoteTextEngine.swift in Sources */,
@@ -1688,12 +1722,14 @@
 				36FC1F5B5ABA1450AA93C559 /* SummaryTextView.swift in Sources */,
 				53D0B8DFE2A1C3541DA950F3 /* SystemAudioMix.swift in Sources */,
 				D9E816C9D65BE1BAEAFD4F99 /* SystemAudioTap.swift in Sources */,
+				8EAA4EC0CA6C02E36B51F55E /* TableEditorView.swift in Sources */,
 				8E92A95213B7A6628B3B09FC /* TemplatesSheetController.swift in Sources */,
 				101E685552267AC1595F1EAC /* TestSeed.swift in Sources */,
 				9A6485677604C313A2311584 /* TextEmbedder.swift in Sources */,
 				2697AD78C33F37B438D36D46 /* TextInserter.swift in Sources */,
 				AC1962552514CE1DAE41DAF0 /* Thumbnails.swift in Sources */,
 				BA87EC45A39E4DD919A65664 /* TodoBridge.swift in Sources */,
+				24DCDC2C454B7EE040D81F0A /* TodoRepeat.swift in Sources */,
 				1CEF7C3D6F0596A6CE0E5ADD /* TodoSuggestions.swift in Sources */,
 				7FDD8D3BAFB7764EAC618645 /* Todos.swift in Sources */,
 				8FF358692F372B899D81D1C6 /* Transcript.swift in Sources */,
@@ -1744,6 +1780,7 @@
 				B8F1131E833F6CEF51389FEF /* DocumentChatTests.swift in Sources */,
 				0937C1931F2BF054FB62960C /* DocumentTextTests.swift in Sources */,
 				EF695F2C609458BDF27B1E81 /* DocumentsTests.swift in Sources */,
+				916B8E5125104C19E80F0981 /* EditorBlocksTests.swift in Sources */,
 				F8C811CA5FFCA8A1BD440F07 /* InboxTests.swift in Sources */,
 				D0C4C0EBF2FB41F1E6F43CF0 /* MeetingExportTests.swift in Sources */,
 				81ECA44EB50D0F74B9538D41 /* MeetingFlowTests.swift in Sources */,
@@ -1760,6 +1797,7 @@
 				2487F1CA6330738A38A66962 /* SummaryTemplateTests.swift in Sources */,
 				0D911C18E12676E90922C4A1 /* SystemAudioMixTests.swift in Sources */,
 				6569AA53BCC35A58EF9AB20E /* TestStore.swift in Sources */,
+				E2D2F199C9B9DBDD9969384D /* TodoRepeatTests.swift in Sources */,
 				A960CBE9C4C443D4FE6B1927 /* TodoSuggestionsDateGuessTests.swift in Sources */,
 				A174D2303CB962C9FB697F41 /* TodoSuggestionsTests.swift in Sources */,
 				DBCA064696CE66063F093599 /* TodosTests.swift in Sources */,

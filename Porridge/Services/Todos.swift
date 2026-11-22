@@ -365,13 +365,22 @@ extension Todos {
         guard isTodo != note.isTodo else { return }
         note.todoState = isTodo ? .open : TodoState.none
         note.todoDoneAt = nil
+        // A note turned back keeps no repeat rule.
+        if !isTodo, note.todoRepeat != nil { note.todoRepeat = nil }
         note.updatedAt = Date()
         save(note, in: context)
     }
 
-    /// Ticks or unticks the to-do itself. Done ticks every subtask; open leaves them as they are.
+    /// Ticks or unticks the to-do itself. Done ticks every subtask; open leaves them as they are. A repeating
+    /// to-do is never done: it moves on to its next due day with its subtasks unticked (`rollOver`).
     static func setDone(_ done: Bool, _ note: Note, in context: ModelContext) {
         guard note.isTodo, done != note.isDone else { return }
+        if done, note.todoRepeat != nil {
+            rollOver(note)
+            note.updatedAt = Date()
+            save(note, in: context)
+            return
+        }
         note.todoState = done ? .done : .open
         note.todoDoneAt = done ? Date() : nil
         if done { note.text = setAll(true, in: note.text) }
@@ -392,6 +401,11 @@ extension Todos {
     static func follow(_ note: Note, from old: String) {
         guard let state = note.todoState, note.isTodo,
               let next = stateAfterEdit(old: old, new: note.text, state: state) else { return }
+        // The last subtask of a repeating to-do ticked: it moves on to its next round.
+        if next == .done, note.todoRepeat != nil {
+            rollOver(note)
+            return
+        }
         note.todoState = next
         note.todoDoneAt = next == .done ? Date() : nil
     }

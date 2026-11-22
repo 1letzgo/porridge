@@ -17,11 +17,45 @@ enum DueDateMenu {
             item.state = !todos.isEmpty && todos.allSatisfy { $0.todoDue == key } ? .on : .off
         }
         menu.add("Pick Date…", symbol: "calendar") { DueDatePicker.present(for: todos, anchor: anchor, window: window) }
+        menu.addItem(repeatItem(for: todos, window: window))
         if todos.contains(where: { $0.todoDue != nil }) {
             menu.addItem(.separator())
             menu.add("Clear Due Date", symbol: "calendar.badge.minus", isDestructive: true) { TodoBridge.setDue(nil, todos) }
         }
         return menu
+    }
+
+    /// Repeat ▸ Never, Daily, Weekly, Monthly, Yearly, Every N Days…: a repeating to-do moves to its next due day
+    /// when it is done (`Todos.rollOver`); there are no reminders.
+    static func repeatItem(for todos: [Note], window: NSWindow?) -> NSMenuItem {
+        let context = Library.shared.context
+        let rules = todos.map(\.todoRepeat)
+        let submenu = NSMenu(title: "Repeat")
+        let never = submenu.add("Never") { todos.forEach { Todos.setRepeat(nil, $0, in: context) } }
+        never.state = !todos.isEmpty && rules.allSatisfy { $0 == nil } ? .on : .off
+        for rule in TodoRepeat.presets {
+            let item = submenu.add(rule.title) { todos.forEach { Todos.setRepeat(rule, $0, in: context) } }
+            item.state = !todos.isEmpty && rules.allSatisfy { rule.sameRule(as: $0) } ? .on : .off
+        }
+        submenu.addItem(.separator())
+        let custom = rules.first.flatMap { $0 }.flatMap { current in TodoRepeat.presets.contains { $0.sameRule(as: current) } ? nil : current }
+        let customItem = submenu.add(custom.map { "\($0.title)…" } ?? "Every N Days…") {
+            let days = custom.map { $0.interval * ($0.unit == .week ? 7 : 1) } ?? 2
+            Alerts.ask(
+                "Repeat Every N Days", message: "The to-do comes back this many days after its due day once it is done.",
+                placeholder: "Days", value: String(days), action: "Repeat",
+                validate: { Int($0.trimmingCharacters(in: .whitespaces)).map { (1...999).contains($0) } ?? false }, in: window
+            ) { text in
+                guard let n = Int(text.trimmingCharacters(in: .whitespaces)) else { return }
+                todos.forEach { Todos.setRepeat(.everyDays(n), $0, in: context) }
+            }
+        }
+        customItem.state = custom != nil ? .on : .off
+        let item = NSMenuItem(title: "Repeat", action: nil, keyEquivalent: "")
+        item.image = NSImage(systemSymbolName: "repeat", accessibilityDescription: nil)
+        item.submenu = submenu
+        item.isEnabled = !todos.isEmpty
+        return item
     }
 }
 
@@ -111,7 +145,7 @@ final class DueDateChip: PillButton {
         self.note = note
         if let due = note.todoDue {
             let overdue = note.isOverdue
-            title = Todos.dueLabel(due)
+            title = Todos.dueLabel(due) + (note.todoRepeat != nil ? " ↻" : "")
             image = .symbol(overdue ? "calendar.badge.exclamationmark" : "calendar", size: 11, weight: .semibold)
             tint = overdue ? .systemRed : note.isDone ? .systemGray : .brandTask
             labelColor = overdue ? .brandDangerText : note.isDone ? nil : .brandTaskText

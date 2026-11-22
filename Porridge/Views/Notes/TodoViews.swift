@@ -119,12 +119,13 @@ struct TodoDueLabel: View {
             HStack(spacing: 3) {
                 Image(systemName: note.isOverdue ? "calendar.badge.exclamationmark" : "calendar")
                 Text(label)
+                if note.todoRepeat != nil { Image(systemName: "repeat").imageScale(.small) }
             }
             .foregroundStyle(Todos.dueTint(note))
             .fontWeight(note.isOverdue || Todos.dueStatus(due) == .today && !note.isDone ? .semibold : nil)
             .fixedSize()
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(note.isOverdue ? "Overdue, due \(label)" : "Due \(label)")
+            .accessibilityLabel((note.isOverdue ? "Overdue, due \(label)" : "Due \(label)") + (note.todoRepeat.map { ", repeats \($0.title)" } ?? ""))
         }
     }
 }
@@ -146,6 +147,7 @@ struct DueDateMenuItems: View {
             }
         }
         Button(action: pickDate) { Label("Pick Date…", systemImage: "calendar") }
+        RepeatMenu(note: note, custom: pickDate)
         if note.todoDue != nil {
             Divider()
             Button(role: .destructive) {
@@ -170,6 +172,7 @@ struct DueDateChip: View {
                 if let due = note.todoDue {
                     Image(systemName: note.isOverdue ? "calendar.badge.exclamationmark" : "calendar")
                     Text(Todos.dueLabel(due))
+                    if note.todoRepeat != nil { Image(systemName: "repeat").imageScale(.small) }
                 } else {
                     Image(systemName: "plus")
                     Text("Due Date")
@@ -182,7 +185,45 @@ struct DueDateChip: View {
             .chunkyPill(fill: note.todoDue == nil ? .gray : note.isOverdue ? .red : .brandTask)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(note.todoDue.map { "Due \(Todos.dueLabel($0))" } ?? "Add Due Date")
+        .accessibilityLabel(note.todoDue.map { "Due \(Todos.dueLabel($0))" + (note.todoRepeat.map { ", repeats \($0.title)" } ?? "") } ?? "Add Due Date")
+    }
+}
+
+/// How the to-do repeats: Never, Daily, Weekly, Monthly, Yearly, or every so many days (in the date sheet).
+/// A repeating to-do moves to its next due day when it is done; there are no reminders.
+struct RepeatMenu: View {
+    let note: Note
+    /// Opens the date sheet, which also sets "Every N Days".
+    let custom: () -> Void
+
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        let current = note.todoRepeat
+        Menu {
+            Button {
+                withAnimation(.snappy) { Todos.setRepeat(nil, note, in: context) }
+            } label: {
+                if current == nil { Label("Never", systemImage: "checkmark") } else { Text("Never") }
+            }
+            ForEach(TodoRepeat.presets, id: \.self) { rule in
+                Button {
+                    withAnimation(.snappy) { Todos.setRepeat(rule, note, in: context) }
+                } label: {
+                    if rule.sameRule(as: current) { Label(rule.title, systemImage: "checkmark") } else { Text(rule.title) }
+                }
+            }
+            Divider()
+            Button(action: custom) {
+                if let current, !TodoRepeat.presets.contains(where: { $0.sameRule(as: current) }) {
+                    Label(current.title, systemImage: "checkmark")
+                } else {
+                    Text("Every N Days…")
+                }
+            }
+        } label: {
+            Label(current.map { "Repeat: \($0.title)" } ?? String(localized: "Repeat"), systemImage: "repeat")
+        }
     }
 }
 
@@ -193,28 +234,71 @@ struct DueDatePickerSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @State private var day = Date()
+    /// "never", "day", "week", "month", "year" or "days" (every N days).
+    @State private var repeatChoice = "never"
+    @State private var everyDays = 2
 
     var body: some View {
         NavigationStack {
-            DatePicker("Due Date", selection: $day, displayedComponents: .date)
-                .datePickerStyle(.graphical)
-                .tint(.brandTask)
-                .padding()
-                .frame(maxHeight: .infinity, alignment: .top)
-                .navigationTitle("Due Date")
-                .inlineNavigationTitle()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") {
-                            Todos.setDue(Todos.dueKey(day), note, in: context)
-                            dismiss()
-                        }
+            VStack(alignment: .leading, spacing: 12) {
+                DatePicker("Due Date", selection: $day, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .tint(.brandTask)
+                HStack {
+                    Label("Repeat", systemImage: "repeat")
+                    Spacer()
+                    Picker("Repeat", selection: $repeatChoice) {
+                        Text("Never").tag("never")
+                        ForEach(TodoRepeat.presets, id: \.self) { Text($0.title).tag($0.unit.rawValue) }
+                        Text("Every N Days").tag("days")
+                    }
+                    .labelsHidden()
+                }
+                if repeatChoice == "days" {
+                    Stepper("Every \(everyDays) days", value: $everyDays, in: 2...365)
+                }
+            }
+            .padding()
+            .frame(maxHeight: .infinity, alignment: .top)
+            .navigationTitle("Due Date")
+            .inlineNavigationTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        Todos.setDue(Todos.dueKey(day), note, in: context)
+                        Todos.setRepeat(chosenRule, note, in: context)
+                        dismiss()
                     }
                 }
+            }
         }
         .presentationDetents([.medium, .large])
-        .onAppear { day = note.todoDue.flatMap { Todos.dueDate($0) } ?? Date() }
+        .onAppear {
+            day = note.todoDue.flatMap { Todos.dueDate($0) } ?? Date()
+            if let rule = note.todoRepeat {
+                if rule.unit == .day, rule.interval > 1 {
+                    repeatChoice = "days"
+                    everyDays = rule.interval
+                } else if rule.interval == 1 {
+                    repeatChoice = rule.unit.rawValue
+                } else {
+                    // Every 2 weeks and the like (set elsewhere) are shown as days.
+                    repeatChoice = "days"
+                    everyDays = rule.interval * (rule.unit == .week ? 7 : 1)
+                }
+            }
+        }
+    }
+
+    private var chosenRule: TodoRepeat? {
+        switch repeatChoice {
+        case "days": .everyDays(everyDays)
+        case "never": nil
+        default:
+            // An unchanged rule keeps its interval (every 2 months stays every 2 months).
+            if let current = note.todoRepeat, current.unit.rawValue == repeatChoice { current } else { TodoRepeat.Unit(rawValue: repeatChoice).map { TodoRepeat(unit: $0) } }
+        }
     }
 }
 

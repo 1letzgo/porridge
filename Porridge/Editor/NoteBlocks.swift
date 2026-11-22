@@ -11,6 +11,8 @@ struct NoteBlock: Identifiable, Equatable {
         case numbered
         case checklist(checked: Bool)
         case quote
+        /// A line of a fenced code block, the fences ("```") included: kept exactly as typed, in a monospaced font.
+        case code
     }
 
     var id = UUID()
@@ -64,8 +66,16 @@ struct NoteBlock: Identifiable, Equatable {
         return NoteBlock(text: line)
     }
 
+    /// Every line as a block; lines of fenced code blocks (`NoteRichText.isFence`) are code, whatever they look like.
     static func parse(_ markdown: String) -> [NoteBlock] {
-        markdown.components(separatedBy: "\n").map { parse(line: $0) }
+        var inFence = false
+        return markdown.components(separatedBy: "\n").map { line in
+            if NoteRichText.isFence(line) {
+                inFence.toggle()
+                return NoteBlock(kind: .code, text: line)
+            }
+            return inFence ? NoteBlock(kind: .code, text: line) : parse(line: line)
+        }
     }
 
     /// The number shown for every numbered block (0 for the others); numbering restarts after any other block.
@@ -94,6 +104,7 @@ struct NoteBlock: Identifiable, Equatable {
         case .numbered: return space + "\(number). "
         case .checklist(let checked): return space + (checked ? "- [x] " : "- [ ] ")
         case .quote: return "> "
+        case .code: return ""
         }
     }
 

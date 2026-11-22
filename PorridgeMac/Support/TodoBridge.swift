@@ -39,7 +39,8 @@ enum TodoBridge {
     static func dueAccessibility(of note: Note) -> String {
         guard let due = note.todoDue else { return "" }
         let label = Todos.dueLabel(due)
-        return note.isOverdue ? "Overdue, due \(label)" : "Due \(label)"
+        let repeats = note.todoRepeat.map { ", repeats \($0.title)" } ?? ""
+        return (note.isOverdue ? "Overdue, due \(label)" : "Due \(label)") + repeats
     }
 
     static func setDue(_ key: String?, _ notes: [Note]) {

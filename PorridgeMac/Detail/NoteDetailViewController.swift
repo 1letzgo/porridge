@@ -212,6 +212,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         // Note: the editor, the dictation's preview while it runs.
         let note = note
         editor = NoteEditorView(get: { note.text }, set: { [weak self] text in self?.setText(text) })
+        editor.controller.attachImage = { [weak self] url in
+            guard let self else { return nil }
+            return NoteImageAttaching.attach(url, to: note, context: self.library.context, processing: self.processing)
+        }
         addSubtask.setHandler { [weak self] in self?.editor.appendChecklistItem() }
         addSubtask.isBordered = false
         addSubtask.contentTintColor = .brandTaskText
@@ -502,8 +506,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         meta.stringValue = metaLine(isTodo: isTodo, isDone: isDone)
         deletedBanner.isHidden = !note.isDeleted
         chips.show(note, library: library)
-        attachments.isHidden = note.attachmentsData == nil
-        if note.attachmentsData != nil { attachments.show(note.attachments, canRemove: !note.isDeleted) }
+        // Images shown in the note's text are not listed again.
+        let listed = note.attachmentsData == nil ? [] : note.stripAttachments
+        attachments.isHidden = listed.isEmpty
+        if !listed.isEmpty { attachments.show(listed, canRemove: !note.isDeleted) }
         renderStatus()
         renderSpeakers()
         let canUndo = processing.canUndoEnhance(note)

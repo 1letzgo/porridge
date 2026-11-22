@@ -16,7 +16,8 @@ struct AttachmentStrip: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                ForEach(note.attachments) { attachment in
+                // Images shown in the note's text are not listed again.
+                ForEach(note.stripAttachments) { attachment in
                     Button { open(attachment) } label: {
                         AttachmentTile(attachment: attachment, isFetching: fetching == attachment.id)
                     }

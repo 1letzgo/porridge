@@ -29,6 +29,10 @@ enum NoteEditorCommand {
     case moveLine(up: Bool)
     /// A new unticked checklist item at the end, with the cursor in it (a to-do's "Add Subtask").
     case appendChecklistItem
+    /// A table, image or divider after the paragraph with the cursor (or in its place when it is empty).
+    case insertBlock(RichBlock)
+    /// A fenced code block ("```", an empty line, "```") with the cursor in it.
+    case insertCodeBlock
 }
 
 /// The note as one native text view (TextKit 2), the same editing logic on both platforms:
@@ -87,6 +91,7 @@ final class NoteTextCoordinator: NSObject {
                 MainActor.assumeIsolated { if self?.hasPendingCommit == true { self?.flush() } }
             })
         }
+        observeImages()
     }
 
     func stopObserving() {
@@ -190,6 +195,8 @@ final class NoteTextCoordinator: NSObject {
     @discardableResult
     func restyle(_ paragraph: NSRange, kind: NoteBlock.Kind, indent: Int) -> NSRange {
         guard let storage, let textView else { return paragraph }
+        // A table, image or divider has no kind of its own.
+        if hasBlock(paragraph) { return paragraph }
         var range = paragraph
         let selection = textView.selectedRange
         isAdjusting = true
@@ -209,6 +216,8 @@ final class NoteTextCoordinator: NSObject {
             let italic = font.map(NoteMarkdown.isItalic) ?? false
             storage.addAttribute(.font, value: NoteMarkdown.font(kind: kind, bold: bold, italic: italic), range: runRange)
         }
+        storage.removeAttribute(.backgroundColor, range: text)
+        if kind == .code { storage.addAttribute(.backgroundColor, value: NoteMarkdown.codeBackground, range: text) }
         let content = contentRange(of: range)
         NoteMarkdown.colorTags(in: storage, range: NSRange(location: text.location, length: max(0, content.location + content.length - text.location)), kind: kind)
         storage.endEditing()
@@ -289,7 +298,9 @@ final class NoteTextCoordinator: NSObject {
         }
         typing[.attachment] = nil
         typing[.noteChecked] = nil
+        typing[.noteRawBlock] = nil
         typing[.kern] = nil
+        if NoteMarkdown.kind(of: typing).0 != .code { typing[.backgroundColor] = nil }
         textView.typingAttributes = typing
     }
 
@@ -335,6 +346,18 @@ final class NoteTextCoordinator: NSObject {
                 return false
             case .heading, .quote:
                 // The line after a heading or quote is plain text.
+                isAdjusting = true
+                storage.replaceCharacters(in: range, with: NSAttributedString(string: "\n", attributes: textView.typingAttributes))
+                isAdjusting = false
+                restyle(paragraphRange(at: range.location + 1), kind: .paragraph, indent: 0)
+                textView.selectedRange = NSRange(location: range.location + 1, length: 0)
+                forgetUndo()
+                resetTypingAttributes()
+                commit()
+                return false
+            case .code:
+                // Return on the closing fence leaves the code block; inside it, lines stay code.
+                guard isClosingFence(paragraph) else { return true }
                 isAdjusting = true
                 storage.replaceCharacters(in: range, with: NSAttributedString(string: "\n", attributes: textView.typingAttributes))
                 isAdjusting = false
@@ -475,7 +498,8 @@ final class NoteTextCoordinator: NSObject {
     func toggleCheckbox(near index: Int, at point: CGPoint) -> Bool {
         guard let storage, textView?.isEditable == true else { return false }
         for candidate in [index, index - 1] where candidate >= 0 && candidate < storage.length {
-            guard storage.attribute(.attachment, at: candidate, effectiveRange: nil) != nil else { continue }
+            guard storage.attribute(.attachment, at: candidate, effectiveRange: nil) != nil,
+                  storage.attribute(.noteRawBlock, at: candidate, effectiveRange: nil) == nil else { continue }
             // Without a layout to ask (never with TextKit 2) the nearest box counts, as before.
             if let box = frame(ofCharacterAt: candidate), !box.contains(point) { continue }
             let checked = storage.attribute(.noteChecked, at: candidate, effectiveRange: nil) as? Bool ?? false
@@ -500,6 +524,208 @@ final class NoteTextCoordinator: NSObject {
             return true
         }
         return frame
+    }
+
+    // MARK: Blocks (tables, images, dividers, code)
+
+    /// The paragraph holds a table, image or divider.
+    func hasBlock(_ paragraph: NSRange) -> Bool {
+        guard let storage, paragraph.length > 0, paragraph.location < storage.length else { return false }
+        var found = false
+        let range = NSRange(location: paragraph.location, length: min(paragraph.length, storage.length - paragraph.location))
+        storage.enumerateAttribute(.noteRawBlock, in: range, options: []) { value, _, stop in
+            if value != nil { found = true; stop.pointee = true }
+        }
+        return found
+    }
+
+    /// A fence line that closes a code block: an even number of fences up to and including it.
+    private func isClosingFence(_ paragraph: NSRange) -> Bool {
+        let content = contentRange(of: paragraph)
+        guard NoteRichText.isFence(string.substring(with: content)) else { return false }
+        var fences = 0
+        var location = 0
+        while location <= paragraph.location, location < string.length {
+            let range = paragraphRange(at: location)
+            if kind(of: range).0 == .code, NoteRichText.isFence(string.substring(with: contentRange(of: range))) { fences += 1 }
+            location = range.location + max(range.length, 1)
+        }
+        return fences % 2 == 0
+    }
+
+    /// Plain paragraph attributes for text put around blocks.
+    private var plainAttributes: [NSAttributedString.Key: Any] {
+        var attributes = NoteMarkdown.inlineAttributes(kind: .paragraph, bold: false, italic: false)
+        attributes.merge(NoteMarkdown.paragraphAttributes(kind: .paragraph, indent: 0)) { $1 }
+        return attributes
+    }
+
+    /// Where a new block goes: in place of the paragraph with the cursor when that is empty, otherwise after it.
+    /// `piece` gets the newline in front when needed; the returned location is where the block starts.
+    private func insertionPoint(_ piece: NSMutableAttributedString) -> (at: Int, hasNewline: Bool)? {
+        guard let storage, let textView else { return nil }
+        let cursor = min(textView.selectedRange.location, storage.length)
+        let paragraph = paragraphRange(at: cursor)
+        let content = contentRange(of: paragraph)
+        let isEmpty = content.length == 0 && kind(of: paragraph).0 == .paragraph
+        if !isEmpty { piece.append(NSAttributedString(string: "\n", attributes: plainAttributes)) }
+        return (content.location + content.length, paragraph.length > content.length)
+    }
+
+    /// Puts a block in a paragraph of its own (see `insertionPoint`). An empty line follows when the block would
+    /// end the text, so there is somewhere to type on. Returns where the block's character is.
+    @discardableResult
+    func insertBlock(_ block: RichBlock) -> Int? {
+        guard let storage, let textView else { return nil }
+        flush()
+        let piece = NSMutableAttributedString()
+        guard let point = insertionPoint(piece) else { return nil }
+        let (at, hasNewline) = point
+        let blockLocation = at + piece.length
+        piece.append(NoteMarkdown.blockString(block, source: block.markdown))
+        if !hasNewline { piece.append(NSAttributedString(string: "\n", attributes: plainAttributes)) }
+        isAdjusting = true
+        storage.replaceCharacters(in: NSRange(location: at, length: 0), with: piece)
+        isAdjusting = false
+        forgetUndo()
+        // On the line after the block.
+        textView.selectedRange = NSRange(location: min(blockLocation + 2, storage.length), length: 0)
+        resetTypingAttributes()
+        renumberIfNeeded()
+        textView.didRestyle()
+        commit()
+        return blockLocation
+    }
+
+    /// "```", an empty code line, "```" (see `insertionPoint`); the cursor on the empty line.
+    func insertCodeBlock() {
+        guard let storage, let textView else { return }
+        flush()
+        let piece = NSMutableAttributedString()
+        guard let point = insertionPoint(piece) else { return }
+        let (at, hasNewline) = point
+        let start = at + piece.length
+        var code = NoteMarkdown.inlineAttributes(kind: .code, bold: false, italic: false)
+        code.merge(NoteMarkdown.paragraphAttributes(kind: .code, indent: 0)) { $1 }
+        piece.append(NSAttributedString(string: "```\n\n```", attributes: code))
+        if !hasNewline { piece.append(NSAttributedString(string: "\n", attributes: plainAttributes)) }
+        isAdjusting = true
+        storage.replaceCharacters(in: NSRange(location: at, length: 0), with: piece)
+        isAdjusting = false
+        forgetUndo()
+        textView.selectedRange = NSRange(location: start + 4, length: 0)
+        resetTypingAttributes()
+        textView.didRestyle()
+        commit()
+    }
+
+    /// The block at `location` (or else the first one with `source`) gets new Markdown; nil takes it away.
+    func replaceBlock(at location: Int, source: String, with block: RichBlock?) {
+        guard let storage, let textView else { return }
+        flush()
+        func sourceAt(_ index: Int) -> String? {
+            guard index >= 0, index < storage.length else { return nil }
+            return storage.attribute(.noteRawBlock, at: index, effectiveRange: nil) as? String
+        }
+        var index = sourceAt(location) == source ? location : nil
+        if index == nil {
+            storage.enumerateAttribute(.noteRawBlock, in: NSRange(location: 0, length: storage.length), options: []) { value, range, stop in
+                if value as? String == source { index = range.location; stop.pointee = true }
+            }
+        }
+        guard let index else {
+            if let block { insertBlock(block) }
+            return
+        }
+        isAdjusting = true
+        if let block {
+            storage.replaceCharacters(in: NSRange(location: index, length: 1), with: NoteMarkdown.blockString(block, source: block.markdown))
+        } else {
+            // A block alone on its line goes with the line.
+            let paragraph = paragraphRange(at: index)
+            let alone = contentRange(of: paragraph).length == 1
+            storage.deleteCharacters(in: alone ? paragraph : NSRange(location: index, length: 1))
+        }
+        isAdjusting = false
+        forgetUndo()
+        textView.selectedRange = NSRange(location: min(index, storage.length), length: 0)
+        resetTypingAttributes()
+        textView.didRestyle()
+        commit()
+    }
+
+    /// The block under a tap or click: a table opens its editor. `index` and `point` as for `toggleCheckbox`.
+    func tapBlock(near index: Int, at point: CGPoint) -> Bool {
+        guard let storage, textView?.isEditable == true else { return false }
+        for candidate in [index, index - 1] where candidate >= 0 && candidate < storage.length {
+            guard let source = storage.attribute(.noteRawBlock, at: candidate, effectiveRange: nil) as? String,
+                  let attachment = storage.attribute(.attachment, at: candidate, effectiveRange: nil) as? NoteBlockAttachment else { continue }
+            if let box = frame(ofCharacterAt: candidate), !box.contains(point) { continue }
+            guard case .table(let table) = attachment.block else { return false }
+            controller.tableRequest = TableEditRequest(table: table, location: candidate, source: source, isNew: false)
+            return true
+        }
+        return false
+    }
+
+    /// An image came in from iCloud: the blocks showing it are laid out again.
+    func refreshImage(_ fileName: String) {
+        guard let storage, let textView else { return }
+        var places: [(Int, String)] = []
+        storage.enumerateAttribute(.noteRawBlock, in: NSRange(location: 0, length: storage.length), options: []) { value, range, _ in
+            guard let source = value as? String, source.contains(fileName) else { return }
+            for offset in 0..<range.length { places.append((range.location + offset, source)) }
+        }
+        guard !places.isEmpty else { return }
+        let selection = textView.selectedRange
+        isAdjusting = true
+        for (location, source) in places.reversed() {
+            guard case .block(let block, _)? = NoteRichText.scan(source).first else { continue }
+            storage.replaceCharacters(in: NSRange(location: location, length: 1), with: NoteMarkdown.blockString(block, source: source))
+        }
+        isAdjusting = false
+        textView.selectedRange = selection
+        textView.didRestyle()
+    }
+
+    /// Markdown from outside (a paste) put in at the selection: tables, images and dividers in it become blocks.
+    /// Returns false when it has none, so the text view pastes as usual.
+    func pasteMarkdown(_ pasted: String) -> Bool {
+        guard let storage, let textView, textView.isEditable else { return false }
+        let hasBlocks = NoteRichText.scan(pasted).contains { if case .block = $0 { true } else { false } }
+        guard hasBlocks else { return false }
+        let selection = textView.selectedRange
+        let converted = NSMutableAttributedString(attributedString: NoteMarkdown.attributed(from: pasted))
+        // On a line of its own.
+        if selection.location > paragraphRange(at: selection.location).location {
+            converted.insert(NSAttributedString(string: "\n", attributes: plainAttributes), at: 0)
+        }
+        isAdjusting = true
+        storage.replaceCharacters(in: selection, with: converted)
+        isAdjusting = false
+        forgetUndo()
+        textView.selectedRange = NSRange(location: min(selection.location + converted.length, storage.length), length: 0)
+        resetTypingAttributes()
+        renumberIfNeeded()
+        textView.didRestyle()
+        commit()
+        return true
+    }
+
+    /// The selection as Markdown for copy and cut, when it holds a block (tables, images and dividers as their
+    /// source); nil leaves copying to the text view.
+    func selectedMarkdown() -> String? {
+        guard let storage, let textView, textView.selectedRange.length > 0 else { return nil }
+        let range = textView.selectedRange
+        guard hasBlock(range) else { return nil }
+        return NoteMarkdown.markdown(from: storage.attributedSubstring(from: range))
+    }
+
+    private func observeImages() {
+        appObservers.append(NotificationCenter.default.addObserver(forName: .noteInlineImageReady, object: nil, queue: .main) { [weak self] note in
+            guard let name = note.object as? String else { return }
+            MainActor.assumeIsolated { self?.refreshImage(name) }
+        })
     }
 
     // MARK: Commands
@@ -527,19 +753,40 @@ final class NoteTextCoordinator: NSObject {
         case .appendChecklistItem:
             appendChecklistItem()
             return
+        case .insertBlock(let block):
+            insertBlock(block)
+            return
+        case .insertCodeBlock:
+            insertCodeBlock()
+            return
         }
         textView.didRestyle()
         commit()
     }
 
-    /// Line `index` of the Markdown is paragraph `index` of the view: where it starts.
+    /// Where line `index` of the Markdown starts in the view. A table is one paragraph of the view but several lines
+    /// of the Markdown: the paragraph that holds the line.
     private func location(ofLine index: Int) -> Int {
+        guard let storage else { return 0 }
         var location = 0
-        for _ in 0..<index {
+        var line = 0
+        while location < string.length {
             let paragraph = paragraphRange(at: location)
-            location = paragraph.location + paragraph.length
+            let content = contentRange(of: paragraph)
+            let lines = NoteMarkdown.blockLines(in: storage, content: content)?.reduce(0) { $0 + $1.components(separatedBy: "\n").count } ?? 1
+            if line + lines > index { return paragraph.location }
+            line += lines
+            location = paragraph.location + max(paragraph.length, 1)
         }
         return min(location, string.length)
+    }
+
+    /// The Markdown line the paragraph at `location` starts on.
+    private func markdownLine(at location: Int) -> Int {
+        guard let storage else { return 0 }
+        let start = paragraphRange(at: location).location
+        guard start > 0 else { return 0 }
+        return NoteMarkdown.markdown(from: storage.attributedSubstring(from: NSRange(location: 0, length: start))).components(separatedBy: "\n").count - 1
     }
 
     /// Markdown changed here as lines (move, append): written to the note and shown, the cursor on `line`.
@@ -558,8 +805,13 @@ final class NoteTextCoordinator: NSObject {
         guard let textView else { return }
         flush()
         let markdown = text.wrappedValue
-        let before = string.substring(to: min(textView.selectedRange.location, string.length))
-        let line = before.components(separatedBy: "\n").count - 1
+        // Tables, images and dividers are not moved line by line, nor is a line moved into them.
+        let current = paragraphRange(at: textView.selectedRange.location)
+        let neighbor: NSRange? = up
+            ? (current.location > 0 ? paragraphRange(at: current.location - 1) : nil)
+            : (current.location + current.length < string.length ? paragraphRange(at: current.location + current.length) : nil)
+        if hasBlock(current) || neighbor.map(hasBlock) == true { return }
+        let line = markdownLine(at: min(textView.selectedRange.location, string.length))
         let moved = Todos.moveLine(line, by: up ? -1 : 1, in: markdown)
         guard moved != markdown else { return }
         replaceMarkdown(moved, cursorLine: line + (up ? -1 : 1), atEnd: true)
@@ -651,7 +903,34 @@ final class NotePlatformTextView: NSTextView {
         let index = characterIndexForInsertion(at: point)
         let inContainer = CGPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
         if let coordinator, coordinator.toggleCheckbox(near: index, at: inContainer) { return }
+        if let coordinator, coordinator.tapBlock(near: index, at: inContainer) { return }
         super.mouseDown(with: event)
+    }
+
+    // Tables, images and dividers are copied as their Markdown; Markdown with them is pasted as them, and a
+    // picture on the pasteboard becomes an image of the note.
+    override func copy(_ sender: Any?) {
+        guard let markdown = coordinator?.selectedMarkdown() else { return super.copy(sender) }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(markdown, forType: .string)
+    }
+
+    override func cut(_ sender: Any?) {
+        guard coordinator?.selectedMarkdown() != nil else { return super.cut(sender) }
+        copy(sender)
+        delete(sender)
+    }
+
+    override func paste(_ sender: Any?) {
+        let board = NSPasteboard.general
+        if let coordinator, board.string(forType: .string) == nil, coordinator.controller.canInsertImages,
+           board.availableType(from: [.fileURL]) == nil,
+           let data = board.data(forType: .png) ?? board.data(forType: .tiff).flatMap({ NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:]) }) {
+            coordinator.controller.insertImage(data: data, fileExtension: "png", name: "Pasted Image")
+            return
+        }
+        if let text = board.string(forType: .string), coordinator?.pasteMarkdown(text) == true { return }
+        super.paste(sender)
     }
 
     func endEditing() {
@@ -775,7 +1054,39 @@ final class NotePlatformTextView: UITextView {
         guard let position = closestPosition(to: point) else { return }
         let index = offset(from: beginningOfDocument, to: position)
         let inContainer = CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top)
-        _ = coordinator?.toggleCheckbox(near: index, at: inContainer)
+        if coordinator?.toggleCheckbox(near: index, at: inContainer) == true { return }
+        _ = coordinator?.tapBlock(near: index, at: inContainer)
+    }
+
+    // Tables, images and dividers are copied as their Markdown; Markdown with them is pasted as them, and a
+    // picture on the pasteboard becomes an image of the note.
+    override func copy(_ sender: Any?) {
+        guard let markdown = coordinator?.selectedMarkdown() else { return super.copy(sender) }
+        UIPasteboard.general.string = markdown
+    }
+
+    override func cut(_ sender: Any?) {
+        guard let markdown = coordinator?.selectedMarkdown() else { return super.cut(sender) }
+        UIPasteboard.general.string = markdown
+        deleteBackward()
+    }
+
+    override func paste(_ sender: Any?) {
+        let board = UIPasteboard.general
+        if let coordinator, !board.hasStrings, board.hasImages, coordinator.controller.canInsertImages,
+           let data = board.image?.pngData() {
+            coordinator.controller.insertImage(data: data, fileExtension: "png", name: "Pasted Image")
+            return
+        }
+        if let text = board.string, coordinator?.pasteMarkdown(text) == true { return }
+        super.paste(sender)
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)), isEditable, UIPasteboard.general.hasImages, coordinator?.controller.canInsertImages == true {
+            return true
+        }
+        return super.canPerformAction(action, withSender: sender)
     }
 }
 

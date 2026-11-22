@@ -12,7 +12,7 @@ typealias PlatformImage = UIImage
 #endif
 
 extension NSAttributedString.Key {
-    /// Kind of the paragraph: "h1", "h2", "h3", "quote", "bullet", "numbered" or "checklist". Plain paragraphs have none.
+    /// Kind of the paragraph: "h1", "h2", "h3", "quote", "bullet", "numbered", "checklist" or "code". Plain paragraphs have none.
     static let noteBlock = NSAttributedString.Key("PorridgeNoteBlock")
     /// Nesting level of a list paragraph (Int).
     static let noteIndent = NSAttributedString.Key("PorridgeNoteIndent")
@@ -36,15 +36,30 @@ enum NoteMarkdown {
 
     // MARK: - Markdown → attributed
 
+    /// Tables, images and dividers become one attachment character each (`NoteBlockAttachment`) that keeps its
+    /// Markdown; lines in fenced code blocks are `code` paragraphs.
     static func attributed(from markdown: String) -> NSAttributedString {
         let result = NSMutableAttributedString()
-        let lines = markdown.components(separatedBy: "\n")
+        let segments = NoteRichText.scan(markdown)
         var counters: [Int: Int] = [:]
-        for (i, line) in lines.enumerated() {
-            let block = NoteBlock.parse(line: line)
+        for (i, segment) in segments.enumerated() {
+            let isLast = i == segments.count - 1
+            let block: NoteBlock
+            switch segment {
+            case .block(let rich, let source):
+                _ = next(counters: &counters, kind: .paragraph, indent: 0)
+                let paragraph = NSMutableAttributedString(attributedString: blockString(rich, source: source))
+                if !isLast {
+                    paragraph.append(NSAttributedString(string: "\n", attributes: paragraph.attributes(at: 0, effectiveRange: nil).filter { $0.key != .attachment && $0.key != .noteRawBlock }))
+                }
+                result.append(paragraph)
+                continue
+            case .line(let line, let code):
+                block = code ? NoteBlock(kind: .code, text: line) : NoteBlock.parse(line: line)
+            }
             let number = next(counters: &counters, kind: block.kind, indent: block.indent)
             let paragraph = NSMutableAttributedString(attributedString: inline(block.text, kind: block.kind))
-            if i < lines.count - 1 { paragraph.append(NSAttributedString(string: "\n")) }
+            if !isLast { paragraph.append(NSAttributedString(string: "\n")) }
             paragraph.insert(marker(kind: block.kind, number: number), at: 0)
             let whole = NSRange(location: 0, length: paragraph.length)
             paragraph.addAttributes(paragraphAttributes(kind: block.kind, indent: block.indent), range: whole)
@@ -108,6 +123,8 @@ enum NoteMarkdown {
 
     /// Bold (`**`) and italic (`*`) of one line as fonts; everything else stays as typed.
     static func inline(_ text: String, kind: NoteBlock.Kind) -> NSAttributedString {
+        // Code is shown as typed.
+        if kind == .code { return NSAttributedString(string: text, attributes: inlineAttributes(kind: kind, bold: false, italic: false)) }
         let result = NSMutableAttributedString()
         let characters = Array(text)
         // Marks are only marks when they come in pairs; otherwise the stars are text.
@@ -154,10 +171,20 @@ enum NoteMarkdown {
             var content = range
             if string.character(at: range.location + range.length - 1) == 0x0A { content.length -= 1 }
             let (kind, indent) = paragraphKind(in: attributed, at: range.location)
+            let isLast = range.location + range.length >= string.length
+            if let blockLines = blockLines(in: attributed, content: content, closes: !(openEnded && isLast)) {
+                // A table, image or divider: its source, and any text typed beside it on lines of their own.
+                _ = next(counters: &counters, kind: .paragraph, indent: 0)
+                lines.append(contentsOf: blockLines)
+                location = range.location + range.length
+                continue
+            }
             let marker = markerLength(in: attributed, paragraph: range)
             let text = NSRange(location: content.location + marker, length: max(0, content.length - marker))
-            let isLast = range.location + range.length >= string.length
-            let block = NoteBlock(kind: kind, indent: indent, text: inlineMarkdown(attributed, range: text, kind: kind, closes: !(openEnded && isLast)))
+            let body = kind == .code
+                ? codeText(attributed, range: text)
+                : inlineMarkdown(attributed, range: text, kind: kind, closes: !(openEnded && isLast))
+            let block = NoteBlock(kind: kind, indent: indent, text: body)
             let number = next(counters: &counters, kind: kind, indent: indent)
             lines.append(block.mark(number: number) + block.text)
             location = range.location + range.length
@@ -165,6 +192,38 @@ enum NoteMarkdown {
         // A text that ends with a newline has one more, empty, paragraph (no characters, so no kind).
         if string.length == 0 || string.character(at: string.length - 1) == 0x0A { lines.append("") }
         return lines.joined(separator: "\n")
+    }
+
+    /// The Markdown lines of a paragraph that holds blocks (nil when it has none): each block's source, and the
+    /// text before or after it as plain lines.
+    static func blockLines(in attributed: NSAttributedString, content: NSRange, closes: Bool = true) -> [String]? {
+        guard content.length > 0 else { return nil }
+        var hasBlock = false
+        attributed.enumerateAttribute(.noteRawBlock, in: content, options: []) { value, _, stop in
+            if value is String { hasBlock = true; stop.pointee = true }
+        }
+        guard hasBlock else { return nil }
+        var lines: [String] = []
+        attributed.enumerateAttribute(.noteRawBlock, in: content, options: []) { value, range, _ in
+            if let source = value as? String {
+                // Two equal blocks side by side are one run: one source per character.
+                for _ in 0..<range.length { lines.append(source) }
+            } else {
+                let text = inlineMarkdown(attributed, range: range, kind: .paragraph, closes: closes)
+                if !text.trimmingCharacters(in: .whitespaces).isEmpty { lines.append(text) }
+            }
+        }
+        return lines
+    }
+
+    /// The text of a code line as typed (no marks; attachments left out).
+    static func codeText(_ attributed: NSAttributedString, range: NSRange) -> String {
+        var out = ""
+        attributed.enumerateAttribute(.attachment, in: range, options: []) { value, runRange, _ in
+            guard value == nil else { return }
+            out += (attributed.string as NSString).substring(with: runRange)
+        }
+        return out
     }
 
     /// Kind and indent of the paragraph that starts at `location`.
@@ -183,6 +242,7 @@ enum NoteMarkdown {
         case "bullet": return (.bullet, indent)
         case "numbered": return (.numbered, indent)
         case "checklist": return (.checklist(checked: attributes[.noteChecked] as? Bool ?? false), indent)
+        case "code": return (.code, 0)
         default: return (.paragraph, 0)
         }
     }
@@ -236,6 +296,7 @@ enum NoteMarkdown {
         case .bullet: attributes[.noteBlock] = "bullet"
         case .numbered: attributes[.noteBlock] = "numbered"
         case .checklist: attributes[.noteBlock] = "checklist"
+        case .code: attributes[.noteBlock] = "code"
         case .paragraph: break
         }
         if kind.isList { attributes[.noteIndent] = indent }
@@ -264,13 +325,28 @@ enum NoteMarkdown {
         case .quote:
             style.firstLineHeadIndent = 14
             style.headIndent = 14
+        case .code:
+            style.paragraphSpacing = 0
+            style.lineSpacing = 1
+            style.firstLineHeadIndent = 10
+            style.headIndent = 10
         case .paragraph: break
         }
         return style
     }
 
     static func inlineAttributes(kind: NoteBlock.Kind, bold: Bool, italic: Bool) -> [NSAttributedString.Key: Any] {
-        [.font: font(kind: kind, bold: bold, italic: italic), .foregroundColor: textColor(kind: kind)]
+        var attributes: [NSAttributedString.Key: Any] = [.font: font(kind: kind, bold: bold, italic: italic), .foregroundColor: textColor(kind: kind)]
+        if kind == .code { attributes[.backgroundColor] = codeBackground }
+        return attributes
+    }
+
+    static var codeBackground: PlatformColor {
+        #if os(macOS)
+        NSColor.labelColor.withAlphaComponent(0.07)
+        #else
+        UIColor.label.withAlphaComponent(0.07)
+        #endif
     }
 
     static func textColor(kind: NoteBlock.Kind) -> PlatformColor {
@@ -305,6 +381,8 @@ enum NoteMarkdown {
     static func colorTags(in text: NSMutableAttributedString, range: NSRange, kind: NoteBlock.Kind) {
         guard range.length > 0 else { return }
         text.addAttribute(.foregroundColor, value: textColor(kind: kind), range: range)
+        // In code a "#" is no tag (`NoteText.tags` skips fenced blocks too).
+        guard kind != .code else { return }
         let line = (text.string as NSString).substring(with: range)
         for tag in NoteText.tagRanges(in: line) {
             text.addAttribute(.foregroundColor, value: tagColor, range: NSRange(location: range.location + tag.location, length: tag.length))
@@ -318,11 +396,13 @@ enum NoteMarkdown {
         case .heading(1): PlatformFont.preferredFont(forTextStyle: .title1)
         case .heading(2): PlatformFont.preferredFont(forTextStyle: .title2)
         case .heading: PlatformFont.preferredFont(forTextStyle: .title3)
+        case .code: PlatformFont.monospacedSystemFont(ofSize: PlatformFont.preferredFont(forTextStyle: .callout).pointSize, weight: .regular)
         default: PlatformFont.preferredFont(forTextStyle: .body)
         }
     }
 
     static func font(kind: NoteBlock.Kind, bold: Bool, italic: Bool) -> PlatformFont {
+        if kind == .code { return baseFont(kind: .code) }
         var heading = false
         if case .heading = kind { heading = true }
         return withTraits(baseFont(kind: kind), bold: bold || heading, italic: italic)
