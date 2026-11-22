@@ -33,6 +33,8 @@
 	</dict>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Porridge pastes the dictated text into the app you are using.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Porridge records the sound of your Mac during a meeting, such as the other side of a Zoom, Meet or Teams call, and transcribes it on your Mac, so the transcript has everyone.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Porridge connects to your Plaud recorder over Bluetooth to import your recordings.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

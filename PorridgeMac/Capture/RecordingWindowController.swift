@@ -1,7 +1,8 @@
 import AppKit
 
 /// A meeting being recorded, in a window of its own so the rest of the app stays usable: the clock, the levels
-/// (two named speakers on a split stereo microphone), the live transcript, notes typed along the way, pause and
+/// (two named speakers on a split stereo microphone, or the user and the others when the Mac's sound is recorded
+/// too, see `SystemAudioTap`), the live transcript, notes typed along the way, pause and
 /// stop. Closing the window asks whether to discard the recording.
 final class RecordingWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
     struct Finished {
@@ -71,6 +72,12 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
         window.tabbingMode = .disallowed
         window.isRestorable = false
         super.init(window: window)
+        // Meetings only: the Mac's sound on the right channel, the microphone (the user) on the left.
+        if MeetingAudio.includesSystemAudio {
+            recorder.secondChannel = SystemAudioTap()
+            nameFields[0].stringValue = AppSettings.myName ?? "Me"
+            nameFields[1].stringValue = SystemAudioMix.othersName
+        }
         window.delegate = self
         window.contentView = buildContent()
         window.center()
@@ -238,11 +245,16 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
     }
 
     private func render() {
-        let input = recorder.inputName.isEmpty ? "Microphone" : (recorder.isSplitStereo ? "\(recorder.inputName) · 2 channels" : recorder.inputName)
+        let input = recorder.inputName.isEmpty ? "Microphone"
+            : (recorder.isSplitStereo && !recorder.includesSystemAudio ? "\(recorder.inputName) · 2 channels" : recorder.inputName)
         inputLabel.stringValue = recorder.isPausedForCall ? "Paused for Call" : recorder.isPaused ? "Paused" : input
         stereo.isHidden = !recorder.isSplitStereo
         meter.isHidden = recorder.isSplitStereo
-        if recorder.isSplitStereo {
+        if recorder.includesSystemAudio {
+            hint.stringValue = "Your microphone is you, the Mac's sound is the others. If their bar stays still while they talk, allow Porridge in System Settings under Privacy & Security, Screen & System Audio Recording."
+        } else if let error = recorder.secondChannelError {
+            hint.stringValue = "\(error) Recording the microphone only."
+        } else if recorder.isSplitStereo {
             hint.stringValue = "Each microphone is assigned to one speaker. You can rename them now or later."
         } else if recorder.isExternal, recorder.inputName.localizedCaseInsensitiveContains("DJI") {
             hint.stringValue = "Tip: switch your DJI receiver to stereo to separate speakers per microphone."

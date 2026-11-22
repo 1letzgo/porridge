@@ -12,6 +12,8 @@ struct RecordingResult {
     let inputName: String
     /// True when an external microphone delivers two separate channels (e.g. DJI Mic receiver in stereo mode).
     let isSplitStereo: Bool
+    /// The right channel is the Mac's sound (the other side of a call), the left one the microphone.
+    var includesSystemAudio = false
 }
 
 enum RecorderError: LocalizedError {
@@ -38,6 +40,10 @@ final class AudioRecorder {
     private(set) var channelCount = 1
     private(set) var isExternal = false
     private(set) var isSplitStereo = false
+    /// The Mac's sound is recorded on the right channel (see `secondChannel`).
+    private(set) var includesSystemAudio = false
+    /// Why the Mac's sound could not be included; the recording then has the microphone alone.
+    private(set) var secondChannelError: String?
 
     @ObservationIgnored var onInterrupted: (() -> Void)?
     /// A meeting pauses for a call and goes on after it. Without this (dictation) a call ends the recording.
@@ -49,6 +55,8 @@ final class AudioRecorder {
     @ObservationIgnored private var restartTask: Task<Void, Never>?
     /// Receives a mono copy of every microphone buffer (for live transcription).
     @ObservationIgnored var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    /// Recorded on the right channel next to the microphone (mixed to mono on the left). Set before `start`.
+    @ObservationIgnored var secondChannel: (any SecondChannelSource)?
 
     /// Created per recording: an engine built earlier keeps the input format of the old route.
     @ObservationIgnored private var engine: AVAudioEngine?
@@ -77,6 +85,7 @@ final class AudioRecorder {
             engine?.inputNode.removeTap(onBus: 0)
             engine?.stop()
             engine = nil
+            secondChannel?.stop()
             writer?.close()
             writer = nil
             AudioStore.delete(fileName)
@@ -117,9 +126,21 @@ final class AudioRecorder {
         guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else { throw RecorderError.noInput }
 
         recordingFormat = hwFormat
-        let channels = min(Int(hwFormat.channelCount), 2)
+        var fifo: SampleFIFO?
+        secondChannelError = nil
+        if let source = secondChannel {
+            do {
+                try source.start(sampleRate: hwFormat.sampleRate)
+                fifo = source.fifo
+            } catch {
+                secondChannelError = error.localizedDescription
+            }
+        }
+        includesSystemAudio = fifo != nil
+        if includesSystemAudio { inputName = SystemAudioMix.inputName }
+        let channels = includesSystemAudio ? 2 : min(Int(hwFormat.channelCount), 2)
         channelCount = channels
-        isSplitStereo = isExternal && channels == 2
+        isSplitStereo = includesSystemAudio || (isExternal && channels == 2)
         levels = Array(repeating: 0, count: channels)
 
         let name = AudioStore.newFileName()
@@ -143,7 +164,7 @@ final class AudioRecorder {
 
         input.installTap(
             onBus: 0, bufferSize: 4096, format: hwFormat,
-            block: Self.makeTapBlock(writer: writer, onBuffer: onBuffer) { [weak self] levels in
+            block: Self.makeTapBlock(writer: writer, second: fifo, onBuffer: onBuffer) { [weak self] levels in
                 Task { @MainActor in if self?.isPaused == false { self?.levels = levels } }
             }
         )
@@ -200,6 +221,7 @@ final class AudioRecorder {
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
+        secondChannel?.stop()
         writer?.close()
         writer = nil
         isRecording = false
@@ -216,7 +238,8 @@ final class AudioRecorder {
             duration: duration,
             channelCount: channelCount,
             inputName: inputName,
-            isSplitStereo: isSplitStereo
+            isSplitStereo: isSplitStereo,
+            includesSystemAudio: includesSystemAudio
         )
     }
 
@@ -355,11 +378,14 @@ final class AudioRecorder {
 
     private nonisolated static func makeTapBlock(
         writer: TapWriter,
+        second: SampleFIFO?,
         onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?,
         onLevels: @escaping @Sendable ([Float]) -> Void
     ) -> AVAudioNodeTapBlock {
-        { buffer, _ in
+        { microphone, _ in
             guard !writer.isPaused else { return }
+            // With the Mac's sound: the microphone on the left, the sound on the right.
+            guard let buffer = second.map({ SystemAudioMix.stereo(microphone: microphone, fifo: $0) }) ?? microphone else { return }
             writer.write(buffer)
             onLevels(levelsOf(buffer, channels: writer.channels))
             if let onBuffer, let mono = monoCopy(of: buffer, channels: writer.channels) {
