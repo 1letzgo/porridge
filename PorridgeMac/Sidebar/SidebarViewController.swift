@@ -254,7 +254,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let notes = library.notes
         switch page {
         case .inbox:
-            let count = notes.lazy.filter(\.isInInbox).count
+            let now = Date()
+            let count = notes.lazy.filter { $0.isWaitingInInbox(now: now) }.count
             cell.configure(title: "Inbox", symbol: "tray.fill", tint: .brandSky, badge: count)
         case .todos:
             let folder = Todos.folder(notes)

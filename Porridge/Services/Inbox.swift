@@ -6,9 +6,9 @@ import SwiftData
 /// a suggestion on or drops it.
 @MainActor
 enum Inbox {
-    /// What waits in the inbox, newest first.
-    static func notes(_ all: [Note]) -> [Note] {
-        all.filter(\.isInInbox).sorted { $0.createdAt > $1.createdAt }
+    /// What waits in the inbox, newest first; entries put away for later (`InboxSnooze`) wait outside it.
+    static func notes(_ all: [Note], now: Date = Date()) -> [Note] {
+        all.filter { $0.isWaitingInInbox(now: now) }.sorted { $0.createdAt > $1.createdAt }
     }
 
     /// Files the note into a bowl, in place of the one it was in (an entry is in one bowl at most); it leaves the

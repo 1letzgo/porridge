@@ -36,8 +36,14 @@ enum NoteListContent {
         switch state.page {
         case .inbox:
             let waiting = Inbox.notes(notes)
+            var sections: [(ListSection, [ListItem])] = waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]
+            // What was put away for later, at the end while it is asked for (the header's "Later").
+            let later = state.showsLater ? InboxSnooze.snoozed(notes) : []
+            if !later.isEmpty {
+                sections.append((ListSection(id: "inbox-later", title: String(localized: "Later"), tint: .navy, count: later.count), later.map { .note($0.id) }))
+            }
             return Built(
-                sections: waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })],
+                sections: sections,
                 emptyTitle: "Inbox Empty", emptyMessage: "What is new or in no bowl waits here.", emptySymbol: "tray"
             )
         case .todos:

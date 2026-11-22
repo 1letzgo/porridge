@@ -10,6 +10,9 @@ final class ListHeaderView: NSView {
     /// The Inbox's "Weekly Review", and a click on the hint of the day.
     var onReview: (() -> Void)?
     var onHint: ((DailyHint) -> Void)?
+    /// The Inbox's triage switched on or off, and its "Later" section shown or hidden.
+    var onTriage: (() -> Void)?
+    var onToggleLater: (() -> Void)?
 
     private let icon = NSImageView()
     private let iconBox = NSView()
@@ -19,6 +22,8 @@ final class ListHeaderView: NSView {
     private let trailing = NSStackView()
     private var iconTint: NSColor = .brandSky
     private let hintRow = DailyHintRow()
+    /// The keys of the Inbox's triage, while it is on.
+    private let triageKeys = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor)
 
     init() {
         super.init(frame: .zero)
@@ -37,7 +42,11 @@ final class ListHeaderView: NSView {
         trailing.orientation = .horizontal
         trailing.spacing = 6
         let titleRow = NSStackView.horizontal([iconBox, title, NSView(), trailing], spacing: 8)
-        let stack = NSStackView.vertical([titleRow, hintRow, filters, tags], spacing: 10)
+        triageKeys.stringValue = String(localized: "J / K  Next, Previous   ·   L  Later   ·   F  File into Bowl   ·   D  Done (To-dos)   ·   Esc  End")
+        triageKeys.lineBreakMode = .byTruncatingTail
+        triageKeys.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        triageKeys.isHidden = true
+        let stack = NSStackView.vertical([titleRow, hintRow, triageKeys, filters, tags], spacing: 10)
         hintRow.onOpen = { [weak self] hint in self?.onHint?(hint) }
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -96,7 +105,24 @@ final class ListHeaderView: NSView {
             review.toolTip = String(localized: "Weekly Review")
             review.setAccessibilityLabel(String(localized: "Weekly Review"))
             trailing.addArrangedSubview(review)
+            // What was put away for later: shown at the end of the list on a click.
+            let later = InboxSnooze.snoozed(library.notes).count
+            if later > 0 || state.showsLater {
+                let pill = PillButton(title: "Later  \(later)", symbol: "clock", tint: .brandNavy, target: self, action: #selector(toggleLater))
+                pill.isFilled = state.showsLater
+                pill.toolTip = state.showsLater ? String(localized: "Hide Entries for Later") : String(localized: "Show Entries for Later")
+                pill.setAccessibilityLabel(String(localized: "Later, \(later) entries"))
+                pill.setAccessibilityValue(state.showsLater ? "Shown" : "Hidden")
+                trailing.insertArrangedSubview(pill, at: 0)
+            }
+            let triage = ActionButton(title: state.isTriaging ? String(localized: "End Triage") : String(localized: "Triage"), symbol: "keyboard") { [weak self] in self?.onTriage?() }
+            triage.controlSize = .small
+            triage.bezelStyle = .push
+            triage.toolTip = String(localized: "Go through the Inbox with the keyboard")
+            triage.setAccessibilityIdentifier("InboxTriage")
+            trailing.addArrangedSubview(triage)
         }
+        triageKeys.isHidden = !(page == .inbox && state.isTriaging)
         let hint = page == .inbox ? DailyHints.shared.current : nil
         hintRow.show(hint)
         if page == .trash, library.notes.contains(where: \.isDeleted) {
@@ -235,6 +261,10 @@ final class ListHeaderView: NSView {
 
     @objc private func removeTag(_ sender: NSButton) {
         if let tag = sender.identifier?.rawValue { onRemoveTag?(tag) }
+    }
+
+    @objc private func toggleLater() {
+        onToggleLater?()
     }
 
     @objc private func emptyTrash() {

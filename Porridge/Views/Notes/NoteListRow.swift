@@ -7,18 +7,22 @@ struct NoteListRow: View {
     let note: Note
     /// The names of the note's bowls, shown in its row where a list mixes bowls (the to-dos folder).
     var buckets: [String] = []
+    /// The row is in the Inbox's list: it says how long it has been waiting.
+    var inInbox = false
     /// Moves the note to the trash, or deletes it when it already is there.
     var onRemove: () -> Void
 
     @Environment(\.modelContext) private var context
     @Environment(ProcessingService.self) private var processing
     @State private var pickingDue = false
+    @State private var choosingLater = false
+    @State private var pickingLater = false
 
     var body: some View {
         // In a bowl shared with me to view only: the pin (my own) and sharing the text, nothing that changes it.
         let readOnly = !note.isDeleted && BowlSharing.shared.isReadOnly(note)
         ListRowLink(value: note.id) {
-            NoteRow(note: note, stage: processing.stages[note.id], buckets: buckets)
+            NoteRow(note: note, stage: processing.stages[note.id], buckets: buckets, showsInboxAge: inInbox)
         }
         .swipeActions(edge: .leading) {
             if note.isDeleted {
@@ -36,6 +40,11 @@ struct NoteListRow: View {
             if !readOnly {
                 Button(role: .destructive, action: onRemove) {
                     Label(note.isDeleted ? "Delete Now" : "Delete", systemImage: "trash")
+                }
+                // An Inbox entry away until later (`InboxSnooze`).
+                if offersLater {
+                    Button { choosingLater = true } label: { Label("Later", systemImage: "clock") }
+                        .tint(.brandNavy)
                 }
             }
         }
@@ -62,6 +71,18 @@ struct NoteListRow: View {
                     PaidButton(notes: [note])
                 }
                 Button { togglePin() } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
+                if offersLater {
+                    Menu {
+                        LaterMenuItems(notes: [note]) { pickingLater = true }
+                    } label: {
+                        Label("Later", systemImage: "clock")
+                    }
+                    if note.isSnoozed() {
+                        Button { withAnimation(.snappy) { InboxSnooze.unsnooze([note], in: context) } } label: {
+                            Label("Back to Inbox Now", systemImage: "tray.and.arrow.down")
+                        }
+                    }
+                }
                 ProjectMenu(assigned: note.projectIDs) { Undoable.toggle($0, on: note, in: context) }
                 if note.canBeTodo {
                     Button { withAnimation(.snappy) { Todos.setTodo(!note.isTodo, note, in: context) } } label: {
@@ -76,6 +97,13 @@ struct NoteListRow: View {
             }
         }
         .sheet(isPresented: $pickingDue) { DueDatePickerSheet(note: note) }
+        .sheet(isPresented: $pickingLater) { LaterPickerSheet(notes: [note]) }
+        .laterDialog(for: [note], isPresented: $choosingLater)
+    }
+
+    /// "Later" is for entries of the Inbox.
+    private var offersLater: Bool {
+        note.isInInbox && !note.isDeleted && !BowlSharing.shared.isReadOnly(note)
     }
 
     private var doneButton: some View {

@@ -117,6 +117,9 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         header.onHint = { [weak self] hint in
             DailyHintFeed.open(hint, in: self?.view.window?.windowController as? MainWindowController)
         }
+        header.onTriage = { [weak self] in self?.toggleTriage() }
+        header.onToggleLater = { [weak self] in self?.state.showsLater.toggle() }
+        table.onKey = { [weak self] event in self?.handleTriageKey(event) ?? false }
         header.onEmptyTrash = { [weak self] in
             guard let self, let window = self.view.window else { return }
             NoteOperations.confirmEmptyTrash(in: window, state: self.state)
@@ -126,7 +129,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         observers.append(Observing { [weak self] in
             guard let self else { return }
             // Read what the list depends on, so a change of it rebuilds the list.
-            _ = (self.state.page, self.state.kindFilter, self.state.searchText, self.state.searchTags)
+            _ = (self.state.page, self.state.kindFilter, self.state.searchText, self.state.searchTags, self.state.showsLater, self.state.isTriaging)
             // A smart filter changed (here or on another device), and the index while it loads.
             if self.state.page.smartFilterID != nil { _ = (SmartFilterStore.shared.filters, NoteIndex.shared.version) }
             self.reload()
@@ -250,6 +253,106 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         NoteOperations.addItems(for: notes, to: menu, state: state, window: view.window)
     }
 
+    // MARK: Triage
+
+    /// Triage on or off; on, the list takes the keys and the first entry is chosen when none is.
+    func toggleTriage() {
+        guard state.page == .inbox else { return }
+        state.isTriaging.toggle()
+        guard state.isTriaging else { return }
+        focusList()
+        if state.selection.isEmpty, let first = triageIDs.first { state.selection = [first] }
+    }
+
+    /// The entries of the Inbox in the order of the list (those back from later included, the "Later" section not).
+    private var triageIDs: [UUID] {
+        let snapshot = dataSource.snapshot()
+        guard let section = snapshot.sectionIdentifiers.first(where: { $0.id == "inbox" }) else { return [] }
+        return snapshot.itemIdentifiers(inSection: section).compactMap { item in
+            if case .note(let id) = item { return id }
+            return nil
+        }
+    }
+
+    /// J/K, L, F, D and Esc while the Inbox is in triage. Returns whether the key was taken.
+    private func handleTriageKey(_ event: NSEvent) -> Bool {
+        guard state.isTriaging, state.page == .inbox else { return false }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
+        guard flags.isEmpty else { return false }
+        if event.keyCode == 53 {
+            state.isTriaging = false
+            return true
+        }
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "j": step(1)
+        case "k": step(-1)
+        case "l": triageLater()
+        case "f": triageFile()
+        case "d": triageDone()
+        default: return false
+        }
+        return true
+    }
+
+    private var triageNote: Note? {
+        guard let id = state.selection.first, state.selection.count == 1, triageIDs.contains(id) else { return nil }
+        return library.note(id)
+    }
+
+    private func step(_ delta: Int) {
+        let ids = triageIDs
+        guard !ids.isEmpty else { return NSSound.beep() }
+        let index = state.selection.first.flatMap { ids.firstIndex(of: $0) }
+        let next = index.map { min(max($0 + delta, 0), ids.count - 1) } ?? (delta > 0 ? 0 : ids.count - 1)
+        state.selection = [ids[next]]
+        if let row = dataSource.row(forItemIdentifier: .note(ids[next])), row >= 0 { table.scrollRowToVisible(row) }
+    }
+
+    /// The entry that is chosen once `id` has left the list: the one after it, or before it at the end.
+    private func neighbor(of id: UUID) -> UUID? {
+        let ids = triageIDs
+        guard let index = ids.firstIndex(of: id) else { return nil }
+        if index + 1 < ids.count { return ids[index + 1] }
+        return index > 0 ? ids[index - 1] : nil
+    }
+
+    /// Where a menu for the chosen entry opens: under its title.
+    private func popUp(_ menu: NSMenu, for note: Note) {
+        guard let row = dataSource.row(forItemIdentifier: .note(note.id)), row >= 0 else { return }
+        let rect = table.rect(ofRow: row)
+        menu.popUp(positioning: nil, at: NSPoint(x: rect.minX + 44, y: rect.minY + 30), in: table)
+    }
+
+    /// L: the "Later" choices; the next entry is chosen when it went.
+    private func triageLater() {
+        guard let note = triageNote, !BowlSharing.shared.isReadOnly(note) else { return NSSound.beep() }
+        let next = neighbor(of: note.id)
+        let menu = NoteOperations.laterMenu(for: [note], window: view.window) { [weak self] in
+            self?.state.selection = next.map { [$0] } ?? []
+        }
+        popUp(menu, for: note)
+    }
+
+    /// F: the bowls, as in the context menu; the next entry is chosen when it was filed.
+    private func triageFile() {
+        guard let note = triageNote, !BowlSharing.shared.isReadOnly(note) else { return NSSound.beep() }
+        let next = neighbor(of: note.id)
+        popUp(NoteOperations.bucketMenu(for: [note], window: view.window), for: note)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !note.isInInbox, self.state.selection == [note.id] else { return }
+            self.state.selection = next.map { [$0] } ?? []
+        }
+    }
+
+    /// D: a to-do done (it stays in the Inbox, ticked), then on to the next. Other entries have nothing to be done.
+    private func triageDone() {
+        guard let note = triageNote, note.isTodo, !note.isDone, !BowlSharing.shared.isReadOnly(note) else { return NSSound.beep() }
+        Undoable.run(String(localized: "Done: “\(note.displayTitle)”"), systemImage: "checkmark.square", notes: [note], in: library.context) {
+            TodoBridge.setDone(true, note)
+        }
+        step(1)
+    }
+
     @objc private func openInNewWindow(_ sender: Any?) {
         guard table.clickedRow >= 0, case .note(let id)? = dataSource.itemIdentifier(forRow: table.clickedRow) else { return }
         NoteWindowController.open(id)
@@ -271,6 +374,8 @@ final class NoteListDataSource: NSTableViewDiffableDataSource<ListSection, ListI
 /// The table of the list: ⌘V brings in what is on the clipboard, Delete moves the selection to Recently Deleted.
 final class NoteTableView: NSTableView {
     var onIntake: ((NSPasteboard) -> Bool)?
+    /// Keys taken before the table's own (the Inbox's triage).
+    var onKey: ((NSEvent) -> Bool)?
 
     /// ⌘V on the list brings in what is on the clipboard: files, a picture, a link or text.
     @objc func paste(_ sender: Any?) {
@@ -278,6 +383,7 @@ final class NoteTableView: NSTableView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if onKey?(event) == true { return }
         // Delete moves the selected notes to Recently Deleted.
         if event.keyCode == 51 || event.keyCode == 117, event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.command).isEmpty {
             NSApp.sendAction(#selector(MainWindowController.deleteNote(_:)), to: nil, from: self)
