@@ -209,14 +209,38 @@ enum Intake {
     private static func receive(_ receivers: [NSFilePromiseReceiver], project: String?, state: WindowState?) {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Dropped-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // The folder goes once every promised file came (or failed): the entries have their own copies by then.
+        let pending = PendingFiles(count: receivers.reduce(0) { $0 + max(1, $1.fileNames.count) }, folder: folder)
         for receiver in receivers {
             receiver.receivePromisedFiles(atDestination: folder, options: [:], operationQueue: promiseQueue) { url, error in
                 if let error {
                     print("[intake] promised file not received: \(error.localizedDescription)")
+                    Task { @MainActor in pending.done() }
                     return
                 }
-                Task { @MainActor in addFiles([url], project: project, state: state) }
+                Task { @MainActor in
+                    addFiles([url], project: project, state: state)
+                    pending.done()
+                }
             }
+        }
+    }
+
+    /// Counts the promised files of one drop down; the last one takes the temporary folder away.
+    @MainActor
+    private final class PendingFiles {
+        private var count: Int
+        private let folder: URL
+
+        init(count: Int, folder: URL) {
+            self.count = count
+            self.folder = folder
+        }
+
+        func done() {
+            count -= 1
+            guard count <= 0 else { return }
+            try? FileManager.default.removeItem(at: folder)
         }
     }
 

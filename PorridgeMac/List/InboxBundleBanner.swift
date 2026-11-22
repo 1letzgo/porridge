@@ -113,6 +113,13 @@ final class InboxBundleBanner: NSView {
             self.bundle = nil
             Library.shared.setNeedsReload()
             self.render()
+            // The way back is offered for a while only.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: BowlMaking.undoLifetime)
+                guard let self, self.lastChange?.madeAt == change.madeAt else { return }
+                self.lastChange = nil
+                self.render()
+            }
         })
     }
 

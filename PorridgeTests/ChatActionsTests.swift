@@ -312,6 +312,21 @@ final class ChatActionsTests: XCTestCase {
         service.setActions([], for: answerID)
     }
 
+    func testUndoKeepsWhatWasChangedSince() throws {
+        let context = try TestStore.context()
+        let task = note("Pack", text: "- [ ] Socks", in: context)
+        task.labels = ["travel"]
+        try context.save()
+        let undo = try EntryActions.setTodo(task, done: true, in: context)
+        // Changed after the action: a tag and the text.
+        task.labels = ["travel", "later"]
+        task.text += "\n- [ ] Shirts"
+        EntryActions.undo(undo, in: context)
+        XCTAssertFalse(task.isDone, "the action is taken back")
+        XCTAssertEqual(task.labels, ["travel", "later"], "the tag added since stays")
+        XCTAssertTrue(task.text.contains("Shirts"), "the text written since stays")
+    }
+
     func testProposedActionsAreKeptOnTheDevice() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "ChatActionsTests"))
         defaults.removePersistentDomain(forName: "ChatActionsTests")

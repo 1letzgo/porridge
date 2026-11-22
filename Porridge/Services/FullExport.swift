@@ -85,6 +85,10 @@ enum FullExport {
         /// "yyyy-MM-dd".
         var due: String?
         var subtasks: [Subtask]
+        /// How it repeats, as shown ("Every week"); nil when it does not.
+        var repeats: String?
+        /// The repeat rule as stored ("w:1:…").
+        var repeatRule: String?
     }
 
     struct Subtask: Codable, Equatable, Sendable {
@@ -102,6 +106,12 @@ enum FullExport {
         /// "119.00 EUR".
         var amount: String?
         var setByHand: Bool
+        /// The day it has to be paid by, "yyyy-MM-dd".
+        var dueDay: String?
+        /// Marked as paid; nil when it was never marked.
+        var isPaid: Bool?
+        /// The day it was marked as paid, "yyyy-MM-dd".
+        var paidDay: String?
     }
 
     struct Meeting: Codable, Equatable, Sendable {
@@ -273,10 +283,15 @@ enum FullExport {
                 state: note.isDone ? "done" : "open",
                 doneAt: note.todoDoneAt,
                 due: note.todoDue,
-                subtasks: Todos.subtasks(in: note.text).map { Subtask(text: $0.text, done: $0.done, indent: $0.indent) }
+                subtasks: Todos.subtasks(in: note.text).map { Subtask(text: $0.text, done: $0.done, indent: $0.indent) },
+                repeats: note.todoRepeat?.title,
+                repeatRule: note.todoRepeat?.raw
             ) : nil,
             document: info.flatMap { info in
-                info.isEmpty ? nil : Document(kind: info.kindRaw, date: info.day, sender: info.correspondent, amount: info.amount, setByHand: info.edited)
+                info.isEmpty ? nil : Document(
+                    kind: info.kindRaw, date: info.day, sender: info.correspondent, amount: info.amount, setByHand: info.edited,
+                    dueDay: info.dueDay, isPaid: info.isPaid, paidDay: info.paidDay
+                )
             },
             meeting: note.isRecording ? Meeting(
                 duration: note.duration,
@@ -382,6 +397,7 @@ enum FullExport {
             front.append("  state: \(todo.state)")
             if let due = todo.due { front.append("  due: \(due)") }
             if let done = todo.doneAt { front.append("  done: \(isoDate(done))") }
+            if let repeats = todo.repeats { front.append("  repeats: \(yaml(repeats))") }
         }
         if let document = entry.document {
             front.append("document:")
@@ -389,6 +405,9 @@ enum FullExport {
             if let date = document.date { front.append("  date: \(date)") }
             if let sender = document.sender { front.append("  sender: \(yaml(sender))") }
             if let amount = document.amount { front.append("  amount: \(yaml(amount))") }
+            if let dueDay = document.dueDay { front.append("  due: \(dueDay)") }
+            if let isPaid = document.isPaid { front.append("  paid: \(isPaid)") }
+            if let paidDay = document.paidDay { front.append("  paid_on: \(paidDay)") }
             if document.setByHand { front.append("  set_by_hand: true") }
         }
         if let meeting = entry.meeting {
@@ -537,10 +556,24 @@ enum FullExport {
         return decoder
     }()
 
+    /// `url`, or the first of "name 2", "name 3", … that is not taken: an export never replaces what is there.
+    static func available(_ url: URL, fileManager: FileManager = .default) -> URL {
+        guard fileManager.fileExists(atPath: url.path) else { return url }
+        let folder = url.deletingLastPathComponent()
+        let ext = url.pathExtension
+        let base = url.deletingPathExtension().lastPathComponent
+        for number in 2... {
+            let name = base + " \(number)" + (ext.isEmpty ? "" : "." + ext)
+            let candidate = folder.appendingPathComponent(name, isDirectory: url.hasDirectoryPath)
+            if !fileManager.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return url
+    }
+
     /// The folder as one .zip next to it (the system's own archiver, as Files and Mail make them).
     static func zip(_ folder: URL) throws -> URL {
-        let target = folder.deletingLastPathComponent().appendingPathComponent(folder.lastPathComponent + ".zip")
-        try? FileManager.default.removeItem(at: target)
+        // Never over a file that is there already: "Porridge Export 2.zip" then.
+        let target = available(folder.deletingLastPathComponent().appendingPathComponent(folder.lastPathComponent + ".zip"))
         var coordination: NSError?
         var failure: Error?
         NSFileCoordinator().coordinate(readingItemAt: folder, options: .forUploading, error: &coordination) { zipped in
@@ -594,10 +627,12 @@ final class ExportRun {
         total = plan.steps
         entryCount = plan.archive.entries.count
         onChange?()
-        let root = directory.appendingPathComponent(plan.folderName, isDirectory: true)
+        // A folder of the same name (an export of the same minute) is left alone: this one gets a name of its own.
+        let root = FullExport.available(directory.appendingPathComponent(plan.folderName, isDirectory: true))
         task = Task { [weak self] in
+            // Only what this run made is ever taken away again.
+            var packed: URL?
             do {
-                try? FileManager.default.removeItem(at: root)
                 let archive = try await FullExport.write(plan, to: root, files: files) { done in
                     await MainActor.run { self?.advance(to: done) }
                 }
@@ -609,6 +644,7 @@ final class ExportRun {
                 if zip {
                     self?.update(.packing)
                     result = try await Task.detached(priority: .userInitiated) { try FullExport.zip(root) }.value
+                    packed = result
                     try? FileManager.default.removeItem(at: root)
                     try Task.checkCancellation()
                 }
@@ -616,10 +652,11 @@ final class ExportRun {
                 self?.update(.finished(result))
             } catch is CancellationError {
                 try? FileManager.default.removeItem(at: root)
-                try? FileManager.default.removeItem(at: root.appendingPathExtension("zip"))
+                if let packed { try? FileManager.default.removeItem(at: packed) }
                 self?.update(.cancelled)
             } catch {
                 try? FileManager.default.removeItem(at: root)
+                if let packed { try? FileManager.default.removeItem(at: packed) }
                 self?.update(.failed(error.localizedDescription))
             }
         }

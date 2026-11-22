@@ -22,12 +22,7 @@ final class MeetingAlertController: NSObject {
     func start() {
         scheduler.onChange = { [weak self] in self?.tick() }
         scheduler.start()
-        let timer = Timer(timeInterval: 15, repeats: true) { _ in
-            MainActor.assumeIsolated { MeetingAlertController.shared.tick() }
-        }
-        timer.tolerance = 3
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        tick()
         // Back from sleep: the meetings are read again and a due alert comes at once.
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { MeetingAlertScheduler.shared.refresh() }
@@ -46,6 +41,32 @@ final class MeetingAlertController: NSObject {
             show(due)
         }
         onTick?()
+        scheduleNextTick(now: now)
+    }
+
+    /// Ticks often only while it matters: a meeting (or its countdown) is near, or an alert is up. Otherwise one
+    /// timer for when the next meeting comes near, at most a few minutes on (the calendar is read again then); none
+    /// while alerts are off (turning them on reads the calendar, and that ticks).
+    private func scheduleNextTick(now: Date) {
+        timer?.invalidate()
+        timer = nil
+        guard MeetingAlerts.isEnabled else { return }
+        let near = MeetingAlerts.countdownWindow + 60
+        let interval: TimeInterval
+        if panel != nil {
+            interval = 15
+        } else if let next {
+            let until = next.start.timeIntervalSince(now)
+            interval = until <= near ? 15 : min(5 * 60, max(15, until - near))
+        } else {
+            interval = 5 * 60
+        }
+        let timer = Timer(timeInterval: interval, repeats: false) { _ in
+            MainActor.assumeIsolated { MeetingAlertController.shared.tick() }
+        }
+        timer.tolerance = min(10, interval / 5)
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     private func show(_ appointment: CalendarAppointment) {

@@ -69,8 +69,11 @@ enum HTTPRequestParser {
 
     static let maxHeaderBytes = 32 * 1024
     static let maxBodyBytes = 8 * 1024 * 1024
+    /// All that is read for one request: headers, body and the framing of a chunked body.
+    static let maxRequestBytes = maxHeaderBytes + maxBodyBytes + 64 * 1024
 
     static func parse(_ buffer: Data) -> Outcome {
+        guard buffer.count <= maxRequestBytes else { return .invalid(status: 413, message: "Request too large") }
         let separator = Data("\r\n\r\n".utf8)
         guard let end = buffer.range(of: separator) else {
             return buffer.count > maxHeaderBytes ? .invalid(status: 431, message: "Headers too large") : .incomplete
@@ -121,12 +124,17 @@ enum HTTPRequestParser {
         let crlf = Data("\r\n".utf8)
         while true {
             guard let lineEnd = data.range(of: crlf, in: index..<data.endIndex) else { return .incomplete }
-            guard let sizeText = String(data: data[index..<lineEnd.lowerBound], encoding: .ascii),
-                  let size = Int(sizeText.split(separator: ";").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? "", radix: 16),
-                  size >= 0 else { return .invalid }
+            // A chunk size line is short: hex digits, maybe an extension.
+            guard data.distance(from: index, to: lineEnd.lowerBound) <= 256,
+                  let sizeText = String(data: data[index..<lineEnd.lowerBound], encoding: .ascii) else { return .invalid }
+            let hex = sizeText.split(separator: ";", omittingEmptySubsequences: false).first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
+            // More than 8 hex digits is beyond any allowed body; it is not even parsed (no overflow).
+            guard !hex.isEmpty, hex.count <= 8, let size = Int(hex, radix: 16), size >= 0 else {
+                return hex.count > 8 && hex.allSatisfy(\.isHexDigit) ? .tooLarge : .invalid
+            }
             index = lineEnd.upperBound
             if size == 0 { return .complete(body) }
-            guard body.count + size <= maxBodyBytes else { return .tooLarge }
+            guard size <= maxBodyBytes - body.count else { return .tooLarge }
             guard data.distance(from: index, to: data.endIndex) >= size + 2 else { return .incomplete }
             let chunkEnd = data.index(index, offsetBy: size)
             body.append(data[index..<chunkEnd])

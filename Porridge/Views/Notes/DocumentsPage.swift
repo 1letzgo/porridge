@@ -31,7 +31,8 @@ struct NoteSelectionBar: View {
     }
 
     var body: some View {
-        let active = projects.filter { !$0.isArchived }
+        // Not into a bowl shared with me to view only.
+        let active = projects.filter { !$0.isArchived && !BowlSharing.shared.isReadOnly($0.id) }
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 Button(chosen.count == notes.count ? "Select None" : "Select All") {

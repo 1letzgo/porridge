@@ -47,6 +47,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private var renaming: NoteFolder?
     /// The smart filter whose name is being edited in place.
     private var renamingFilter: SmartFilter?
+    /// The content changed while a name was edited.
+    private var rebuildAfterRename = false
 
     init(state: WindowState) {
         self.state = state
@@ -125,6 +127,13 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     // MARK: Content
 
     private func rebuild() {
+        // While a name is edited the rows stay as they are (the outline still shows the old nodes): built once
+        // the editing ends.
+        guard renaming == nil, renamingFilter == nil else {
+            rebuildAfterRename = true
+            return
+        }
+        rebuildAfterRename = false
         let notes = library.notes
         let buckets = library.activeProjects
         // Pinned bowls first, then by name.
@@ -147,7 +156,6 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         if !more.isEmpty { top.append(SidebarNode(.group("More"), children: more)) }
         // An open bowl that is archived shows under the archive, but the sidebar still marks it.
         roots = top
-        guard renaming == nil, renamingFilter == nil else { return }
         isSyncingSelection = true
         outline.reloadData()
         for node in roots where !node.children.isEmpty || node.kind == .group("Bowls") { outline.expandItem(node) }
@@ -478,6 +486,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         } else {
             field.stringValue = project.name
         }
+        if rebuildAfterRename { rebuild() }
         library.setNeedsReload()
     }
 

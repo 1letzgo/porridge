@@ -96,12 +96,21 @@ enum MCPBridge {
         return (try? JSONValue.parse(data).data()) ?? data
     }
 
-    /// Opens the app in the background (no window comes to the front).
+    /// Opens the app in the background (no window comes to the front). This bridge is the app's own binary, so
+    /// Launch Services could take it for the running app and open nothing: whether the app runs is decided here,
+    /// by its bundle id without this process, and when it does not, a new instance is asked for explicitly.
     private static func launchApp() {
+        let me = ProcessInfo.processInfo.processIdentifier
+        let bundleID = Bundle.main.bundleIdentifier ?? ""
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).contains {
+            $0.processIdentifier != me && !$0.isTerminated
+        }
+        // It runs: its server is off or still starting; a second app is never opened.
+        guard !running else { return }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = false
         configuration.addsToRecentItems = false
-        configuration.createsNewApplicationInstance = false
+        configuration.createsNewApplicationInstance = true
         let semaphore = DispatchSemaphore(value: 0)
         NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in semaphore.signal() }
         _ = semaphore.wait(timeout: .now() + 10)

@@ -1137,10 +1137,12 @@ struct NotesView: View {
         case .newNote:
             addNote()
         case .startMeeting:
+            // Taken (and so cleared) first: a Record tapped while recording must not start a later meeting.
+            let pending = MeetingAlertScheduler.shared.takePendingRecord()
             guard !showRecorder else { return }
             showCalendar = false
             // Record from the alert before a meeting: the recording is made for its appointment.
-            if let event = MeetingAlertScheduler.shared.takePendingRecord() {
+            if let event = pending {
                 startRecording(for: event)
             } else {
                 startRecording(titled: nil)

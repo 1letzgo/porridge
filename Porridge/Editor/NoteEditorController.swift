@@ -22,6 +22,25 @@ final class NoteEditorController {
         didSet { canInsertImages = attachImage != nil }
     }
     private(set) var canInsertImages = false
+    /// Set with `attachImage`: whether a file (by its stored name) is one of this note's attachments already.
+    @ObservationIgnored var hasAttachment: ((String) -> Bool)?
+
+    /// Markdown pasted from another note shows that note's files: each image not on this note yet is copied onto it
+    /// (a file of its own), and the text points to the copy. Images whose file is not here stay as they are.
+    func adoptingImages(in markdown: String) -> String {
+        guard let attachImage, let hasAttachment else { return markdown }
+        var text = markdown
+        for name in Set(NoteImageRef.fileNames(in: markdown)) where !hasAttachment(name) {
+            let source = AudioStore.url(for: name, kind: .attachment)
+            guard FileManager.default.fileExists(atPath: source.path),
+                  let data = try? Data(contentsOf: source),
+                  let copy = try? InlineImages.temporaryFile(data, name: "Image", extension: source.pathExtension) else { continue }
+            defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
+            guard let attachment = attachImage(copy) else { continue }
+            text = text.replacingOccurrences(of: "(attachment:\(name))", with: "(attachment:\(attachment.fileName))")
+        }
+        return text
+    }
 
     /// Cursor as a character offset in the note's Markdown; the end of the text when nothing is being edited.
     var cursorOffset: Int { coordinator?.cursorOffset() ?? 0 }

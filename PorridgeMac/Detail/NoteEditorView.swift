@@ -211,15 +211,17 @@ final class NoteEditorView: NSView {
     /// The table editor as a sheet of the window; the editor puts its result into the note.
     private func presentTableEditor(_ request: TableEditRequest) {
         guard tableSheet == nil, let host = window?.contentViewController else { return }
-        var sheet: NSViewController?
-        let view = TableEditorView(table: request.table, isNew: request.isNew) { [weak self] table, delete in
-            if let sheet { host.dismiss(sheet) }
-            self?.controller.finishTable(request, table: table, delete: delete)
-            self?.focus()
+        // The sheet is reached weakly: the closure lives in the sheet's own view, and a strong hold would keep it
+        // (and `tableSheet`) alive for good, so the table editor would open only once.
+        let view = TableEditorView(table: request.table, isNew: request.isNew) { [weak self, weak host] table, delete in
+            guard let self else { return }
+            if let sheet = self.tableSheet { host?.dismiss(sheet) }
+            self.tableSheet = nil
+            self.controller.finishTable(request, table: table, delete: delete)
+            self.focus()
         }
         let controller = NSHostingController(rootView: view)
         controller.title = request.isNew ? "New Table" : "Edit Table"
-        sheet = controller
         tableSheet = controller
         host.presentAsSheet(controller)
     }

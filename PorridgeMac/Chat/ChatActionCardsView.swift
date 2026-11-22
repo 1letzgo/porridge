@@ -23,7 +23,10 @@ final class ChatActionCardsView: NSStackView {
             let cancel = NSButton(title: "Cancel All", target: self, action: #selector(cancelTapped(_:)))
             let confirm = NSButton(title: "Confirm All (\(pending.count))", target: self, action: #selector(confirmTapped(_:)))
             confirm.bezelColor = .brandNavy
+            // ⌘Return, not Return: Return belongs to the chat's field.
             confirm.keyEquivalent = "\r"
+            confirm.keyEquivalentModifierMask = [.command]
+            confirm.toolTip = "Confirm All (⌘Return)"
             let row = NSStackView.horizontal([NSView(), cancel, confirm], spacing: 8)
             addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: widthAnchor).isActive = true

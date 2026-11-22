@@ -33,6 +33,13 @@ struct InboxBundleCard: View {
                 suggestion(bundle)
             }
         }
+        .task(id: lastChange?.madeAt) {
+            // The way back is offered for a while only.
+            guard let made = lastChange?.madeAt else { return }
+            try? await Task.sleep(for: BowlMaking.undoLifetime)
+            guard !Task.isCancelled, lastChange?.madeAt == made else { return }
+            withAnimation(.snappy) { lastChange = nil }
+        }
         .task(id: signature) {
             // The inbox changes in bursts (a sync, a share); it is looked at once things rest.
             try? await Task.sleep(for: .milliseconds(600))

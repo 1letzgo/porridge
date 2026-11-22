@@ -694,6 +694,8 @@ final class NoteTextCoordinator: NSObject {
         guard let storage, let textView, textView.isEditable else { return false }
         let hasBlocks = NoteRichText.scan(pasted).contains { if case .block = $0 { true } else { false } }
         guard hasBlocks else { return false }
+        // Images of another note come along as files of this one.
+        let pasted = controller.adoptingImages(in: pasted)
         let selection = textView.selectedRange
         let converted = NSMutableAttributedString(attributedString: NoteMarkdown.attributed(from: pasted))
         // On a line of its own.

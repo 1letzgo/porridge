@@ -34,7 +34,7 @@ final class NoteChipsView: NSView {
         // The bowl suggested for a note in the inbox: a click files it there, the cross drops the suggestion.
         if note.isInInbox {
             for id in note.suggestedProjectIDs {
-                guard let project = library.project(key: id), !project.isArchived else { continue }
+                guard let project = library.project(key: id), !project.isArchived, !BowlSharing.shared.isReadOnly(project.id) else { continue }
                 let pill = PillButton(title: project.name, symbol: "sparkles", tint: .brandProject, target: self, action: #selector(fileSuggested(_:)))
                 pill.isFilled = true
                 pill.identifier = .init(id)

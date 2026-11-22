@@ -164,7 +164,7 @@ final class MeetingFlowTests: XCTestCase {
         let summary = "## Summary\nText\n\n## Action Items\n- [ ] Send – Speaker 1"
         let written = SummaryRefresh.hash(summary)
         XCTAssertTrue(SummaryRefresh.shouldRefresh(summary: summary, writtenHash: written, autoEnabled: true, hasModel: true))
-        XCTAssertTrue(SummaryRefresh.shouldRefresh(summary: summary, writtenHash: nil, autoEnabled: true, hasModel: true), "written on another device")
+        XCTAssertFalse(SummaryRefresh.shouldRefresh(summary: summary, writtenHash: nil, autoEnabled: true, hasModel: true), "written on another device or before: may be edited, so it is kept")
         XCTAssertFalse(SummaryRefresh.shouldRefresh(summary: summary + " edited", writtenHash: written, autoEnabled: true, hasModel: true))
         XCTAssertFalse(SummaryRefresh.shouldRefresh(summary: summary.replacingOccurrences(of: "[ ]", with: "[x]"), writtenHash: nil, autoEnabled: true, hasModel: true))
         XCTAssertFalse(SummaryRefresh.shouldRefresh(summary: summary, writtenHash: written, autoEnabled: false, hasModel: true))

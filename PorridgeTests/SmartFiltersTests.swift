@@ -215,6 +215,37 @@ final class SmartFiltersTests: XCTestCase {
         XCTAssertEqual(again.filters.first?.criteria.document, .invoice)
     }
 
+    func testReloadAfterSaveWritesNothing() async throws {
+        let cloud = root.appendingPathComponent("cloud", isDirectory: true)
+        let local = root.appendingPathComponent("device/smart-filters.json")
+        let store = SmartFilterStore(localURL: local, cloudFolder: { cloud })
+        await store.flush()
+        let made = store.add(name: "Rechnungen", criteria: SmartFilterCriteria(documentKind: .invoice))
+        store.rename(made.id, to: "Invoices")
+        await store.flush()
+        let cloudFile = cloud.appendingPathComponent(SmartFilterStore.fileName)
+        func stamp(_ url: URL) throws -> [String] {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            return ["\(attributes[.systemFileNumber] ?? "")", "\((attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"]
+        }
+        let before = (try stamp(local), try stamp(cloudFile))
+        for _ in 0..<3 {
+            await store.reload()
+            await store.flush()
+        }
+        XCTAssertEqual(try stamp(local), before.0, "a reload with nothing new rewrote the local copy")
+        XCTAssertEqual(try stamp(cloudFile), before.1, "a reload with nothing new rewrote the iCloud copy")
+    }
+
+    func testDatesSurviveTheFileExactly() {
+        let date = Date(timeIntervalSinceReferenceDate: 801_234_567.891_234_5)
+        let kept = SmartFilterStore.wholeMillis(date)
+        XCTAssertEqual(SmartFilterStore.date(from: SmartFilterStore.dateText(kept)), kept)
+        XCTAssertEqual(SmartFilterStore.date(from: SmartFilterStore.dateText(date)), kept)
+        XCTAssertEqual(SmartFilterStore.date(from: "2026-01-01T00:00:00Z"), SmartFilterStore.wholeMillis(Date(timeIntervalSince1970: 1_767_225_600)))
+        XCTAssertGreaterThan(SmartFilterStore.later(kept, than: kept), kept)
+    }
+
     func testTwoDevicesShareTheFileInICloud() async {
         let cloud = root.appendingPathComponent("cloud", isDirectory: true)
         let phone = SmartFilterStore(localURL: root.appendingPathComponent("phone/smart-filters.json"), cloudFolder: { cloud })

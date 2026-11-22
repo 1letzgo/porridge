@@ -32,6 +32,9 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
     private(set) var fifo = SampleFIFO(sampleRate: 48_000)
 
     private let lock = NSRecursiveLock()
+    /// Guards only what the audio callback reads (converter and formats), held for an instant and never around a
+    /// Core Audio call: stopping the device waits for the callback, so the callback must never wait for `lock`.
+    private let formatLock = NSLock()
     private let ioQueue = DispatchQueue(label: "de.letzgo.porridge.system-audio", qos: .userInitiated)
     /// Device changes are handled here, not on `ioQueue`: stopping the device waits for the callback there.
     private let controlQueue = DispatchQueue(label: "de.letzgo.porridge.system-audio.control")
@@ -66,20 +69,43 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
     }
 
     func stop() {
+        // The listener is taken away outside the lock: removing it waits for a change being handled on
+        // `controlQueue`, and that one takes the lock.
+        lock.lock()
+        running = false
+        let listener = outputListener
+        outputListener = nil
+        lock.unlock()
+        removeListener(listener)
         lock.lock()
         defer { lock.unlock() }
-        stopLocked()
+        tearDownTap()
     }
 
-    deinit { stopLocked() }
+    deinit {
+        running = false
+        removeListener(outputListener)
+        outputListener = nil
+        tearDownTap()
+    }
 
+    /// Within `start` (under the lock, taken once), before a new tap. The lock is let go while the listener is
+    /// removed, as in `stop`.
     private func stopLocked() {
         running = false
-        if let listener = outputListener {
-            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.defaultOutputAddress, controlQueue, listener)
-            outputListener = nil
+        let listener = outputListener
+        outputListener = nil
+        if listener != nil {
+            lock.unlock()
+            removeListener(listener)
+            lock.lock()
         }
         tearDownTap()
+    }
+
+    private func removeListener(_ listener: AudioObjectPropertyListenerBlock?) {
+        guard let listener else { return }
+        AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.defaultOutputAddress, controlQueue, listener)
     }
 
     /// The aggregate device follows the output device; a new one (headphones, AirPods) needs a new tap.
@@ -123,9 +149,11 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
               let converter = AVAudioConverter(from: tapFormat, to: monoFormat)
         else { throw SystemAudioError.format }
         converter.downmix = true
+        formatLock.lock()
         self.tapFormat = tapFormat
         self.monoFormat = monoFormat
         self.converter = converter
+        formatLock.unlock()
 
         let outputUID = try Self.defaultOutputUID()
         let aggregate: [String: Any] = [
@@ -168,15 +196,28 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
             AudioHardwareDestroyProcessTap(tapID)
         }
         tapID = AudioObjectID(kAudioObjectUnknown)
+        formatLock.lock()
         converter = nil
+        formatLock.unlock()
     }
 
     // MARK: Sound
 
     /// On `ioQueue`: the tap's stereo mixed to mono at the microphone's rate, into the queue the recorder reads.
     private func receive(_ input: UnsafePointer<AudioBufferList>) {
-        guard let converter, let tapFormat, let monoFormat,
-              let buffer = AVAudioPCMBuffer(pcmFormat: tapFormat, bufferListNoCopy: input, deallocator: nil),
+        formatLock.lock()
+        let converter = self.converter, tapFormat = self.tapFormat, monoFormat = self.monoFormat
+        formatLock.unlock()
+        guard let converter, let tapFormat, let monoFormat else { return }
+        // The aggregate device lists the input streams of its sub-device first (a headset such as AirPods has a
+        // microphone) and the tap's last: only the tap's buffers are read, so the other side never gets the mic.
+        let all = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
+        let needed = tapFormat.isInterleaved ? 1 : Int(tapFormat.channelCount)
+        guard needed > 0, all.count >= needed else { return }
+        let tapBuffers = AudioBufferList.allocate(maximumBuffers: needed)
+        defer { free(tapBuffers.unsafeMutablePointer) }
+        for index in 0..<needed { tapBuffers[index] = all[all.count - needed + index] }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: tapFormat, bufferListNoCopy: tapBuffers.unsafePointer, deallocator: nil),
               buffer.frameLength > 0 else { return }
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * monoFormat.sampleRate / tapFormat.sampleRate) + 64
         guard let out = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: capacity) else { return }

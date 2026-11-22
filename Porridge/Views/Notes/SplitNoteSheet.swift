@@ -23,7 +23,7 @@ struct SplitNoteSheet: View {
 
     private var existingBowl: Bool {
         let name = proposal.bowlName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return bowls.contains { !$0.isArchived && $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }
+        return bowls.contains { !$0.isArchived && !BowlSharing.shared.isReadOnly($0.id) && $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }
     }
 
     private var canCreate: Bool {

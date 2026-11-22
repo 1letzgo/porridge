@@ -272,8 +272,9 @@ targets:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
           NSExtensionAttributes:
-            # Links, text, pictures, movies, audio, any file, and mails (`public.email-message` is no `public.data`,
-            # so the keys of the simple rule would not offer Porridge for a mail a mail app shares as its source).
+            # Links, text, pictures, movies, audio, mails, PDFs and documents (office, iWork, rich text, tables,
+            # archives), named one by one: not `public.data`, which would offer Porridge for contacts, passes and
+            # everything else. `public.email-message` is listed for a mail a mail app shares as its source.
             NSExtensionActivationRule: >-
               SUBQUERY (extensionItems, $extensionItem, SUBQUERY ($extensionItem.attachments, $attachment,
               ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
@@ -281,8 +282,22 @@ targets:
               || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image"
               || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie"
               || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio"
-              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.data"
               || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.email-message"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.composite-content"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.spreadsheet"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.presentation"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.rtf"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.comma-separated-values-text"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.microsoft.word.doc"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.microsoft.excel.xls"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.microsoft.powerpoint.ppt"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.openxmlformats.openxml"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.oasis-open.opendocument"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.iwork.pages.sffpages"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.iwork.numbers.sffnumbers"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.iwork.keynote.sffkey"
+              || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.zip-archive"
               ).@count >= 1).@count >= 1
     settings:
       base:

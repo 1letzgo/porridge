@@ -233,7 +233,7 @@ extension Todos {
 extension Todos {
     /// Sets or takes away the repeat rule. A rule without a due day starts today.
     static func setRepeat(_ rule: TodoRepeat?, _ note: Note, in context: ModelContext, now: Date = Date()) {
-        guard note.isTodo else { return }
+        guard note.isTodo, !BowlSharing.shared.isReadOnly(note) else { return }
         if let rule {
             if note.todoDue == nil { note.todoDueDay = dueKey(now) }
             note.todoRepeat = rule.anchored(to: note.todoDueDay)

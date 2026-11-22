@@ -245,6 +245,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             guard let self else { return nil }
             return NoteImageAttaching.attach(url, to: note, context: self.library.context, processing: self.processing)
         }
+        editor.controller.hasAttachment = { name in note.attachments.contains { $0.fileName == name } }
         addSubtask.setHandler { [weak self] in self?.editor.appendChecklistItem() }
         addSubtask.isBordered = false
         addSubtask.contentTintColor = .brandTaskText
@@ -1148,6 +1149,13 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
                 self.lastSplit = change
                 self.library.setNeedsReload()
                 self.render()
+                // The way back is offered for a while only.
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: BowlMaking.undoLifetime)
+                    guard let self, self.lastSplit?.madeAt == change.madeAt else { return }
+                    self.lastSplit = nil
+                    self.render()
+                }
             })
         case .merge:
             NoteSheets.merge(note, in: self)

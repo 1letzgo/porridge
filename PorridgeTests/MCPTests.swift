@@ -285,6 +285,17 @@ final class MCPTests: XCTestCase {
         let chunked = "POST /mcp HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
         guard case .complete(let dechunked) = HTTPRequestParser.parse(Data(chunked.utf8)) else { return XCTFail() }
         XCTAssertEqual(String(decoding: dechunked.body, as: UTF8.self), "hello world")
+
+        // A chunk size near Int.max must not overflow (it used to crash the app before any token was checked).
+        let huge = "POST /mcp HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n7fffffffffffffff\r\nx\r\n"
+        guard case .invalid(413, _) = HTTPRequestParser.parse(Data(huge.utf8)) else { return XCTFail("huge chunk") }
+        let long = "POST /mcp HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" + String(repeating: "0", count: 300) + "1\r\nx\r\n0\r\n\r\n"
+        guard case .invalid = HTTPRequestParser.parse(Data(long.utf8)) else { return XCTFail("long size line") }
+        guard case .invalid(400, _) = HTTPRequestParser.parse(Data("POST /mcp HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n".utf8)) else {
+            return XCTFail("not hex")
+        }
+        let tooMuch = Data(count: HTTPRequestParser.maxRequestBytes + 1)
+        guard case .invalid(413, _) = HTTPRequestParser.parse(tooMuch) else { return XCTFail("buffer cap") }
     }
 
     func testTheHTTPHandlerChecksTokenOriginAndMethod() async throws {

@@ -158,7 +158,7 @@ final class SplitNoteViewController: SheetViewController {
         createButton.isEnabled = !isAsking && !name.isEmpty && (!proposal.included.isEmpty || moveSource.state == .on)
         let count = proposal.included.count
         createButton.title = count == 0 ? "Create" : "Create \(count) " + (count == 1 ? "Entry" : "Entries")
-        let exists = Library.shared.projects.contains { !$0.isArchived && $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }
+        let exists = Library.shared.projects.contains { !$0.isArchived && !BowlSharing.shared.isReadOnly($0.id) && $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }
         var lines: [String] = []
         if exists { lines.append("A bowl of this name exists: the entries go into it.") }
         lines.append("The note itself stays as it is.")

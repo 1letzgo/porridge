@@ -238,13 +238,15 @@ extension InboxBundler {
         guard inbox.count >= minimumSize else { return nil }
         return suggestion(
             inbox: inbox, vectors: vectors(for: Set(inbox.map(\.id))), dismissed: dismissedGroups(),
-            existingNames: projects.filter { !$0.isArchived }.map(\.name)
+            existingNames: projects.filter { !$0.isArchived && !BowlSharing.shared.isReadOnly($0.id) }.map(\.name)
         )
     }
 
     /// Makes the bowl (or takes the active one of that name) and moves the chosen entries into it.
     static func apply(name: String, noteIDs: [UUID], notes: [Note], in context: ModelContext) -> BowlChange? {
-        let chosen = noteIDs.compactMap { id in notes.first { $0.id == id } }.filter { !$0.isDeleted }
+        // Still in the inbox, and not meanwhile in a bowl shared with me to view only.
+        let chosen = noteIDs.compactMap { id in notes.first { $0.id == id } }
+            .filter { !$0.isDeleted && $0.isInInbox && !BowlSharing.shared.isReadOnly($0) }
         guard !chosen.isEmpty, let found = BowlMaking.findOrCreate(name, in: context) else { return nil }
         let moved = chosen.map { BowlMaking.move($0, into: found.bowl, in: context) }
         try? context.save()

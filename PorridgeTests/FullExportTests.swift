@@ -214,6 +214,40 @@ final class FullExportTests: XCTestCase {
         XCTAssertEqual(zip.lastPathComponent, "Export.zip")
         let header = try Data(contentsOf: zip).prefix(2)
         XCTAssertEqual(header, Data("PK".utf8))
+
+        // A zip of the same name stays: the next one gets a name of its own.
+        let again = try FullExport.zip(out)
+        XCTAssertEqual(again.lastPathComponent, "Export 2.zip")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: zip.path))
+        XCTAssertEqual(FullExport.available(out).lastPathComponent, "Export 2")
+    }
+
+    func testBillsAndRepeatingToDosKeepTheirState() {
+        let paper = Note()
+        paper.title = "Invoice"
+        paper.source = .share
+        paper.attachments = [Attachment(fileName: "B.pdf", name: "B.pdf", kindRaw: "pdf", bytes: 5,
+                                        document: DocumentInfo(kind: .invoice, dueDay: "2026-12-01", isPaid: true, paidDay: "2026-11-20"))]
+        let todo = Note()
+        todo.title = "Water plants"
+        todo.todoState = .open
+        todo.todoDueDay = "2026-11-23"
+        todo.todoRepeat = TodoRepeat(unit: .week, interval: 1, anchorDay: nil)
+        let plan = FullExport.plan(.everything, notes: [paper, todo], bowls: [])
+        let bill = plan.archive.entries.first { $0.title == "Invoice" }
+        XCTAssertEqual(bill?.document?.dueDay, "2026-12-01")
+        XCTAssertEqual(bill?.document?.isPaid, true)
+        XCTAssertEqual(bill?.document?.paidDay, "2026-11-20")
+        let task = plan.archive.entries.first { $0.title == "Water plants" }
+        XCTAssertNotNil(task?.todo?.repeatRule)
+        XCTAssertNotNil(task?.todo?.repeats)
+        if let bill {
+            let markdown = FullExport.markdown(for: bill)
+            XCTAssertTrue(markdown.contains("  due: 2026-12-01"))
+            XCTAssertTrue(markdown.contains("  paid: true"))
+            XCTAssertTrue(markdown.contains("  paid_on: 2026-11-20"))
+        }
+        if let task { XCTAssertTrue(FullExport.markdown(for: task).contains("  repeats: ")) }
     }
 
     private func relativePaths(in folder: URL) throws -> [String] {

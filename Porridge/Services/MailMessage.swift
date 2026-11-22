@@ -65,7 +65,7 @@ extension MailMessage {
     /// Reads a mail from its source. Throws only when the data is no mail at all (no header).
     static func parse(_ data: Data) throws -> MailMessage {
         let raw = latin1String(data)
-        let part = MIMEPart(raw: raw)
+        let part = MIMEPart(raw: raw, depth: 0, budget: MIMEPart.Budget())
         guard !part.headers.isEmpty else { throw CocoaError(.fileReadCorruptFile) }
         var message = MailMessage()
         message.subject = MIMEHeader.decodeWords(part.header("subject") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -182,11 +182,27 @@ private func latin1Bytes(_ text: some StringProtocol) -> Data {
 
 /// One part of a mail (or the mail itself): its headers and its body, still as Latin 1 text.
 struct MIMEPart {
+    /// How deep parts may nest, and how many there may be in one mail: a mail built to nest without end is read
+    /// up to here, in time that grows with its size only.
+    static let maxDepth = 20
+    static let maxParts = 500
+
+    /// The parts read so far in one mail.
+    final class Budget {
+        var parts = 0
+    }
+
     /// Names lowercased, values unfolded, in order.
     let headers: [(name: String, value: String)]
     let body: String
+    /// The parts of a multipart, split at its boundary once (empty below `maxDepth` or past `maxParts`).
+    let children: [MIMEPart]
 
     init(raw: String) {
+        self.init(raw: raw, depth: 0, budget: Budget())
+    }
+
+    init(raw: String, depth: Int, budget: Budget) {
         // The header ends at the first empty line; "\r\n" and "\n" alike, whichever comes first.
         var headerText = raw
         var bodyText = ""
@@ -200,10 +216,19 @@ struct MIMEPart {
             headers = []
             // "\r\n" is one character to Swift, like "\n".
             body = raw.hasPrefix("\r\n") || raw.hasPrefix("\n") ? String(raw.dropFirst()) : raw
+            children = []
             return
         }
-        headers = MIMEPart.parseHeaders(headerText)
+        let parsed = MIMEPart.parseHeaders(headerText)
+        headers = parsed
         body = bodyText
+        let contentType = parsed.first { $0.name == "content-type" }?.value ?? ""
+        if MIMEHeader.mainValue(contentType).lowercased().hasPrefix("multipart/"), depth < Self.maxDepth,
+           let boundary = MIMEHeader.parameters(contentType)["boundary"], !boundary.isEmpty {
+            children = Self.split(bodyText, boundary: boundary, depth: depth + 1, budget: budget)
+        } else {
+            children = []
+        }
     }
 
     private static func looksLikeHeader(_ text: String) -> Bool {
@@ -265,25 +290,30 @@ struct MIMEPart {
         return clean.isEmpty ? nil : clean
     }
 
-    /// The parts of a multipart, split at its boundary.
-    var children: [MIMEPart] {
-        guard let boundary = parameters["boundary"], !boundary.isEmpty else { return [] }
+    /// The parts of a multipart body, split at its boundary.
+    private static func split(_ body: String, boundary: String, depth: Int, budget: Budget) -> [MIMEPart] {
         let delimiter = "--" + boundary
         var parts: [MIMEPart] = []
         var current: [String] = []
         var started = false
+        func add() {
+            guard budget.parts < maxParts else { return }
+            budget.parts += 1
+            parts.append(MIMEPart(raw: joined(current), depth: depth, budget: budget))
+        }
         // Split by Foundation: to Swift "\r\n" is one character, not a "\n".
         let lines = body.components(separatedBy: "\n")
         for line in lines {
+            if budget.parts >= maxParts { break }
             let bare = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if bare == delimiter + "--" {
-                if started { parts.append(MIMEPart(raw: Self.joined(current))) }
+                if started { add() }
                 started = false
                 current = []
                 break
             }
             if bare == delimiter {
-                if started { parts.append(MIMEPart(raw: Self.joined(current))) }
+                if started { add() }
                 started = true
                 current = []
                 continue
@@ -291,7 +321,7 @@ struct MIMEPart {
             if started { current.append(line) }
         }
         // A mail cut off before its closing boundary keeps its last part.
-        if started, !current.isEmpty { parts.append(MIMEPart(raw: Self.joined(current))) }
+        if started, !current.isEmpty { add() }
         return parts
     }
 

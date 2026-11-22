@@ -40,6 +40,8 @@ enum EntryActions {
         let todoStateRaw: String?
         let todoDoneAt: Date?
         let todoDueDay: String?
+        /// Holds the repeat rule of a to-do (`Note.todoRepeat`).
+        let todoSuggestionsRaw: String?
         let text: String
         let labels: [String]
         let attachmentsData: Data?
@@ -53,6 +55,7 @@ enum EntryActions {
             todoStateRaw = note.todoStateRaw
             todoDoneAt = note.todoDoneAt
             todoDueDay = note.todoDueDay
+            todoSuggestionsRaw = note.todoSuggestionsRaw
             text = note.text
             labels = note.labels
             attachmentsData = note.attachmentsData
@@ -64,27 +67,44 @@ enum EntryActions {
             let now = Snapshot(note)
             return now.projectIDs == projectIDs && now.filedAt == filedAt && now.suggestedProjectIDs == suggestedProjectIDs
                 && now.todoStateRaw == todoStateRaw && now.todoDoneAt == todoDoneAt && now.todoDueDay == todoDueDay
-                && now.text == text && now.labels == labels && now.attachmentsData == attachmentsData
+                && now.todoSuggestionsRaw == todoSuggestionsRaw && now.text == text && now.labels == labels && now.attachmentsData == attachmentsData
         }
 
-        func restore(on note: Note) {
-            note.projectIDs = projectIDs
-            note.filedAt = filedAt
-            note.suggestedProjectIDs = suggestedProjectIDs
-            note.todoStateRaw = todoStateRaw
-            note.todoDoneAt = todoDoneAt
-            note.todoDueDay = todoDueDay
-            note.text = text
-            note.labels = labels
-            if note.attachmentsData != attachmentsData { note.attachmentsData = attachmentsData }
-            note.updatedAt = updatedAt
+        /// Puts back what the change changed (`after`: the entry right after it). A field changed again since then,
+        /// here or on another device, keeps that later change. Without `after` everything is put back.
+        func restore(on note: Note, after: Snapshot? = nil) {
+            var restored = false
+            var keptLater = false
+            func put<T: Equatable>(_ key: ReferenceWritableKeyPath<Note, T>, _ before: T, _ later: T?) {
+                let current = note[keyPath: key]
+                if let later {
+                    guard before != later else { return }
+                    guard current == later else { keptLater = true; return }
+                }
+                guard current != before else { return }
+                note[keyPath: key] = before
+                restored = true
+            }
+            put(\.projectIDs, projectIDs, after?.projectIDs)
+            put(\.filedAt, filedAt, after.map(\.filedAt))
+            put(\.suggestedProjectIDs, suggestedProjectIDs, after?.suggestedProjectIDs)
+            put(\.todoStateRaw, todoStateRaw, after.map(\.todoStateRaw))
+            put(\.todoDoneAt, todoDoneAt, after.map(\.todoDoneAt))
+            put(\.todoDueDay, todoDueDay, after.map(\.todoDueDay))
+            put(\.todoSuggestionsRaw, todoSuggestionsRaw, after.map(\.todoSuggestionsRaw))
+            put(\.text, text, after?.text)
+            put(\.labels, labels, after?.labels)
+            put(\.attachmentsData, attachmentsData, after.map(\.attachmentsData))
+            guard restored else { return }
+            // As it was when nothing else happened to it; otherwise it was just changed.
+            note.updatedAt = keptLater ? Date() : updatedAt
         }
     }
 
     /// The way back from one or several changes; taken back newest first.
     struct Undo {
         enum Step {
-            case restore(Snapshot)
+            case restore(Snapshot, after: Snapshot?)
             /// An entry the change wrote: it goes again.
             case removeNote(UUID)
             /// A bowl the change made: it goes again while nothing is in it.
@@ -157,7 +177,7 @@ enum EntryActions {
         }
         note.updatedAt = now
         try? context.save()
-        return Undo(steps: [.restore(before)])
+        return Undo(steps: [.restore(before, after: Snapshot(note))])
     }
 
     /// A new bowl with this name. A bowl of the same name that is there already is not made twice.
@@ -192,7 +212,7 @@ enum EntryActions {
         }
         guard !before.matches(note) else { throw Failure.nothingToChange }
         try? context.save()
-        return Undo(steps: [.restore(before)])
+        return Undo(steps: [.restore(before, after: Snapshot(note))])
     }
 
     /// Adds and removes tags (the tag field; `#words` written in the text stay where they are).
@@ -213,7 +233,7 @@ enum EntryActions {
         note.labels = labels
         note.updatedAt = now
         try? context.save()
-        return Undo(steps: [.restore(before)])
+        return Undo(steps: [.restore(before, after: Snapshot(note))])
     }
 
     /// Corrects what a document is, the way an edit by hand does (`Documents.set`): reading it again never replaces it.
@@ -232,7 +252,7 @@ enum EntryActions {
         guard info != current else { throw Failure.nothingToChange }
         let before = Snapshot(note)
         Documents.set(info, on: note, in: context)
-        return Undo(steps: [.restore(before)])
+        return Undo(steps: [.restore(before, after: Snapshot(note))])
     }
 
     /// A new note (or to-do) with this title and text, in a bowl or the Inbox.
@@ -276,10 +296,10 @@ enum EntryActions {
     static func undo(_ undo: Undo, in context: ModelContext) {
         for step in undo.steps.reversed() {
             switch step {
-            case .restore(let snapshot):
+            case .restore(let snapshot, let after):
                 let id = snapshot.noteID
                 if let note = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == id })))?.first {
-                    snapshot.restore(on: note)
+                    snapshot.restore(on: note, after: after)
                 }
             case .removeNote(let id):
                 if let note = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == id })))?.first {

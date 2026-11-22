@@ -119,7 +119,8 @@ enum CommandBarItems {
             },
         ]
         // The selected entries into a bowl or back to the Inbox.
-        let selected = controller.selectedNotes.filter { $0.modelContext != nil && !$0.isDeleted }
+        // Entries in a bowl shared with me to view only stay where they are.
+        let selected = controller.selectedNotes.filter { $0.modelContext != nil && !$0.isDeleted && !BowlSharing.shared.isReadOnly($0) }
         if !selected.isEmpty {
             let what = selected.count == 1 ? "“\(selected[0].displayTitle)”" : String(localized: "\(selected.count) entries")
             let context = Library.shared.context
@@ -128,7 +129,7 @@ enum CommandBarItems {
                     Undoable.move(selected, toBowl: nil, named: nil, in: context)
                 })
             }
-            for project in Library.shared.activeProjects {
+            for project in Library.shared.activeProjects where !BowlSharing.shared.isReadOnly(project.id) {
                 let key = Projects.key(project)
                 guard !selected.allSatisfy({ $0.projectIDs == [key] }) else { continue }
                 items.append(CommandItem(kind: .command, title: String(localized: "Move to \(project.name)"), subtitle: what, symbol: "folder", tint: .brandProject, keywords: "bowl file") {

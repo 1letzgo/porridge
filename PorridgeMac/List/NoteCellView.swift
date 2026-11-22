@@ -168,7 +168,7 @@ final class NoteCellView: NSTableCellView {
         // The bowls suggested for an inbox entry: a click files it there, the cross drops the suggestion.
         suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let suggested = showsSuggestions && note.isInInbox
-            ? note.suggestedProjectIDs.compactMap { id in buckets.first { Projects.key($0) == id } } : []
+            ? note.suggestedProjectIDs.compactMap { id in buckets.first { Projects.key($0) == id && !BowlSharing.shared.isReadOnly($0.id) } } : []
         suggestions.isHidden = suggested.isEmpty
         for project in suggested {
             let pill = PillButton(title: project.name, symbol: "sparkles", tint: .brandProject, target: self, action: #selector(fileSuggested(_:)))

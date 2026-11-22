@@ -11,7 +11,7 @@ struct FilingBar: View {
     private var suggested: [NoteFolder] { Self.suggested(for: note, among: projects) }
 
     static func suggested(for note: Note, among projects: [NoteFolder]) -> [NoteFolder] {
-        note.suggestedProjectIDs.compactMap { id in projects.first { Projects.key($0) == id } }
+        note.suggestedProjectIDs.compactMap { id in projects.first { Projects.key($0) == id && !BowlSharing.shared.isReadOnly($0.id) } }
     }
 
     var body: some View {

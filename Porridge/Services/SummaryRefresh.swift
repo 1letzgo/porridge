@@ -7,7 +7,8 @@ import Foundation
 /// Only what the user would have gotten anyway: the summary is rewritten only when the meeting has one, automatic
 /// summaries are on ("Summarize Incoming Entries"), the model of the last summary (or else the default) can run
 /// without a download, and the summary is still as the model wrote it: one edited by hand or with ticked tasks keeps
-/// the user's work, and only gets the old name replaced by the new one in its text. The template is the one last
+/// the user's work, and only gets the old name replaced by the new one in its text. A summary this device has no
+/// record of (older, or written on another device) counts as edited. The template is the one last
 /// chosen for the meeting on this device, else General. All of this is kept on this device only.
 enum SummaryRefresh {
     /// Renames within this time make one new summary.
@@ -26,10 +27,11 @@ enum SummaryRefresh {
         return isUntouched(summary, writtenHash: writtenHash)
     }
 
-    /// The summary is as the model wrote it: no ticked task, and no edit since (when this device knows what was written).
+    /// The summary is as the model wrote it: no ticked task, and no edit since. Without a record of what was written
+    /// (an older meeting, or one summarized on another device) nobody can tell, so it counts as touched and is kept.
     static func isUntouched(_ summary: String, writtenHash: String?) -> Bool {
         if SummaryTasks.parse(summary).contains(where: \.done) { return false }
-        guard let writtenHash else { return true }
+        guard let writtenHash else { return false }
         return writtenHash == hash(summary)
     }
 

@@ -362,6 +362,8 @@ extension Note {
 extension Todos {
     /// Turns a note into a to-do (open) or back into a note. The text stays as it is.
     static func setTodo(_ isTodo: Bool, _ note: Note, in context: ModelContext) {
+        // Entries in a bowl shared with me to view only stay as they are.
+        guard !BowlSharing.shared.isReadOnly(note) else { return }
         guard isTodo != note.isTodo else { return }
         note.todoState = isTodo ? .open : TodoState.none
         note.todoDoneAt = nil
@@ -374,6 +376,8 @@ extension Todos {
     /// Ticks or unticks the to-do itself. Done ticks every subtask; open leaves them as they are. A repeating
     /// to-do is never done: it moves on to its next due day with its subtasks unticked (`rollOver`).
     static func setDone(_ done: Bool, _ note: Note, in context: ModelContext) {
+        // Entries in a bowl shared with me to view only stay as they are.
+        guard !BowlSharing.shared.isReadOnly(note) else { return }
         guard note.isTodo, done != note.isDone else { return }
         if done, note.todoRepeat != nil {
             rollOver(note)
@@ -390,6 +394,8 @@ extension Todos {
 
     /// Ticks or unticks one subtask; the to-do follows (see `stateAfterEdit`).
     static func toggleSubtask(line: Int, of note: Note, in context: ModelContext) {
+        // Entries in a bowl shared with me to view only stay as they are.
+        guard !BowlSharing.shared.isReadOnly(note) else { return }
         let old = note.text
         note.text = toggleLine(line, in: old)
         follow(note, from: old)
@@ -399,6 +405,8 @@ extension Todos {
 
     /// The text of a to-do was edited (a box tapped in the editor, a subtask added): the done state follows.
     static func follow(_ note: Note, from old: String) {
+        // Entries in a bowl shared with me to view only stay as they are.
+        guard !BowlSharing.shared.isReadOnly(note) else { return }
         guard let state = note.todoState, note.isTodo,
               let next = stateAfterEdit(old: old, new: note.text, state: state) else { return }
         // The last subtask of a repeating to-do ticked: it moves on to its next round.
@@ -436,6 +444,8 @@ extension Todos {
 
     /// Sets the due day, or takes it away (nil): then "none" is stored, so that devices which had it drop it too.
     static func setDue(_ key: String?, _ note: Note, in context: ModelContext) {
+        // Entries in a bowl shared with me to view only stay as they are.
+        guard !BowlSharing.shared.isReadOnly(note) else { return }
         let value = key ?? (note.todoDueDay == nil ? nil : clearedDue)
         guard value != note.todoDueDay else { return }
         note.todoDueDay = value

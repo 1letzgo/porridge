@@ -4,6 +4,13 @@ import SwiftUI
 
 /// iOS wakes the app here when model downloads ended while it was not running.
 final class PorridgeAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // The meeting notifications' Record and Join reach the app from a cold start too: their delegate is set
+        // before launching ends, as iOS asks.
+        MeetingNotifications.register()
+        return true
+    }
+
     /// The scenes get a delegate of their own: an invitation to a shared bowl arrives there.
     func application(
         _ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession,

@@ -254,7 +254,7 @@ final class MCPToolbox: MCPToolProvider {
             let chunks = await passages(all).filter { ids.contains($0.noteID) }
             let vector = await queryVector(query)
             let ranked = ChatRetrieval.search(query, in: chunks, queryVector: vector, budget: 5_000_000, limit: 1_000)
-            let byID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+            let byID = Dictionary(candidates.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             var seen = Set<UUID>()
             for chunk in ranked where seen.insert(chunk.noteID).inserted {
                 if let note = byID[chunk.noteID] { ordered.append((note, chunk.text)) }

@@ -27,7 +27,17 @@ final class MeetingAlertScheduler {
         guard !started else { return }
         started = true
         MeetingAlerts.registerDefaults()
+        #if os(iOS)
+        // On iOS the alerts are notifications: on by themselves only when those are allowed already too. Nothing is
+        // asked for here; only the switch in Settings asks (`enable`).
+        Task {
+            let allowed = await MeetingNotifications.isAllowed()
+            MeetingAlerts.settleDefault(granted: CalendarAccess.status == .granted && allowed)
+            MeetingAlertScheduler.shared.refresh()
+        }
+        #else
         MeetingAlerts.settleDefault(granted: CalendarAccess.status == .granted)
+        #endif
         NotificationCenter.default.addObserver(forName: CalendarAccess.changedNotification, object: CalendarAccess.eventStore, queue: .main) { _ in
             MainActor.assumeIsolated {
                 MeetingLinks.forgetLookups()
@@ -35,7 +45,7 @@ final class MeetingAlertScheduler {
             }
         }
         #if os(iOS)
-        MeetingNotifications.register()
+        // The notifications' delegate is set at launch (`PorridgeAppDelegate`), so Record works from a cold start too.
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { MeetingAlertScheduler.shared.refresh() }
         }
@@ -123,6 +133,12 @@ enum MeetingNotifications {
         center.delegate = delegate
     }
 
+    /// Notifications may be shown (allowed, or quietly on trial).
+    static func isAllowed() async -> Bool {
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        return status == .authorized || status == .provisional || status == .ephemeral
+    }
+
     static func requestPermission() async {
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
@@ -136,9 +152,8 @@ enum MeetingNotifications {
             let center = UNUserNotificationCenter.current()
             let old = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(prefix) }
             center.removePendingNotificationRequests(withIdentifiers: old)
-            guard !meetings.isEmpty else { return }
-            let settings = await center.notificationSettings()
-            if settings.authorizationStatus == .notDetermined { await requestPermission() }
+            // Never asks: only planned when notifications are allowed (asked for by the switch in Settings).
+            guard !meetings.isEmpty, await isAllowed() else { return }
             let now = Date()
             for meeting in meetings.prefix(maximum) {
                 let wait = meeting.start.addingTimeInterval(-MeetingAlerts.lead).timeIntervalSince(now)

@@ -89,8 +89,13 @@ enum MailNote {
 
     /// The name a file is saved under: its own, with the extension its type has when the name has none.
     static func fileName(for file: MailMessage.Attachment) -> String {
-        var name = file.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if name.isEmpty { name = "Attachment" }
+        // The sender chooses the name: no ".", "..", path marks or names too long for the file system.
+        let given = file.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ext = (given as NSString).pathExtension
+        let base = (given as NSString).deletingPathExtension
+        var name = FullExport.safeName(base, fallback: "Attachment")
+        let cleanExt = FullExport.safeName(ext, fallback: "")
+        if !cleanExt.isEmpty, cleanExt.count <= 16 { name += "." + cleanExt }
         if (name as NSString).pathExtension.isEmpty,
            let ext = UTType(mimeType: file.mimeType)?.preferredFilenameExtension ?? (file.mimeType == "message/rfc822" ? "eml" : nil) {
             name += "." + ext

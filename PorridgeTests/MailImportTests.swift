@@ -166,6 +166,27 @@ final class MailImportTests: XCTestCase {
         XCTAssertEqual(MailNote.fileName(for: message.files[0]), "Forwarded Message 1.eml")
     }
 
+    func testDeeplyNestedPartsAreReadOnlyToALimit() throws {
+        // 300 multiparts inside each other: read in bounded time, down to `MIMEPart.maxDepth`.
+        var body = "Content-Type: text/plain\r\n\r\ndeep text\r\n"
+        for level in 0..<300 {
+            body = "Content-Type: multipart/mixed; boundary=\"b\(level)\"\r\n\r\n--b\(level)\r\n" + body + "--b\(level)--\r\n"
+        }
+        let source = "From: a@b.de\r\nSubject: Deep\r\n" + body
+        let start = Date()
+        let message = try MailMessage.parse(Data(source.utf8))
+        XCTAssertEqual(message.subject, "Deep")
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
+
+        let file = MailMessage.Attachment(name: "../" + String(repeating: "x", count: 400) + ".pdf", mimeType: "application/pdf", data: Data([1]), isInline: false)
+        let name = MailNote.fileName(for: file)
+        XCTAssertFalse(name.contains("/"))
+        XCTAssertFalse(name.hasPrefix("."))
+        XCTAssertTrue(name.hasSuffix(".pdf"))
+        XCTAssertLessThanOrEqual(name.utf8.count, 255)
+        XCTAssertEqual(MailNote.fileName(for: MailMessage.Attachment(name: "..", mimeType: "application/pdf", data: Data([1]), isInline: false)), "Attachment.pdf")
+    }
+
     func testNoMailAtAllIsRefused() {
         XCTAssertThrowsError(try MailMessage.parse(Data("just some words without a header line".utf8)))
     }

@@ -193,7 +193,9 @@ enum Documents {
     @discardableResult
     static func apply(_ change: BulkChange, to notes: [Note], in context: ModelContext, now: Date = Date()) -> Int {
         var changed = 0
-        for note in notes where !note.isDeleted {
+        // Nothing goes into a bowl shared with me to view only, and its entries stay as they are.
+        if case .move(let bowl?) = change, BowlSharing.shared.isReadOnly(UUID(uuidString: bowl)) { return 0 }
+        for note in notes where !note.isDeleted && !BowlSharing.shared.isReadOnly(note) {
             switch change {
             case .move(let bowl):
                 let target = bowl.map { [$0] } ?? []

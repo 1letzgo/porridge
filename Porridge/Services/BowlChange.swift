@@ -19,6 +19,8 @@ struct BowlChange {
     var createdNoteIDs: [UUID]
     /// Entries put into the bowl: undo puts them back where they were.
     var moved: [Moved]
+    /// When it was done: entries it made and that were changed after it go to Recently Deleted on undo, not for good.
+    var madeAt = Date()
 }
 
 extension BowlChange {
@@ -40,7 +42,11 @@ enum BowlMaking {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return nil }
         let all = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
-        if let existing = all.first(where: { !$0.isArchived && $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }) {
+        // A bowl shared with me to view only takes nothing in: a bowl of my own is made instead.
+        if let existing = all.first(where: {
+            !$0.isArchived && !BowlSharing.shared.isReadOnly($0.id)
+                && $0.name.compare(name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }) {
             return (existing, false)
         }
         guard let bowl = Projects.create(name, in: context) else { return nil }
@@ -54,13 +60,24 @@ enum BowlMaking {
         return before
     }
 
-    /// Takes the change back: the entries it made are deleted, the moved ones go back, and a bowl it made is deleted
-    /// when nothing else is in it now.
+    /// How long the way back is offered after the change (like the undo toast, a little longer: it is in the note).
+    static let undoLifetime: Duration = .seconds(30)
+
+    /// Takes the change back: the entries it made are deleted (to Recently Deleted when they were changed since),
+    /// the moved ones go back, and a bowl it made is deleted when nothing else is in it now.
     static func undo(_ change: BowlChange, in context: ModelContext) {
         let notes = (try? context.fetch(FetchDescriptor<Note>())) ?? []
         let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var kept = Set<UUID>()
         for id in change.createdNoteIDs {
-            if let note = byID[id] { context.delete(note) }
+            guard let note = byID[id] else { continue }
+            if note.updatedAt.timeIntervalSince(change.madeAt) > 1 {
+                // Worked on since: kept in Recently Deleted, where it can come back.
+                if !note.isDeleted { NoteStore.trash(note, in: context) }
+                kept.insert(id)
+            } else {
+                context.delete(note)
+            }
         }
         for moved in change.moved {
             guard let note = byID[moved.noteID] else { continue }
@@ -71,7 +88,7 @@ enum BowlMaking {
         }
         if change.createdBowl {
             let key = change.bowlID.uuidString
-            let undone = Set(change.createdNoteIDs)
+            let undone = Set(change.createdNoteIDs).subtracting(kept)
             let stillUsed = notes.contains { !undone.contains($0.id) && $0.projectIDs.contains(key) }
             let bowls = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
             if !stillUsed, let bowl = bowls.first(where: { $0.id == change.bowlID }) { context.delete(bowl) }

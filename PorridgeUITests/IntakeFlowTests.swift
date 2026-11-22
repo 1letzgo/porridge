@@ -66,7 +66,9 @@ final class IntakeFlowTests: XCTestCase {
         field.typeText(question)
         app.buttons["ChatSend"].tap()
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 10), "question missing in the chat")
-        XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 20), "answer missing")
+        // The index is brought up to date first: on the first launch after an update that cuts the entries again
+        // (documents got their payment state), that takes a while on a simulator full of earlier test entries.
+        XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 90), "answer missing")
 
         // Kept: it is in the list of chats, and opening the chat again shows it.
         app.buttons["All Chats"].tap()

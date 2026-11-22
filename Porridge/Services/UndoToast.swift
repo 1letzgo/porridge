@@ -123,6 +123,8 @@ struct NoteSnapshot: Equatable {
     var todoStateRaw: String?
     var todoDoneAt: Date?
     var todoDueDay: String?
+    /// Holds the repeat rule of a to-do (`Note.todoRepeat`).
+    var todoSuggestionsRaw: String?
 
     init(_ note: Note) {
         projectIDs = note.projectIDs
@@ -135,6 +137,7 @@ struct NoteSnapshot: Equatable {
         todoStateRaw = note.todoStateRaw
         todoDoneAt = note.todoDoneAt
         todoDueDay = note.todoDueDay
+        todoSuggestionsRaw = note.todoSuggestionsRaw
     }
 
     /// Writes back the fields that differ between `before` (self) and `after` onto the note. Returns whether
@@ -157,6 +160,7 @@ struct NoteSnapshot: Equatable {
         put(\.todoStateRaw, todoStateRaw, after.todoStateRaw)
         put(\.todoDoneAt, todoDoneAt, after.todoDoneAt)
         put(\.todoDueDay, todoDueDay, after.todoDueDay)
+        put(\.todoSuggestionsRaw, todoSuggestionsRaw, after.todoSuggestionsRaw)
         return changed
     }
 }
@@ -200,6 +204,10 @@ enum Undoable {
 
     /// Into one bowl (in place of the one they are in), or back to the inbox (nil).
     static func move(_ notes: [Note], toBowl bowl: String?, named name: String?, in context: ModelContext) {
+        // Not into a bowl shared with me to view only, and not out of one.
+        if let bowl, BowlSharing.shared.isReadOnly(UUID(uuidString: bowl)) { return }
+        let notes = notes.filter { !BowlSharing.shared.isReadOnly($0) }
+        guard !notes.isEmpty else { return }
         run(movedMessage(count: notes.count, to: name), systemImage: bowl == nil ? "tray" : "folder", notes: notes, in: context) {
             if let bowl, notes.count == 1, let note = notes.first {
                 Inbox.file(note, into: bowl, in: context)
@@ -211,6 +219,7 @@ enum Undoable {
 
     /// Takes the note out of the bowl; out of its only one, it is back in the inbox.
     static func remove(_ project: NoteFolder, from note: Note, in context: ModelContext) {
+        guard !BowlSharing.shared.isReadOnly(project.id), !BowlSharing.shared.isReadOnly(note) else { return }
         run(String(localized: "Removed from “\(project.name)”"), systemImage: "tray", notes: [note], in: context) {
             Projects.remove(project, from: note, in: context)
         }
@@ -218,6 +227,7 @@ enum Undoable {
 
     /// The bowl menu's toggle: into the bowl, or out of it when it is in it already.
     static func toggle(_ project: NoteFolder, on note: Note, in context: ModelContext) {
+        guard !BowlSharing.shared.isReadOnly(project.id), !BowlSharing.shared.isReadOnly(note) else { return }
         if note.projectIDs.contains(Projects.key(project)) {
             remove(project, from: note, in: context)
         } else {

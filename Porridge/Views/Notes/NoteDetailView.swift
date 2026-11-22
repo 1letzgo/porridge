@@ -198,6 +198,7 @@ struct NoteDetailView: View {
             editor.attachImage = { [note, context, processing] url in
                 NoteImageAttaching.attach(url, to: note, context: context, processing: processing)
             }
+            editor.hasAttachment = { [note] name in note.attachments.contains { $0.fileName == name } }
             // What someone else added or changed: said once more here, and seen from now on.
             if !didAppear { openedActivity = BowlSharing.shared.activityLine(for: note) }
             BowlSharing.shared.markSeen(note)
@@ -274,6 +275,13 @@ struct NoteDetailView: View {
             SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 }), onFinish: finishEditingSummary)
         }
         .sheet(isPresented: $showPages) { PDFPageEditor(note: note) }
+        .task(id: lastSplit?.madeAt) {
+            // The way back is offered for a while only.
+            guard let made = lastSplit?.madeAt else { return }
+            try? await Task.sleep(for: BowlMaking.undoLifetime)
+            guard !Task.isCancelled, lastSplit?.madeAt == made else { return }
+            withAnimation(.snappy) { lastSplit = nil }
+        }
         .sheet(isPresented: $showSplit) {
             SplitNoteSheet(note: note) { change in
                 withAnimation(.snappy) { lastSplit = change }
@@ -530,7 +538,7 @@ struct NoteDetailView: View {
     private var suggestedProjects: [NoteFolder] {
         guard note.isInInbox, !note.suggestedProjectIDs.isEmpty else { return [] }
         let all = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
-        return note.suggestedProjectIDs.compactMap { id in all.first { Projects.key($0) == id && !$0.isArchived } }
+        return note.suggestedProjectIDs.compactMap { id in all.first { Projects.key($0) == id && !$0.isArchived && !BowlSharing.shared.isReadOnly($0.id) } }
     }
 
     // MARK: - Tags

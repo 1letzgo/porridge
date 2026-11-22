@@ -57,7 +57,9 @@ final class SmartFilterStore {
     @discardableResult
     func add(name: String, criteria: SmartFilterCriteria, now: Date = Date()) -> SmartFilter {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let filter = SmartFilter(name: clean.isEmpty ? SmartFilters.suggestedName(for: criteria) : clean, criteria: criteria, createdAt: now)
+        let filter = SmartFilter(
+            name: clean.isEmpty ? SmartFilters.suggestedName(for: criteria) : clean, criteria: criteria, createdAt: Self.wholeMillis(now)
+        )
         file.filters.append(filter)
         changed()
         return filter
@@ -90,7 +92,19 @@ final class SmartFilterStore {
     /// The file keeps dates to the millisecond: a change in the same millisecond as the one before it is moved a
     /// millisecond on, so every copy still sees it as the later one.
     nonisolated static func later(_ now: Date, than before: Date) -> Date {
-        max(now, before.addingTimeInterval(0.001))
+        let next = millis(before) + 1
+        return wholeMillis(Date(timeIntervalSince1970: Double(max(millis(now), next)) / 1000))
+    }
+
+    /// Milliseconds since 1970, as the file keeps them.
+    nonisolated static func millis(_ date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1000).rounded())
+    }
+
+    /// The date as the file keeps it (whole milliseconds): what is in memory then equals what is read back, so a
+    /// reload finds nothing changed and writes nothing.
+    nonisolated static func wholeMillis(_ date: Date) -> Date {
+        Date(timeIntervalSince1970: Double(millis(date)) / 1000)
     }
 
     private func changed() {
@@ -175,21 +189,44 @@ final class SmartFilterStore {
 
     /// ISO 8601 with milliseconds: two changes within one second must still tell which came last. Dates without
     /// fractions read too.
+    /// Written from whole milliseconds and read back to the same value, so a date survives any number of round trips.
     nonisolated static let dateEncoding = JSONEncoder.DateEncodingStrategy.custom { date, encoder in
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         var container = encoder.singleValueContainer()
-        try container.encode(formatter.string(from: date))
+        try container.encode(dateText(date))
     }
 
     nonisolated static let dateDecoding = JSONDecoder.DateDecodingStrategy.custom { decoder in
         let text = try decoder.singleValueContainer().decode(String.self)
+        guard let date = date(from: text) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Not a date: \(text)"))
+        }
+        return date
+    }
+
+    /// "2026-11-22T14:03:07.123Z".
+    nonisolated static func dateText(_ date: Date) -> String {
+        let ms = millis(date)
+        var seconds = ms / 1000
+        var fraction = ms % 1000
+        if fraction < 0 { seconds -= 1; fraction += 1000 }
         let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: text) { return date }
         formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: text) { return date }
-        throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Not a date: \(text)"))
+        let whole = formatter.string(from: Date(timeIntervalSince1970: Double(seconds)))
+        return String(whole.dropLast()) + String(format: ".%03dZ", Int(fraction))
+    }
+
+    /// ISO 8601 with or without a fraction (only its milliseconds count); always a whole-millisecond date.
+    nonisolated static func date(from text: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        guard let dot = text.firstIndex(of: ".") else { return formatter.date(from: text).map(wholeMillis) }
+        let rest = text[text.index(after: dot)...]
+        let digits = rest.prefix { $0.isASCII && $0.isNumber }
+        guard !digits.isEmpty, digits.count <= 9 else { return nil }
+        let zone = rest.dropFirst(digits.count)
+        guard let base = formatter.date(from: String(text[..<dot]) + zone) else { return nil }
+        let ms = Int64(String(digits.prefix(3)).padding(toLength: 3, withPad: "0", startingAt: 0)) ?? 0
+        return Date(timeIntervalSince1970: Double(millis(base) + ms) / 1000)
     }
 
     nonisolated private static func decode(_ data: Data) -> SmartFilterFile? {
