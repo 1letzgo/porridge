@@ -271,7 +271,11 @@ struct SmartFilterFile: Codable, Equatable, Sendable {
         deleted = deleted.filter { now.timeIntervalSince($0.value) < tombstoneLifetime }
         var byID: [UUID: SmartFilter] = [:]
         for filter in a.filters + b.filters {
-            if let known = byID[filter.id], known.updatedAt >= filter.updatedAt { continue }
+            if let known = byID[filter.id] {
+                // The newer wins; at the same moment one fixed choice, so every device keeps the same.
+                if known.updatedAt > filter.updatedAt { continue }
+                if known.updatedAt == filter.updatedAt, String(describing: known) >= String(describing: filter) { continue }
+            }
             byID[filter.id] = filter
         }
         let kept = byID.values.filter { filter in
