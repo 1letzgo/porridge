@@ -48,14 +48,19 @@ struct ProjectRow: View {
         .swipeActions(edge: .trailing) {
             deleteButton
             archiveButton.tint(.brandNavy)
-            Button(action: onRename) { Label("Rename", systemImage: "pencil") }
-                .tint(.brandProject)
+            if !BowlSharing.shared.isReadOnly(project.id) {
+                Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+                    .tint(.brandProject)
+            }
         }
         .contextMenu {
             if !project.isArchived {
                 pinButton
             }
-            Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+            // A bowl shared with me to view only keeps the owner's name.
+            if !BowlSharing.shared.isReadOnly(project.id) {
+                Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+            }
             archiveButton
             BowlShareMenuItems(project: project)
             Divider()
@@ -223,6 +228,9 @@ struct ProjectPage: View {
             }
             .cardList()
             .roomForFloatingButtons()
+            // What others added or changed is seen as far as the bowl goes, on the way in and on the way out.
+            .onAppear { BowlSharing.shared.markVisited(project.id) }
+            .onDisappear { BowlSharing.shared.markVisited(project.id) }
             .overlay {
                 if content.count(filter) == 0 {
                     EmptyStateView(

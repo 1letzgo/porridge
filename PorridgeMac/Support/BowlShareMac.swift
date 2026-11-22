@@ -103,9 +103,10 @@ final class BowlShareMac: NSObject, @preconcurrency NSCloudSharingServiceDelegat
 
     // MARK: NSCloudSharingServiceDelegate
 
-    /// Everyone in a bowl can add and change its entries: a read-only person could not keep their changes.
+    /// Invited people either see the bowl ("Can view") or add and change its entries too ("Can edit"); the owner
+    /// changes it for each person in this window. Only by invitation, never by a public link.
     func options(for cloudKitSharingService: NSSharingService, share provider: NSItemProvider) -> NSSharingService.CloudKitOptions {
-        [.allowPrivate, .allowReadWrite]
+        [.allowPrivate, .allowReadOnly, .allowReadWrite]
     }
 
     func sharingService(_ sharingService: NSSharingService, didSave share: CKShare) {

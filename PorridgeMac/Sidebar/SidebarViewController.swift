@@ -105,7 +105,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         observers.append(Observing { [weak self] in
             _ = BowlSharing.shared.bowls
             guard !firstRun else { firstRun = false; return }
-            Task { @MainActor in self?.rebuild() }
+            Task { @MainActor in
+                // What arrives for the bowl that is open is seen there (its entries keep their own mark).
+                BowlSharing.shared.markVisited(self?.state.page.projectID)
+                self?.rebuild()
+            }
         })
     }
 
@@ -242,7 +246,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             let count = key.map { key in notes.lazy.filter { !$0.isDeleted && $0.projectIDs.contains(key) }.count } ?? 0
             cell.configure(
                 title: project?.name ?? "Bowl", symbol: "folder.fill", tint: .brandProject, badge: count, pinned: project?.isPinned == true,
-                shared: BowlSharing.shared.info(for: id)?.role
+                shared: BowlSharing.shared.info(for: id)
             )
         case .archive:
             cell.configure(title: "Archive", symbol: "archivebox.fill", tint: .brandNavy, badge: 0)
@@ -269,16 +273,21 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let pasteboard = info.draggingPasteboard
         if pasteboard.availableType(from: [.porridgeNote]) != nil {
             guard let page = (item as? SidebarNode)?.page, index == NSOutlineViewDropOnItemIndex else { return [] }
+            // Entries of a bowl shared with me to view only stay where they are.
+            let ids = NotePasteboard.noteIDs(from: pasteboard) ?? []
+            if ids.contains(where: { library.note($0).map { BowlSharing.shared.isReadOnly($0) } ?? false }) { return [] }
             switch page {
+            // A bowl shared with me to view only takes nothing.
+            case .project(let id): return BowlSharing.shared.isReadOnly(id) ? [] : .move
             // Notes are never archived: the archive takes no notes.
-            case .project, .trash, .inbox: return .move
+            case .trash, .inbox: return .move
             default: return []
             }
         }
         // Files, pictures, links and text from outside: into the bowl under them, anywhere else into the inbox
         // (its row lights up). Folders alone are taken too, so the notice after the drop can say why they stay out.
         guard let plan = Intake.plan(pasteboard), plan.canImport || !plan.skipped.isEmpty else { return [] }
-        if case .project? = (item as? SidebarNode)?.page, index == NSOutlineViewDropOnItemIndex { return .copy }
+        if case .project(let id)? = (item as? SidebarNode)?.page, index == NSOutlineViewDropOnItemIndex, !BowlSharing.shared.isReadOnly(id) { return .copy }
         guard let inbox = node(for: .inbox) else { return [] }
         outlineView.setDropItem(inbox, dropChildIndex: NSOutlineViewDropOnItemIndex)
         return .copy
@@ -325,9 +334,12 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             let pin = menu.addItem(withTitle: project.isPinned ? "Unpin" : "Pin", action: #selector(togglePin(_:)), keyEquivalent: "")
             pin.representedObject = project
             pin.target = self
-            let rename = menu.addItem(withTitle: "Rename", action: #selector(rename(_:)), keyEquivalent: "")
-            rename.representedObject = project
-            rename.target = self
+            // A bowl shared with me to view only keeps the owner's name.
+            if !BowlSharing.shared.isReadOnly(project.id) {
+                let rename = menu.addItem(withTitle: "Rename", action: #selector(rename(_:)), keyEquivalent: "")
+                rename.representedObject = project
+                rename.target = self
+            }
             let archive = menu.addItem(withTitle: project.isArchived ? "Unarchive" : "Archive", action: #selector(toggleArchive(_:)), keyEquivalent: "")
             archive.representedObject = project
             archive.target = self
@@ -427,6 +439,8 @@ private final class SidebarCell: NSTableCellView {
     private let badge = NSTextField(labelWithString: "")
     private let pin = NSImageView()
     private let shared = NSImageView()
+    /// "New since your last visit" of a shared bowl.
+    private let newDot = NSView()
     private let alertBadge = NSTextField(labelWithString: "")
 
     init() {
@@ -450,6 +464,12 @@ private final class SidebarCell: NSTableCellView {
         shared.image = .symbol("person.2.fill", size: 9, weight: .semibold, label: "Shared")
         shared.contentTintColor = .tertiaryLabelColor
         shared.setContentCompressionResistancePriority(.required, for: .horizontal)
+        newDot.translatesAutoresizingMaskIntoConstraints = false
+        newDot.wantsLayer = true
+        newDot.layer?.backgroundColor = NSColor.brandProject.cgColor
+        newDot.layer?.cornerRadius = 3.5
+        newDot.toolTip = String(localized: "New since your last visit")
+        newDot.isHidden = true
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         // A stack leaves hidden parts out, so a hidden pin or count takes no room from the name.
         let spacer = NSView()
@@ -457,7 +477,7 @@ private final class SidebarCell: NSTableCellView {
         alertBadge.textColor = .brandDangerText
         alertBadge.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
         alertBadge.isHidden = true
-        let row = NSStackView(views: [icon, title, shared, pin, spacer, alertBadge, badge])
+        let row = NSStackView(views: [icon, title, shared, newDot, pin, spacer, alertBadge, badge])
         row.orientation = .horizontal
         row.spacing = 4
         row.setCustomSpacing(6, after: icon)
@@ -467,6 +487,8 @@ private final class SidebarCell: NSTableCellView {
         textField = title
         NSLayoutConstraint.activate([
             icon.widthAnchor.constraint(equalToConstant: 18),
+            newDot.widthAnchor.constraint(equalToConstant: 7),
+            newDot.heightAnchor.constraint(equalToConstant: 7),
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             row.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -477,14 +499,18 @@ private final class SidebarCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// `alert`: a second count in red (the to-dos that are late).
-    /// `shared`: the bowl is shared (mine) or shared with me; a small mark after the name.
+    /// `shared`: the bowl is shared (mine) or shared with me; a small mark after the name (an eye when I may only
+    /// view it), and a dot when someone else added or changed something since its page was last open here.
     func configure(
-        title: String, symbol: String, tint: NSColor, badge count: Int, pinned: Bool = false, alert: Int = 0, shared role: SharedBowlRole? = nil
+        title: String, symbol: String, tint: NSColor, badge count: Int, pinned: Bool = false, alert: Int = 0, shared info: SharedBowlInfo? = nil
     ) {
-        shared.isHidden = role == nil
-        let sharedText: String? = switch role {
+        shared.isHidden = info == nil
+        shared.image = .symbol(info?.isReadOnly == true ? "eye.fill" : "person.2.fill", size: 9, weight: .semibold, label: "Shared")
+        let isNew = info.map(SharedBowlActivity.hasNewSinceLastVisit) ?? false
+        newDot.isHidden = !isNew
+        let sharedText: String? = switch info?.role {
         case .owner: String(localized: "Shared")
-        case .participant: String(localized: "Shared with you")
+        case .participant: info?.isReadOnly == true ? String(localized: "Shared with you to view only") : String(localized: "Shared with you")
         case nil: nil
         }
         alertBadge.stringValue = alert > 0 ? "\(alert)" : ""
@@ -498,7 +524,7 @@ private final class SidebarCell: NSTableCellView {
         pin.isHidden = !pinned
         toolTip = title
         setAccessibilityLabel([
-            title, sharedText, pinned ? String(localized: "Pinned") : nil, count > 0 ? "\(count)" : nil, alert > 0 ? String(localized: "\(alert) overdue") : nil,
+            title, sharedText, isNew ? String(localized: "New since your last visit") : nil, pinned ? String(localized: "Pinned") : nil, count > 0 ? "\(count)" : nil, alert > 0 ? String(localized: "\(alert) overdue") : nil,
         ].compactMap { $0 }.joined(separator: ", "))
     }
 }

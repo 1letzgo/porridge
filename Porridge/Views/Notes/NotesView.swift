@@ -779,8 +779,9 @@ struct NotesView: View {
         if shown == .home, notes.contains(where: \.isDeleted) {
             trashButton
         }
-        // Several entries of the Inbox or a bowl at once: into a bowl, their kind or sender, merged.
-        if shown == .inbox || project(on: shown) != nil {
+        // Several entries of the Inbox or a bowl at once: into a bowl, their kind or sender, merged. Not in a bowl
+        // shared with me to view only.
+        if shown == .inbox || project(on: shown).map({ !BowlSharing.shared.isReadOnly($0.id) }) == true {
             Button {
                 if isSelecting { endSelecting() } else { withAnimation(.snappy) { isSelecting = true } }
             } label: {
@@ -793,7 +794,7 @@ struct NotesView: View {
             BowlShareBarButton(project: project)
         }
         // What is brought in from outside has its own menu in the bar; on a bowl's page it goes into the bowl.
-        if shown == .home || project(on: shown) != nil {
+        if shown == .home || project(on: shown).map({ !BowlSharing.shared.isReadOnly($0.id) }) == true {
             importMenu
                 .menuStyle(.button)
         }
@@ -985,9 +986,10 @@ struct NotesView: View {
         column = .detail
     }
 
-    /// The project new things go into: the one that is open.
+    /// The project new things go into: the one that is open (not one shared with me to view only: then the inbox).
     private var projectForNew: String? {
-        openProject.map(Projects.key)
+        guard let project = openProject, !BowlSharing.shared.isReadOnly(project.id) else { return nil }
+        return Projects.key(project)
     }
 
     /// A new note, or a to-do: the same note with a done state, made the same way.
@@ -1138,6 +1140,10 @@ struct NoteRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .padding(.top, 2)
+                // Someone else added or changed it in a shared bowl, and it was not opened here since.
+                if let activity = BowlSharing.shared.activityLine(for: note) {
+                    SharedActivityLabel(text: activity)
+                }
             }
             // The first picture or PDF of the note, small.
             if let attachment = note.attachmentsData == nil ? nil : note.attachments.first(where: { $0.kind != .file }) {
@@ -1150,7 +1156,7 @@ struct NoteRow: View {
                 TodoCheckbox(isDone: note.isDone, size: 26) {
                     withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) }
                 }
-                .disabled(note.isDeleted)
+                .disabled(note.isDeleted || BowlSharing.shared.isReadOnly(note))
                 .frame(maxHeight: .infinity)
             }
         }

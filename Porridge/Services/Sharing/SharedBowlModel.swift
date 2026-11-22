@@ -57,6 +57,9 @@ enum SharedBowlNames {
     /// The key of the bowl in `Note.projectIDs`: the same on every device and for every person, as the bowl keeps its
     /// id when it is shared.
     static func bowlKey(_ bowlID: UUID) -> String { bowlID.uuidString }
+
+    /// A zone told apart from every other: its owner and its name.
+    static func zoneKey(zoneName: String, ownerName: String) -> String { ownerName + "/" + zoneName }
 }
 
 /// A note as the payload of its `SharedNote` record: everything the other person needs to see and change it.
@@ -243,6 +246,11 @@ struct SharedBowlPerson: Codable, Equatable, Hashable {
     var isCurrentUser: Bool = false
     /// Invited and not (yet) joined.
     var isPending: Bool = false
+    /// May change the bowl ("Can edit") or only see it ("Can view"); nil when not known (state of an earlier version).
+    var canEdit: Bool?
+    /// The person's user record name (`CKShare.Participant.userIdentity.userRecordID`), to tell who changed an entry
+    /// (`CKRecord.lastModifiedUserRecordID`). Nil for someone invited who has not joined yet.
+    var userRecordName: String?
 }
 
 /// What this device knows about one shared bowl. Kept in a file of its own (`SharedBowlStore`), not in SwiftData:
@@ -280,6 +288,16 @@ struct SharedBowlInfo: Codable, Equatable {
     /// Which note (id) each file of the zone belongs to, as far as this device saw it. A file leaves the zone only
     /// when the note it belongs to is here and no longer has it, or when that note leaves the zone.
     var fileOwners: [String: String]?
+    /// A bowl shared with me: whether I may only see it ("Can view"), as the share last said; nil while not known.
+    /// Nothing is sent for the bowl unless it is known that I may edit it (`maySend`).
+    var readOnly: Bool?
+    /// What others added or changed in the bowl and this device has not shown yet, by note id (`SharedBowlActivity`).
+    var activity: [String: SharedNoteActivity]?
+    /// Since when changes of others are noted (`activity`): set once the bowl's first fetch is done, so the entries
+    /// that were there when the bowl was joined do not all count as new.
+    var watchingSince: Date?
+    /// When the bowl's page was last open on this device ("New since your last visit").
+    var lastVisit: Date?
 
     init(bowlID: UUID, role: SharedBowlRole, zoneOwnerName: String, name: String = "") {
         self.bowlID = bowlID
@@ -291,6 +309,13 @@ struct SharedBowlInfo: Codable, Equatable {
 
     /// The others: everyone but me, those who left excluded (they are not in `people`).
     var others: [SharedBowlPerson] { people.filter { !$0.isCurrentUser } }
+
+    /// The bowl is shared with me to see only: its entries cannot be changed here.
+    var isReadOnly: Bool { role == .participant && readOnly == true }
+
+    /// Changes made here may go to the zone: always for my own bowl; for someone else's only once the share said
+    /// that I may edit it. A bowl I may only see never sends anything.
+    var maySend: Bool { role == .owner || readOnly == false }
 
     /// "Shared with Anna and Ben", "Shared by Anna", or, before anyone joined, "Shared, waiting for others to join".
     var summary: String {
@@ -305,8 +330,95 @@ struct SharedBowlInfo: Codable, Equatable {
             }
             return String(localized: "Shared with \(ListFormatter.localizedString(byJoining: joined))")
         case .participant:
-            guard let owner = people.first(where: \.isOwner) else { return String(localized: "Shared with you") }
-            return String(localized: "Shared by \(owner.name)")
+            guard let owner = people.first(where: \.isOwner) else {
+                return isReadOnly ? String(localized: "Shared with you, view only") : String(localized: "Shared with you")
+            }
+            return isReadOnly ? String(localized: "Shared by \(owner.name), view only") : String(localized: "Shared by \(owner.name)")
+        }
+    }
+}
+
+/// Something someone else did to an entry of a shared bowl that this device has not shown yet.
+struct SharedNoteActivity: Codable, Equatable {
+    enum Kind: String, Codable {
+        case added
+        case changed
+    }
+
+    var kind: Kind
+    /// Who did it: their user record name (`CKRecord.lastModifiedUserRecordID`).
+    var by: String?
+    /// Their name when it happened, for when they are no longer among the people of the share.
+    var name: String?
+    var at: Date
+}
+
+/// Who changed what in a shared bowl, and what of it is new to me. No network: `BowlSharing` hands in what the
+/// records say and keeps the result in `SharedBowlInfo.activity`.
+enum SharedBowlActivity {
+    /// Whether an entry that came from the zone counts as added or changed by someone else, and by whom.
+    /// `modifiedBy`: the record's `lastModifiedUserRecordID`. `lastSynced`: the fingerprint this device knew of the
+    /// zone's version before (nil: it never saw the entry). `applied`: the entry is in the bowl here after the merge
+    /// (not skipped or kept out). Nothing counts before the bowl's first fetch (`watchingSince`), or when it was me.
+    static func change(
+        modifiedBy: String?, lastSynced: String?, incoming: String, applied: Bool, info: SharedBowlInfo
+    ) -> SharedNoteActivity.Kind? {
+        guard applied, info.watchingSince != nil, let modifiedBy, !isMe(modifiedBy, in: info) else { return nil }
+        guard let lastSynced else { return .added }
+        return lastSynced == incoming ? nil : .changed
+    }
+
+    /// `CKCurrentUserDefaultName` ("__defaultOwner__") stands for me in what CloudKit says about records.
+    static let currentUserName = "__defaultOwner__"
+
+    static func isMe(_ userRecordName: String, in info: SharedBowlInfo) -> Bool {
+        if userRecordName == currentUserName { return true }
+        return info.people.contains { $0.isCurrentUser && $0.userRecordName == userRecordName }
+    }
+
+    /// Notes what someone did to the entry; something added and then changed before I saw it stays "added".
+    static func note(_ kind: SharedNoteActivity.Kind, noteID: String, by: String, at: Date, in info: inout SharedBowlInfo) {
+        var all = info.activity ?? [:]
+        let name = person(by, in: info)?.name
+        if let earlier = all[noteID], earlier.kind == .added {
+            all[noteID] = SharedNoteActivity(kind: .added, by: earlier.by, name: earlier.name ?? name, at: at)
+        } else {
+            all[noteID] = SharedNoteActivity(kind: kind, by: by, name: name, at: at)
+        }
+        info.activity = all
+    }
+
+    /// The entry was opened here (or left the zone): it is no longer new.
+    static func seen(_ noteID: String, in info: inout SharedBowlInfo) {
+        guard info.activity?[noteID] != nil else { return }
+        info.activity?[noteID] = nil
+        if info.activity?.isEmpty == true { info.activity = nil }
+    }
+
+    /// Something was added or changed by someone else since the bowl's page was last open here.
+    static func hasNewSinceLastVisit(_ info: SharedBowlInfo) -> Bool {
+        guard let activity = info.activity, !activity.isEmpty else { return false }
+        guard let lastVisit = info.lastVisit else { return true }
+        return activity.values.contains { $0.at > lastVisit }
+    }
+
+    /// The person behind a user record name: among the people of the share; else the owner, when it is the zone's
+    /// owner; else the only other person there is.
+    static func person(_ userRecordName: String?, in info: SharedBowlInfo) -> SharedBowlPerson? {
+        if let userRecordName {
+            if let found = info.people.first(where: { $0.userRecordName == userRecordName }) { return found }
+            if userRecordName == info.zoneOwnerName, let owner = info.people.first(where: \.isOwner) { return owner }
+        }
+        let others = info.others.filter { !$0.isPending }
+        return others.count == 1 ? others.first : nil
+    }
+
+    /// "New from Anna", "Changed by Ben".
+    static func line(_ activity: SharedNoteActivity, in info: SharedBowlInfo) -> String {
+        let name = person(activity.by, in: info)?.name ?? activity.name ?? String(localized: "Someone")
+        switch activity.kind {
+        case .added: return String(localized: "New from \(name)")
+        case .changed: return String(localized: "Changed by \(name)")
         }
     }
 }
@@ -337,11 +449,12 @@ enum SharedBowlPlanner {
 
     /// `notes`: all notes of the store. `isReadable`: whether a file can be read here right now.
     /// A note leaves the zone when it left the bowl here or is gone from this device altogether.
+    /// Nothing at all while the share ends, or for a bowl I may only see (or do not know yet that I may edit).
     static func plan(
         bowlID: UUID, bowlName: String?, info: SharedBowlInfo, notes: [Note], isReadable: (String) -> Bool
     ) -> SharedBowlOutgoing {
         var result = SharedBowlOutgoing()
-        guard info.endingSince == nil else { return result }
+        guard info.endingSince == nil, info.maySend else { return result }
         let key = SharedBowlNames.bowlKey(bowlID)
         if let bowlName, SharedBowlNames.bowlFingerprint(name: bowlName) != info.bowlHash { result.saveBowl = true }
 

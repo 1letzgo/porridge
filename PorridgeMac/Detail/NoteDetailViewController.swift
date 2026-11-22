@@ -36,7 +36,12 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private let linkButton = NSButton()
     private let meta = NSTextField.label(color: .secondaryLabelColor, lines: 2)
     private let deletedBanner = NSStackView()
+    /// In a bowl shared with me to view only.
+    private let readOnlyBanner = NSStackView()
+    /// "New from Anna", "Changed by Ben": until the note was open here once.
+    private let activityLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold), color: .brandProject.readable)
     private let chips = NoteChipsView()
+    private var openedActivity: String?
     private let attachments = AttachmentStripView()
     private let statusPanel = PanelView()
     private let speakers = FlowView()
@@ -129,6 +134,14 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         deletedBanner.setViews([deletedIcon, deletedLabel, NSView(), recover], in: .leading)
         deletedBanner.orientation = .horizontal
         deletedBanner.spacing = 8
+        let readOnlyLabel = NSTextField.label("Shared with you to view only", font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), color: .secondaryLabelColor)
+        let readOnlyIcon = NSImageView(image: .symbol("eye", size: 13, label: nil))
+        readOnlyIcon.contentTintColor = .secondaryLabelColor
+        readOnlyBanner.setViews([readOnlyIcon, readOnlyLabel, NSView()], in: .leading)
+        readOnlyBanner.orientation = .horizontal
+        readOnlyBanner.spacing = 8
+        readOnlyBanner.isHidden = true
+        activityLabel.isHidden = true
 
         chips.onAddTag = { [weak self] in self?.addTag() }
         attachments.onRemove = { [weak self] in self?.removeAttachment($0) }
@@ -139,7 +152,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         tabs.action = #selector(tabChosen)
         tabs.setAccessibilityLabel("Show")
 
-        let head = NSStackView.vertical([titleRow, sourcePill, linkButton, meta, deletedBanner, chips, attachments, statusPanel, speakers, enhancedBanner, tabs], spacing: 10)
+        let head = NSStackView.vertical(
+            [titleRow, sourcePill, linkButton, meta, activityLabel, deletedBanner, readOnlyBanner, chips, attachments, statusPanel, speakers, enhancedBanner, tabs],
+            spacing: 10
+        )
         head.setCustomSpacing(4, after: titleRow)
         head.setCustomSpacing(4, after: linkButton)
         head.setCustomSpacing(14, after: enhancedBanner)
@@ -189,6 +205,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             speakers.widthAnchor.constraint(equalTo: head.widthAnchor),
             enhancedBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
             deletedBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
+            readOnlyBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
             meta.widthAnchor.constraint(lessThanOrEqualTo: head.widthAnchor),
             todoBox.widthAnchor.constraint(equalToConstant: 28),
             todoBox.heightAnchor.constraint(equalToConstant: 28),
@@ -365,6 +382,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             self?.renderDictationPreview()
         }
         dictation.onStopRequested = { [weak self] in Task { await self?.finishDictation() } }
+        // What someone else added or changed: said once more here, and seen from now on.
+        openedActivity = BowlSharing.shared.activityLine(for: note)
+        BowlSharing.shared.markSeen(note)
         observers.append(Observing { [weak self] in self?.render() })
         // Other notes count too: the to-dos made from this one, its bowls.
         libraryToken = library.observe { [weak self] in
@@ -434,6 +454,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     // MARK: State of the note
 
     private var opensOnSummary: Bool { note.isRecording || note.isLink || note.isStored }
+    /// In a bowl shared with me to view only: nothing of the entry can be changed here.
+    private var isReadOnly: Bool { !note.isDeleted && BowlSharing.shared.isReadOnly(note) }
+    /// Nothing can be changed: the note is in Recently Deleted, or in a bowl I may only see.
+    private var isLocked: Bool { note.isDeleted || isReadOnly }
     private var isSummarizing: Bool { processing.summarizing.contains(note.id) }
     private var isEnhancing: Bool { processing.enhancing.contains(note.id) }
     private var stage: String? { processing.stages[note.id] }
@@ -476,10 +500,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         // Head
         todoBox.isHidden = !isTodo
         todoBox.isDone = isDone
-        todoBox.isEnabled = !note.isDeleted
+        todoBox.isEnabled = !isLocked
         titleField.placeholderString = isTodo ? "To-do" : "Title"
         if titleField.currentEditor() == nil, titleField.stringValue != note.title { titleField.stringValue = note.title }
-        titleField.isEditable = !note.isDeleted
+        titleField.isEditable = !isLocked
         titleField.textColor = isDone ? .secondaryLabelColor : .brandNavy
         if let source = TodoBridge.source(of: note) {
             sourcePill.isHidden = false
@@ -501,9 +525,12 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         }
         meta.stringValue = metaLine(isTodo: isTodo, isDone: isDone)
         deletedBanner.isHidden = !note.isDeleted
+        readOnlyBanner.isHidden = !isReadOnly
+        activityLabel.stringValue = openedActivity ?? ""
+        activityLabel.isHidden = openedActivity == nil || note.isDeleted
         chips.show(note, library: library)
         attachments.isHidden = note.attachmentsData == nil
-        if note.attachmentsData != nil { attachments.show(note.attachments, canRemove: !note.isDeleted) }
+        if note.attachmentsData != nil { attachments.show(note.attachments, canRemove: !isLocked) }
         renderStatus()
         renderSpeakers()
         let canUndo = processing.canUndoEnhance(note)
@@ -537,16 +564,16 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         transcript.isHidden = tab != .transcript
         articleScroll.isHidden = true
         articleMessage.isHidden = true
-        editor.isEditable = !note.isDeleted && !isEnhancing
+        editor.isEditable = !isLocked && !isEnhancing
         editor.placeholderText = isTodo ? "Notes and subtasks…" : "Start typing or dictate…"
-        addSubtask.isHidden = !(isTodo && !note.isDeleted && !isEnhancing && EditorCommands.available)
+        addSubtask.isHidden = !(isTodo && !isLocked && !isEnhancing && EditorCommands.available)
         editor.reloadIfChanged()
         if dictating { renderDictationPreview() }
 
         switch tab {
         case .summary: renderSummary()
         case .transcript:
-            transcript.canAssign = !note.isDeleted
+            transcript.canAssign = !isLocked
             transcript.show(
                 note.segments, speakers: note.speakers,
                 emptyMessage: note.status == .ready ? "No speech was detected." : "The transcript appears here once processing is done.",
@@ -623,7 +650,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             let title = AppSettings.isMe(speaker) ? "\(speaker.name) (Me)" : speaker.name
             let pill = PillButton(title: title, symbol: "pencil", tint: .speaker(speaker.colorIndex), target: self, action: #selector(renameSpeaker(_:)))
             pill.identifier = .init(speaker.id)
-            pill.isEnabled = !note.isDeleted
+            pill.isEnabled = !isLocked
             pill.setAccessibilityLabel("Rename \(speaker.name)")
             return pill
         })
@@ -651,7 +678,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         summaryModelLabel.isHidden = summary == nil || note.summaryModel == nil
         summaryEmpty.isHidden = summarizingNow || summary != nil
         if let summary {
-            let interactive = !(note.isDeleted || note.isSaved)
+            let interactive = !(isLocked || note.isSaved)
             summaryText.onToggleTask = interactive ? { [weak self] line in
                 guard let self else { return }
                 SummaryTasks.toggleLine(line, of: self.note, in: self.library.context)
@@ -662,17 +689,17 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             summaryText.isTakenTask = note.isSaved ? nil : { text in
                 TodoSuggestions.isTaken(text, states: states, madeTitles: made.map(\.title))
             }
-            let pending = note.isDeleted ? [] : note.pendingTodoSuggestions(made: made)
+            let pending = isLocked ? [] : note.pendingTodoSuggestions(made: made)
             suggestedTodos.isHidden = pending.isEmpty
             if !pending.isEmpty { suggestedTodos.show(pending, of: note) }
             madeTodos.isHidden = made.isEmpty
             if !made.isEmpty { madeTodos.show(made) }
             summaryText.show(summary)
-            summaryMenuButton.isHidden = note.isDeleted
+            summaryMenuButton.isHidden = isLocked
             summaryModelLabel.stringValue = note.summaryModel.map { "Created with \($0)" } ?? ""
         } else {
             summaryEmptyMessage.stringValue = summarizeMessage
-            summarizeButton.isHidden = note.isDeleted
+            summarizeButton.isHidden = isLocked
             summarizeButton.isEnabled = canSummarize
         }
     }
@@ -694,7 +721,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func renderMic() {
-        let shows = tab == .note && stage == nil && !note.isDeleted
+        let shows = tab == .note && stage == nil && !isLocked
         micButton.isHidden = !shows
         micButton.phase = dictation.phase
         micTime.isHidden = !(shows && dictation.phase == .recording)
@@ -1078,7 +1105,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
     /// Whether a command applies now; sets the item's title where it depends on the note.
     func validate(_ command: NoteCommand, item: NSMenuItem) -> Bool {
-        let deleted = note.isDeleted
+        // Nothing changes on a note in Recently Deleted, or in a bowl shared with me to view only.
+        let deleted = isLocked
         switch command {
         case .summarize:
             item.title = note.summary == nil ? "Summarize with AI…" : "Summarize Again with AI…"
@@ -1089,7 +1117,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             return !deleted && processing.canUndoEnhance(note)
         case .editSummary:
             return !deleted && !isSummarizing
-        case .insertSummary, .copySummary:
+        case .copySummary:
+            return note.summary != nil && !note.isDeleted
+        case .insertSummary:
             return note.summary != nil && !deleted
         case .deleteSummary:
             return note.summary != nil && !deleted

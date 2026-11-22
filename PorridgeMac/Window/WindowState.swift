@@ -61,6 +61,9 @@ final class WindowState {
             guard page != oldValue else { return }
             if oldValue == .search, page != .search { clearSearch() }
             kindFilter = nil
+            // What others added or changed in a shared bowl is seen as far as the bowl goes, on the way in and out.
+            BowlSharing.shared.markVisited(oldValue.projectID)
+            BowlSharing.shared.markVisited(page.projectID)
         }
     }
     /// The notes selected in the list; the detail shows one when it is exactly one.
@@ -93,9 +96,10 @@ final class WindowState {
         searchTags = []
     }
 
-    /// The bowl new things go into: the one that is open.
+    /// The bowl new things go into: the one that is open (not one shared with me to view only: then the inbox).
     var projectForNew: String? {
-        page.projectID.map { $0.uuidString }
+        guard let id = page.projectID, !BowlSharing.shared.isReadOnly(id) else { return nil }
+        return id.uuidString
     }
 
     func open(_ id: UUID) {

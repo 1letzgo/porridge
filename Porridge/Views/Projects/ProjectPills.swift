@@ -69,7 +69,8 @@ struct ProjectPills: View {
     /// The active bowls to choose from, the note's ticked, and a new one.
     @ViewBuilder
     private var choices: some View {
-        ForEach(projects.filter { !$0.isArchived || assigned.contains(Projects.key($0)) }) { project in
+        // Not into a bowl shared with me to view only.
+        ForEach(projects.filter { (!$0.isArchived && !BowlSharing.shared.isReadOnly($0.id)) || assigned.contains(Projects.key($0)) }) { project in
             Button { if !assigned.contains(Projects.key(project)) { onChoose(project) } } label: {
                 if assigned.contains(Projects.key(project)) {
                     Label(project.name, systemImage: "checkmark")
@@ -94,7 +95,8 @@ struct ProjectMenu: View {
     var body: some View {
         if !projects.isEmpty {
             Menu {
-                ForEach(projects) { project in
+                // Not into a bowl shared with me to view only.
+                ForEach(projects.filter { !BowlSharing.shared.isReadOnly($0.id) || assigned.contains(Projects.key($0)) }) { project in
                     let key = Projects.key(project)
                     Button { onToggle(project) } label: {
                         if assigned.contains(key) {

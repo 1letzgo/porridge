@@ -21,6 +21,18 @@ enum NoteOperations {
             menu.add("Open in New Window", symbol: "macwindow") { NoteWindowController.open(note.id) }
             menu.addSeparator()
         }
+        // In a bowl shared with me to view only: the pin (my own), copying and sharing, nothing that changes them.
+        if notes.contains(where: { BowlSharing.shared.isReadOnly($0) }) {
+            let pinned = notes.allSatisfy(\.isPinned)
+            menu.add(pinned ? "Unpin" : "Pin", symbol: pinned ? "pin.slash" : "pin") { setPinned(!pinned, notes) }
+            menu.addSeparator()
+            menu.add("Copy", symbol: "doc.on.doc") { copy(notes) }
+            let share = NSMenuItem(title: "Share", action: nil, keyEquivalent: "")
+            share.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: nil)
+            share.submenu = shareMenu(text: notes.map(\.exportText).joined(separator: "\n\n---\n\n"))
+            menu.addItem(share)
+            return
+        }
         // To-dos: done or not, and a note that becomes one (or stops being one).
         let todos = notes.filter(\.isTodo)
         if !todos.isEmpty, todos.count == notes.count {
@@ -74,7 +86,8 @@ enum NoteOperations {
         let inbox = menu.add("Inbox", symbol: "tray") { Documents.apply(.move(toBowl: nil), to: notes, in: context) }
         inbox.state = notes.allSatisfy(\.isInInbox) ? .on : .off
         menu.addSeparator()
-        for project in library.activeProjects {
+        // Not into a bowl shared with me to view only.
+        for project in library.activeProjects where !BowlSharing.shared.isReadOnly(project.id) {
             let key = Projects.key(project)
             let item = menu.add(project.name, symbol: "folder") { Documents.apply(.move(toBowl: key), to: notes, in: context) }
             item.state = notes.allSatisfy { $0.projectIDs == [key] } ? .on : (notes.contains { $0.projectIDs.contains(key) } ? .mixed : .off)
@@ -180,8 +193,10 @@ enum NoteOperations {
         NotePasteboard.write(notes, to: .general)
     }
 
-    /// Moves notes to Recently Deleted; they can come back from there for 30 days, so nothing asks first.
+    /// Moves notes to Recently Deleted; they can come back from there for 30 days, so nothing asks first. Notes in a
+    /// bowl shared with me to view only stay.
     static func trash(_ notes: [Note], state: WindowState) {
+        let notes = notes.filter { !BowlSharing.shared.isReadOnly($0) }
         let ids = Set(notes.map(\.id))
         for note in notes {
             if note.modelContext == nil, state.draft?.id == note.id {
@@ -267,7 +282,9 @@ enum BucketActions {
                 library.save()
             }
         }
-        menu.add("Rename…", symbol: "pencil") { rename(project, in: window) }
+        if !BowlSharing.shared.isReadOnly(project.id) {
+            menu.add("Rename…", symbol: "pencil") { rename(project, in: window) }
+        }
         menu.add(project.isArchived ? "Unarchive" : "Archive", symbol: project.isArchived ? "tray.and.arrow.up" : "archivebox") {
             Archive.set(!project.isArchived, project, in: library.context)
         }

@@ -75,8 +75,9 @@ final class BowlShareController: NSObject, UICloudSharingControllerDelegate {
         guard let cloud = BowlSharing.shared.cloud, let presenter = Self.topViewController() else { return }
         let controller = UICloudSharingController(share: share, container: cloud)
         controller.delegate = self
-        // Everyone in a bowl can add and change its entries: a read-only person could not keep their changes.
-        controller.availablePermissions = [.allowPrivate, .allowReadWrite]
+        // Invited people either see the bowl ("Can view") or add and change its entries too ("Can edit"); the owner
+        // changes it for each person in this sheet. Only by invitation, never by a public link.
+        controller.availablePermissions = [.allowPrivate, .allowReadOnly, .allowReadWrite]
         if let popover = controller.popoverPresentationController {
             popover.sourceView = presenter.view
             popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0)
@@ -177,17 +178,46 @@ struct BowlShareLine: View {
     }
 }
 
-/// The small mark of a shared bowl next to its name.
+/// The small mark of a shared bowl next to its name; an eye for one shared with me to view only, and a dot when
+/// someone else added or changed something since its page was last open here.
 struct BowlSharedMark: View {
     let bowlID: UUID
 
     var body: some View {
         if let info = BowlSharing.shared.info(for: bowlID) {
-            Image(systemName: "person.2.fill")
+            Image(systemName: info.isReadOnly ? "eye.fill" : "person.2.fill")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel(info.role == .owner ? Text("Shared") : Text("Shared with you"))
+                .accessibilityLabel(info.role == .owner ? Text("Shared") : info.isReadOnly ? Text("Shared with you to view only") : Text("Shared with you"))
+            if SharedBowlActivity.hasNewSinceLastVisit(info) {
+                BowlNewMark()
+            }
         }
+    }
+}
+
+/// "New since your last visit": a dot in the bowl's color.
+struct BowlNewMark: View {
+    var body: some View {
+        Circle()
+            .fill(Color.brandProject)
+            .frame(width: 7, height: 7)
+            .accessibilityElement()
+            .accessibilityLabel("New since your last visit")
+            .help("New since your last visit")
+    }
+}
+
+/// "New from Anna", "Changed by Ben" under an entry of a shared bowl, until it is opened here.
+struct SharedActivityLabel: View {
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: "person.crop.circle.badge.exclamationmark")
+            .labelStyle(.titleAndIcon)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.brandProject.readable)
+            .lineLimit(1)
     }
 }
 
