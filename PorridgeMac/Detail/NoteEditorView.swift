@@ -166,10 +166,39 @@ final class NoteEditorView: NSView {
             guard let self, let request = self.controller.tableRequest else { return }
             self.presentTableEditor(request)
         }
+        rewrites = Observing { [weak self] in
+            guard let self, let request = self.controller.rewriteRequest else { return }
+            self.presentRewrite(request)
+        }
     }
 
     private var tables: Observing?
     private weak var tableSheet: NSViewController?
+    private var rewrites: Observing?
+    private weak var rewriteSheet: NSViewController?
+
+    // MARK: Rewrite with AI
+
+    /// The selection rewritten with AI (⌘J, the text's context menu).
+    @objc func rewriteWithAI(_ sender: Any?) { controller.beginRewrite() }
+
+    private func presentRewrite(_ request: RewriteRequest) {
+        guard rewriteSheet == nil, let host = window?.contentViewController else { return }
+        let close: () -> Void = { [weak self, weak host] in
+            guard let self else { return }
+            if let sheet = self.rewriteSheet { host?.dismiss(sheet) }
+            self.rewriteSheet = nil
+            self.controller.rewriteRequest = nil
+            self.focus()
+        }
+        let view = AIRewriteView(request: request, apply: { [weak self] text, insertBelow in
+            self?.controller.finishRewrite(request, text: text, insertBelow: insertBelow) ?? false
+        }, close: close)
+        let sheet = NSHostingController(rootView: view)
+        sheet.title = "Rewrite with AI"
+        rewriteSheet = sheet
+        host.presentAsSheet(sheet)
+    }
 
     // MARK: Insert menu
 
@@ -289,6 +318,7 @@ final class NoteEditorView: NSView {
     }
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        isEditable
+        if item.action == #selector(rewriteWithAI(_:)) { return controller.canRewrite }
+        return isEditable
     }
 }
