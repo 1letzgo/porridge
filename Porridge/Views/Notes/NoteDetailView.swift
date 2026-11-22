@@ -53,6 +53,9 @@ struct NoteDetailView: View {
     @State private var addingTag = false
     @State private var newTag = ""
     @State private var pickingDue = false
+    /// "Split into Bowl…" is open; after it, what it made, while it can be taken back.
+    @State private var showSplit = false
+    @State private var lastSplit: BowlChange?
     /// The screen was shown before: coming back (from Quick Look, a sheet) keeps the open tab.
     @State private var didAppear = false
     @FocusState private var focused: Bool
@@ -91,6 +94,17 @@ struct NoteDetailView: View {
 
             statusView
 
+            if let lastSplit {
+                BowlChangeBanner(text: lastSplit.summary) {
+                    withAnimation(.snappy) {
+                        BowlMaking.undo(lastSplit, in: context)
+                        self.lastSplit = nil
+                    }
+                } onClose: {
+                    withAnimation(.snappy) { self.lastSplit = nil }
+                }
+            }
+
             if !note.speakers.isEmpty { speakerChips }
 
             if tabs.count > 1 {
@@ -116,6 +130,10 @@ struct NoteDetailView: View {
                     )
                     if note.isTodo, !note.isDeleted, !isEnhancing {
                         addSubtaskButton
+                    }
+                    // Lines that read like tasks, offered as to-dos (never on links or saved files).
+                    if TaskDetection.applies(to: note), !isEnhancing {
+                        TaskDetectionBar(note: note, beforeChange: commitTyping)
                     }
                 }
             }
@@ -244,6 +262,11 @@ struct NoteDetailView: View {
             SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 }), onFinish: finishEditingSummary)
         }
         .sheet(isPresented: $showPages) { PDFPageEditor(note: note) }
+        .sheet(isPresented: $showSplit) {
+            SplitNoteSheet(note: note) { change in
+                withAnimation(.snappy) { lastSplit = change }
+            }
+        }
         .sheet(isPresented: $showMerge) {
             MergeNotesSheet(base: note) {
                 // The recording may have been replaced by the joined one.
@@ -626,6 +649,15 @@ struct NoteDetailView: View {
                             Label("Undo Enhance", systemImage: "arrow.uturn.backward")
                         }
                     }
+                }
+                if NoteSplitter.canSplit(note) {
+                    Button {
+                        commitTyping()
+                        showSplit = true
+                    } label: {
+                        Label("Split into Bowl…", systemImage: "square.split.2x2")
+                    }
+                    .disabled(isEnhancing || isSummarizing)
                 }
                 if note.summary != nil {
                     Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }

@@ -10,6 +10,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     private let scroll = NSScrollView()
     private let header = ListHeaderView()
     private let empty = EmptyMessageView()
+    /// On top of the Inbox: entries that belong together, suggested as a new bowl.
+    private let bundleBanner = InboxBundleBanner()
     private var dataSource: NoteListDataSource!
     private var sectionsByID: [String: ListSection] = [:]
     private var libraryToken: UUID?
@@ -66,6 +68,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
 
         let root = NSView()
         root.addSubview(header)
+        root.addSubview(bundleBanner)
         root.addSubview(scroll)
         root.addSubview(empty)
         header.translatesAutoresizingMaskIntoConstraints = false
@@ -73,7 +76,10 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             header.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: header.bottomAnchor),
+            bundleBanner.topAnchor.constraint(equalTo: header.bottomAnchor),
+            bundleBanner.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            bundleBanner.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: bundleBanner.bottomAnchor),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
@@ -147,6 +153,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             self.syncSelection()
         }
         header.show(page: state.page, library: library, state: state, kindCounts: built.kindCounts)
+        bundleBanner.host = self
+        bundleBanner.refresh(isInbox: state.page == .inbox && state.searchText.isEmpty)
         let isEmpty = built.sections.isEmpty
         empty.isHidden = !isEmpty || state.page == .chat
         scroll.isHidden = isEmpty

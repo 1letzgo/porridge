@@ -493,6 +493,11 @@ struct NotesView: View {
         return VStack(spacing: 0) {
             if isSelecting {
                 NoteSelectionBar(notes: waiting, chosen: $chosen) { endSelecting() }
+            } else {
+                // Entries that belong together: one suggestion for a new bowl at a time (`InboxBundler`).
+                InboxBundleCard(notes: notes, projects: projects)
+                    .padding(.horizontal)
+                    .padding(.top, 4)
             }
             Group {
                 if isSelecting {
