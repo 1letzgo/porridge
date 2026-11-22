@@ -52,13 +52,22 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
         spinner.isDisplayedWhenStopped = false
         openSettings.isHidden = true
 
+        // The other side of the call, from the Mac's sound; remembered for the next meeting.
+        let systemAudio = SettingsCheckbox("Include system audio") { MeetingAudio.includesSystemAudio = $0 }
+        systemAudio.isOn = MeetingAudio.includesSystemAudio
+        systemAudio.toolTip = "Records what your Mac plays, such as the other side of a Zoom, Meet or Teams call, next to your microphone. Works with headphones too."
+        let systemAudioNote = NSTextField.label(
+            "Your microphone is you, your Mac's sound is the others.",
+            font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor, lines: 0)
+
         let cancel = ActionButton(title: "Cancel") { [weak self] in self?.dismiss(nil) }
         cancel.keyEquivalent = "\u{1b}"
         let record = ActionButton(title: "Record") { [weak self] in self?.startPicked() }
         let buttons = NSStackView.horizontal([cancel, NSView(), record], spacing: 8)
 
-        let stack = NSStackView.vertical([heading, newMeeting, today, scroll, message, spinner, openSettings, buttons], spacing: 12)
+        let stack = NSStackView.vertical([heading, newMeeting, today, scroll, message, spinner, openSettings, systemAudio, systemAudioNote, buttons], spacing: 12)
         stack.setCustomSpacing(18, after: newMeeting)
+        stack.setCustomSpacing(2, after: systemAudio)
         let root = NSView()
         root.addSubview(stack)
         stack.pinEdges(to: root, insets: NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20))

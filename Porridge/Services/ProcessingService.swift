@@ -324,6 +324,29 @@ final class ProcessingService {
             where !speakers.contains(where: { $0.id == channelID }) {
                 speakers.append(Speaker(id: channelID, name: "Speaker \(index + 1)", colorIndex: index))
             }
+            if SystemAudioMix.isSystemAudio(inputName: meeting.inputName), AppSettings.speakerDetectionEnabled,
+               SystemAudioMix.splitsOthers(speakers.first(where: { $0.id == SpeakerAssigner.rightChannelID })) {
+                // The Mac's sound may carry several people: told apart by speaker detection, the user stays on the left.
+                stages[id] = "Detecting speakers…"
+                do {
+                    try await ModelManager.shared.ensureDiarizer()
+                    let segments = try await TranscriptionEngine.shared.diarize(prepared.monoURL)
+                    let split = SpeakerAssigner.splitChannel(
+                        output.words, ids: speakerIds, channel: SpeakerAssigner.rightChannelID, segments: segments)
+                    if !split.added.isEmpty {
+                        speakerIds = split.ids
+                        if let index = speakers.firstIndex(where: { $0.id == SpeakerAssigner.rightChannelID }),
+                           speakers[index].name == SystemAudioMix.othersName {
+                            speakers[index].name = "Speaker 2"
+                        }
+                        for sid in split.added where !speakers.contains(where: { $0.id == sid }) {
+                            speakers.append(Speaker(id: sid, name: "Speaker \(speakers.count + 1)", colorIndex: speakers.count))
+                        }
+                    }
+                } catch {
+                    diagnostics = "Speaker detection failed: \(error.localizedDescription)"
+                }
+            }
         } else if AppSettings.speakerDetectionEnabled, !output.words.isEmpty {
             stages[id] = "Detecting speakers…"
             do {

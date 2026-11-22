@@ -65,6 +65,55 @@ enum SpeakerAssigner {
         return (smoothed, order)
     }
 
+    /// Tells several voices apart on one channel (the others of a call recorded from the Mac's sound). The words of
+    /// `channel` take their diarization speaker: the first voice keeps the channel's id, the next ones become
+    /// "ch1.2", "ch1.3"… in order of appearance. Voices with less than `minimumSeconds` of speech (false splits of
+    /// one voice) stay with the voice before them. Other words are untouched; one voice changes nothing.
+    static func splitChannel(
+        _ words: [Word], ids: [String?], channel: String, segments: [DiarizedSegment], minimumSeconds: Double = 8
+    ) -> (ids: [String?], added: [String]) {
+        guard !segments.isEmpty, ids.count == words.count else { return (ids, []) }
+        let onChannel = ids.indices.filter { ids[$0] == channel }
+        var raw: [Int: String] = [:]
+        var seconds: [String: Double] = [:]
+        for index in onChannel {
+            let word = words[index]
+            let mid = (word.start + word.end) / 2
+            let match = segments.first { mid >= $0.start && mid <= $0.end }
+                ?? segments.min { distance(mid, $0) < distance(mid, $1) }
+            guard let label = match?.speaker else { continue }
+            raw[index] = label
+            seconds[label, default: 0] += max(0, word.end - word.start)
+        }
+        var mapping: [String: String] = [:]
+        var added: [String] = []
+        for index in onChannel {
+            guard let label = raw[index], mapping[label] == nil, seconds[label, default: 0] >= minimumSeconds else { continue }
+            let id = mapping.isEmpty ? channel : "\(channel).\(mapping.count + 1)"
+            mapping[label] = id
+            if id != channel { added.append(id) }
+        }
+        guard !added.isEmpty else { return (ids, []) }
+
+        var split = ids.map { $0 ?? "" }
+        var previous = channel
+        for index in onChannel {
+            let id = raw[index].flatMap { mapping[$0] } ?? previous
+            split[index] = id
+            previous = id
+        }
+        let smoothed = smoothIslands(split, words: words)
+        var result = ids
+        // Smoothing only moves words between this channel's voices, never to the other channel.
+        for index in onChannel {
+            let id = smoothed[index]
+            result[index] = id == channel || id.hasPrefix("\(channel).") ? id : split[index]
+        }
+        // A voice smoothed away entirely is not listed.
+        let used = Set(onChannel.compactMap { result[$0] })
+        return (result, added.filter(used.contains))
+    }
+
     /// Groups consecutive words of the same speaker into readable segments.
     static func group(_ words: [Word], speakerIds: [String?]) -> [TranscriptSegment] {
         var segments: [TranscriptSegment] = []

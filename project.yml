@@ -175,6 +175,8 @@ targets:
         # Bowls can be shared with other iCloud users (CloudKit share links open the app).
         CKSharingSupported: true
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your Mac. For dictation it listens while you hold the shortcut.
+        # Meetings record the Mac's sound too (Core Audio process tap, SystemAudioTap): the other side of a call.
+        NSAudioCaptureUsageDescription: Porridge records the sound of your Mac during a meeting, such as the other side of a Zoom, Meet or Teams call, and transcribes it on your Mac, so the transcript has everyone.
         NSCalendarsFullAccessUsageDescription: Porridge shows your calendar, lets you add events, and links recorded meetings to their appointment.
         NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
         # A server of your own at home (Ollama) often has no certificate: plain http is allowed there, and only there.
