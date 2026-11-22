@@ -215,7 +215,7 @@ final class Note {
         if !title.isEmpty { parts.append("# \(title)") }
         parts.append(createdAt.formatted(date: .long, time: .shortened))
         if let url { parts.append(url) }
-        if isTodo { parts.append((isDone ? "[x] To-do, done" : "[ ] To-do") + (todoDue.map { ", due " + Todos.dueText($0) } ?? "")) }
+        if isTodo { parts.append((isDone ? "[x] To-do, done" : "[ ] To-do") + (todoDue.map { ", due " + Todos.dueText($0) } ?? "") + (todoRepeat.map { ", repeats " + $0.title.lowercased() } ?? "")) }
         if !text.isEmpty { parts.append(text) }
         if let summary, !summary.isEmpty { parts.append("## Summary\n\n\(summary)") }
         if !segments.isEmpty { parts.append("## Transcript\n\n\(transcriptText())") }
@@ -308,6 +308,11 @@ enum NoteText {
         text.split(separator: "\n", omittingEmptySubsequences: true).compactMap { raw in
             var line = String(raw)
             if line.hasPrefix("```") { return nil }
+            // Tables read as their cells; their row of dashes, dividers and images are no text.
+            if NoteRichText.isDivider(line) || MarkdownTable.isDelimiterRow(line) || NoteImageRef(line: line) != nil { return nil }
+            if line.hasPrefix("|"), MarkdownTable.isRow(line) {
+                line = MarkdownTable.splitRow(line).filter { !$0.isEmpty }.joined(separator: " · ")
+            }
             let range = NSRange(location: 0, length: (line as NSString).length)
             if let match = marks.firstMatch(in: line, range: range) {
                 line = (line as NSString).replacingCharacters(in: match.range, with: "")

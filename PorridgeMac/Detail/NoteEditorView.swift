@@ -1,4 +1,6 @@
 import AppKit
+import SwiftUI
+import UniformTypeIdentifiers
 
 
 /// The body of a note: one text view (TextKit 2) with headings, lists, checklists and bold/italic, stored as
@@ -122,6 +124,11 @@ final class NoteEditorView: NSView {
         format.toolTip = "Format"
         format.setAccessibilityLabel("Format")
         formatBar.addArrangedSubview(format)
+        let insert = NSButton(image: NSImage(systemSymbolName: "plus.circle", accessibilityDescription: "Insert")!, target: self, action: #selector(showInsertMenu(_:)))
+        insert.isBordered = false
+        insert.contentTintColor = .brandNavy
+        insert.toolTip = "Insert"
+        formatBar.addArrangedSubview(insert)
         for (symbol, label, action) in [
             ("checklist", "Checklist", #selector(makeChecklist(_:))),
             ("decrease.indent", "Outdent", #selector(outdentItems(_:))),
@@ -158,6 +165,63 @@ final class NoteEditorView: NSView {
             guard let self else { return }
             self.placeholder.isHidden = !self.controller.isEmpty
         }
+        tables = Observing { [weak self] in
+            guard let self, let request = self.controller.tableRequest else { return }
+            self.presentTableEditor(request)
+        }
+    }
+
+    private var tables: Observing?
+    private weak var tableSheet: NSViewController?
+
+    // MARK: Insert menu
+
+    /// Heading, checklist, table, image, divider, quote, code, at the cursor.
+    @objc private func showInsertMenu(_ sender: NSButton) {
+        let menu = NSMenu(title: "Insert")
+        for item in NoteInsertItem.allCases where item != .photo {
+            if item.isImage {
+                menu.add("Image…", symbol: "photo", enabled: isEditable && controller.canInsertImages) { [weak self] in self?.chooseImages() }
+            } else {
+                menu.add(item.title, symbol: item.systemImage, enabled: isEditable) { [weak self] in self?.controller.insert(item) }
+            }
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    @objc func insertTable(_ sender: Any?) { controller.insert(.table) }
+    @objc func insertDivider(_ sender: Any?) { controller.insert(.divider) }
+    @objc func insertCodeBlock(_ sender: Any?) { controller.insert(.code) }
+
+    /// Images from disk, put on the note and shown at the cursor.
+    @objc func chooseImages() {
+        guard controller.canInsertImages else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        let insert: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .OK, let self else { return }
+            for url in panel.urls { self.controller.insertImage(fileAt: url) }
+            self.focus()
+        }
+        if let window { panel.beginSheetModal(for: window, completionHandler: insert) } else { insert(panel.runModal()) }
+    }
+
+    /// The table editor as a sheet of the window; the editor puts its result into the note.
+    private func presentTableEditor(_ request: TableEditRequest) {
+        guard tableSheet == nil, let host = window?.contentViewController else { return }
+        var sheet: NSViewController?
+        let view = TableEditorView(table: request.table, isNew: request.isNew) { [weak self] table, delete in
+            if let sheet { host.dismiss(sheet) }
+            self?.controller.finishTable(request, table: table, delete: delete)
+            self?.focus()
+        }
+        let controller = NSHostingController(rootView: view)
+        controller.title = request.isNew ? "New Table" : "Edit Table"
+        sheet = controller
+        tableSheet = controller
+        host.presentAsSheet(controller)
     }
 
     @available(*, unavailable)

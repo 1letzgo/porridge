@@ -85,7 +85,7 @@ struct NoteDetailView: View {
 
             if !note.isDeleted { tagRow }
 
-            if note.attachmentsData != nil {
+            if note.attachmentsData != nil, !note.stripAttachments.isEmpty {
                 AttachmentStrip(note: note, onRemove: note.isDeleted ? nil : { removeAttachment($0) })
             }
 
@@ -168,6 +168,9 @@ struct NoteDetailView: View {
             }
         }
         .onAppear {
+            editor.attachImage = { [note, context, processing] url in
+                NoteImageAttaching.attach(url, to: note, context: context, processing: processing)
+            }
             // Loading the same file again keeps the player where it was.
             if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
             guard !didAppear else { return }
