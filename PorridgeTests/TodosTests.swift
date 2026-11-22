@@ -163,6 +163,22 @@ final class TodosTests: XCTestCase {
         XCTAssertEqual(filed.todoState, .open)
     }
 
+    /// The home list shows the pinned bowls and the latest changed others up to the limit from the settings; 0 shows all.
+    func testHomeListBowlLimit() throws {
+        let bowls = (0..<8).map { NoteFolder(name: "B\($0)") }
+        bowls[7].isPinned = true
+        let date: (NoteFolder) -> Date = { Date(timeIntervalSince1970: Double(Int($0.name.dropFirst())!)) }
+        let three = HomeList.shownProjects(bowls, showAll: false, limit: 3, lastChange: date)
+        XCTAssertEqual(three.shown.map(\.name), ["B7", "B6", "B5", "B4"])
+        XCTAssertEqual(three.hidden, 4)
+        let all = HomeList.shownProjects(bowls, showAll: false, limit: 0, lastChange: date)
+        XCTAssertEqual(all.shown.count, 8)
+        XCTAssertEqual(all.hidden, 0)
+        let expanded = HomeList.shownProjects(bowls, showAll: true, limit: 3, lastChange: date)
+        XCTAssertEqual(expanded.shown.count, 8)
+        XCTAssertEqual(expanded.hidden, 4)
+    }
+
     func testNotesArchivedByEarlierVersionsComeBackWithoutAChange() throws {
         let context = try TestStore.context()
         let bucket = NoteFolder(name: "Garden")

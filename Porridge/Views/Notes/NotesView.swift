@@ -28,6 +28,7 @@ struct NotesView: View {
     @State private var page = ListPage.home
     /// "More" was tapped: the list shows all projects, not only the latest.
     @State private var showAllProjects = false
+    @AppStorage(HomeList.recentProjectsKey) private var recentBowls = HomeList.defaultRecentProjects
     /// The chat page: which chat shows, kept while the app runs.
     @State private var chatNavigation = ChatNavigation()
     @Query(sort: \ChatThread.updatedAt, order: .reverse) private var chatThreads: [ChatThread]
@@ -439,7 +440,7 @@ struct NotesView: View {
     private var home: some View {
         let folders = HomeList.activeProjects(projects)
         let contents = ProjectContent.byProject(notes)
-        let recent = HomeList.shownProjects(folders, showAll: showAllProjects) { project in
+        let recent = HomeList.shownProjects(folders, showAll: showAllProjects, limit: recentBowls) { project in
             max(project.updatedAt, contents[Projects.key(project)]?.lastChange ?? .distantPast)
         }
         let waiting = Inbox.notes(notes)

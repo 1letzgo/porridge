@@ -3,8 +3,15 @@ import SwiftData
 
 /// What the home list shows of the bowls, and what is in the archive (archived bowls only).
 enum HomeList {
-    /// How many projects that are not pinned the list shows before "More".
-    static let recentProjects = 5
+    /// How many bowls that are not pinned the list shows before "More" (Settings › General, on this device);
+    /// 0 shows them all.
+    static let recentProjectsKey = "homeRecentBowls"
+    static let defaultRecentProjects = 5
+    static let recentProjectsChoices = [3, 5, 10, 20, 0]
+
+    static var recentProjects: Int {
+        UserDefaults.standard.object(forKey: recentProjectsKey) as? Int ?? defaultRecentProjects
+    }
 
     static func activeProjects(_ projects: [NoteFolder]) -> [NoteFolder] {
         sorted(projects.filter { !$0.isArchived })
@@ -19,9 +26,9 @@ enum HomeList {
     }
 
     /// The projects the list shows: all pinned ones, then the latest changed others, up to `recentProjects`
-    /// unless all are asked for. `hidden` is how many others that leaves out when not all are shown.
+    /// (`limit`, 0 for all) unless all are asked for. `hidden` is how many others that leaves out when not all are shown.
     static func shownProjects(
-        _ projects: [NoteFolder], showAll: Bool, lastChange: (NoteFolder) -> Date
+        _ projects: [NoteFolder], showAll: Bool, limit: Int = recentProjects, lastChange: (NoteFolder) -> Date
     ) -> (shown: [NoteFolder], hidden: Int) {
         let latest = projects
             .map { (project: $0, date: lastChange($0)) }
@@ -32,7 +39,8 @@ enum HomeList {
             .map(\.project)
         let pinned = latest.filter(\.isPinned)
         let others = latest.filter { !$0.isPinned }
-        return (pinned + (showAll ? others : Array(others.prefix(recentProjects))), max(0, others.count - recentProjects))
+        if showAll || limit <= 0 { return (pinned + others, limit <= 0 ? 0 : max(0, others.count - limit)) }
+        return (pinned + others.prefix(limit), max(0, others.count - limit))
     }
 }
 

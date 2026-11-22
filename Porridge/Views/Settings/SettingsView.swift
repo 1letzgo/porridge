@@ -178,6 +178,7 @@ struct SettingsView: View {
             plaudCard
             SyncCard()
             ExportCard()
+            HomeCard()
             HintCard()
             aboutCard
         case .recording:
@@ -494,6 +495,26 @@ private struct SyncCard: View {
             Button("Cancel", role: .cancel) {}
         } message: { target in
             Text(target.confirmMessage)
+        }
+    }
+}
+
+/// How many bowls the home list shows before "More": the pinned ones always, then the latest changed.
+private struct HomeCard: View {
+    @AppStorage(HomeList.recentProjectsKey) private var recent = HomeList.defaultRecentProjects
+
+    var body: some View {
+        SettingsCard(title: "Home") {
+            Picker("Bowls Before “More”", selection: $recent) {
+                ForEach(HomeList.recentProjectsChoices, id: \.self) { count in
+                    Text(count == 0 ? String(localized: "All") : "\(count)").tag(count)
+                }
+            }
+            .font(.body)
+            .tint(Color.brandSky)
+            Text("Pinned bowls are always shown. The others follow by their last change.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 }
