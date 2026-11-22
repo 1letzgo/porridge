@@ -505,13 +505,11 @@ private struct HomeCard: View {
 
     var body: some View {
         SettingsCard(title: "Home") {
-            Picker("Bowls Before “More”", selection: $recent) {
-                ForEach(HomeList.recentProjectsChoices, id: \.self) { count in
-                    Text(count == 0 ? String(localized: "All") : "\(count)").tag(count)
-                }
-            }
-            .font(.body)
-            .tint(Color.brandSky)
+            MenuRow(
+                title: "Bowls Before “More”",
+                selection: $recent,
+                options: HomeList.recentProjectsChoices.map { (value: $0, title: $0 == 0 ? String(localized: "All") : "\($0)") }
+            )
             Text("Pinned bowls are always shown. The others follow by their last change.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
