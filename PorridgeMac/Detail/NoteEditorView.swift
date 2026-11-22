@@ -183,6 +183,13 @@ final class NoteEditorView: NSView {
                 menu.add(item.title, symbol: item.systemImage, enabled: isEditable) { [weak self] in self?.controller.insert(item) }
             }
         }
+        if let templates = NoteTemplateActions.insertMenu(enabled: isEditable, insert: { [weak self] template in
+            self?.controller.insertTemplate(template)
+            self?.focus()
+        }) {
+            menu.addItem(.separator())
+            menu.addItem(templates)
+        }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
     }
 

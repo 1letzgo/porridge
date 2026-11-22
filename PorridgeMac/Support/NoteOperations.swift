@@ -31,6 +31,7 @@ enum NoteOperations {
             share.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: nil)
             share.submenu = shareMenu(text: notes.map(\.exportText).joined(separator: "\n\n---\n\n"))
             menu.addItem(share)
+            addSaveAsTemplate(for: notes, to: menu, window: window)
             return
         }
         // To-dos: done or not, and a note that becomes one (or stops being one).
@@ -73,10 +74,17 @@ enum NoteOperations {
         share.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: nil)
         share.submenu = shareMenu(text: notes.map(\.exportText).joined(separator: "\n\n---\n\n"))
         menu.addItem(share)
+        addSaveAsTemplate(for: notes, to: menu, window: window)
         menu.addSeparator()
         menu.add(notes.count == 1 ? "Delete" : "Delete \(notes.count) Notes", symbol: "trash", isDestructive: true) {
             trash(notes, state: state)
         }
+    }
+
+    /// "Save as Template…" for one note or to-do (not a link or a file).
+    private static func addSaveAsTemplate(for notes: [Note], to menu: NSMenu, window: NSWindow?) {
+        guard notes.count == 1, let note = notes.first, !note.isLink, !note.isStored else { return }
+        menu.add("Save as Template…", symbol: "doc.badge.plus") { NoteTemplateActions.saveAsTemplate(note, in: window) }
     }
 
     /// The inbox and the bowls, ticked where all the notes are: a click moves them there (in place of their bowl;

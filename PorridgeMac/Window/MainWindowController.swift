@@ -281,6 +281,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
             item.image = NSImage.symbol(symbol, size: 13, weight: .medium).tinted(tint.readable)
         }
+        // A note or to-do from one of the note templates, after New To-do.
+        menu.insertItem(NoteTemplateMenu.item(for: self), at: 2)
         return menu
     }
 

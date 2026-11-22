@@ -96,6 +96,18 @@ private struct NoteFormatButtons {
             ForEach(NoteInsertItem.allCases.filter { images || !$0.isImage }) { item in
                 Button { controller.insert(item) } label: { Label(item.title, systemImage: item.systemImage) }
             }
+            // A note template's text at the cursor.
+            let templates = NoteTemplateStore.shared.templates
+            if !templates.isEmpty {
+                Divider()
+                Menu {
+                    ForEach(templates) { template in
+                        Button { controller.insertTemplate(template) } label: { Label(template.name, systemImage: template.kind.symbol) }
+                    }
+                } label: {
+                    Label("Insert Template", systemImage: "doc.on.doc")
+                }
+            }
         } label: {
             Image(systemName: "plus.circle")
         }

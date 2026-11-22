@@ -27,6 +27,12 @@ final class GeneralSettingsPane: SettingsPane {
         form.row("", iCloudSync)
         form.separator()
 
+        form.row("Templates", NSButton.push("Edit Note Templates…") { [weak self] in
+            self?.presentSheet(NoteTemplatesSheetController())
+        })
+        form.note("Start notes and to-dos from a template, or insert one into a note.")
+        form.separator()
+
         form.row("Export", NSButton.push("Export Everything…") { [weak self] in
             ExportSheetController.export(.everything, title: String(localized: "Export Everything"), in: self?.view.window)
         })

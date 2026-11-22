@@ -751,6 +751,43 @@ final class NoteTextCoordinator: NSObject {
         return true
     }
 
+    /// Markdown put in at the selection on lines of its own (a note template): headings, lists, tables and the
+    /// rest as the editor shows them. The cursor goes to `cursor` (an offset in `markdown`), else after it.
+    func insertMarkdown(_ markdown: String, cursor: Int? = nil) {
+        guard let storage, let textView, textView.isEditable else { return }
+        flush()
+        var selection = textView.selectedRange
+        selection.location = min(selection.location, storage.length)
+        selection.length = min(selection.length, storage.length - selection.location)
+        let converted = NSMutableAttributedString(attributedString: NoteMarkdown.attributed(from: markdown))
+        let paragraph = paragraphRange(at: selection.location)
+        let content = contentRange(of: paragraph)
+        // On a line of its own: after the text before the cursor, before the text after it.
+        var lead = 0
+        if selection.location > paragraph.location {
+            converted.insert(NSAttributedString(string: "\n", attributes: plainAttributes), at: 0)
+            lead = 1
+        }
+        let insertedLength = converted.length
+        if selection.location + selection.length < content.location + content.length {
+            converted.append(NSAttributedString(string: "\n", attributes: plainAttributes))
+        }
+        isAdjusting = true
+        storage.replaceCharacters(in: selection, with: converted)
+        isAdjusting = false
+        forgetUndo()
+        var caret = selection.location + insertedLength
+        if let cursor {
+            let before = String(markdown.prefix(max(0, cursor)))
+            caret = selection.location + lead + NoteMarkdown.attributed(from: before).length
+        }
+        textView.selectedRange = NSRange(location: min(caret, storage.length), length: 0)
+        resetTypingAttributes()
+        renumberIfNeeded()
+        textView.didRestyle()
+        commit()
+    }
+
     /// The selection as Markdown for copy and cut, when it holds a block (tables, images and dividers as their
     /// source); nil leaves copying to the text view.
     func selectedMarkdown() -> String? {

@@ -177,6 +177,7 @@ struct SettingsView: View {
             youCard
             plaudCard
             SyncCard()
+            NoteTemplatesCard()
             ExportCard()
             HintCard()
             aboutCard

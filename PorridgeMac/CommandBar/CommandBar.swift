@@ -118,6 +118,15 @@ enum CommandBarItems {
                 controller?.openChat(nil)
             },
         ]
+        // A note or to-do from each note template.
+        for template in NoteTemplateStore.shared.templates {
+            items.append(CommandItem(
+                kind: .command, title: String(localized: "New from Template: \(template.name)"), subtitle: template.kind.title,
+                symbol: "doc.on.doc", tint: template.isTodo ? .brandTask : .brandSky, keywords: "create add template"
+            ) { [weak controller] in
+                controller?.newFromTemplate(template)
+            })
+        }
         // The selected entries into a bowl or back to the Inbox.
         // Entries in a bowl shared with me to view only stay where they are.
         let selected = controller.selectedNotes.filter { $0.modelContext != nil && !$0.isDeleted && !BowlSharing.shared.isReadOnly($0) }
