@@ -187,9 +187,10 @@ enum MeetingNotifications {
     }
 
     private final class Delegate: NSObject, UNUserNotificationCenterDelegate {
-        /// Shown as a banner while the app is open too.
+        /// Shown as a banner while the app is open too (meeting alerts, entries back from Later).
         func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-            notification.request.identifier.hasPrefix(MeetingNotifications.prefix) ? [.banner, .sound] : []
+            let id = notification.request.identifier
+            return id.hasPrefix(MeetingNotifications.prefix) || id.hasPrefix(InboxSnoozeScheduler.prefix) ? [.banner, .sound] : []
         }
 
         func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {

@@ -58,7 +58,7 @@ extension NoteTextCoordinator {
 
     /// The whole text exchanged as one step of Undo: undoing it brings back the text and selection from before,
     /// so the steps recorded before it still fit; redoing it exchanges them again.
-    private func swapContents(to new: NSAttributedString, selection: NSRange, actionName: String, undoManager: UndoManager?) {
+    func swapContents(to new: NSAttributedString, selection: NSRange, actionName: String, undoManager: UndoManager?) {
         guard let textView, let storage = textView.noteStorage else { return }
         let old = NSAttributedString(attributedString: storage)
         let oldSelection = textView.selectedRange
@@ -69,6 +69,21 @@ extension NoteTextCoordinator {
         textView.didRestyle()
         flush()
         guard let undo = undoManager else { return }
+        undo.registerUndo(withTarget: self) { coordinator in
+            MainActor.assumeIsolated {
+                coordinator.swapContents(to: old, selection: oldSelection, actionName: actionName, undoManager: undo)
+            }
+        }
+        undo.setActionName(actionName)
+    }
+}
+
+extension NoteTextCoordinator {
+    /// An edit the editor made itself (a link chosen after "[[", a template put in) as one step of Undo: undoing it
+    /// brings back the whole text from before (`swapContents`), so the steps recorded before it (typing, a rewrite)
+    /// still fit and are not thrown away. Call after the edit, with the text and selection from before it.
+    func registerWholeTextUndo(before old: NSAttributedString, selection oldSelection: NSRange, actionName: String) {
+        guard let undo = textView?.undoManager else { return }
         undo.registerUndo(withTarget: self) { coordinator in
             MainActor.assumeIsolated {
                 coordinator.swapContents(to: old, selection: oldSelection, actionName: actionName, undoManager: undo)

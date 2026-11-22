@@ -224,4 +224,89 @@ final class EntryLinksTests: XCTestCase {
         XCTAssertNil(QuickActionCenter.take().flatMap { $0 == .search("plan") ? nil : $0 })
         XCTAssertFalse(EntryLinkRouter.handle(URL(string: "porridge://elsewhere")!))
     }
+
+    // MARK: Review fixes
+
+    func testUnescapeKeepsOtherBackslashes() {
+        XCTAssertEqual(EntryLinks.unescape("foo\\_bar"), "foo\\_bar")
+        XCTAssertEqual(EntryLinks.unescape("a\\[b\\]c\\\\d"), "a[b]c\\d")
+        XCTAssertEqual(EntryLinks.unescape("end\\"), "end\\")
+        let label = "path\\to\\_file [x]"
+        XCTAssertEqual(EntryLinks.links(in: EntryLinks.markdown(id: a, title: label)).first?.label, label, "round trip")
+    }
+
+    func testMixedCaseLinksAreBacklinks() throws {
+        let mixed = a.uuidString.prefix(8).lowercased() + a.uuidString.dropFirst(8)
+        XCTAssertTrue(EntryLinks.text("see [x](porridge://entry/\(mixed))", linksTo: a))
+    }
+
+    func testLinksStayInPlaceNextToPlaceholdersAndCombiningMarks() {
+        EntryLinks.lookup = { [a, b] id in [a: "Alpha", b: "Beta"][id].map { EntryLinks.Target(title: $0, symbol: "doc") } }
+        // A stray U+FFFC and a combining mark right after a link.
+        let markdown = "x \u{FFFC} \(link(a, "Alpha"))\u{0301} y \(link(b, "Beta")) **bold**"
+        let attributed = NoteMarkdown.attributed(from: markdown)
+        XCTAssertEqual(NoteMarkdown.markdown(from: attributed), markdown)
+    }
+
+    func testScanFindsLinksAndMentionsOffTheMainThread() async {
+        let items = [
+            EntryLinks.ScanItem(id: b, text: "about the budget review today", updatedAt: Date(timeIntervalSince1970: 2)),
+            EntryLinks.ScanItem(id: UUID(), text: "see \(link(a, "Budget Review"))", updatedAt: Date(timeIntervalSince1970: 1)),
+            EntryLinks.ScanItem(id: UUID(), text: "nothing here", updatedAt: Date(timeIntervalSince1970: 3)),
+        ]
+        let a = a
+        let result = await Task.detached { EntryLinks.scan(target: a, title: "Budget Review", items: items) }.value
+        XCTAssertEqual(result.linkedFrom, [items[1].id])
+        XCTAssertEqual(result.mentions, [b])
+    }
+
+    private func editor(_ stored: @escaping () -> String, _ store: @escaping (String) -> Void) -> (NoteTextCoordinator, NotePlatformTextView, NoteEditorController) {
+        let controller = NoteEditorController()
+        let coordinator = NoteTextCoordinator(text: NoteTextBinding(get: stored, set: store), controller: controller)
+        let textView = NotePlatformTextView(usingTextLayoutManager: true)
+        textView.coordinator = coordinator
+        textView.delegate = coordinator
+        coordinator.textView = textView
+        coordinator.load(stored())
+        controller.bind(coordinator)
+        textView.isEditable = true
+        return (coordinator, textView, controller)
+    }
+
+    /// Showing a note whose link points to a renamed entry does not write it; an edit writes the new title too.
+    func testShowingANoteNeverWritesIt() {
+        var stored = "See \(link(a, "Old Plan")) today"
+        var writes = 0
+        EntryLinks.lookup = { [a] id in id == a ? EntryLinks.Target(title: "New Plan", symbol: "doc") : nil }
+        let (coordinator, textView, _) = editor({ stored }, { stored = $0; writes += 1 })
+        coordinator.flush()
+        coordinator.blur()
+        XCTAssertEqual(writes, 0)
+        XCTAssertEqual(stored, "See \(link(a, "Old Plan")) today")
+
+        textView.noteStorage?.replaceCharacters(in: NSRange(location: (textView.text as NSString).length, length: 0), with: "!")
+        coordinator.flush()
+        XCTAssertEqual(writes, 1)
+        XCTAssertEqual(stored, "See \(link(a, "New Plan")) today!")
+    }
+
+    /// Linking an entry is one step of Undo (not a reset of Undo).
+    func testInsertingALinkCanBeUndone() throws {
+        var stored = "Plan [[Bud"
+        EntryLinks.lookup = { [b] id in id == b ? EntryLinks.Target(title: "Budget", symbol: "doc") : nil }
+        let (coordinator, textView, _) = editor({ stored }, { stored = $0 })
+        let window = UIWindow()
+        window.addSubview(textView)
+        let undo = try XCTUnwrap(textView.undoManager, "the text view has no undo manager here")
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        coordinator.insertEntryLink(.init(id: b, title: "Budget", symbol: "doc"), replacing: NSRange(location: 5, length: 5))
+        undo.endUndoGrouping()
+        coordinator.flush()
+        XCTAssertEqual(stored, "Plan \(link(b, "Budget")) ")
+        XCTAssertTrue(undo.canUndo)
+        undo.undo()
+        coordinator.flush()
+        XCTAssertEqual(stored, "Plan [[Bud")
+    }
 }

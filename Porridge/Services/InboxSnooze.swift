@@ -11,12 +11,17 @@ import UserNotifications
 /// `Note.todoSuggestionsRaw` under the reserved key `@snooze` as whole seconds since 1970, e.g.
 /// `{"@snooze":"1795000000"}` (task keys never contain "@", see `TodoSuggestions.key`). The time stays after it has
 /// passed: it is what says "Back from Later". A note that had no suggestion states gets `@unoffered` with it, so the
-/// object being there does not count as "suggestions offered" (`Note.offersTodoSuggestions`).
+/// object being there does not count as "suggestions offered" (`Note.offersTodoSuggestions`). `@snoozeBy` names the
+/// device (an id of this installation) where "Later" was chosen: only that one shows the notification, so an
+/// iPhone and a Mac do not both ring. The keys go once the day of "Back from Later" is over and the object is
+/// written anyway (`pruned`).
 enum InboxSnooze {
     /// The key in `Note.todoSuggestionsRaw`.
     static let storageKey = "@snooze"
     /// Marks an object that exists only for the snooze: no to-do suggestions were offered for the note.
     static let unofferedKey = "@unoffered"
+    /// The device where "Later" was chosen (`deviceID`).
+    static let deviceKey = "@snoozeBy"
     /// How long an entry is marked "Back from Later".
     static let backWindow: TimeInterval = 24 * 3600
     /// No notification between 22:00 and 8:00: one due then comes at 8:00.
@@ -134,6 +139,21 @@ enum InboxSnooze {
 
     // MARK: Stored form
 
+    /// This installation, for `deviceKey`: made once, kept on this device only.
+    static var deviceID: String {
+        let key = "inboxSnoozeDeviceID"
+        if let id = UserDefaults.standard.string(forKey: key) { return id }
+        let id = UUID().uuidString
+        UserDefaults.standard.set(id, forKey: key)
+        return id
+    }
+
+    /// The states without the snooze keys once its "Back from Later" day is over (and without `@unoffered` then).
+    static func pruned(_ states: [String: String], now: Date = Date()) -> [String: String] {
+        guard let until = states[storageKey].flatMap(date(raw:)), now.timeIntervalSince(until) >= backWindow else { return states }
+        return states.filter { $0.key != storageKey && $0.key != deviceKey && $0.key != unofferedKey }
+    }
+
     static func raw(_ date: Date) -> String { String(Int(date.timeIntervalSince1970.rounded())) }
 
     static func date(raw: String) -> Date? {
@@ -158,14 +178,22 @@ extension Note {
                 // No states before: the object is only here for the snooze, no suggestions are offered by it.
                 if had == nil { all[InboxSnooze.unofferedKey] = "1" }
                 all[InboxSnooze.storageKey] = InboxSnooze.raw(newValue)
+                all[InboxSnooze.deviceKey] = InboxSnooze.deviceID
             } else {
                 guard all[InboxSnooze.storageKey] != nil else { return }
                 all[InboxSnooze.storageKey] = nil
+                all[InboxSnooze.deviceKey] = nil
             }
             // Nothing else left in it: back to nil, as before.
             let rest = all.keys.filter { $0 != InboxSnooze.unofferedKey }
             todoSuggestionsRaw = rest.isEmpty && all[InboxSnooze.unofferedKey] != nil ? nil : TodoSuggestions.encode(all)
         }
+    }
+
+    /// Whether "Later" was chosen on this device (or the device is not known): its notification is shown here.
+    var isSnoozedOnThisDevice: Bool {
+        guard let raw = todoSuggestionsRaw, raw.contains(InboxSnooze.deviceKey) else { return true }
+        return TodoSuggestions.states(raw)[InboxSnooze.deviceKey] == InboxSnooze.deviceID
     }
 
     /// Put away with "Later" and not back yet: hidden from the Inbox.
@@ -196,12 +224,9 @@ extension InboxSnooze {
         guard !notes.isEmpty else { return }
         let when = timeLabel(date)
         let message = notes.count == 1 ? String(localized: "Later: back \(when)") : String(localized: "\(notes.count) entries later: back \(when)")
+        // Only where the entry is shown changes, not the entry: its date stays (lists by last change keep their order).
         Undoable.run(message, systemImage: "clock", notes: notes, in: context) {
-            let now = Date()
-            for note in notes {
-                note.snoozedUntil = date
-                note.updatedAt = now
-            }
+            for note in notes { note.snoozedUntil = date }
             try? context.save()
         }
         InboxSnoozeScheduler.shared.askForNotifications()
@@ -213,11 +238,7 @@ extension InboxSnooze {
         guard !notes.isEmpty else { return }
         let message = notes.count == 1 ? String(localized: "Back in the Inbox") : String(localized: "\(notes.count) entries back in the Inbox")
         Undoable.run(message, systemImage: "tray", notes: notes, in: context) {
-            let now = Date()
-            for note in notes {
-                note.snoozedUntil = nil
-                note.updatedAt = now
-            }
+            for note in notes { note.snoozedUntil = nil }
             try? context.save()
         }
     }
@@ -237,7 +258,7 @@ extension InboxSnooze {
 final class InboxSnoozeScheduler {
     static let shared = InboxSnoozeScheduler()
 
-    static let prefix = "snooze-"
+    nonisolated static let prefix = "snooze-"
     /// iOS keeps at most 64 planned notifications per app (the meeting alerts take some).
     static let maximum = 30
 
@@ -248,6 +269,12 @@ final class InboxSnoozeScheduler {
 
     @ObservationIgnored private var timer: Task<Void, Never>?
     @ObservationIgnored private var planned: [String: Date] = [:]
+    /// The last plan of notifications: each waits for the one before, so an older one cannot finish last.
+    @ObservationIgnored private var planning: Task<Void, Never>?
+    /// The permission for notifications as last seen; when it changes, everything is planned again.
+    @ObservationIgnored private var lastStatus: UNAuthorizationStatus?
+    /// Off in unit tests: no permission is asked and no notification planned.
+    @ObservationIgnored var usesNotifications = true
 
     private init() {}
 
@@ -258,7 +285,8 @@ final class InboxSnoozeScheduler {
         for note in notes where note.isInInbox {
             guard let until = note.snoozedUntil else { continue }
             if until > now {
-                wanted[Self.prefix + note.id.uuidString] = (until, note.displayTitle)
+                // Only the device where "Later" was chosen rings; the others just show the entry again.
+                if note.isSnoozedOnThisDevice { wanted[Self.prefix + note.id.uuidString] = (until, note.displayTitle) }
                 next = min(next ?? until, until)
             } else {
                 let end = until.addingTimeInterval(InboxSnooze.backWindow)
@@ -284,7 +312,10 @@ final class InboxSnoozeScheduler {
     }
 
     private func plan(_ wanted: [String: (date: Date, title: String)], now: Date) {
-        Task {
+        guard usesNotifications else { return }
+        let previous = planning
+        planning = Task {
+            await previous?.value
             let center = UNUserNotificationCenter.current()
             let old = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.prefix) }
             center.removePendingNotificationRequests(withIdentifiers: old)
@@ -311,8 +342,23 @@ final class InboxSnoozeScheduler {
         #endif
     }
 
+    /// Back in the app: notifications may have been allowed or turned off in Settings meanwhile. Then everything
+    /// is planned again.
+    func recheckPermission() {
+        guard usesNotifications else { return }
+        Task {
+            let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+            defer { lastStatus = status }
+            guard let last = lastStatus, last != status else { return }
+            planned = [:]
+            tick += 1
+            onChange?()
+        }
+    }
+
     /// The first "Later" asks whether notifications may be shown (once; never at launch).
     func askForNotifications() {
+        guard usesNotifications else { return }
         Task {
             let center = UNUserNotificationCenter.current()
             guard await center.notificationSettings().authorizationStatus == .notDetermined else { return }

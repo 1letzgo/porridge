@@ -77,10 +77,15 @@ extension NoteTextCoordinator {
         let next = range.location + range.length
         let followedBySpace = next < storage.length && string.character(at: next) == 0x20
         if !followedBySpace { piece.append(NSAttributedString(string: " ", attributes: attributes)) }
+        let before = NSAttributedString(attributedString: storage)
+        let selectionBefore = textView.selectedRange
+        #if os(macOS)
+        textView.breakUndoCoalescing()
+        #endif
         isAdjusting = true
         storage.replaceCharacters(in: range, with: piece)
         isAdjusting = false
-        forgetUndo()
+        registerWholeTextUndo(before: before, selection: selectionBefore, actionName: String(localized: "Link to Entry"))
         textView.selectedRange = NSRange(location: range.location + piece.length + (followedBySpace ? 1 : 0), length: 0)
         textView.typingAttributes = attributes
         resetTypingAttributes()

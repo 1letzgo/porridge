@@ -279,14 +279,16 @@ extension TodoSuggestions {
     /// "Suggest To-dos": the dismissed tasks come back; taken ones stay taken.
     static func suggestAgain(_ note: Note, in context: ModelContext) {
         guard !note.isSaved else { return }
-        note.todoSuggestionsRaw = encode(states(note.todoSuggestionsRaw).filter { $0.value != dismissed })
+        // Asked for now: offered from here on, also when the object was only there for a "Later" (`@unoffered`).
+        note.todoSuggestionsRaw = encode(InboxSnooze.pruned(states(note.todoSuggestionsRaw))
+            .filter { $0.value != dismissed && $0.key != InboxSnooze.unofferedKey })
         note.updatedAt = Date()
         try? context.save()
     }
 
     /// Nothing of them now: the tasks are dismissed until "Suggest To-dos".
     static func dismiss(_ suggestions: [TaskSuggestion], from note: Note, in context: ModelContext) {
-        var all = states(note.todoSuggestionsRaw)
+        var all = InboxSnooze.pruned(states(note.todoSuggestionsRaw))
         for s in suggestions where all[s.key] == nil { all[s.key] = dismissed }
         note.todoSuggestionsRaw = encode(all)
         note.updatedAt = Date()

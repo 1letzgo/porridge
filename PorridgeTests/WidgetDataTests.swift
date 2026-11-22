@@ -180,7 +180,12 @@ final class WidgetDataTests: XCTestCase {
         WidgetStore.queueCompletion(.init(id: "A", due: "2026-11-22"))
         XCTAssertEqual(WidgetStore.pendingCompletions().map(\.id), ["B", "A"])
         XCTAssertEqual(WidgetStore.pendingCompletions().last?.due, "2026-11-22")
-        WidgetStore.removeCompletions(["A", "B"])
+        let handled = WidgetStore.pendingCompletions()
+        // Ticked again while the app was applying the others: that tick stays.
+        WidgetStore.queueCompletion(.init(id: "B", date: Date(timeIntervalSinceNow: 5)))
+        WidgetStore.removeCompletions(handled)
+        XCTAssertEqual(WidgetStore.pendingCompletions().map(\.id), ["B"])
+        WidgetStore.removeCompletions(WidgetStore.pendingCompletions())
         XCTAssertTrue(WidgetStore.pendingCompletions().isEmpty)
     }
 
@@ -234,6 +239,17 @@ final class WidgetDataTests: XCTestCase {
         XCTAssertNil(plain.todoState)
         XCTAssertFalse(WidgetSync.apply(.init(id: UUID().uuidString), in: context))
         XCTAssertFalse(WidgetSync.apply(.init(id: "nonsense"), in: context))
+    }
+
+    func testATickFromBeforeTheToDoChangedIsNotApplied() throws {
+        let context = try TestStore.context()
+        let note = todo("Reopened", in: context)
+        let tick = WidgetStore.Completion(id: note.id.uuidString, date: Date(timeIntervalSinceNow: -60))
+        note.updatedAt = Date()
+        try context.save()
+        XCTAssertFalse(WidgetSync.apply(tick, in: context))
+        XCTAssertFalse(note.isDone)
+        XCTAssertTrue(WidgetSync.apply(.init(id: note.id.uuidString), in: context))
     }
 
     func testPendingTicksAreAppliedAndTheQueueEmptied() throws {

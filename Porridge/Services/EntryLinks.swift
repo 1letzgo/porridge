@@ -8,7 +8,7 @@ import Foundation
 ///
 /// The UUID finds the entry; the label is only a copy of its title at the time of writing. The editor shows the
 /// entry's current title (a renamed entry keeps its links) and writes that title back the next time the note is
-/// saved. A link whose entry is gone (deleted, in the trash, or in a shared bowl the reader does not have) shows its
+/// edited (only showing a note never writes it). A link whose entry is gone (deleted, in the trash, or in a shared bowl the reader does not have) shows its
 /// label dimmed and struck through. `]`, `[` and `\` in a label are escaped with `\`. Everything else that reads
 /// Markdown (previews, chat, exports, other apps) sees an ordinary link with the title as its text.
 enum EntryLinks {
@@ -41,8 +41,7 @@ enum EntryLinks {
 
     /// Whether `text` links to `id` (a quick look at the text first).
     static func text(_ text: String, linksTo id: UUID) -> Bool {
-        let key = id.uuidString
-        guard text.contains(key) || text.contains(key.lowercased()) else { return false }
+        guard text.range(of: id.uuidString, options: [.caseInsensitive, .literal]) != nil else { return false }
         return links(in: text).contains { $0.id == id }
     }
 
@@ -60,14 +59,22 @@ enum EntryLinks {
         return out
     }
 
+    /// Undoes `escape`: only `\[`, `\]` and `\\` lose their backslash; any other backslash stays as written.
     static func unescape(_ label: String) -> String {
         var out = ""
         var escaped = false
         for char in label {
-            if !escaped, char == "\\" { escaped = true; continue }
-            escaped = false
-            out.append(char)
+            if escaped {
+                if char != "\\", char != "[", char != "]" { out.append("\\") }
+                out.append(char)
+                escaped = false
+            } else if char == "\\" {
+                escaped = true
+            } else {
+                out.append(char)
+            }
         }
+        if escaped { out.append("\\") }
         return out
     }
 
@@ -113,11 +120,6 @@ enum EntryLinks {
         return Target(title: note.displayTitle, symbol: note.kindSymbol)
     }
 
-    /// `text` with each link's label set to its entry's current title (where the entry is there).
-    static func refreshingLabels(_ text: String) -> String {
-        rewrite(text) { link in markdown(id: link.id, title: lookup(link.id)?.title ?? link.label) }
-    }
-
     /// `text` with each link as its entry's current title, or its label when the entry is missing.
     static func shownText(_ text: String) -> String {
         rewrite(text) { link in lookup(link.id)?.title ?? link.label }
@@ -152,6 +154,69 @@ enum EntryLinks {
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
+    // MARK: - Linked From and Mentions, off the main thread
+
+    /// What the search for "Linked From" and "Mentions" reads of another entry: a copy, so it runs off the main thread.
+    struct ScanItem: Sendable {
+        let id: UUID
+        let text: String
+        let updatedAt: Date
+    }
+
+    /// The other entries of `notes` (not in the trash) as `ScanItem`s.
+    @MainActor
+    static func scanItems(for note: Note, among notes: [Note]) -> [ScanItem] {
+        notes.compactMap { other in
+            guard !other.isDeleted, other.id != note.id else { return nil }
+            return ScanItem(id: other.id, text: other.text, updatedAt: other.updatedAt)
+        }
+    }
+
+    /// Changes whenever the result of `scan` for `note` may: its title, another entry changed, came or went. Typing
+    /// in `note` itself does not change it.
+    @MainActor
+    static func scanSignature(for note: Note, among notes: [Note]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(note.id)
+        hasher.combine(mentionTitle(of: note))
+        var count = 0
+        var latest = Date.distantPast
+        for other in notes where !other.isDeleted && other.id != note.id {
+            count += 1
+            if other.updatedAt > latest { latest = other.updatedAt }
+        }
+        hasher.combine(count)
+        hasher.combine(latest)
+        return hasher.finalize()
+    }
+
+    /// The entries linking to `id` (all) and those naming `title` without a link (at most `mentionLimit`), each
+    /// most recently changed first. Pure: safe off the main thread.
+    static func scan(target id: UUID, title: String?, items: [ScanItem], mentionLimit: Int = 8) -> (linkedFrom: [UUID], mentions: [UUID]) {
+        var linked: [UUID] = []
+        var mentioned: [UUID] = []
+        for item in items.sorted(by: { $0.updatedAt > $1.updatedAt }) {
+            if text(item.text, linksTo: id) {
+                linked.append(item.id)
+            } else if let title, mentioned.count < mentionLimit, mentionRange(of: title, in: item.text) != nil {
+                mentioned.append(item.id)
+            }
+        }
+        return (linked, mentioned)
+    }
+
+    /// `scan` for `note` off the main thread; the entries back on it, in order (those gone meanwhile left out).
+    @MainActor
+    static func linkedFromAndMentions(of note: Note, among notes: [Note]) async -> (linkedFrom: [Note], mentions: [Note]) {
+        let items = scanItems(for: note, among: notes)
+        let id = note.id
+        let title = mentionTitle(of: note)
+        let result = await Task.detached(priority: .utility) { scan(target: id, title: title, items: items) }.value
+        let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let alive = { (id: UUID) -> Note? in byID[id].flatMap { $0.modelContext != nil && !$0.isDeleted ? $0 : nil } }
+        return (result.linkedFrom.compactMap(alive), result.mentions.compactMap(alive))
+    }
+
     // MARK: - Mentions
 
     /// The title by which `note` is mentioned in other texts, or nil when it is too short or too plain to say
@@ -173,6 +238,9 @@ enum EntryLinks {
     static func mentionRange(of title: String, in text: String) -> NSRange? {
         let ns = text as NSString
         guard ns.length > 0, !title.isEmpty else { return nil }
+        // Most texts do not name it at all: looked for first, before the links and code blocks are worked out.
+        let options: NSString.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        guard ns.range(of: title, options: options).location != NSNotFound else { return nil }
         let excluded = linkRanges(in: text) + codeRanges(in: text)
         var search = NSRange(location: 0, length: ns.length)
         while search.length > 0 {
@@ -215,18 +283,22 @@ enum EntryLinks {
     @MainActor
     @discardableResult
     static func linkMention(in source: Note, to target: Note) -> Bool {
-        guard !BowlSharing.shared.isReadOnly(source), let title = mentionTitle(of: target),
+        guard let context = source.modelContext, !source.isDeleted, !BowlSharing.shared.isReadOnly(source),
+              // Not while it is being transcribed or summarized: that writes its text too.
+              source.status == .ready || source.status == .failed, source.pendingAudioFileName == nil,
+              let title = mentionTitle(of: target),
               let linked = linkingMention(of: title, to: target.id, in: source.text) else { return false }
         let old = source.text
         let oldDate = source.updatedAt
         source.text = linked
         source.updatedAt = Date()
-        try? source.modelContext?.save()
+        try? context.save()
+        // Undo brings the text back only while nothing else changed it meanwhile.
         UndoToast.shared.offer(String(localized: "Linked from “\(source.displayTitle)”"), systemImage: "link") {
-            guard source.text == linked else { return }
+            guard source.modelContext != nil, source.text == linked else { return }
             source.text = old
             source.updatedAt = oldDate
-            try? source.modelContext?.save()
+            try? context.save()
         }
         return true
     }

@@ -101,6 +101,8 @@ struct PorridgeApp: App {
         .onChange(of: scenePhase) { _, phase in
             // A big model in memory gets an app in the background ended first.
             if phase == .background { Task { await ModelManager.shared.releaseLLM() } }
+            // Notifications may have been allowed or turned off in Settings: "Later" plans them again then.
+            if phase == .active { InboxSnoozeScheduler.shared.recheckPermission() }
         }
     }
 }

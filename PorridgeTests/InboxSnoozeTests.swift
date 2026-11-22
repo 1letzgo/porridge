@@ -17,6 +17,11 @@ final class InboxSnoozeTests: XCTestCase {
         calendar.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))!
     }
 
+    override func setUp() async throws {
+        // No permission dialog and no notifications from the test host.
+        InboxSnoozeScheduler.shared.usesNotifications = false
+    }
+
     // MARK: Stored form
 
     func testSnoozeIsStoredUnderAReservedKeyAndGoesAwayWithoutATrace() {
@@ -101,6 +106,51 @@ final class InboxSnoozeTests: XCTestCase {
         XCTAssertTrue(a.isBackFromLater(now: back))
         XCTAssertFalse(a.isBackFromLater(now: date(2026, 11, 24, 9, 30)))
         XCTAssertFalse(b.isBackFromLater(now: back))
+    }
+
+    func testOnlyTheDeviceThatSnoozedRings() {
+        let note = Note()
+        note.snoozedUntil = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertEqual(TodoSuggestions.states(note.todoSuggestionsRaw)[InboxSnooze.deviceKey], InboxSnooze.deviceID)
+        XCTAssertTrue(note.isSnoozedOnThisDevice)
+        var states = TodoSuggestions.states(note.todoSuggestionsRaw)
+        states[InboxSnooze.deviceKey] = "another device"
+        note.todoSuggestionsRaw = TodoSuggestions.encode(states)
+        XCTAssertFalse(note.isSnoozedOnThisDevice)
+        XCTAssertNotNil(note.snoozedUntil, "still put away on every device")
+        note.snoozedUntil = nil
+        XCTAssertNil(note.todoSuggestionsRaw, "no trace of the device either")
+    }
+
+    func testSuggestAgainOffersAfterALaterAndOldSnoozeKeysGo() throws {
+        let context = try TestStore.context()
+        let note = Note()
+        note.summary = "Tasks:\n- Call Anna"
+        context.insert(note)
+        note.snoozedUntil = Date().addingTimeInterval(-2 * InboxSnooze.backWindow)
+        XCTAssertFalse(note.offersTodoSuggestions, "the object is only there for the Later")
+        TodoSuggestions.suggestAgain(note, in: context)
+        XCTAssertTrue(note.offersTodoSuggestions)
+        // The day of "Back from Later" is over: the keys went with this write.
+        XCTAssertNil(note.snoozedUntil)
+        XCTAssertNil(TodoSuggestions.states(note.todoSuggestionsRaw)[InboxSnooze.deviceKey])
+
+        // Still within the day: kept.
+        let recent = Date().addingTimeInterval(-3600)
+        let states = [InboxSnooze.storageKey: InboxSnooze.raw(recent), "call anna": TodoSuggestions.taken]
+        XCTAssertEqual(InboxSnooze.pruned(states), states)
+    }
+
+    func testSnoozingKeepsTheDateOfTheEntry() throws {
+        let context = try TestStore.context()
+        let note = Note()
+        let changed = Date(timeIntervalSince1970: 1_700_000_000)
+        note.updatedAt = changed
+        context.insert(note)
+        InboxSnooze.snooze([note], until: Date().addingTimeInterval(3600), in: context)
+        XCTAssertEqual(note.updatedAt, changed)
+        InboxSnooze.unsnooze([note], in: context)
+        XCTAssertEqual(note.updatedAt, changed)
     }
 
     func testSnoozeAndUnsnoozeCanBeUndone() throws {

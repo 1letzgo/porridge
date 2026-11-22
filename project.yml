@@ -166,6 +166,9 @@ targets:
           - CloudDocuments
         com.apple.developer.ubiquity-container-identifiers:
           - iCloud.de.letzgo.porridge
+        # Small settings shared with the iPhone (the rewrite presets, the hint of the day): the same store as the
+        # iOS app (same bundle identifier).
+        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
         com.apple.developer.icloud-container-environment: Production
         com.apple.developer.aps-environment: development
         com.apple.security.device.audio-input: true

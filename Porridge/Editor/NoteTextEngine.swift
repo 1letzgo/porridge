@@ -67,6 +67,10 @@ final class NoteTextCoordinator: NSObject {
         isAdjusting = true
         storage.setAttributedString(NoteMarkdown.attributed(from: markdown))
         isAdjusting = false
+        // The note's own text as the editor writes it back (links carry their entries' current titles): until it
+        // differs from this, nothing was edited and nothing is written. A text that is not the note's (typing
+        // merged with ticks from outside) has none: it is written with the next flush.
+        unchangedMarkdown = markdown == text.wrappedValue ? NoteMarkdown.markdown(from: storage) : nil
         updateEmpty()
         textView.selectedRange = NSRange(location: min(selected.location, storage.length), length: 0)
         resetTypingAttributes()
@@ -129,9 +133,16 @@ final class NoteTextCoordinator: NSObject {
         pendingCommit = nil
         guard let storage = textView?.noteStorage else { return }
         let markdown = NoteMarkdown.markdown(from: storage)
+        // Only what was edited is written: showing a note (a renamed entry it links to, a view-only bowl, the
+        // trash) never changes its text or its date.
+        guard markdown != unchangedMarkdown else { return }
+        unchangedMarkdown = nil
         lastWritten = markdown
         if text.wrappedValue != markdown { text.wrappedValue = markdown }
     }
+
+    /// The text as loaded, in the editor's own form; nil once it was edited (see `load`).
+    private var unchangedMarkdown: String?
 
     /// Cursor as a character offset in the Markdown: the Markdown of everything before it; the end of the
     /// text when nothing is being edited.
@@ -779,10 +790,15 @@ final class NoteTextCoordinator: NSObject {
         if selection.location + selection.length < content.location + content.length {
             converted.append(NSAttributedString(string: "\n", attributes: plainAttributes))
         }
+        let before = NSAttributedString(attributedString: storage)
+        let selectionBefore = textView.selectedRange
+        #if os(macOS)
+        textView.breakUndoCoalescing()
+        #endif
         isAdjusting = true
         storage.replaceCharacters(in: selection, with: converted)
         isAdjusting = false
-        forgetUndo()
+        registerWholeTextUndo(before: before, selection: selectionBefore, actionName: String(localized: "Insert Template"))
         var caret = selection.location + insertedLength
         if let cursor {
             let before = String(markdown.prefix(max(0, cursor)))

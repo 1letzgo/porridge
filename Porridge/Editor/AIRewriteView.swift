@@ -25,6 +25,8 @@ struct AIRewriteView: View {
     @State private var custom = RewritePresetStore.shared.presets
     @State private var removed: (preset: RewritePreset, index: Int)?
     @State private var showsChanges = true
+    /// The word changes of the result shown, worked out once per result (not at every redraw); nil when too long.
+    @State private var diff: RewriteChanges?
     @State private var applyFailed = false
     @State private var task: Task<Void, Never>?
     @FocusState private var fieldFocused: Bool
@@ -217,7 +219,7 @@ struct AIRewriteView: View {
             Text(model.name).font(.caption).foregroundStyle(.secondary)
         }
         Group {
-            if showsChanges, let pieces = RewriteDiff.pieces(from: selection, to: text) {
+            if showsChanges, let pieces = changes(of: text).pieces {
                 Text(Self.attributed(pieces))
             } else if showsChanges {
                 VStack(alignment: .leading, spacing: 10) {
@@ -234,7 +236,7 @@ struct AIRewriteView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
-        let removedLinks = RewriteLinks.removedCount(original: selection, rewritten: text)
+        let removedLinks = changes(of: text).removedLinks
         if removedLinks > 0 {
             Text(removedLinks == 1 ? "1 link to an entry was removed." : "\(removedLinks) links to entries were removed.")
                 .font(.footnote)
@@ -336,12 +338,24 @@ struct AIRewriteView: View {
                     if case .running = phase { phase = .running(status) }
                 }
                 guard !Task.isCancelled else { return }
+                let selection = target.selected
+                let changes = await Task.detached(priority: .userInitiated) {
+                    RewriteChanges(original: selection, rewritten: answer)
+                }.value
+                guard !Task.isCancelled else { return }
+                diff = changes
                 phase = .result(answer)
             } catch {
                 guard !Task.isCancelled, !(error is CancellationError) else { return }
                 phase = .failed(ChatService.message(for: error, model: model))
             }
         }
+    }
+
+    /// The changes worked out for `text` when it came (`diff`); only the cheap part is worked out here otherwise.
+    private func changes(of text: String) -> RewriteChanges {
+        if let diff, diff.rewritten == text { return diff }
+        return RewriteChanges(original: selection, rewritten: text, comparing: false)
     }
 
     private func back() {

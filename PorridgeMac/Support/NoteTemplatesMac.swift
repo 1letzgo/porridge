@@ -34,8 +34,8 @@ final class NoteTemplateMenu: NSObject, NSMenuDelegate {
         self.controller = controller
     }
 
-    /// The menu keeps its delegate weakly: the item holds it.
-    private static var delegates: [ObjectIdentifier: NoteTemplateMenu] = [:]
+    /// The menu keeps its delegate weakly: the menu holds it itself (an associated object), so it goes with the menu.
+    private static var delegateKey: UInt8 = 0
 
     /// The "New from Template" item with its submenu, for the New menu of a window.
     static func item(for controller: MainWindowController) -> NSMenuItem {
@@ -44,7 +44,7 @@ final class NoteTemplateMenu: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         let delegate = NoteTemplateMenu(controller: controller)
         menu.delegate = delegate
-        delegates[ObjectIdentifier(menu)] = delegate
+        objc_setAssociatedObject(menu, &delegateKey, delegate, .OBJC_ASSOCIATION_RETAIN)
         item.submenu = menu
         return item
     }

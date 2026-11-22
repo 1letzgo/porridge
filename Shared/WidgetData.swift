@@ -196,29 +196,46 @@ enum WidgetStore {
     // MARK: To-dos ticked in a widget
 
     static func pendingCompletions() -> [Completion] {
-        guard let completionsURL, let data = try? Data(contentsOf: completionsURL) else { return [] }
-        return (try? JSONDecoder().decode([Completion].self, from: data)) ?? []
+        guard let completionsURL else { return [] }
+        var result: [Completion] = []
+        NSFileCoordinator().coordinate(readingItemAt: completionsURL, options: [], error: nil) { url in
+            result = read(url)
+        }
+        return result
     }
 
     /// Queues a tick; a second tick of the same to-do replaces the first.
     static func queueCompletion(_ completion: Completion) {
-        var all = pendingCompletions().filter { $0.id != completion.id }
-        all.append(completion)
-        save(all)
+        update { all in
+            all.removeAll { $0.id == completion.id }
+            all.append(completion)
+        }
     }
 
-    /// Takes the handled ticks out of the queue (the app, once it applied or dropped them).
-    static func removeCompletions(_ ids: Set<String>) {
-        guard !ids.isEmpty else { return }
-        save(pendingCompletions().filter { !ids.contains($0.id) })
+    /// Takes the handled ticks out of the queue (the app, once it applied or dropped them). Only these ticks: one
+    /// queued for the same to-do meanwhile (a widget and the app run at once) stays for the next time.
+    static func removeCompletions(_ handled: [Completion]) {
+        guard !handled.isEmpty else { return }
+        update { all in all.removeAll { handled.contains($0) } }
     }
 
-    private static func save(_ all: [Completion]) {
+    private static func read(_ url: URL) -> [Completion] {
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        return (try? JSONDecoder().decode([Completion].self, from: data)) ?? []
+    }
+
+    /// Reads, changes and writes the queue as one step: the widget extension and the app share the file, so each
+    /// waits for the other (`NSFileCoordinator`).
+    private static func update(_ change: (inout [Completion]) -> Void) {
         guard let completionsURL else { return }
-        if all.isEmpty {
-            try? FileManager.default.removeItem(at: completionsURL)
-        } else if let data = try? encoder.encode(all) {
-            try? data.write(to: completionsURL, options: .atomic)
+        NSFileCoordinator().coordinate(writingItemAt: completionsURL, options: .forMerging, error: nil) { url in
+            var all = read(url)
+            change(&all)
+            if all.isEmpty {
+                try? FileManager.default.removeItem(at: url)
+            } else if let data = try? encoder.encode(all) {
+                try? data.write(to: url, options: .atomic)
+            }
         }
     }
 

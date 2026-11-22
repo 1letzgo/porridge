@@ -73,8 +73,11 @@ struct EntryLinksSection: View {
                         row(other) {
                             if !BowlSharing.shared.isReadOnly(other) {
                                 Button("Link") {
-                                    withAnimation(.snappy) {
-                                        if EntryLinks.linkMention(in: other, to: note) { refresh() }
+                                    if EntryLinks.linkMention(in: other, to: note) {
+                                        withAnimation(.snappy) {
+                                            mentions.removeAll { $0.id == other.id }
+                                            if !linkedFrom.contains(where: { $0.id == other.id }) { linkedFrom.insert(other, at: 0) }
+                                        }
                                     }
                                 }
                                 .font(.subheadline.weight(.semibold))
@@ -90,17 +93,21 @@ struct EntryLinksSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, linkedFrom.isEmpty && mentions.isEmpty ? 0 : 12)
-        .task(id: TaskKey(note: note.id, title: note.title, count: allNotes.count, latest: allNotes.first?.updatedAt)) {
+        // Worked out again only when another entry changed, came or went, or this one's title changed (not while
+        // typing in it), and off the main thread.
+        .task(id: EntryLinks.scanSignature(for: note, among: allNotes)) {
             // A moment later: opening the page comes first.
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
-            refresh()
+            await refresh()
         }
     }
 
-    private func refresh() {
-        linkedFrom = EntryLinks.backlinks(to: note.id, among: allNotes)
-        mentions = EntryLinks.mentions(of: note, among: allNotes)
+    private func refresh() async {
+        let found = await EntryLinks.linkedFromAndMentions(of: note, among: allNotes)
+        guard !Task.isCancelled else { return }
+        linkedFrom = found.linkedFrom
+        mentions = found.mentions
     }
 
     private func group<Content: View>(_ title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
@@ -135,12 +142,5 @@ struct EntryLinksSection: View {
                 .accessibilityHidden(true)
         }
         .padding(.vertical, 8)
-    }
-
-    private struct TaskKey: Equatable {
-        let note: UUID
-        let title: String
-        let count: Int
-        let latest: Date?
     }
 }

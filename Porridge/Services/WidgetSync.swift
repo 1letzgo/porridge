@@ -61,6 +61,8 @@ enum WidgetSync {
         guard let note = try? context.fetch(descriptor).first,
               !note.isDeleted, note.isTodo, !note.isDone, !isReadOnly(note) else { return false }
         if note.todoRepeat != nil, note.todoDue != completion.due { return false }
+        // Changed after the tick (reopened, edited on another device): the tick was for what it was before.
+        if note.todoRepeat == nil, note.updatedAt > completion.date { return false }
         Todos.setDone(true, note, in: context)
         return note.isDone || note.todoRepeat != nil
     }
@@ -74,7 +76,7 @@ enum WidgetSync {
         let pending = WidgetStore.pendingCompletions()
         guard !pending.isEmpty else { return 0 }
         let applied = pending.filter { apply($0, in: context, isReadOnly: custom) }.count
-        WidgetStore.removeCompletions(Set(pending.map(\.id)))
+        WidgetStore.removeCompletions(pending)
         #if os(iOS)
         // A tick that could not be applied comes back into the widget's list.
         if applied < pending.count { WidgetCenter.shared.reloadAllTimelines() }

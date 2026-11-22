@@ -213,7 +213,11 @@ struct NoteDetailView: View {
             editor.hasAttachment = { [note] name in note.attachments.contains { $0.fileName == name } }
             editor.noteTitle = { [note] in note.title }
             // "[[" links another entry; a tap on a link opens it.
-            editor.linkCandidates = { [note, allNotes] query in EntryLinks.candidates(for: query, among: allNotes, excluding: note.id) }
+            // The entries as they are when "[[" is typed (not when the page opened: newer ones and new titles count).
+            editor.linkCandidates = { [note, context] query in
+                let notes = (try? context.fetch(FetchDescriptor<Note>())) ?? []
+                return EntryLinks.candidates(for: query, among: notes, excluding: note.id)
+            }
             editor.openEntry = { [openNote] id in
                 commitTyping()
                 openNote(id)

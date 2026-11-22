@@ -24,6 +24,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private var didChooseTab = false
     private var observers: [Observing] = []
     private var libraryToken: UUID?
+    /// "Linked From" and "Mentions": what they were worked out for (`EntryLinks.scanSignature`), and the work.
+    private var entryLinksSignature: Int?
+    private var entryLinksTask: Task<Void, Never>?
     private var shownErrors = Set<String>()
     private var isFetchingAudio = false
     private var fetchAudioError: String?
@@ -182,7 +185,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         playerBar.onDelete = { [weak self] in self?.confirmDeleteRecording() }
         similar.onOpen = { [weak self] other in self?.state.reveal(other) }
         entryLinks.onOpen = { [weak self] other in self?.state.reveal(other) }
-        entryLinks.onChange = { [weak self] in self?.renderEntryLinks() }
+        entryLinks.onChange = { [weak self] in self?.renderEntryLinks(force: true) }
         let bottom = NSStackView.vertical([entryLinks, similar, playerBar, fetchBar], spacing: 8, alignment: .leading)
 
         page.addSubview(head)
@@ -658,17 +661,26 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         (view.window?.windowController as? NoteWindowController)?.window?.title = note.displayTitle
     }
 
-    private func renderEntryLinks() {
+    /// "Linked From" and "Mentions": worked out off the main thread, and only when another entry changed, came or
+    /// went, or this one's title changed (not on every change of the library, not while typing here).
+    private func renderEntryLinks(force: Bool = false) {
         guard !note.isDeleted, note.modelContext != nil else {
+            entryLinksSignature = nil
+            entryLinksTask?.cancel()
             entryLinks.show(linkedFrom: [], mentions: [], target: nil)
             return
         }
         let notes = library.notes
-        entryLinks.show(
-            linkedFrom: EntryLinks.backlinks(to: note.id, among: notes),
-            mentions: EntryLinks.mentions(of: note, among: notes),
-            target: note
-        )
+        let signature = EntryLinks.scanSignature(for: note, among: notes)
+        guard force || signature != entryLinksSignature else { return }
+        entryLinksSignature = signature
+        entryLinksTask?.cancel()
+        let note = note
+        entryLinksTask = Task { @MainActor [weak self] in
+            let found = await EntryLinks.linkedFromAndMentions(of: note, among: notes)
+            guard !Task.isCancelled, let self, self.note.id == note.id else { return }
+            self.entryLinks.show(linkedFrom: found.linkedFrom, mentions: found.mentions, target: note)
+        }
     }
 
     private func renderSimilar() {

@@ -128,11 +128,25 @@ enum NoteMarkdown {
         // Code is shown as typed.
         if kind == .code { return NSAttributedString(string: text, attributes: inlineAttributes(kind: kind, bold: false, italic: false)) }
         let result = NSMutableAttributedString()
-        // Links to entries stand in the text as one placeholder each; their labels hold no marks.
-        var links = EntryLinks.links(in: text)
-        let plain = links.isEmpty ? text : EntryLinks.rewrite(text) { _ in "\u{FFFC}" }
-        let characters = Array(plain)
-        // Marks are only marks when they come in pairs; otherwise the stars are text.
+        // Links to entries are pieces of their own (their labels hold no marks); the text between them is taken
+        // apart into characters piece by piece, by UTF-16 ranges, so nothing in it can be taken for a link.
+        enum Piece { case character(Character), link(EntryLinks.Link) }
+        let ns = text as NSString
+        var pieces: [Piece] = []
+        var texts: [String] = []
+        var location = 0
+        for link in EntryLinks.links(in: text) {
+            let between = ns.substring(with: NSRange(location: location, length: link.range.location - location))
+            texts.append(between)
+            pieces += between.map(Piece.character)
+            pieces.append(.link(link))
+            location = link.range.location + link.range.length
+        }
+        let rest = ns.substring(from: location)
+        texts.append(rest)
+        pieces += rest.map(Piece.character)
+        // Marks are only marks when they come in pairs; otherwise the stars are text. No pair runs across a link.
+        let plain = texts.joined(separator: "\n")
         let strong = occurrences(of: "**", in: plain)
         let emphasis = occurrences(of: "*", in: plain) - 2 * strong
         let strongPairs = strong % 2 == 0 && strong > 0
@@ -144,19 +158,25 @@ enum NoteMarkdown {
             result.append(NSAttributedString(string: run, attributes: inlineAttributes(kind: kind, bold: bold, italic: italic)))
             run = ""
         }
+        func isStar(_ index: Int) -> Bool {
+            guard index < pieces.count, case .character("*") = pieces[index] else { return false }
+            return true
+        }
         var i = 0
-        while i < characters.count {
-            if strongPairs, characters[i] == "*", i + 1 < characters.count, characters[i + 1] == "*" {
-                flush(); bold.toggle(); i += 2
-            } else if emphasisPairs, characters[i] == "*" {
-                flush(); italic.toggle(); i += 1
-            } else if characters[i] == "\u{FFFC}", !links.isEmpty {
+        while i < pieces.count {
+            switch pieces[i] {
+            case .link(let link):
                 flush()
-                let link = links.removeFirst()
                 result.append(entryLinkString(id: link.id, label: link.label, attributes: inlineAttributes(kind: kind, bold: bold, italic: italic)))
                 i += 1
-            } else {
-                run.append(characters[i]); i += 1
+            case .character(let character):
+                if strongPairs, isStar(i), isStar(i + 1) {
+                    flush(); bold.toggle(); i += 2
+                } else if emphasisPairs, character == "*" {
+                    flush(); italic.toggle(); i += 1
+                } else {
+                    run.append(character); i += 1
+                }
             }
         }
         flush()

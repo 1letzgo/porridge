@@ -420,11 +420,24 @@ enum RewriteLinks {
 
 // MARK: - Changes
 
+/// What the sheet shows of a result: the word changes (nil when too long to compare) and the links left out.
+struct RewriteChanges: Sendable {
+    let rewritten: String
+    let pieces: [RewriteDiff.Piece]?
+    let removedLinks: Int
+
+    init(original: String, rewritten: String, comparing: Bool = true) {
+        self.rewritten = rewritten
+        pieces = comparing ? RewriteDiff.pieces(from: original, to: rewritten) : nil
+        removedLinks = RewriteLinks.removedCount(original: original, rewritten: rewritten)
+    }
+}
+
 /// The words that changed between the selection and the rewrite, for the preview.
 enum RewriteDiff {
-    enum Kind: Equatable { case same, removed, added }
+    enum Kind: Equatable, Sendable { case same, removed, added }
 
-    struct Piece: Equatable {
+    struct Piece: Equatable, Sendable {
         var kind: Kind
         var text: String
     }
@@ -447,13 +460,14 @@ enum RewriteDiff {
         return result
     }
 
-    /// Longer texts are shown as before and after instead (the comparison grows with the product of both lengths).
-    static let maxTokens = 2_500
+    /// Longer texts are shown as before and after instead: the comparison's table has one cell per pair of tokens
+    /// (at most this many, about 8 MB).
+    static let maxCells = 1_000_000
 
     /// The changes word by word; nil when the texts are too long to compare.
     static func pieces(from old: String, to new: String) -> [Piece]? {
         let a = tokens(old), b = tokens(new)
-        guard a.count <= maxTokens, b.count <= maxTokens else { return nil }
+        guard (a.count + 1) * (b.count + 1) <= maxCells else { return nil }
         // Longest common subsequence, from the end.
         var table = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
         for i in stride(from: a.count - 1, through: 0, by: -1) {
