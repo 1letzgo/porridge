@@ -67,7 +67,7 @@ final class SmartFilterStore {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, let index = file.filters.firstIndex(where: { $0.id == id }), file.filters[index].name != clean else { return }
         file.filters[index].name = clean
-        file.filters[index].updatedAt = now
+        file.filters[index].updatedAt = Self.later(now, than: file.filters[index].updatedAt)
         changed()
     }
 
@@ -76,15 +76,21 @@ final class SmartFilterStore {
         let clean = name?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let clean, !clean.isEmpty { file.filters[index].name = clean }
         file.filters[index].criteria = criteria
-        file.filters[index].updatedAt = now
+        file.filters[index].updatedAt = Self.later(now, than: file.filters[index].updatedAt)
         changed()
     }
 
     func delete(_ id: UUID, now: Date = Date()) {
-        guard file.filters.contains(where: { $0.id == id }) else { return }
+        guard let filter = file.filters.first(where: { $0.id == id }) else { return }
         file.filters.removeAll { $0.id == id }
-        file.deleted[id.uuidString] = now
+        file.deleted[id.uuidString] = Self.later(now, than: filter.updatedAt)
         changed()
+    }
+
+    /// The file keeps dates to the millisecond: a change in the same millisecond as the one before it is moved a
+    /// millisecond on, so every copy still sees it as the later one.
+    nonisolated static func later(_ now: Date, than before: Date) -> Date {
+        max(now, before.addingTimeInterval(0.001))
     }
 
     private func changed() {
@@ -121,6 +127,8 @@ final class SmartFilterStore {
         // A copy that is behind (or missing) gets the merged file; nothing is written while there is nothing at all.
         let nothing = merged == SmartFilterFile() && found.local == nil && found.cloud == nil
         if !nothing, changedHere || found.local != merged || (cloud != nil && found.cloud != merged) { save() }
+        // Back once the copies have it, so whoever reads next finds the merged file.
+        await writing?.value
     }
 
     /// Waits until what was changed is written (tests).
@@ -139,18 +147,23 @@ final class SmartFilterStore {
             let merged = await Task.detached(priority: .utility) { () -> SmartFilterFile in
                 Self.write(snapshot, to: local)
                 guard let cloud else { return snapshot }
-                // What another device wrote in the meantime is kept: read, merge, write.
-                let there = Self.readCloud(cloud)
-                let merged = there.map { SmartFilterFile.merged(snapshot, $0) } ?? snapshot
-                Self.write(merged, to: cloud, coordinated: true)
-                if merged != snapshot { Self.write(merged, to: local) }
-                return merged
+                // What another device wrote in the meantime is kept: read, merge, write, one writer at a time here.
+                return Self.cloudWrites.withLock {
+                    let there = Self.readCloud(cloud)
+                    let merged = there.map { SmartFilterFile.merged(snapshot, $0) } ?? snapshot
+                    Self.write(merged, to: cloud, coordinated: true)
+                    if merged != snapshot { Self.write(merged, to: local) }
+                    return merged
+                }
             }.value
             guard let self else { return }
             // Only taken over when nothing changed here while it was written.
             if merged != snapshot, self.file == snapshot { self.adopt(merged) }
         }
     }
+
+    /// Read, merge and write of the copy in iCloud as one step within this app.
+    nonisolated private static let cloudWrites = NSLock()
 
     private func resolvedCloudURL() async -> URL? {
         if !cloudResolved {

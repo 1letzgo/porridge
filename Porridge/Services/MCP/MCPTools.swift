@@ -392,6 +392,7 @@ final class MCPToolbox: MCPToolProvider {
         if let name = arguments["bowl"]?.stringValue, !name.trimmingCharacters(in: .whitespaces).isEmpty {
             bowl = try resolveBowl(name)
             if bowl?.isArchived == true { throw Failure(message: "The bowl \"\(bowl!.name)\" is archived.") }
+            if let bowl, BowlSharing.shared.isReadOnly(bowl.id) { throw Failure(message: "The bowl \"\(bowl.name)\" is shared with you to view only.") }
         }
         let note = Note()
         note.source = .note
@@ -414,6 +415,7 @@ final class MCPToolbox: MCPToolProvider {
         let toInbox = arguments["to_inbox"]?.boolValue ?? false
         let name = arguments["bowl"]?.stringValue?.trimmingCharacters(in: .whitespaces) ?? ""
         if toInbox == !name.isEmpty { throw Failure(message: "Give either bowl or to_inbox: true.") }
+        if BowlSharing.shared.isReadOnly(note) { throw Failure(message: "The entry is in a bowl shared with you to view only.") }
         if toInbox {
             if !note.projectIDs.isEmpty {
                 note.projectIDs = []
@@ -423,6 +425,7 @@ final class MCPToolbox: MCPToolProvider {
         } else {
             let bowl = try resolveBowl(name)
             if bowl.isArchived { throw Failure(message: "The bowl \"\(bowl.name)\" is archived.") }
+            if BowlSharing.shared.isReadOnly(bowl.id) { throw Failure(message: "The bowl \"\(bowl.name)\" is shared with you to view only.") }
             if note.projectIDs != [Projects.key(bowl)] { Inbox.file(note, into: Projects.key(bowl), in: context) }
         }
         return .json(["moved": true, "entry": summary(note, document: nil, names: bowlNames())])

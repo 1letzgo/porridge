@@ -15,6 +15,7 @@ enum EntryActions {
         case cannotBeTodo
         case notADocument
         case nothingToChange
+        case viewOnly
 
         var errorDescription: String? {
             switch self {
@@ -25,6 +26,7 @@ enum EntryActions {
             case .cannotBeTodo: "Links, saved files and meetings cannot be to-dos."
             case .notADocument: "This entry is not a document."
             case .nothingToChange: "Nothing to change: it already is that way."
+            case .viewOnly: "The bowl is shared with you to view only."
             }
         }
     }
@@ -143,6 +145,7 @@ enum EntryActions {
     @discardableResult
     static func move(_ note: Note, toBowl key: String?, in context: ModelContext, now: Date = Date()) throws -> Undo {
         guard !note.isDeleted else { throw Failure.entryGone }
+        try writable(note, bowl: key)
         let target = key.map(Projects.assigned) ?? []
         guard note.projectIDs != target else { throw Failure.nothingToChange }
         if let key, let id = UUID(uuidString: key), folder(id, in: context) == nil { throw Failure.bowlGone }
@@ -177,6 +180,7 @@ enum EntryActions {
     @discardableResult
     static func setTodo(_ note: Note, done: Bool, due: DueChange? = nil, in context: ModelContext) throws -> Undo {
         guard !note.isDeleted else { throw Failure.entryGone }
+        try writable(note)
         guard note.isTodo || note.canBeTodo else { throw Failure.cannotBeTodo }
         let before = Snapshot(note)
         if !note.isTodo { Todos.setTodo(true, note, in: context) }
@@ -195,6 +199,7 @@ enum EntryActions {
     @discardableResult
     static func setTags(_ note: Note, add: [String], remove: [String], in context: ModelContext, now: Date = Date()) throws -> Undo {
         guard !note.isDeleted else { throw Failure.entryGone }
+        try writable(note)
         let before = Snapshot(note)
         let removing = Set(remove.map(Note.cleanTag).filter { !$0.isEmpty }.map { $0.lowercased() })
         var labels = note.labels.filter { !removing.contains($0.lowercased()) }
@@ -215,6 +220,7 @@ enum EntryActions {
     @discardableResult
     static func setDocumentInfo(_ note: Note, _ change: DocumentChange, in context: ModelContext) throws -> Undo {
         guard !note.isDeleted else { throw Failure.entryGone }
+        try writable(note)
         guard note.isStored, !note.attachments.isEmpty else { throw Failure.notADocument }
         let current = note.documentInfo ?? DocumentInfo()
         var info = current
@@ -237,6 +243,7 @@ enum EntryActions {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty || !text.isEmpty else { throw Failure.emptyName }
+        if let bowl, BowlSharing.shared.isReadOnly(UUID(uuidString: bowl)) { throw Failure.viewOnly }
         let note = Note()
         note.source = .note
         note.title = title
@@ -255,6 +262,12 @@ enum EntryActions {
         context.insert(note)
         try? context.save()
         return (note, Undo(steps: [.removeNote(note.id)]))
+    }
+
+    /// Entries in a bowl shared with me to view only stay as they are, and nothing goes into such a bowl.
+    private static func writable(_ note: Note, bowl key: String? = nil) throws {
+        if BowlSharing.shared.isReadOnly(note) { throw Failure.viewOnly }
+        if let key, BowlSharing.shared.isReadOnly(UUID(uuidString: key)) { throw Failure.viewOnly }
     }
 
     // MARK: Taking back
