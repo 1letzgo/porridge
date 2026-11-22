@@ -51,6 +51,8 @@ final class Library {
                 self?.notify()
             }
         }
+        // An entry put away for later came back: the lists and the Inbox's count follow.
+        InboxSnoozeScheduler.shared.onChange = { [weak self] in self?.setNeedsReload() }
         center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -123,6 +125,7 @@ final class Library {
         projects = (try? context.fetch(FetchDescriptor<NoteFolder>(sortBy: [SortDescriptor(\.name)]))) ?? []
         threads = (try? context.fetch(FetchDescriptor<ChatThread>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]))) ?? []
         generation += 1
+        InboxSnoozeScheduler.shared.refresh(notes)
         followIndexAndShare()
         notify()
     }

@@ -247,7 +247,9 @@ extension Note {
     /// Whether suggestions are offered for this note: it has a summary that may have tasks (never a saved page or
     /// file), and it was summarized since there are suggestions or the user asked for them ("Suggest To-dos").
     var offersTodoSuggestions: Bool {
-        todoSuggestionsRaw != nil && !isSaved && !isTodo && summary != nil && !isDeleted
+        guard let raw = todoSuggestionsRaw else { return false }
+        // Only a "Later" in it (`InboxSnooze.unofferedKey`): nothing was offered.
+        return !raw.contains(InboxSnooze.unofferedKey) && !isSaved && !isTodo && summary != nil && !isDeleted
     }
 
     /// The suggestions waiting on this note, given the to-dos made from it.
@@ -266,7 +268,12 @@ extension TodoSuggestions {
     /// A summary was written: its tasks are offered. What was taken or dismissed before stays so.
     static func offer(_ note: Note) {
         guard !note.isSaved else { return }
-        if note.todoSuggestionsRaw == nil { note.todoSuggestionsRaw = encode([:]) }
+        if note.todoSuggestionsRaw == nil {
+            note.todoSuggestionsRaw = encode([:])
+        } else if note.todoSuggestionsRaw?.contains(InboxSnooze.unofferedKey) == true {
+            // The object was only there for a "Later": now they are offered.
+            note.todoSuggestionsRaw = encode(states(note.todoSuggestionsRaw).filter { $0.key != InboxSnooze.unofferedKey })
+        }
     }
 
     /// "Suggest To-dos": the dismissed tasks come back; taken ones stay taken.

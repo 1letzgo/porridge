@@ -67,6 +67,10 @@ final class WindowState {
             guard page != oldValue else { return }
             if oldValue == .search, page != .search { clearSearch() }
             kindFilter = nil
+            if page != .inbox {
+                isTriaging = false
+                showsLater = false
+            }
             // What others added or changed in a shared bowl is seen as far as the bowl goes, on the way in and out.
             BowlSharing.shared.markVisited(oldValue.projectID)
             BowlSharing.shared.markVisited(page.projectID)
@@ -84,6 +88,11 @@ final class WindowState {
     var searchTags: [String] = []
     /// Narrows a bowl's list or the search to one kind.
     var kindFilter: KindFilter?
+
+    /// The Inbox in triage: J/K go through it, L puts the entry away for later, F files it, D ticks a to-do.
+    var isTriaging = false
+    /// The Inbox lists what was put away for later too, in a section at its end.
+    var showsLater = false
 
     /// Which chat shows; nil is a new one that is not kept until its first question.
     var chatID: UUID?
@@ -121,6 +130,8 @@ final class WindowState {
             page = .project(bucket)
         } else {
             page = .inbox
+            // Put away for later: its section is shown, so the entry is there.
+            if note.isSnoozed() { showsLater = true }
         }
         selection = [note.id]
     }

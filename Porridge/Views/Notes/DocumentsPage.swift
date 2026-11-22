@@ -7,6 +7,8 @@ struct NoteSelectionBar: View {
     /// The entries of the list, in its order.
     let notes: [Note]
     @Binding var chosen: Set<UUID>
+    /// The Inbox: the chosen entries can be put away for later.
+    var offersLater = false
     var onDone: () -> Void
 
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
@@ -20,6 +22,7 @@ struct NoteSelectionBar: View {
     @State private var error: String?
     /// A merge is running: the bar waits.
     @State private var isWorking = false
+    @State private var pickingLater = false
 
     /// The chosen entries, in the order of the list.
     private var chosenNotes: [Note] { notes.filter { chosen.contains($0.id) } }
@@ -49,6 +52,14 @@ struct NoteSelectionBar: View {
                     actionLabel("Move", systemImage: "folder", isOn: !chosen.isEmpty)
                 }
                 .disabled(chosen.isEmpty)
+                if offersLater {
+                    Menu {
+                        LaterMenuItems(notes: chosenNotes) { pickingLater = true }
+                    } label: {
+                        actionLabel("Later", systemImage: "clock", isOn: !chosen.isEmpty)
+                    }
+                    .disabled(chosen.isEmpty)
+                }
                 Menu {
                     Button("Not Set") { change(.kind(nil)) }
                     ForEach(DocumentKind.allCases) { kind in
@@ -91,6 +102,7 @@ struct NoteSelectionBar: View {
             let visible = chosen.intersection(ids)
             if visible != chosen { chosen = visible }
         }
+        .sheet(isPresented: $pickingLater) { LaterPickerSheet(notes: chosenNotes) }
         .alert("Sender", isPresented: $askingSender) {
             TextField("Company, office or person", text: $senderText)
             Button("Cancel", role: .cancel) {}

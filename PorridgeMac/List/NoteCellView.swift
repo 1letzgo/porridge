@@ -127,7 +127,7 @@ final class NoteCellView: NSTableCellView {
         previewLabel.stringValue = preview
         previewLabel.isHidden = preview.isEmpty
         previewLabel.maximumNumberOfLines = document == nil ? 2 : 1
-        footerLabel.attributedStringValue = footer(note)
+        footerLabel.attributedStringValue = footer(note, inInbox: showsSuggestions)
 
         let stage = processing.stages[note.id]
         if let stage {
@@ -189,7 +189,7 @@ final class NoteCellView: NSTableCellView {
     }
 
     /// Date, progress, due day, site, length: one line, the due day colored by where it stands.
-    private func footer(_ note: Note) -> NSAttributedString {
+    private func footer(_ note: Note, inInbox: Bool) -> NSAttributedString {
         let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         let result = NSMutableAttributedString()
         func add(_ text: String, symbol: String? = nil, color: NSColor = .secondaryLabelColor, bold: Bool = false) {
@@ -213,6 +213,14 @@ final class NoteCellView: NSTableCellView {
             // A to-do that names its bowls lets its due day speak for it; the date makes room for the names.
             if !(bucketNames(note).isEmpty == false && note.isTodo) {
                 add(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
+            }
+            // Put away for later, back from it, or, in the Inbox, how long it has been waiting there.
+            if note.isSnoozed(), let until = note.snoozedUntil {
+                add(String(localized: "Later: back \(InboxSnooze.timeLabel(until))"), symbol: "clock", color: .brandNavy)
+            } else if note.isBackFromLater() {
+                add(String(localized: "Back from Later"), symbol: "clock.arrow.circlepath", color: .brandSkyText, bold: true)
+            } else if inInbox, note.isInInbox, let waiting = InboxSnooze.waitingLabel(since: note.createdAt) {
+                add(waiting, symbol: "hourglass")
             }
         }
         if TodoBridge.isTodo(note) {

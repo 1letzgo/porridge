@@ -7,6 +7,12 @@ extension MainWindowController {
         CommandBarController.show(for: self)
     }
 
+    /// View › Triage Inbox and the Inbox's "Triage": the Inbox with the keyboard (J/K, L, F, D).
+    @objc func triageInbox(_ sender: Any?) {
+        state.page = .inbox
+        split.content.notes.toggleTriage()
+    }
+
     /// View › Weekly Review, the button in the Inbox's head and the command bar.
     @objc func showWeeklyReview(_ sender: Any?) {
         WeeklyReviewWindowController.show(opening: { [weak self] id in

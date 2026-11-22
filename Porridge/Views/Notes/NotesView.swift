@@ -61,6 +61,8 @@ struct NotesView: View {
     @State private var chosen = Set<UUID>()
     /// A note in Recently Deleted that is about to go for good.
     @State private var deletingNow: Note?
+    /// The Inbox's "Later" section is unfolded.
+    @State private var showsLater = false
     /// The weekly review (from the Inbox's bar).
     @State private var showReview = false
     @AppStorage(DailyHint.enabledKey) private var hintsEnabled = true
@@ -284,6 +286,8 @@ struct NotesView: View {
         // The share sheet offers the bowls: it reads this list, it cannot open the store.
         .task(id: shareProjects) { ShareInbox.writeProjects(shareProjects) }
         // The search index follows the notes: only what changed is cut again.
+        // Entries put away for later: their notifications planned here, and a tick when one comes back.
+        .task(id: snoozeSignature) { InboxSnoozeScheduler.shared.refresh(notes) }
         .task(id: indexSignature) {
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled else { return }
@@ -444,6 +448,8 @@ struct NotesView: View {
         let recent = HomeList.shownProjects(folders, showAll: showAllProjects, limit: recentBowls, order: bowlOrder) { project in
             max(project.updatedAt, contents[Projects.key(project)]?.lastChange ?? .distantPast)
         }
+        // Read so that an entry coming back from later is counted again.
+        _ = InboxSnoozeScheduler.shared.tick
         let waiting = Inbox.notes(notes)
         let archived = HomeList.archivedProjects(projects).count
         let isEmpty = folders.isEmpty && waiting.isEmpty
@@ -535,25 +541,34 @@ struct NotesView: View {
 
     /// The inbox opened: what is in no bowl, newest first, each with its suggested bowls.
     private var inboxPage: some View {
+        // Read so that an entry coming back from later shows up.
+        _ = InboxSnoozeScheduler.shared.tick
         let waiting = Inbox.notes(notes)
+        let later = InboxSnooze.snoozed(notes)
         let buckets = projects.filter { !$0.isArchived }
-        let rows = Section {
-            ForEach(waiting) { note in
-                let isLast = note.id == waiting.last?.id
-                // While choosing, the suggestions give way to the selection.
-                if isSelecting || FilingBar.suggested(for: note, among: buckets).isEmpty {
-                    NoteListRow(note: note) { remove(note) }
-                        .lastInSection(isLast)
-                } else {
-                    NoteListRow(note: note) { remove(note) }
-                    FilingBar(note: note, projects: buckets)
-                        .lastInSection(isLast)
+        let rows = Group {
+            Section {
+                ForEach(waiting) { note in
+                    let isLast = note.id == waiting.last?.id
+                    // While choosing, the suggestions give way to the selection.
+                    if isSelecting || FilingBar.suggested(for: note, among: buckets).isEmpty {
+                        NoteListRow(note: note, inInbox: true) { remove(note) }
+                            .lastInSection(isLast)
+                    } else {
+                        NoteListRow(note: note, inInbox: true) { remove(note) }
+                        FilingBar(note: note, projects: buckets)
+                            .lastInSection(isLast)
+                    }
                 }
+            }
+            // What was put away for later, folded at the end.
+            if !later.isEmpty, !isSelecting {
+                LaterSection(notes: later, isExpanded: $showsLater) { remove($0) }
             }
         }
         return VStack(spacing: 0) {
             if isSelecting {
-                NoteSelectionBar(notes: waiting, chosen: $chosen) { endSelecting() }
+                NoteSelectionBar(notes: waiting, chosen: $chosen, offersLater: true) { endSelecting() }
             } else {
                 if let hint = DailyHints.shared.current {
                     DailyHintBanner(hint: hint) { openHint(hint) }
@@ -575,7 +590,7 @@ struct NotesView: View {
             .cardList()
         .roomForFloatingButtons()
         .overlay {
-            if waiting.isEmpty {
+            if waiting.isEmpty, later.isEmpty {
                 EmptyStateView(title: "Inbox Empty", message: "What is new or in no bowl waits here.", systemImage: "tray")
             }
         }
@@ -711,6 +726,18 @@ struct NotesView: View {
     /// Changes when a note's content changed (the index compares hashes, this only wakes it up).
     /// A number, not a text: this is asked at every redraw of the list, and a string of every note's id and date
     /// was built and thrown away each time.
+    private var snoozeSignature: Int {
+        var hasher = Hasher()
+        hasher.combine(InboxSnoozeScheduler.shared.tick)
+        for note in notes where note.snoozedUntil != nil {
+            hasher.combine(note.id)
+            hasher.combine(note.snoozedUntil)
+            hasher.combine(note.isInInbox)
+            hasher.combine(note.title)
+        }
+        return hasher.finalize()
+    }
+
     private var indexSignature: Int {
         var hasher = Hasher()
         for note in notes {
@@ -1235,6 +1262,8 @@ struct NoteRow: View {
     let stage: String?
     /// Bowl names to show in the footer (a list of several bowls' notes); empty shows none.
     var buckets: [String] = []
+    /// In the Inbox's list: how long the entry has been waiting there.
+    var showsInboxAge = false
 
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.modelContext) private var context
@@ -1311,6 +1340,22 @@ struct NoteRow: View {
             if buckets.isEmpty || !note.isTodo {
                 Text(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
                     .fixedSize()
+            }
+            // Put away for later, back from it, or, in the Inbox, how long it has been waiting there.
+            if note.isSnoozed(), let until = note.snoozedUntil {
+                Label("Later: back \(InboxSnooze.timeLabel(until))", systemImage: "clock")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(Color.brandNavy)
+                    .fixedSize()
+            } else if note.isBackFromLater() {
+                Label("Back from Later", systemImage: "clock.arrow.circlepath")
+                    .labelStyle(.titleAndIcon)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.brandSkyText)
+                    .fixedSize()
+            } else if showsInboxAge, !compact, note.isInInbox, let waiting = InboxSnooze.waitingLabel(since: note.createdAt) {
+                Label(waiting, systemImage: "hourglass")
+                    .labelStyle(.titleAndIcon)
             }
         }
         if note.isTodo {

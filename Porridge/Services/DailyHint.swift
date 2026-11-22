@@ -68,7 +68,7 @@ struct DailyHint: Equatable, Identifiable {
                 systemImage: "calendar.badge.exclamationmark"
             ))
         }
-        let inbox = living.filter(\.isInInbox).count
+        let inbox = living.filter { $0.isWaitingInInbox(now: now) }.count
         if inbox >= inboxThreshold {
             hints.append(DailyHint(kind: .inbox, message: String(localized: "\(inbox) entries in the Inbox"), systemImage: "tray"))
         }
