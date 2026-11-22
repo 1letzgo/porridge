@@ -192,7 +192,7 @@ final class SmartFiltersTests: XCTestCase {
         {"version":1,"filters":[{"id":"not-a-uuid"},{"id":"\(UUID().uuidString)","name":"Kept","criteria":{},"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}]}
         """
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = SmartFilterStore.dateDecoding
         let file = try decoder.decode(SmartFilterFile.self, from: Data(json.utf8))
         XCTAssertEqual(file.filters.map(\.name), ["Kept"])
     }

@@ -160,9 +160,28 @@ final class SmartFilterStore {
         return cloudURL
     }
 
+    /// ISO 8601 with milliseconds: two changes within one second must still tell which came last. Dates without
+    /// fractions read too.
+    nonisolated static let dateEncoding = JSONEncoder.DateEncodingStrategy.custom { date, encoder in
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var container = encoder.singleValueContainer()
+        try container.encode(formatter.string(from: date))
+    }
+
+    nonisolated static let dateDecoding = JSONDecoder.DateDecodingStrategy.custom { decoder in
+        let text = try decoder.singleValueContainer().decode(String.self)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: text) { return date }
+        throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Not a date: \(text)"))
+    }
+
     nonisolated private static func decode(_ data: Data) -> SmartFilterFile? {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = dateDecoding
         return try? decoder.decode(SmartFilterFile.self, from: data)
     }
 
@@ -195,7 +214,7 @@ final class SmartFilterStore {
     nonisolated static func write(_ file: SmartFilterFile, to url: URL, coordinated: Bool = false) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = dateEncoding
         guard let data = try? encoder.encode(file) else { return }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard coordinated else {
