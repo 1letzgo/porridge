@@ -38,6 +38,8 @@ struct NotesView: View {
     @State private var showCalendar = false
     /// Dialog for a link typed or pasted by hand.
     @State private var showAddLink = false
+    /// "New from Template": the templates to pick from.
+    @State private var showTemplatePicker = false
     /// The plus button is unfolded into its options.
     @State private var showCreate = false
     @State private var showAudioImporter = false
@@ -220,6 +222,9 @@ struct NotesView: View {
                 onPick: { appointment in startRecording(for: appointment) },
                 onNew: { startRecording(titled: nil) }
             )
+        }
+        .sheet(isPresented: $showTemplatePicker) {
+            NoteTemplatePicker { template, title in addFromTemplate(template, title: title) }
         }
         .alert("Add Link", isPresented: $showAddLink) {
             TextField("https://", text: $linkText)
@@ -801,6 +806,9 @@ struct NotesView: View {
                                     }
                                     createOption("Link", systemImage: "link", tint: .brandLink) { showAddLink = true }
                                     createOption("Meeting", systemImage: "mic.fill", tint: .brandNavy) { showCalendar = true }
+                                    if !NoteTemplateStore.shared.templates.isEmpty {
+                                        createOption("Template", systemImage: "doc.on.doc", tint: .brandNavy) { showTemplatePicker = true }
+                                    }
                                     createOption("To-do", systemImage: "checklist", tint: .brandTask) { addNote(todo: true) }
                                     createOption("Note", systemImage: "square.and.pencil", tint: .brandSky) { addNote() }
                                 }
@@ -1152,6 +1160,13 @@ struct NotesView: View {
             note.projectIDs = [project]
         }
         draft = note
+        selection = note.id
+        column = .detail
+    }
+
+    /// A note or to-do made from a template, opened at once. Into the template's bowl, else the bowl that is open.
+    private func addFromTemplate(_ template: NoteTemplate, title: String) {
+        let note = NoteTemplates.create(from: template, title: title, fallbackBowl: projectForNew, in: context)
         selection = note.id
         column = .detail
     }

@@ -246,6 +246,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             return NoteImageAttaching.attach(url, to: note, context: self.library.context, processing: self.processing)
         }
         editor.controller.hasAttachment = { name in note.attachments.contains { $0.fileName == name } }
+        editor.controller.noteTitle = { note.title }
         addSubtask.setHandler { [weak self] in self?.editor.appendChecklistItem() }
         addSubtask.isBordered = false
         addSubtask.contentTintColor = .brandTaskText

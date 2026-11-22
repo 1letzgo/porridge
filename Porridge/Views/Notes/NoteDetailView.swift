@@ -49,6 +49,8 @@ struct NoteDetailView: View {
     @State private var showMerge = false
     /// The page editor of the document's PDF.
     @State private var showPages = false
+    /// "Save as Template": the editor with a template made from this entry.
+    @State private var templateDraft: NoteTemplateDraft?
     @State private var showSummaryEditor = false
     @State private var addingTag = false
     @State private var newTag = ""
@@ -199,6 +201,7 @@ struct NoteDetailView: View {
                 NoteImageAttaching.attach(url, to: note, context: context, processing: processing)
             }
             editor.hasAttachment = { [note] name in note.attachments.contains { $0.fileName == name } }
+            editor.noteTitle = { [note] in note.title }
             // What someone else added or changed: said once more here, and seen from now on.
             if !didAppear { openedActivity = BowlSharing.shared.activityLine(for: note) }
             BowlSharing.shared.markSeen(note)
@@ -275,6 +278,7 @@ struct NoteDetailView: View {
             SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 }), onFinish: finishEditingSummary)
         }
         .sheet(isPresented: $showPages) { PDFPageEditor(note: note) }
+        .sheet(item: $templateDraft) { draft in NoteTemplateEditor(draft: draft) }
         .task(id: lastSplit?.madeAt) {
             // The way back is offered for a while only.
             guard let made = lastSplit?.madeAt else { return }
@@ -663,6 +667,7 @@ struct NoteDetailView: View {
                         Label("Copy Transcript", systemImage: "doc.on.doc")
                     }
                 }
+                saveAsTemplateButton
             } else {
                 Button { note.isPinned.toggle(); try? context.save() } label: {
                     Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
@@ -766,6 +771,7 @@ struct NoteDetailView: View {
                     }
                     .disabled(processing.stages[note.id] != nil || note.status != .ready)
                 }
+                saveAsTemplateButton
                 Divider()
                 if note.hasAudio {
                     Button(role: .destructive) { confirmDeleteAudio = true } label: {
@@ -781,6 +787,19 @@ struct NoteDetailView: View {
         }
         .accessibilityLabel("More")
         .help("More")
+    }
+
+    /// A note or to-do kept as a template (not a link or a file): the editor opens with it, Save keeps it.
+    @ViewBuilder
+    private var saveAsTemplateButton: some View {
+        if !note.isLink, !note.isStored {
+            Button {
+                commitTyping()
+                templateDraft = .new(NoteTemplates.draft(from: note))
+            } label: {
+                Label("Save as Template…", systemImage: "doc.badge.plus")
+            }
+        }
     }
 
     /// A recording that is only on another device (not in iCloud) could not be joined with the new part.

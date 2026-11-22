@@ -42,6 +42,17 @@ final class NoteEditorController {
         return text
     }
 
+    /// The note's title, for `{{title}}` in a template inserted into it.
+    @ObservationIgnored var noteTitle: (() -> String)?
+
+    /// A note template's text put in at the cursor, its placeholders filled; the cursor goes where `{{cursor}}` was.
+    func insertTemplate(_ template: NoteTemplate, now: Date = Date()) {
+        let values = NoteTemplates.Values(now: now, title: noteTitle?() ?? "")
+        let (text, cursor) = NoteTemplates.insertion(of: template, values: values)
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        coordinator?.insertMarkdown(text, cursor: cursor)
+    }
+
     /// Cursor as a character offset in the note's Markdown; the end of the text when nothing is being edited.
     var cursorOffset: Int { coordinator?.cursorOffset() ?? 0 }
 
