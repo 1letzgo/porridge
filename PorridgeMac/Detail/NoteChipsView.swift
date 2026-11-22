@@ -90,6 +90,18 @@ final class NoteChipsView: NSView {
             pill.setAccessibilityLabel(info.isEmpty ? String(localized: "Add Document Details") : info.sentence)
             pill.toolTip = info.isEmpty ? String(localized: "Add the kind, date, sender and amount") : info.line
             views.append(pill)
+            // A bill: open with its due day, overdue in a quiet red, paid in grey. A click marks it as paid or not.
+            if let status = info.paymentStatus(), let label = info.paymentLabel() {
+                let state = PillButton(
+                    title: label, symbol: status == .paid ? "checkmark" : (status == .overdue ? "exclamationmark.circle" : "clock"),
+                    tint: status == .overdue ? .brandDangerText : (status == .paid ? .systemGray : .brandLink), target: self, action: #selector(togglePaid)
+                )
+                state.labelColor = status == .overdue ? .brandDangerText : (status == .paid ? .secondaryLabelColor : .labelColor)
+                state.toolTip = status == .paid ? String(localized: "Mark as Unpaid") : String(localized: "Mark as Paid")
+                state.setAccessibilityLabel(label)
+                state.setAccessibilityHelp(state.toolTip)
+                views.append(state)
+            }
             // Known: a cross beside it takes it away, as with the bowl.
             if !info.isEmpty {
                 let remove = NSButton(image: .symbol("xmark", size: 10, weight: .bold, label: "Remove Document Details"), target: self, action: #selector(clearDocument))
@@ -146,6 +158,11 @@ final class NoteChipsView: NSView {
     @objc private func clearDocument() {
         guard let note else { return }
         Documents.clear(note, in: Library.shared.context)
+    }
+
+    @objc private func togglePaid() {
+        guard let note else { return }
+        Documents.apply(.paid(note.documentInfo?.paid != true), to: [note], in: Library.shared.context)
     }
 
     @objc private func editDocument() {

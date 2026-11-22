@@ -48,6 +48,10 @@ struct NoteListRow: View {
                         Label(note.todoDue.map { "Due \(Todos.dueLabel($0))" } ?? "Due Date", systemImage: "calendar")
                     }
                 }
+                // A bill: paid or not, without opening it.
+                if note.isDocument, note.documentInfo?.offersPaid == true {
+                    PaidButton(notes: [note])
+                }
                 Button { togglePin() } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
                 ProjectMenu(assigned: note.projectIDs) { Projects.toggle($0, on: note, in: context) }
                 if note.canBeTodo {

@@ -16,7 +16,9 @@ enum DocumentExtractor {
         info.correspondent = correspondent(in: head)
         let found = amount(in: head)
         if let found, found.labelled || (kind?.hasAmount ?? false) { info.amount = found.value }
-        return info
+        // Only a paper that can be paid has a due day ("gültig bis" on a quote is no such day).
+        if info.canBePaid { info.dueDay = dueDay(in: head, documentDay: info.day) }
+        return info.droppingStaleDueDay(now: now)
     }
 
     // MARK: Kind
@@ -24,6 +26,7 @@ enum DocumentExtractor {
     /// Words that name a kind, with their weight: words that only that kind uses weigh more.
     private static let kindWords: [(DocumentKind, [(String, Int)])] = [
         (.invoice, [("rechnungsnummer", 4), ("rechnungsbetrag", 4), ("rechnungsdatum", 4), ("invoice", 4), ("rechnung", 3),
+                    ("mahnung", 4), ("zahlungserinnerung", 4), ("payment reminder", 4),
                     ("facture", 3), ("factura", 3), ("fattura", 3), ("zahlbar bis", 1), ("due date", 1), ("bill to", 2)]),
         (.receipt, [("kassenbon", 5), ("kassenbeleg", 5), ("quittung", 5), ("receipt", 5), ("bon-nr", 4), ("bonnr", 4),
                     ("vielen dank für ihren einkauf", 4), ("thank you for your purchase", 4), ("kartenzahlung", 2), ("gegeben", 2),
@@ -98,7 +101,10 @@ enum DocumentExtractor {
     private static let otherDateLabels = ["fällig", "zahlbar", "due", "geburt", "birth", "zeitraum", "period", "lieferdatum", "gültig", "valid", "bis "]
 
     /// All dates in a line, in order, as day keys ("2026-03-02").
-    static func dates(in line: String) -> [String] {
+    static func dates(in line: String) -> [String] { datesWithOffsets(in: line).map(\.day) }
+
+    /// The dates of a line with where each starts (UTF-16 offset), in order.
+    static func datesWithOffsets(in line: String) -> [(offset: Int, day: String)] {
         let range = NSRange(line.startIndex..., in: line)
         var found: [(Int, String)] = []
         func int(_ match: NSTextCheckingResult, _ group: Int) -> Int? {
@@ -129,7 +135,7 @@ enum DocumentExtractor {
         for match in monthDayYear.matches(in: line, range: range) {
             add(match, year: int(match, 3), month: monthNames[text(match, 1)], day: int(match, 2))
         }
-        return found.sorted { $0.0 < $1.0 }.map(\.1)
+        return found.sorted { $0.0 < $1.0 }.map { (offset: $0.0, day: $0.1) }
     }
 
     /// The date of the document: one named as such ("Datum", "Invoice date"), otherwise the first date that is not
@@ -149,6 +155,80 @@ enum DocumentExtractor {
             if any == nil { any = first }
         }
         return labelled ?? plain ?? any
+    }
+
+    // MARK: Due day
+
+    /// Words right before the day a bill is to be paid by.
+    private static let dueLabels = [
+        "zahlbar bis", "zahlbar am", "zahlbar zum", "zahlbar spätestens", "fällig am", "fällig bis", "fällig zum", "fälligkeitsdatum",
+        "fälligkeit", "fällig", "zahlungsziel", "zahlungsfrist", "zu zahlen bis", "einzahlen bis", "spätestens bis", "spätestens am",
+        "payable by", "payable on", "payable until", "payment due", "due date", "due by", "due on", "pay by", "due",
+    ]
+    /// A sentence about paying ("Bitte überweisen Sie den Betrag bis zum …"): its day after the word that ends it.
+    private static let payWords = ["überweis", "zahlen", "begleich", "pay", "remit"]
+    private static let untilWords = [" bis ", "until", " by "]
+    /// Words around a term of payment in days ("Zahlungsziel 14 Tage", "30 Tage netto", "net 30").
+    private static let termWords = [
+        "zahlungsziel", "zahlbar", "fällig", "zahlungsfrist", "zahlungsbedingung", "netto", "ohne abzug", "überweis", "zahlen",
+        "pay", "due", "net",
+    ]
+    private static let immediateWords = [
+        "sofort zahlbar", "zahlbar sofort", "sofort fällig", "fällig sofort", "sofort ohne abzug", "zahlbar ohne abzug sofort",
+        "due on receipt", "due upon receipt", "payable immediately", "due immediately", "payable on receipt",
+    ]
+    private static let dayTerm = try! NSRegularExpression(pattern: #"(?<!\d)(\d{1,3})\s*(?:kalender|werk)?(?:tage|tagen|tag|days|day)(?![\p{L}])"#, options: .caseInsensitive)
+    private static let netTerm = try! NSRegularExpression(pattern: #"(?<![\p{L}])net\s*(\d{1,3})(?!\d)"#, options: .caseInsensitive)
+
+    /// The day a bill is to be paid by: one named as such ("Zahlbar bis 16.03.2026", "Due date: March 16, 2026", also
+    /// on the line after a label alone), else a term counted from the document's day ("Zahlungsziel 14 Tage",
+    /// "net 30", "sofort zahlbar"). Nil when there is none, or none after the document's day.
+    static func dueDay(in text: String, documentDay: String?) -> String? {
+        let lines = text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        func fits(_ day: String) -> Bool {
+            guard let documentDay else { return true }
+            guard day >= documentDay, let start = DocumentInfo.date(fromDay: documentDay),
+                  let latest = DocumentInfo.calendar.date(byAdding: .day, value: 400, to: start) else { return false }
+            return day <= DocumentInfo.dayKey(latest)
+        }
+        var named: String?
+        var sentence: String?
+        var term: Int?
+        for (index, line) in lines.enumerated() {
+            let lower = line.lowercased()
+            let nsLower = lower as NSString
+            let dates = datesWithOffsets(in: line)
+            if named == nil, let label = dueLabels.first(where: { hasLabel(lower, $0) }) {
+                let position = nsLower.range(of: label).location
+                if let day = dates.first(where: { $0.offset >= position && fits($0.day) })?.day {
+                    named = day
+                } else if dates.isEmpty, index + 1 < lines.count, nsLower.length - position - (label as NSString).length <= 3,
+                          let day = datesWithOffsets(in: lines[index + 1]).first?.day, fits(day) {
+                    // A label alone at the end of its line, its day below it (a table).
+                    named = day
+                }
+            }
+            if sentence == nil, payWords.contains(where: lower.contains),
+               let until = untilWords.lazy.map({ nsLower.range(of: $0) }).first(where: { $0.location != NSNotFound }) {
+                sentence = dates.first { $0.offset >= until.location && fits($0.day) }?.day
+            }
+            if term == nil {
+                if immediateWords.contains(where: lower.contains) {
+                    term = 0
+                } else if termWords.contains(where: { hasLabel(lower, $0) }) {
+                    let range = NSRange(line.startIndex..., in: line)
+                    // "2 % Skonto innerhalb 10 Tagen, 30 Tage netto": the longest term is the one that is due.
+                    let days = (dayTerm.matches(in: line, range: range) + netTerm.matches(in: line, range: range)).compactMap { match in
+                        Range(match.range(at: 1), in: line).flatMap { Int(line[$0]) }
+                    }.filter { $0 <= 365 }
+                    term = days.max()
+                }
+            }
+        }
+        if let day = named ?? sentence { return day }
+        guard let term, let start = DocumentInfo.date(fromDay: documentDay),
+              let due = DocumentInfo.calendar.date(byAdding: .day, value: term, to: start) else { return nil }
+        return DocumentInfo.dayKey(due)
     }
 
     // MARK: Amount
@@ -325,7 +405,7 @@ enum DocumentLine {
     /// The line added to the prompt of a summary of a file or an image.
     static var prompt: String {
         let kinds = DocumentKind.allCases.map(\.rawValue).joined(separator: " | ")
-        return "\nDOCUMENT: <kind, one of: \(kinds)> | <date of the document as YYYY-MM-DD, or \"none\"> | <sender: the company, office or person it comes from, or \"none\"> | <total amount as a number with a point and the currency code, like \"119.00 EUR\", or \"none\">"
+        return "\nDOCUMENT: <kind, one of: \(kinds)> | <date of the document as YYYY-MM-DD, or \"none\"> | <sender: the company, office or person it comes from, or \"none\"> | <total amount as a number with a point and the currency code, like \"119.00 EUR\", or \"none\"> | <the day it has to be paid by as YYYY-MM-DD (for a bill or a demand; count a term like \"14 days\" from the date of the document), or \"none\">"
     }
 
     /// Takes the "DOCUMENT:" line off an answer and reads it.
@@ -354,6 +434,10 @@ enum DocumentLine {
         if fields.count > 1, let day = fields[1] { info.day = DocumentExtractor.dates(in: day).first }
         if fields.count > 2, let sender = fields[2], sender.count <= 80 { info.correspondent = sender }
         if fields.count > 3, let amount = fields[3] { info.amount = DocumentExtractor.amount(in: "total " + amount)?.value }
+        // The due day (a fifth field, in answers since payments are followed); not before the document's own day.
+        if fields.count > 4, let due = fields[4], info.canBePaid, let day = DocumentExtractor.dates(in: due).first, day >= (info.day ?? "") {
+            info.dueDay = day
+        }
         return info.isEmpty ? nil : info
     }
 }
