@@ -146,6 +146,9 @@ enum AppMenu {
 
     private static func viewMenu() -> NSMenu {
         let menu = NSMenu(title: "View")
+        item(menu, "Command Bar…", #selector(MainWindowController.showCommandBar(_:)), "k", symbol: "command")
+        item(menu, "Weekly Review", #selector(MainWindowController.showWeeklyReview(_:)), "", symbol: "calendar.badge.checkmark")
+        menu.addItem(.separator())
         item(menu, "Inbox", #selector(MainWindowController.showInbox(_:)), "1")
         item(menu, "To-dos", #selector(MainWindowController.showTodos(_:)), "2")
         item(menu, "Chat", #selector(MainWindowController.showChat(_:)), "3")

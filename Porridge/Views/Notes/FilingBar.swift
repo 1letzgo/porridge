@@ -19,7 +19,7 @@ struct FilingBar: View {
             HStack(spacing: 8) {
                 ForEach(suggested) { project in
                     SuggestionPill(name: project.name) {
-                        withAnimation(.snappy) { Inbox.file(note, into: Projects.key(project), in: context) }
+                        withAnimation(.snappy) { Undoable.move([note], toBowl: Projects.key(project), named: project.name, in: context) }
                     } onDismiss: {
                         withAnimation(.snappy) { Inbox.dismissSuggestions(note, in: context) }
                     }

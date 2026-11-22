@@ -103,7 +103,10 @@ final class DictationSettingsPane: SettingsPane {
         enabled.isOn = isEnabled
         recorder.refresh()
 
-        if controller.shortcutUnavailable, isEnabled {
+        if let problem = recorder.problem {
+            hint.stringValue = problem
+            hint.textColor = .brandDangerText
+        } else if controller.shortcutUnavailable, isEnabled {
             hint.stringValue = "Another app already uses this shortcut. Choose a different one."
             hint.textColor = .brandDangerText
         } else if controller.shortcutNeedsAccessibility, isEnabled {
@@ -165,29 +168,39 @@ private final class PermissionControl: NSStackView {
     }
 }
 
-/// Click, then press the new shortcut: a key with modifiers, or one of the right-hand modifier keys on its own.
-/// Escape cancels.
+/// Click, then press the new shortcut: a key with modifiers, or (for dictation) one of the right-hand modifier keys
+/// on its own. Escape cancels. A shortcut that clashes with another of Porridge's, with macOS or with a menu command
+/// is not taken: `problem` says why.
 final class ShortcutRecorderControl: NSButton {
     private var recording = false
     private var monitor: Any?
     private var flagsMonitor: Any?
     private var onChange: (() -> Void)?
+    private var shortcutAction: GlobalShortcutAction = .dictation
+    /// Why the last key pressed was not taken; nil once one is.
+    private(set) var problem: String?
 
-    convenience init(onChange: @escaping () -> Void) {
+    convenience init(action: GlobalShortcutAction = .dictation, onChange: @escaping () -> Void) {
         self.init(frame: .zero)
+        shortcutAction = action
         self.onChange = onChange
         bezelStyle = .push
         setButtonType(.momentaryPushIn)
         target = self
-        action = #selector(clicked)
+        self.action = #selector(clicked)
         translatesAutoresizingMaskIntoConstraints = false
         widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
         refresh()
     }
 
+    private var currentDescription: String {
+        if shortcutAction == .dictation { return DictationSettings.shortcutDescription }
+        return shortcutAction.key?.display ?? String(localized: "None")
+    }
+
     func refresh() {
-        title = recording ? "Press Shortcut…" : DictationSettings.shortcutDescription
-        setAccessibilityLabel(recording ? "Press the new shortcut" : "Shortcut: \(DictationSettings.shortcutDescription)")
+        title = recording ? "Press Shortcut…" : currentDescription
+        setAccessibilityLabel(recording ? "Press the new shortcut" : "Shortcut: \(currentDescription)")
         setAccessibilityHelp("Click, then press a key combination")
     }
 
@@ -197,10 +210,12 @@ final class ShortcutRecorderControl: NSButton {
 
     private func start() {
         recording = true
+        problem = nil
         refresh()
-        // The current shortcut is pressed here to choose it again, not to dictate.
-        DictationController.shared.suspendShortcut()
+        // The current shortcuts are pressed here to choose them again, not to dictate or record.
+        GlobalShortcuts.shared.suspend()
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            guard self?.shortcutAction.allowsModifierOnly == true else { return event }
             let keyCode = Int(event.keyCode)
             guard let label = DictationSettings.modifierKeyLabels[keyCode],
                   let mask = ModifierKeyMonitor.mask(for: keyCode),
@@ -227,23 +242,32 @@ final class ShortcutRecorderControl: NSButton {
     }
 
     private func save(keyCode: Int, modifiers: Int, label: String) {
-        let defaults = UserDefaults.standard
-        defaults.set(keyCode, forKey: DictationSettings.keyCodeKey)
-        defaults.set(modifiers, forKey: DictationSettings.modifiersKey)
-        defaults.set(label, forKey: DictationSettings.keyLabelKey)
-        stop()
+        let key = ShortcutKey(keyCode: keyCode, modifiers: modifiers, label: label)
+        if let conflict = GlobalShortcuts.shared.conflict(for: key, action: shortcutAction) {
+            NSSound.beep()
+            problem = conflict + " " + String(localized: "Choose a different one.")
+            stop()
+            return
+        }
+        problem = nil
+        recording = false
+        shortcutAction.set(key)
+        stop(wasRecording: true)
     }
 
     func stop() {
+        stop(wasRecording: recording)
+    }
+
+    private func stop(wasRecording was: Bool) {
         // Back on, with the old shortcut or the new one.
-        let was = recording
         recording = false
         if let monitor { NSEvent.removeMonitor(monitor) }
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         monitor = nil
         flagsMonitor = nil
         if was {
-            DictationController.shared.reloadShortcut()
+            GlobalShortcuts.shared.reload()
             refresh()
             onChange?()
         }

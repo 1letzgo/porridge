@@ -44,6 +44,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         // A shortcut being recorded ends with the window.
         tabs.tabViewItems.forEach { ($0.viewController as? DictationSettingsPane)?.stopRecording() }
+        tabs.tabViewItems.forEach { ($0.viewController as? ShortcutsSettingsPane)?.stopRecording() }
     }
 }
 
@@ -57,6 +58,7 @@ final class SettingsTabController: NSTabViewController {
         add(RecordingSettingsPane(), id: "recording", label: "Recording", symbol: "waveform")
         add(AISettingsPane(), id: "ai", label: "AI", symbol: "sparkles")
         add(DictationSettingsPane(), id: "dictation", label: "Dictation", symbol: "mic")
+        add(ShortcutsSettingsPane(), id: "shortcuts", label: "Shortcuts", symbol: "command")
         add(MCPSettingsPane(), id: "mcp", label: "MCP Server", symbol: "point.3.connected.trianglepath.dotted")
     }
 

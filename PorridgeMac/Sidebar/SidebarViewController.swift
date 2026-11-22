@@ -299,18 +299,16 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let context = library.context
         if let ids = NotePasteboard.noteIDs(from: pasteboard), !ids.isEmpty {
             let notes = ids.compactMap { library.note($0) }
-            for note in notes {
-                switch page {
-                case .project(let id):
-                    Inbox.file(note, into: id.uuidString, in: context)
-                case .inbox:
-                    note.projectIDs = []
-                    note.updatedAt = Date()
-                case .trash:
-                    NoteStore.trash(note, in: context)
-                default:
-                    break
-                }
+            // Each with its undo toast (and ⌘Z).
+            switch page {
+            case .project(let id):
+                Undoable.move(notes, toBowl: id.uuidString, named: library.project(id)?.name, in: context)
+            case .inbox:
+                Undoable.move(notes, toBowl: nil, named: nil, in: context)
+            case .trash:
+                Undoable.trash(notes, in: context)
+            default:
+                break
             }
             library.save()
             return true

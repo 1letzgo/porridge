@@ -62,7 +62,7 @@ struct NoteListRow: View {
                     PaidButton(notes: [note])
                 }
                 Button { togglePin() } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
-                ProjectMenu(assigned: note.projectIDs) { Projects.toggle($0, on: note, in: context) }
+                ProjectMenu(assigned: note.projectIDs) { Undoable.toggle($0, on: note, in: context) }
                 if note.canBeTodo {
                     Button { withAnimation(.snappy) { Todos.setTodo(!note.isTodo, note, in: context) } } label: {
                         Label(note.isTodo ? "Convert to Note" : "Convert to To-do", systemImage: note.isTodo ? "text.alignleft" : "checklist")

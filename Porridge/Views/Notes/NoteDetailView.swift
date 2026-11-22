@@ -536,7 +536,7 @@ struct NoteDetailView: View {
                 // The bowl suggested for a note in the inbox: a tap files it there.
                 ForEach(suggestedProjects) { project in
                     SuggestionPill(name: project.name) {
-                        withAnimation(.snappy) { Inbox.file(note, into: Projects.key(project), in: context) }
+                        withAnimation(.snappy) { Undoable.move([note], toBowl: Projects.key(project), named: project.name, in: context) }
                     } onDismiss: {
                         withAnimation(.snappy) { Inbox.dismissSuggestions(note, in: context) }
                     }
@@ -546,8 +546,8 @@ struct NoteDetailView: View {
                 }
                 ProjectPills(
                     assigned: note.projectIDs,
-                    onChoose: { Inbox.file(note, into: Projects.key($0), in: context) },
-                    onRemove: { Projects.remove($0, from: note, in: context) }
+                    onChoose: { Undoable.move([note], toBowl: Projects.key($0), named: $0.name, in: context) },
+                    onRemove: { Undoable.remove($0, from: note, in: context) }
                 )
                 .disabled(isReadOnly)
                 // A stored file: what it is as a document, after its bowls; a tap sets it (and so marks it as one).
@@ -599,8 +599,7 @@ struct NoteDetailView: View {
     }
 
     private func removeTag(_ tag: String) {
-        note.labels.removeAll { $0.lowercased() == tag.lowercased() }
-        try? context.save()
+        Undoable.removeTag(tag, from: note, in: context)
     }
 
     // MARK: - Toolbar
@@ -760,7 +759,7 @@ struct NoteDetailView: View {
                         Label("Delete Recording", systemImage: "waveform.slash")
                     }
                 }
-                Button(role: .destructive) { NoteStore.trash(note, in: context); onClose() } label: {
+                Button(role: .destructive) { Undoable.trash([note], in: context); onClose() } label: {
                     Label("Delete", systemImage: "trash")
                 }
             }

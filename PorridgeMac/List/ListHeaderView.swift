@@ -7,6 +7,9 @@ final class ListHeaderView: NSView {
     var onTag: ((String) -> Void)?
     var onRemoveTag: ((String) -> Void)?
     var onEmptyTrash: (() -> Void)?
+    /// The Inbox's "Weekly Review", and a click on the hint of the day.
+    var onReview: (() -> Void)?
+    var onHint: ((DailyHint) -> Void)?
 
     private let icon = NSImageView()
     private let iconBox = NSView()
@@ -15,6 +18,7 @@ final class ListHeaderView: NSView {
     private let tags = NSStackView()
     private let trailing = NSStackView()
     private var iconTint: NSColor = .brandSky
+    private let hintRow = DailyHintRow()
 
     init() {
         super.init(frame: .zero)
@@ -33,7 +37,8 @@ final class ListHeaderView: NSView {
         trailing.orientation = .horizontal
         trailing.spacing = 6
         let titleRow = NSStackView.horizontal([iconBox, title, NSView(), trailing], spacing: 8)
-        let stack = NSStackView.vertical([titleRow, filters, tags], spacing: 10)
+        let stack = NSStackView.vertical([titleRow, hintRow, filters, tags], spacing: 10)
+        hintRow.onOpen = { [weak self] hint in self?.onHint?(hint) }
         addSubview(stack)
         NSLayoutConstraint.activate([
             iconBox.widthAnchor.constraint(equalToConstant: 22),
@@ -41,6 +46,7 @@ final class ListHeaderView: NSView {
             icon.centerXAnchor.constraint(equalTo: iconBox.centerXAnchor),
             icon.centerYAnchor.constraint(equalTo: iconBox.centerYAnchor),
             titleRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            hintRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 10),
@@ -81,6 +87,17 @@ final class ListHeaderView: NSView {
         iconBox.layer?.backgroundColor = tint.resolved(for: self)
 
         trailing.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        // The Inbox: what came in this week, and the hint of the day.
+        if page == .inbox {
+            let review = ActionButton(title: "", symbol: "calendar.badge.checkmark") { [weak self] in self?.onReview?() }
+            review.controlSize = .small
+            review.bezelStyle = .push
+            review.toolTip = String(localized: "Weekly Review")
+            review.setAccessibilityLabel(String(localized: "Weekly Review"))
+            trailing.addArrangedSubview(review)
+        }
+        let hint = page == .inbox ? DailyHints.shared.current : nil
+        hintRow.show(hint)
         if page == .trash, library.notes.contains(where: \.isDeleted) {
             let button = NSButton(title: "Delete All…", target: self, action: #selector(emptyTrash))
             button.controlSize = .small
@@ -187,5 +204,62 @@ final class ListHeaderView: NSView {
 
     @objc private func emptyTrash() {
         onEmptyTrash?()
+    }
+}
+
+/// The hint of the day in the Inbox's head: one quiet line; a click opens what it is about, the cross closes it.
+private final class DailyHintRow: NSView {
+    var onOpen: ((DailyHint) -> Void)?
+    private var hint: DailyHint?
+    private let icon = NSImageView()
+    private lazy var text = ActionButton(title: "") { [weak self] in
+        guard let self, let hint = self.hint else { return }
+        self.onOpen?(hint)
+    }
+    private lazy var close = ActionButton(title: "", symbol: "xmark") { DailyHints.shared.close() }
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.cornerCurve = .continuous
+        icon.contentTintColor = .brandSkyText
+        text.isBordered = false
+        text.alignment = .left
+        text.lineBreakMode = .byTruncatingTail
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        close.isBordered = false
+        close.contentTintColor = .secondaryLabelColor
+        close.toolTip = String(localized: "Close Hint")
+        close.setAccessibilityLabel(String(localized: "Close Hint"))
+        let row = NSStackView.horizontal([icon, text, NSView(), close], spacing: 8)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+        ])
+        isHidden = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = NSColor.brandSky.withAlphaComponent(0.14).resolved(for: self)
+    }
+
+    func show(_ hint: DailyHint?) {
+        self.hint = hint
+        isHidden = hint == nil
+        guard let hint else { return }
+        icon.image = .symbol(hint.systemImage, size: 12, weight: .semibold)
+        text.title = hint.message
+        text.setAccessibilityLabel(hint.message)
+        needsDisplay = true
     }
 }

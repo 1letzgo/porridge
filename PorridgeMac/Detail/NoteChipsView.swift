@@ -130,7 +130,7 @@ final class NoteChipsView: NSView {
 
     @objc private func fileSuggested(_ sender: NSButton) {
         guard let note, let key = sender.identifier?.rawValue else { return }
-        Inbox.file(note, into: key, in: Library.shared.context)
+        Undoable.move([note], toBowl: key, named: Library.shared.project(key: key)?.name, in: Library.shared.context)
     }
 
     @objc private func dropSuggestions() {
@@ -140,7 +140,7 @@ final class NoteChipsView: NSView {
 
     @objc private func removeBucket(_ sender: NSButton) {
         guard let note, let key = sender.identifier?.rawValue, let project = Library.shared.project(key: key) else { return }
-        Projects.toggle(project, on: note, in: Library.shared.context)
+        Undoable.toggle(project, on: note, in: Library.shared.context)
     }
 
     @objc private func showBuckets(_ sender: NSButton) {
@@ -151,20 +151,19 @@ final class NoteChipsView: NSView {
 
     @objc private func removeTag(_ sender: NSButton) {
         guard let note, let tag = sender.identifier?.rawValue else { return }
-        note.labels.removeAll { $0.lowercased() == tag.lowercased() }
-        Library.shared.save()
+        Undoable.removeTag(tag, from: note, in: Library.shared.context)
     }
 
     @objc private func addTag() { onAddTag?() }
 
     @objc private func clearDocument() {
         guard let note else { return }
-        Documents.clear(note, in: Library.shared.context)
+        Undoable.clearDocument(note, in: Library.shared.context)
     }
 
     @objc private func togglePaid() {
         guard let note else { return }
-        Documents.apply(.paid(note.documentInfo?.paid != true), to: [note], in: Library.shared.context)
+        Undoable.apply(.paid(note.documentInfo?.paid != true), to: [note], in: Library.shared.context)
     }
 
     @objc private func editDocument() {

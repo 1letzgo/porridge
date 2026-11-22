@@ -111,6 +111,12 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             if !self.state.searchTags.contains(where: { $0.lowercased() == tag.lowercased() }) { self.state.searchTags.append(tag) }
         }
         header.onRemoveTag = { [weak self] tag in self?.state.searchTags.removeAll { $0.lowercased() == tag.lowercased() } }
+        header.onReview = { [weak self] in
+            (self?.view.window?.windowController as? MainWindowController)?.showWeeklyReview(nil)
+        }
+        header.onHint = { [weak self] hint in
+            DailyHintFeed.open(hint, in: self?.view.window?.windowController as? MainWindowController)
+        }
         header.onEmptyTrash = { [weak self] in
             guard let self, let window = self.view.window else { return }
             NoteOperations.confirmEmptyTrash(in: window, state: self.state)

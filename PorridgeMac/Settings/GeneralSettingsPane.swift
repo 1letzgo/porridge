@@ -12,6 +12,10 @@ final class GeneralSettingsPane: SettingsPane {
     private lazy var iCloudSync = SettingsCheckbox("iCloud Sync") { [weak self] on in
         self?.syncTapped(on ? .iCloud : .off)
     }
+    private lazy var dailyHint = SettingsCheckbox("Daily hint in the Inbox") { on in
+        UserDefaults.standard.set(on, forKey: DailyHint.enabledKey)
+        DailyHints.shared.refresh(notes: Library.shared.notes)
+    }
 
     override func build() {
         form.row("Your Name", nameField)
@@ -29,6 +33,10 @@ final class GeneralSettingsPane: SettingsPane {
         form.note("A Markdown file for each entry with its attachments and recordings next to it, and all data as JSON, in a folder.")
         form.separator()
 
+        form.row("Hints", dailyHint)
+        form.note("At most one a day, across your devices. Hints you leave alone go quiet for a while.")
+        form.separator()
+
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
         form.row("Version", NSTextField.label(version, color: .secondaryLabelColor))
         form.row("Acknowledgements", NSButton.push("Show…") { [weak self] in
@@ -43,6 +51,7 @@ final class GeneralSettingsPane: SettingsPane {
         plaudButton.title = signedIn ? "Sign Out" : "Sign In…"
         plaudButton.hasDestructiveAction = signedIn
         iCloudSync.isOn = SyncMode.chosen == .iCloud
+        dailyHint.isOn = DailyHint.isEnabled
     }
 
     /// Asks before switching sync; the checkbox shows the stored mode until the user confirms.
