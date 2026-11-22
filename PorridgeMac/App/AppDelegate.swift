@@ -27,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The alert a minute before a meeting, and the countdown in the menu bar.
         MeetingAlertController.shared.onTick = { [weak self] in self?.statusItem?.refreshCountdown() }
         MeetingAlertController.shared.start()
+        // The local MCP server, when it is turned on in Settings.
+        MCPService.shared.applySettings()
         #if DEBUG
         DebugDriver.start()
         #endif

@@ -165,6 +165,8 @@ targets:
         com.apple.security.device.audio-input: true
         com.apple.security.personal-information.calendars: true
         com.apple.security.device.bluetooth: true
+        # The local MCP server (Settings › MCP Server) listens on 127.0.0.1 only.
+        com.apple.security.network.server: true
     info:
       path: PorridgeMac/Info.plist
       properties:
