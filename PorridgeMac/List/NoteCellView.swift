@@ -249,7 +249,7 @@ final class NoteCellView: NSTableCellView {
 
     @objc private func fileSuggested(_ sender: NSButton) {
         guard let id = noteID, let note = Library.shared.note(id), let key = sender.identifier?.rawValue else { return }
-        Inbox.file(note, into: key, in: Library.shared.context)
+        Undoable.move([note], toBowl: key, named: Library.shared.project(key: key)?.name, in: Library.shared.context)
     }
 
     @objc private func dismissSuggestions() {

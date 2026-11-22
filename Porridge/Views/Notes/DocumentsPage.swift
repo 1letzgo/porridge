@@ -127,7 +127,8 @@ struct NoteSelectionBar: View {
 
     private func change(_ change: Documents.BulkChange) {
         guard !chosen.isEmpty else { return }
-        withAnimation(.snappy) { _ = Documents.apply(change, to: chosenNotes, in: context) }
+        let bowlName: String? = if case .move(let bowl?) = change { projects.first { Projects.key($0) == bowl }?.name } else { nil }
+        withAnimation(.snappy) { Undoable.apply(change, to: chosenNotes, bowlName: bowlName, in: context) }
     }
 
     private func merge(into target: Note, from documents: [Note]) async {
@@ -184,7 +185,7 @@ struct DocumentChip: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(info.sentence)
                     .accessibilityHint("Edit")
-                    Button { withAnimation(.snappy) { Documents.clear(note, in: context) } } label: {
+                    Button { withAnimation(.snappy) { Undoable.clearDocument(note, in: context) } } label: {
                         Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.primary)
                     }
                     .buttonStyle(.plain)

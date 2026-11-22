@@ -8,6 +8,11 @@ struct RootView: View {
     var body: some View {
         // The settings are a page of the list (NotesView).
         NotesView()
+            // The undo toast after deleting, moving or clearing something; above the floating buttons.
+            .overlay(alignment: .bottom) {
+                UndoToastView()
+                    .padding(.bottom, 92)
+            }
             .fullScreenCoverOrSheet(isPresented: .init(get: { !onboardingDone }, set: { onboardingDone = !$0 })) {
                 OnboardingView { onboardingDone = true }
             }

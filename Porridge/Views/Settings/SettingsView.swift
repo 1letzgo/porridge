@@ -177,6 +177,7 @@ struct SettingsView: View {
             youCard
             plaudCard
             SyncCard()
+            HintCard()
             aboutCard
         case .recording:
             transcriptionCard
@@ -491,6 +492,22 @@ private struct SyncCard: View {
             Button("Cancel", role: .cancel) {}
         } message: { target in
             Text(target.confirmMessage)
+        }
+    }
+}
+
+/// The quiet hint of the day in the Inbox ("12 entries in the Inbox"): on or off, on this device.
+private struct HintCard: View {
+    @AppStorage(DailyHint.enabledKey) private var enabled = true
+
+    var body: some View {
+        SettingsCard(title: "Hints") {
+            Toggle("Daily Hint in the Inbox", isOn: $enabled)
+                .font(.body)
+                .tint(Color.brandSky)
+            Text("At most one a day, across your devices. Hints you leave alone go quiet for a while.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 }

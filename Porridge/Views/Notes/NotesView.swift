@@ -57,6 +57,9 @@ struct NotesView: View {
     @State private var chosen = Set<UUID>()
     /// A note in Recently Deleted that is about to go for good.
     @State private var deletingNow: Note?
+    /// The weekly review (from the Inbox's bar).
+    @State private var showReview = false
+    @AppStorage(DailyHint.enabledKey) private var hintsEnabled = true
 
     /// The note that is open, a new one not saved yet included.
     private var selectedNote: Note? {
@@ -198,6 +201,9 @@ struct NotesView: View {
         .onReceive(NotificationCenter.default.publisher(for: .plaudAccountChanged)) { _ in
             plaudSignedIn = PlaudAccount.isSignedIn
         }
+        .modifier(ReviewAndHint(
+            showReview: $showReview, notes: notes, projects: projects, signature: indexSignature, hintsEnabled: hintsEnabled
+        ) { openNote($0) })
         .sheet(isPresented: $showCalendar) {
             RecordMeetingSheet(
                 onPick: { appointment in startRecording(for: appointment) },
@@ -491,6 +497,9 @@ struct NotesView: View {
         return VStack(spacing: 0) {
             if isSelecting {
                 NoteSelectionBar(notes: waiting, chosen: $chosen) { endSelecting() }
+            } else if let hint = DailyHints.shared.current {
+                DailyHintBanner(hint: hint) { openHint(hint) }
+                    .transition(.opacity)
             }
             Group {
                 if isSelecting {
@@ -507,6 +516,15 @@ struct NotesView: View {
                 EmptyStateView(title: "Inbox Empty", message: "What is new or in no bowl waits here.", systemImage: "tray")
             }
         }
+        }
+    }
+
+    /// The hint of the day was tapped: what it is about opens.
+    private func openHint(_ hint: DailyHint) {
+        switch hint.kind {
+        case .meetingTodos: if let id = hint.noteID { openNote(id) }
+        case .overdue: page = .todos
+        case .inbox: break
         }
     }
 
@@ -778,6 +796,13 @@ struct NotesView: View {
         }
         if shown == .home, notes.contains(where: \.isDeleted) {
             trashButton
+        }
+        // What came in this week, from the Inbox.
+        if shown == .inbox, !isSelecting {
+            Button { showReview = true } label: {
+                Label("Weekly Review", systemImage: "calendar.badge.checkmark")
+            }
+            .help("Weekly Review")
         }
         // Several entries of the Inbox or a bowl at once: into a bowl, their kind or sender, merged.
         if shown == .inbox || project(on: shown) != nil {
@@ -1075,7 +1100,7 @@ struct NotesView: View {
             deletingNow = note
         } else {
             if selection == note.id { selection = nil }
-            NoteStore.trash(note, in: context)
+            Undoable.trash([note], in: context)
         }
     }
 
@@ -1276,6 +1301,32 @@ extension EnvironmentValues {
 }
 
 /// Files come into the list through a picker ("Photo or File") or by dropping them on it (Mac, iPad).
+/// The weekly review's sheet, and the hint of the day kept up with the entries, the setting and the day.
+private struct ReviewAndHint: ViewModifier {
+    @Binding var showReview: Bool
+    let notes: [Note]
+    let projects: [NoteFolder]
+    let signature: Int
+    let hintsEnabled: Bool
+    var openNote: (UUID) -> Void
+    @Environment(\.scenePhase) private var scenePhase
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $showReview) {
+                WeeklyReviewView(notes: notes, bowls: projects, onOpen: { id in
+                    showReview = false
+                    openNote(id)
+                }, onClose: { showReview = false })
+            }
+            .task(id: signature) { DailyHints.shared.refresh(notes: notes) }
+            .onChange(of: hintsEnabled) { DailyHints.shared.refresh(notes: notes) }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { DailyHints.shared.refresh(notes: notes) }
+            }
+    }
+}
+
 private struct FileIntake: ViewModifier {
     @Binding var isPicking: Bool
     let add: ([URL]) -> Void

@@ -27,8 +27,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         DebugDriver.start()
         #endif
-        // The shortcut works even when no window is open.
-        DictationController.shared.reloadShortcut()
+        // The shortcuts work even when no window is open.
+        GlobalShortcuts.shared.reload()
+        // The undo toast, the hint of the day.
+        UndoToastPanel.start()
+        DailyHintFeed.start()
         Task { @MainActor in
             await Library.shared.start()
             // Loading the speech model takes a moment; do it before the first dictation.
@@ -53,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if DictationController.shared.shortcutNeedsAccessibility || DictationController.shared.shortcutUnavailable {
             DictationController.shared.reloadShortcut()
         }
+        if !GlobalShortcuts.shared.unavailable.isEmpty { GlobalShortcuts.shared.reload() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

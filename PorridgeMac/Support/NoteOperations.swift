@@ -71,18 +71,18 @@ enum NoteOperations {
     /// an entry is in one bowl at most).
     static func bucketMenu(for notes: [Note], window: NSWindow?) -> NSMenu {
         let menu = NSMenu()
-        let inbox = menu.add("Inbox", symbol: "tray") { Documents.apply(.move(toBowl: nil), to: notes, in: context) }
+        let inbox = menu.add("Inbox", symbol: "tray") { Undoable.move(notes, toBowl: nil, named: nil, in: context) }
         inbox.state = notes.allSatisfy(\.isInInbox) ? .on : .off
         menu.addSeparator()
         for project in library.activeProjects {
             let key = Projects.key(project)
-            let item = menu.add(project.name, symbol: "folder") { Documents.apply(.move(toBowl: key), to: notes, in: context) }
+            let item = menu.add(project.name, symbol: "folder") { Undoable.move(notes, toBowl: key, named: project.name, in: context) }
             item.state = notes.allSatisfy { $0.projectIDs == [key] } ? .on : (notes.contains { $0.projectIDs.contains(key) } ? .mixed : .off)
         }
         menu.addSeparator()
         menu.add("New Bowl…") {
             BucketActions.create(in: window) { project in
-                notes.forEach { Inbox.file($0, into: Projects.key(project), in: context) }
+                Undoable.move(notes, toBowl: Projects.key(project), named: project.name, in: context)
             }
         }
         return menu
@@ -95,10 +95,10 @@ enum NoteOperations {
         let kinds = NSMenuItem(title: "Document Kind", action: nil, keyEquivalent: "")
         kinds.image = NSImage(systemSymbolName: "tag", accessibilityDescription: nil)
         let kindMenu = NSMenu()
-        kindMenu.add("Not Set") { Documents.apply(.kind(nil), to: documents, in: context) }
+        kindMenu.add("Not Set") { Undoable.apply(.kind(nil), to: documents, in: context) }
         kindMenu.addSeparator()
         for kind in DocumentKind.allCases {
-            let item = kindMenu.add(kind.title, symbol: kind.symbol) { Documents.apply(.kind(kind), to: documents, in: context) }
+            let item = kindMenu.add(kind.title, symbol: kind.symbol) { Undoable.apply(.kind(kind), to: documents, in: context) }
             item.state = documents.allSatisfy { $0.documentInfo?.kind == kind } ? .on : .off
         }
         kinds.submenu = kindMenu
@@ -109,7 +109,7 @@ enum NoteOperations {
                 "Sender", message: "Leave it empty to remove the sender.", placeholder: "Company, office or person",
                 value: current.count == 1 ? current.first ?? "" : "", action: "Set", validate: { _ in true }, in: window
             ) { sender in
-                Documents.apply(.sender(sender), to: documents, in: context)
+                Undoable.apply(.sender(sender), to: documents, in: context)
             }
         }
         if documents.count == 1, let note = documents.first, DocumentFiles.pdf(of: note) != nil {
@@ -180,16 +180,12 @@ enum NoteOperations {
         NotePasteboard.write(notes, to: .general)
     }
 
-    /// Moves notes to Recently Deleted; they can come back from there for 30 days, so nothing asks first.
+    /// Moves notes to Recently Deleted; they can come back from there for 30 days, so nothing asks first, and the
+    /// toast (or ⌘Z) brings them back at once.
     static func trash(_ notes: [Note], state: WindowState) {
         let ids = Set(notes.map(\.id))
-        for note in notes {
-            if note.modelContext == nil, state.draft?.id == note.id {
-                state.draft = nil
-            } else {
-                NoteStore.trash(note, in: context)
-            }
-        }
+        if let draft = state.draft, ids.contains(draft.id), draft.modelContext == nil { state.draft = nil }
+        Undoable.trash(notes.filter { $0.modelContext != nil }, in: context)
         state.selection.removeAll { ids.contains($0) }
     }
 
