@@ -24,4 +24,5 @@ enum NoteCommand: Int, CaseIterable {
     case showTranscript
     case showArticle
     case suggestTodos
+    case splitIntoBowl
 }

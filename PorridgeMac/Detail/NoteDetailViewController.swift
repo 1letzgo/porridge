@@ -41,6 +41,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private let statusPanel = PanelView()
     private let speakers = FlowView()
     private let enhancedBanner = PanelView()
+    /// After "Split into Bowl…": what it made, while it can be taken back.
+    private let splitBanner = PanelView()
+    private var lastSplit: BowlChange?
     private let tabs = NSSegmentedControl()
     private var tabOrder: [NoteTab] = []
 
@@ -48,6 +51,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private let content = NSView()
     private var editor: NoteEditorView!
     private let addSubtask = ActionButton(title: "Add Subtask", symbol: "plus.circle") {}
+    private let taskBar = TaskDetectionBarView()
     private let dictationPreview = NSTextView()
     private let dictationPreviewScroll = NSScrollView()
     private let dictationStatus = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), color: .controlAccentColor)
@@ -139,10 +143,11 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         tabs.action = #selector(tabChosen)
         tabs.setAccessibilityLabel("Show")
 
-        let head = NSStackView.vertical([titleRow, sourcePill, linkButton, meta, deletedBanner, chips, attachments, statusPanel, speakers, enhancedBanner, tabs], spacing: 10)
+        let head = NSStackView.vertical([titleRow, sourcePill, linkButton, meta, deletedBanner, chips, attachments, statusPanel, speakers, enhancedBanner, splitBanner, tabs], spacing: 10)
         head.setCustomSpacing(4, after: titleRow)
         head.setCustomSpacing(4, after: linkButton)
         head.setCustomSpacing(14, after: enhancedBanner)
+        head.setCustomSpacing(14, after: splitBanner)
         head.setCustomSpacing(14, after: speakers)
 
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -188,6 +193,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             statusPanel.widthAnchor.constraint(equalTo: head.widthAnchor),
             speakers.widthAnchor.constraint(equalTo: head.widthAnchor),
             enhancedBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
+            splitBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
             deletedBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
             meta.widthAnchor.constraint(lessThanOrEqualTo: head.widthAnchor),
             todoBox.widthAnchor.constraint(equalToConstant: 28),
@@ -216,7 +222,13 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         addSubtask.isBordered = false
         addSubtask.contentTintColor = .brandTaskText
         addSubtask.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
-        editor.footer = addSubtask
+        // Lines that read like tasks, offered as to-dos under the text (never on links or saved files).
+        taskBar.beforeChange = { [weak self] in self?.editor.flush() }
+        taskBar.afterChange = { [weak self] in
+            self?.editor.reloadIfChanged()
+            self?.library.save()
+        }
+        editor.footer = NSStackView.vertical([addSubtask, taskBar], spacing: 4)
 
         dictationPreview.isEditable = false
         dictationPreview.isSelectable = false
@@ -366,6 +378,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         }
         dictation.onStopRequested = { [weak self] in Task { await self?.finishDictation() } }
         observers.append(Observing { [weak self] in self?.render() })
+        taskBar.schedule(for: note, immediately: true)
         // Other notes count too: the to-dos made from this one, its bowls.
         libraryToken = library.observe { [weak self] in
             guard let self else { return }
@@ -416,6 +429,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         library.stopObserving(libraryToken)
         playerBar.stopObserving()
         editor.stop()
+        taskBar.stop()
         micTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
         super.removeFromParent()
@@ -511,6 +525,17 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         if canUndo {
             enhancedBanner.show(symbol: "wand.and.stars", text: "Enhanced with AI", tint: .brandSky, action: ("Undo", { [weak self] in
                 self?.perform(.undoEnhance)
+            }))
+        }
+
+        splitBanner.isHidden = lastSplit == nil
+        if let lastSplit {
+            splitBanner.show(symbol: "folder.badge.plus", text: lastSplit.summary, tint: .brandProject, action: ("Undo", { [weak self] in
+                guard let self, let change = self.lastSplit else { return }
+                self.lastSplit = nil
+                BowlMaking.undo(change, in: self.library.context)
+                self.library.setNeedsReload()
+                self.render()
             }))
         }
 
@@ -777,6 +802,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         // A box ticked in the editor, a subtask added: the to-do follows.
         TodoBridge.follow(note, from: old)
         saveIfFilled()
+        taskBar.schedule(for: note)
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -1043,6 +1069,14 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
                     NoteSheets.continueRecording(self.note, in: self)
                 }
             }
+        case .splitIntoBowl:
+            editor.flush()
+            presentAsSheet(SplitNoteViewController(note: note) { [weak self] change in
+                guard let self else { return }
+                self.lastSplit = change
+                self.library.setNeedsReload()
+                self.render()
+            })
         case .merge:
             NoteSheets.merge(note, in: self)
         case .export:
@@ -1095,6 +1129,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             return note.summary != nil && !deleted
         case .continueRecording:
             return !deleted && note.isRecording && !note.isLink && canContinueRecording
+        case .splitIntoBowl:
+            return !deleted && stage == nil && NoteSplitter.canSplit(note)
         case .merge:
             return !deleted && !note.segments.isEmpty && stage == nil && note.status == .ready
         case .export:
