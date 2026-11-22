@@ -85,6 +85,9 @@ final class NoteIndex {
     /// All passages, newest note first.
     var chunks: [ChatChunk] { flat }
 
+    /// The passages of each entry, for the similar entries (`SimilarEntries`).
+    var chunksByNote: [UUID: [ChatChunk]] { entries.mapValues(\.chunks) }
+
     // MARK: - Embeddings
 
     private func embedMissing() {

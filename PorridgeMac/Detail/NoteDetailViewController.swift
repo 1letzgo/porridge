@@ -71,6 +71,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
     // Bottom
     private lazy var playerBar = PlayerBarView(player: player)
+    /// The entries most like this one, under the page.
+    private let similar = SimilarEntriesView()
     private let fetchBar = NSStackView()
     private let fetchButton = PillButton(title: "Download Recording", symbol: "arrow.down.circle", tint: .brandSky, target: nil, action: nil)
     private let fetchMessage = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .brandDangerText)
@@ -155,7 +157,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         fetchBar.alignment = .centerX
         fetchBar.spacing = 6
         playerBar.onDelete = { [weak self] in self?.confirmDeleteRecording() }
-        let bottom = NSStackView.vertical([playerBar, fetchBar], spacing: 8, alignment: .centerX)
+        similar.onOpen = { [weak self] other in self?.state.reveal(other) }
+        let bottom = NSStackView.vertical([similar, playerBar, fetchBar], spacing: 8, alignment: .leading)
 
         page.addSubview(head)
         page.addSubview(content)
@@ -200,6 +203,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             bottom.trailingAnchor.constraint(equalTo: page.trailingAnchor),
             bottom.bottomAnchor.constraint(equalTo: page.bottomAnchor),
             playerBar.widthAnchor.constraint(equalTo: bottom.widthAnchor),
+            // Room on the right for the microphone's button, which lies over the corner.
+            similar.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -72),
+            fetchBar.widthAnchor.constraint(equalTo: bottom.widthAnchor),
             micButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -22),
             micButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -18),
             micTime.trailingAnchor.constraint(equalTo: micButton.leadingAnchor, constant: -10),
@@ -372,7 +378,13 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             // Deleted for good (here or on another device): the window closes it; reading it now would trap.
             guard self.note.modelContext == nil || self.library.note(self.note.id) != nil else { return }
             self.render()
+            self.renderSimilar()
         }
+        // The similar entries follow the index (worked out again only when it changed).
+        observers.append(Observing { [weak self] in
+            _ = NoteIndex.shared.version
+            self?.renderSimilar()
+        })
         observers.append(Observing { [weak self] in
             guard let self else { return }
             let time = self.player.isPlaying ? self.player.currentTime : nil
@@ -567,6 +579,14 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
         showErrors()
         (view.window?.windowController as? NoteWindowController)?.window?.title = note.displayTitle
+    }
+
+    private func renderSimilar() {
+        guard !note.isDeleted, note.modelContext != nil else {
+            similar.show([])
+            return
+        }
+        similar.show(SimilarEntries.similar(to: note, among: library.notes))
     }
 
     private func metaLine(isTodo: Bool, isDone: Bool) -> String {

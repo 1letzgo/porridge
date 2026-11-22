@@ -69,6 +69,7 @@ final class ListHeaderView: NSView {
         case .todos: ("To-dos", "checklist", .brandTask)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)
         case .project(let id): (library.project(id)?.name ?? "Bowl", "folder.fill", .brandProject)
+        case .smartFilter(let id): (SmartFilterStore.shared.filter(id)?.name ?? String(localized: "Smart Filter"), "line.3.horizontal.decrease", .brandNavy)
         case .archive: ("Archive", "archivebox.fill", .brandNavy)
         case .trash: ("Recently Deleted", "trash.fill", .systemRed)
         case .search: ("Search", "magnifyingglass", .brandNavy)
@@ -86,6 +87,40 @@ final class ListHeaderView: NSView {
             button.controlSize = .small
             button.bezelStyle = .push
             button.hasDestructiveAction = true
+            trailing.addArrangedSubview(button)
+        }
+        // A smart filter: what it asks for, and its editor.
+        if case .smartFilter(let id) = page, let filter = SmartFilterStore.shared.filter(id) {
+            let names = Dictionary(library.projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
+            title.toolTip = SmartFilters.summary(of: filter.criteria) { names[$0] }
+            let button = ActionButton(title: String(localized: "Edit…"), symbol: "slider.horizontal.3") { [weak self] in
+                SmartFilterSheet.edit(filter, in: self?.window)
+            }
+            button.controlSize = .small
+            button.bezelStyle = .push
+            button.toolTip = String(localized: "Edit Smart Filter")
+            trailing.addArrangedSubview(button)
+        } else {
+            title.toolTip = nil
+        }
+        // What was searched for, kept as a smart filter.
+        if page == .search, state.hasSearch {
+            let button = ActionButton(title: String(localized: "Save as Smart Filter…"), symbol: "line.3.horizontal.decrease.circle") { [weak self] in
+                let kind: SmartFilterKind? = switch state.kindFilter {
+                case .todos?: .openTodos
+                case .meetings?: .meetings
+                case .notes?: .notes
+                case .links?: .links
+                case .images?: .images
+                case .files?: .files
+                case nil: nil
+                }
+                let criteria = SmartFilterCriteria.fromSearch(text: state.searchText, tags: state.searchTags, kind: kind)
+                SmartFilterSheet.create(criteria, in: self?.window) { state.page = .smartFilter($0.id) }
+            }
+            button.controlSize = .small
+            button.bezelStyle = .push
+            button.setAccessibilityIdentifier("SaveAsSmartFilter")
             trailing.addArrangedSubview(button)
         }
         // A bowl: share it (with iCloud sync on), or who it is shared with; a click shows the people.

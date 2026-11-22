@@ -57,6 +57,11 @@ struct NotesView: View {
     @State private var chosen = Set<UUID>()
     /// A note in Recently Deleted that is about to go for good.
     @State private var deletingNow: Note?
+    /// The smart filter being made or changed (`SmartFilterEditor`).
+    @State private var smartFilterDraft: SmartFilterDraft?
+    @State private var renamingFilter: SmartFilter?
+    @State private var deletingFilter: SmartFilter?
+    @State private var filterName = ""
 
     /// The note that is open, a new one not saved yet included.
     private var selectedNote: Note? {
@@ -147,7 +152,7 @@ struct NotesView: View {
     }
 
     var body: some View {
-        columns
+        smartFilterDialogs(columns)
         // The search page was left: what was asked is forgotten. (A found note opened from it keeps the page.)
         .onChange(of: page) { old, new in
             if old == .search, new != .search {
@@ -310,6 +315,37 @@ struct NotesView: View {
         }
     }
 
+    /// The smart filters' editor, renaming and deleting (a function of its own: the body's chain is long enough).
+    private func smartFilterDialogs(_ content: some View) -> some View {
+        content
+        .sheet(item: $smartFilterDraft) { draft in
+            SmartFilterEditor(draft: draft, notes: notes) { saved in
+                if draft.existing == nil { page = .smartFilter(saved.id) }
+            }
+        }
+        .alert("Rename Smart Filter", isPresented: Binding(get: { renamingFilter != nil }, set: { if !$0 { renamingFilter = nil } })) {
+            TextField("Name", text: $filterName)
+            Button("Cancel", role: .cancel) { renamingFilter = nil }
+            Button("Rename") {
+                if let renamingFilter { SmartFilterStore.shared.rename(renamingFilter.id, to: filterName) }
+                renamingFilter = nil
+            }
+        }
+        .confirmationDialog(
+            "Delete “\(deletingFilter?.name ?? "")”?", isPresented: Binding(get: { deletingFilter != nil }, set: { if !$0 { deletingFilter = nil } }),
+            titleVisibility: .visible, presenting: deletingFilter
+        ) { filter in
+            Button("Delete Smart Filter", role: .destructive) {
+                if page == .smartFilter(filter.id) { page = .home }
+                SmartFilterStore.shared.delete(filter.id)
+                deletingFilter = nil
+            }
+            Button("Cancel", role: .cancel) { deletingFilter = nil }
+        } message: { _ in
+            Text("Only the saved search is deleted. The entries stay where they are.")
+        }
+    }
+
     // MARK: - List
 
     private func listColumn(_ shown: ListPage) -> some View {
@@ -347,6 +383,14 @@ struct NotesView: View {
             inboxPage
         case .todos:
             todosPage
+        case .smartFilter(let id):
+            if let filter = SmartFilterStore.shared.filter(id) {
+                SmartFilterPage(filter: filter, notes: notes, selection: $selection) { remove($0) }
+                    .id(filter.id)
+            } else {
+                // Deleted on another device.
+                home
+            }
         case .search:
             searchPage
         case .chat:
@@ -410,6 +454,20 @@ struct NotesView: View {
             // The bowls as a list: the pinned and the latest few, the rest behind "More".
             if !folders.isEmpty {
                 projectsSection(recent.shown, contents: contents, isFirst: false, hidden: recent.hidden)
+            }
+            // Saved searches, below the bowls: only views, nothing is moved into them.
+            let smartFilters = SmartFilterStore.shared.filters
+            if !smartFilters.isEmpty {
+                SmartFiltersSection(
+                    filters: smartFilters, notes: notes,
+                    onOpen: { page = .smartFilter($0.id) },
+                    onEdit: { smartFilterDraft = .edit($0) },
+                    onRename: { filter in
+                        filterName = filter.name
+                        renamingFilter = filter
+                    },
+                    onDelete: { deletingFilter = $0 }
+                )
             }
             if archived > 0 {
                 Section {} header: {
@@ -776,6 +834,39 @@ struct NotesView: View {
         if shown == .chat {
             ChatBarActions(navigation: chatNavigation)
         }
+        // What was searched for, kept as a smart filter.
+        if shown == .search, hasQuery {
+            Button {
+                let kind: SmartFilterKind? = switch searchKind {
+                case .todos?: .openTodos
+                case .meetings?: .meetings
+                case .notes?: .notes
+                case .links?: .links
+                case .images?: .images
+                case .files?: .files
+                case nil: nil
+                }
+                smartFilterDraft = .new(from: SmartFilterCriteria.fromSearch(text: search, tags: tagTokens.map(\.name), kind: kind))
+            } label: {
+                Label("Save as Smart Filter", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .help("Save as Smart Filter")
+            .accessibilityIdentifier("SaveAsSmartFilter")
+        }
+        if case .smartFilter(let id) = shown, let filter = SmartFilterStore.shared.filter(id) {
+            Menu {
+                Button { smartFilterDraft = .edit(filter) } label: { Label("Edit…", systemImage: "slider.horizontal.3") }
+                Button {
+                    filterName = filter.name
+                    renamingFilter = filter
+                } label: { Label("Rename", systemImage: "pencil") }
+                Divider()
+                Button(role: .destructive) { deletingFilter = filter } label: { Label("Delete", systemImage: "trash") }
+            } label: {
+                Label("Smart Filter", systemImage: "ellipsis.circle")
+            }
+            .menuStyle(.button)
+        }
         if shown == .home, notes.contains(where: \.isDeleted) {
             trashButton
         }
@@ -842,6 +933,7 @@ struct NotesView: View {
         case .project: project(on: shown)?.name ?? "Porridge"
         case .inbox: "Inbox"
         case .todos: "To-dos"
+        case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Porridge"
         case .chat: "Chat"
         case .search: "Search"
         case .archive: "Archive"
@@ -856,7 +948,7 @@ struct NotesView: View {
     private func listTint(_ shown: ListPage) -> Color {
         switch shown {
         case .project: project(on: shown) == nil ? .brandSky : .brandProject
-        case .archive, .chat, .search: .brandNavy
+        case .archive, .chat, .search, .smartFilter: .brandNavy
         case .trash: .red
         case .todos: .brandTask
         default: .brandSky
@@ -876,6 +968,7 @@ struct NotesView: View {
         case .project: project(on: shown) == nil ? "tray.full.fill" : "folder.fill"
         case .inbox: "tray.fill"
         case .todos: "checklist"
+        case .smartFilter: "line.3.horizontal.decrease"
         case .chat: "bubble.left.and.bubble.right.fill"
         case .search: "magnifyingglass"
         case .archive: "archivebox.fill"
@@ -1245,6 +1338,8 @@ enum ListPage: Hashable {
     case inbox
     /// The virtual folder of every open to-do by due day (`Todos.folder`), in the "Up Next" section of the home list.
     case todos
+    /// A saved search (`SmartFilter`): the entries that fit it, wherever they are.
+    case smartFilter(UUID)
     /// The chat with the notes.
     case chat
     /// The search through everything.

@@ -115,6 +115,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             guard let self else { return }
             // Read what the list depends on, so a change of it rebuilds the list.
             _ = (self.state.page, self.state.kindFilter, self.state.searchText, self.state.searchTags)
+            // A smart filter changed (here or on another device), and the index while it loads.
+            if self.state.page.smartFilterID != nil { _ = (SmartFilterStore.shared.filters, NoteIndex.shared.version) }
             self.reload()
         })
         observers.append(Observing { [weak self] in
@@ -160,7 +162,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         case .note(let id):
             let cell = table.makeView(withIdentifier: NoteCellView.identifier, owner: nil) as? NoteCellView ?? NoteCellView()
             if let note = library.note(id) {
-                cell.show(note, buckets: library.activeProjects, showsSuggestions: state.page == .inbox, namesBuckets: state.page == .todos)
+                cell.show(note, buckets: library.activeProjects, showsSuggestions: state.page == .inbox, namesBuckets: state.page == .todos || state.page.smartFilterID != nil)
                 cell.onToggleDone = { note in TodoBridge.setDone(!TodoBridge.isDone(note), note) }
             }
             return cell

@@ -119,6 +119,11 @@ struct NoteDetailView: View {
                     }
                 }
             }
+
+            // The entries most like this one, at the end of the page; not while typing in it.
+            if !note.isDeleted, !editor.isEditing, !focused, dictation.phase == .idle, note.modelContext != nil {
+                SimilarEntriesSection(note: note)
+            }
         }
         .padding()
         .frame(maxWidth: 820)
