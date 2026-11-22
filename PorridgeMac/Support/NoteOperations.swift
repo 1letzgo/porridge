@@ -242,8 +242,18 @@ enum BucketActions {
     }
 
     static func confirmDelete(_ project: NoteFolder, state: WindowState, in window: NSWindow) {
-        Alerts.confirm("Delete “\(project.name)”?", message: "Its meetings, notes and links stay.", action: "Delete Bowl", in: window) {
+        // A bowl someone shared with me is left, not deleted: the owner keeps it.
+        if BowlSharing.shared.isSharedWithMe(project.id) {
+            BowlShareMac.shared.confirmLeave(project, state: state, in: window)
+            return
+        }
+        let message = BowlSharing.shared.isShared(project.id)
+            ? "Its meetings, notes and links stay. The people you shared it with lose access."
+            : "Its meetings, notes and links stay."
+        Alerts.confirm("Delete “\(project.name)”?", message: message, action: "Delete Bowl", in: window) {
             if state.page == .project(project.id) { state.page = .inbox }
+            // A shared bowl stops being shared first, so its entries do not leave it one by one for the others.
+            BowlSharing.shared.bowlWillBeDeleted(project.id)
             Projects.delete(project, in: library.context)
         }
     }
@@ -261,8 +271,10 @@ enum BucketActions {
         menu.add(project.isArchived ? "Unarchive" : "Archive", symbol: project.isArchived ? "tray.and.arrow.up" : "archivebox") {
             Archive.set(!project.isArchived, project, in: library.context)
         }
+        BowlShareMac.shared.addItems(for: project, to: menu, in: window)
         menu.addSeparator()
-        menu.add("Delete Bowl…", symbol: "trash", isDestructive: true) {
+        let leaves = BowlSharing.shared.isSharedWithMe(project.id)
+        menu.add(leaves ? "Leave Bowl…" : "Delete Bowl…", symbol: leaves ? "rectangle.portrait.and.arrow.right" : "trash", isDestructive: true) {
             guard let window else { return }
             confirmDelete(project, state: state, in: window)
         }

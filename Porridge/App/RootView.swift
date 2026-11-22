@@ -16,5 +16,14 @@ struct RootView: View {
             } message: {
                 Text("Porridge started without them. They are still on this device, but nothing you write now is kept. Please update the app or get in touch.\n\n\(AppContainer.storeError ?? "")")
             }
+            // What the sharing of bowls has to say (a share that could not be opened, saved or left).
+            .alert(
+                "Sharing",
+                isPresented: Binding(get: { BowlSharing.shared.notice != nil }, set: { if !$0 { BowlSharing.shared.notice = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(BowlSharing.shared.notice ?? "")
+            }
     }
 }

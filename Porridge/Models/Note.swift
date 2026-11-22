@@ -68,6 +68,11 @@ final class Note {
     /// nil = no suggestions offered (`TodoSuggestions`).
     var todoSuggestionsRaw: String?
 
+    /// Set on a copy taken from a shared bowl's zone (`BowlSharing`), a random token; nil on everything else. Two
+    /// devices of one person may both take the same entry from the zone: every device then keeps the same copy
+    /// (`SharedBowlMerge.duplicatesToDelete`).
+    var shareCopyToken: String?
+
     init() {
         self.id = UUID()
     }

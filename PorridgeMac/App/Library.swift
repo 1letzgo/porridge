@@ -35,6 +35,8 @@ final class Library {
         processing = ProcessingService(container: container)
         // Finds the iCloud container off the main thread and moves the files of notes into it.
         CloudFiles.start(container)
+        // Shared bowls: follows the zones of the bowls this person shares and of those shared with them.
+        BowlSharing.shared.start(container)
 
         let center = NotificationCenter.default
         center.addObserver(forName: ModelContext.didSave, object: nil, queue: .main) { [weak self] _ in

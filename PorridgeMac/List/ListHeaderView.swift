@@ -88,6 +88,24 @@ final class ListHeaderView: NSView {
             button.hasDestructiveAction = true
             trailing.addArrangedSubview(button)
         }
+        // A bowl: share it (with iCloud sync on), or who it is shared with; a click shows the people.
+        if case .project(let id) = page, BowlSharing.isAvailable, let project = library.project(id) {
+            let info = BowlSharing.shared.info(for: id)
+            let button = ActionButton(
+                title: info?.summary ?? String(localized: "Share…"), symbol: info == nil ? "person.crop.circle.badge.plus" : "person.2.fill"
+            ) { [weak self] in
+                if info == nil {
+                    BowlShareMac.shared.share(project, in: self?.window)
+                } else {
+                    BowlShareMac.shared.manage(project, in: self?.window)
+                }
+            }
+            button.controlSize = .small
+            button.bezelStyle = .push
+            button.isEnabled = !BowlSharing.shared.preparing.contains(id)
+            button.toolTip = info == nil ? String(localized: "Share Bowl") : String(localized: "Manage Sharing")
+            trailing.addArrangedSubview(button)
+        }
 
         // The kinds: of a bowl only those it holds (the one chosen stays while it is); all of them in the search.
         filters.arrangedSubviews.forEach { $0.removeFromSuperview() }

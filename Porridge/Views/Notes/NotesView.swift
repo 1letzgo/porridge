@@ -240,12 +240,16 @@ struct NotesView: View {
             // The bowl comes with the dialog: closing it may clear `deletingProject` before this runs.
             Button("Delete Bowl", role: .destructive) {
                 if page == .project(project.id) { page = .home }
+                // A shared bowl stops being shared first, so its entries do not leave it one by one for the others.
+                BowlSharing.shared.bowlWillBeDeleted(project.id)
                 Projects.delete(project, in: context)
                 deletingProject = nil
             }
             Button("Cancel", role: .cancel) { deletingProject = nil }
-        } message: { _ in
-            Text("Its meetings, notes and links stay.")
+        } message: { project in
+            Text(BowlSharing.shared.isShared(project.id)
+                ? "Its meetings, notes and links stay. The people you shared it with lose access."
+                : "Its meetings, notes and links stay.")
         }
         .task {
             LegacyMigration.run(in: context)
@@ -783,6 +787,10 @@ struct NotesView: View {
                 Label(isSelecting ? "Done" : "Select", systemImage: isSelecting ? "checkmark.circle.fill" : "checkmark.circle")
             }
             .help(isSelecting ? "Done" : "Select")
+        }
+        // A bowl's page shares the bowl (with iCloud sync on), or shows who it is shared with.
+        if let project = project(on: shown) {
+            BowlShareBarButton(project: project)
         }
         // What is brought in from outside has its own menu in the bar; on a bowl's page it goes into the bowl.
         if shown == .home || project(on: shown) != nil {

@@ -17,9 +17,12 @@ struct ProjectRow: View {
                 ThingsRowIcon(systemImage: "folder.fill", tint: .brandProject, isPinned: project.isPinned)
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(project.name)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text(project.name)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        BowlSharedMark(bowlID: project.id)
+                    }
                     Text(content.summary)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -43,7 +46,7 @@ struct ProjectRow: View {
             }
         }
         .swipeActions(edge: .trailing) {
-            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+            deleteButton
             archiveButton.tint(.brandNavy)
             Button(action: onRename) { Label("Rename", systemImage: "pencil") }
                 .tint(.brandProject)
@@ -54,7 +57,20 @@ struct ProjectRow: View {
             }
             Button(action: onRename) { Label("Rename", systemImage: "pencil") }
             archiveButton
+            BowlShareMenuItems(project: project)
             Divider()
+            deleteButton
+        }
+    }
+
+    /// A bowl someone shared with me is left, not deleted: the owner keeps it.
+    @ViewBuilder
+    private var deleteButton: some View {
+        if BowlSharing.shared.isSharedWithMe(project.id) {
+            Button(role: .destructive) { BowlShareController.shared.confirmLeave(project) } label: {
+                Label("Leave Bowl…", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+        } else {
             Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
         }
     }
@@ -176,6 +192,7 @@ struct ProjectPage: View {
             }
         }
         VStack(spacing: 0) {
+            BowlShareLine(project: project)
             if isSelecting {
                 // Choosing: what can be done with the chosen entries takes the place of the kinds.
                 NoteSelectionBar(notes: list, chosen: $chosen) {

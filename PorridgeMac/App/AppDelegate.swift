@@ -1,4 +1,5 @@
 import AppKit
+import CloudKit
 import SwiftData
 
 /// The app: the menu bar, the main windows, Settings and the dictation in the menu bar.
@@ -94,6 +95,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !files.isEmpty { Intake.addFiles(files, project: controller.state.projectForNew, state: controller.state) }
         for url in urls where url.scheme == "http" || url.scheme == "https" {
             Intake.addLink(url.absoluteString, project: controller.state.projectForNew, state: controller.state)
+        }
+    }
+
+    /// An invitation to a shared bowl was opened: the bowl joins the sidebar.
+    func application(_ application: NSApplication, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
+        Task { @MainActor in
+            await BowlSharing.shared.accept(metadata)
+            if let notice = BowlSharing.shared.notice {
+                BowlSharing.shared.notice = nil
+                Alerts.inform(String(localized: "Sharing"), message: notice, in: MainWindowController.frontIfAny?.window)
+            }
         }
     }
 

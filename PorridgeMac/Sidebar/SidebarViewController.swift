@@ -100,6 +100,13 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             _ = self.state.page
             self.syncSelection()
         })
+        // The mark of shared bowls follows the shares (only they are watched here, not what the rebuild reads).
+        var firstRun = true
+        observers.append(Observing { [weak self] in
+            _ = BowlSharing.shared.bowls
+            guard !firstRun else { firstRun = false; return }
+            Task { @MainActor in self?.rebuild() }
+        })
     }
 
     // MARK: Content
@@ -233,7 +240,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             // What is in the bowl and not deleted, as the bowl's page lists it.
             let key = project.map(Projects.key)
             let count = key.map { key in notes.lazy.filter { !$0.isDeleted && $0.projectIDs.contains(key) }.count } ?? 0
-            cell.configure(title: project?.name ?? "Bowl", symbol: "folder.fill", tint: .brandProject, badge: count, pinned: project?.isPinned == true)
+            cell.configure(
+                title: project?.name ?? "Bowl", symbol: "folder.fill", tint: .brandProject, badge: count, pinned: project?.isPinned == true,
+                shared: BowlSharing.shared.info(for: id)?.role
+            )
         case .archive:
             cell.configure(title: "Archive", symbol: "archivebox.fill", tint: .brandNavy, badge: 0)
         case .trash:
@@ -324,8 +334,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             let chat = menu.addItem(withTitle: "Chat with Bowl", action: #selector(chatWithBucket(_:)), keyEquivalent: "")
             chat.representedObject = project
             chat.target = self
+            BowlShareMac.shared.addItems(for: project, to: menu, in: view.window)
             menu.addItem(.separator())
-            let delete = menu.addItem(withTitle: "Delete Bowl…", action: #selector(deleteBucket(_:)), keyEquivalent: "")
+            // A bowl someone shared with me is left, not deleted (`BucketActions.confirmDelete` asks which).
+            let title = BowlSharing.shared.isSharedWithMe(project.id) ? "Leave Bowl…" : "Delete Bowl…"
+            let delete = menu.addItem(withTitle: title, action: #selector(deleteBucket(_:)), keyEquivalent: "")
             delete.representedObject = project
             delete.target = self
         case .trash:
@@ -413,6 +426,7 @@ private final class SidebarCell: NSTableCellView {
     private let title = NSTextField(labelWithString: "")
     private let badge = NSTextField(labelWithString: "")
     private let pin = NSImageView()
+    private let shared = NSImageView()
     private let alertBadge = NSTextField(labelWithString: "")
 
     init() {
@@ -432,6 +446,10 @@ private final class SidebarCell: NSTableCellView {
         pin.contentTintColor = .tertiaryLabelColor
         // A long name is cut, not the pin.
         pin.setContentCompressionResistancePriority(.required, for: .horizontal)
+        shared.translatesAutoresizingMaskIntoConstraints = false
+        shared.image = .symbol("person.2.fill", size: 9, weight: .semibold, label: "Shared")
+        shared.contentTintColor = .tertiaryLabelColor
+        shared.setContentCompressionResistancePriority(.required, for: .horizontal)
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         // A stack leaves hidden parts out, so a hidden pin or count takes no room from the name.
         let spacer = NSView()
@@ -439,7 +457,7 @@ private final class SidebarCell: NSTableCellView {
         alertBadge.textColor = .brandDangerText
         alertBadge.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
         alertBadge.isHidden = true
-        let row = NSStackView(views: [icon, title, pin, spacer, alertBadge, badge])
+        let row = NSStackView(views: [icon, title, shared, pin, spacer, alertBadge, badge])
         row.orientation = .horizontal
         row.spacing = 4
         row.setCustomSpacing(6, after: icon)
@@ -459,7 +477,16 @@ private final class SidebarCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// `alert`: a second count in red (the to-dos that are late).
-    func configure(title: String, symbol: String, tint: NSColor, badge count: Int, pinned: Bool = false, alert: Int = 0) {
+    /// `shared`: the bowl is shared (mine) or shared with me; a small mark after the name.
+    func configure(
+        title: String, symbol: String, tint: NSColor, badge count: Int, pinned: Bool = false, alert: Int = 0, shared role: SharedBowlRole? = nil
+    ) {
+        shared.isHidden = role == nil
+        let sharedText: String? = switch role {
+        case .owner: String(localized: "Shared")
+        case .participant: String(localized: "Shared with you")
+        case nil: nil
+        }
         alertBadge.stringValue = alert > 0 ? "\(alert)" : ""
         alertBadge.isHidden = alert == 0
         alertBadge.setAccessibilityLabel(alert > 0 ? "\(alert) overdue" : nil)
@@ -471,7 +498,7 @@ private final class SidebarCell: NSTableCellView {
         pin.isHidden = !pinned
         toolTip = title
         setAccessibilityLabel([
-            title, pinned ? String(localized: "Pinned") : nil, count > 0 ? "\(count)" : nil, alert > 0 ? String(localized: "\(alert) overdue") : nil,
+            title, sharedText, pinned ? String(localized: "Pinned") : nil, count > 0 ? "\(count)" : nil, alert > 0 ? String(localized: "\(alert) overdue") : nil,
         ].compactMap { $0 }.joined(separator: ", "))
     }
 }

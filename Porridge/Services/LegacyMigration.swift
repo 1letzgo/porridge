@@ -38,16 +38,20 @@ enum LegacyMigration {
         try? context.save()
     }
 
-    /// Two devices may copy the same meeting at the same time; keep one note per id.
+    /// Two devices may copy the same meeting at the same time; keep one note per id. Copies taken from a shared
+    /// bowl (`Note.shareCopyToken`) follow the rule every device follows alike (`SharedBowlMerge`).
     static func removeDuplicates(in context: ModelContext) {
         let notes = (try? context.fetch(FetchDescriptor<Note>())) ?? []
-        var seen = Set<UUID>()
         var removed = false
-        for note in notes.sorted(by: { $0.updatedAt > $1.updatedAt }) {
-            if !seen.insert(note.id).inserted {
-                context.delete(note)
-                removed = true
+        for group in Dictionary(grouping: notes, by: \.id).values where group.count > 1 {
+            let extra: [Note]
+            if group.contains(where: { $0.shareCopyToken != nil }) {
+                extra = SharedBowlMerge.duplicatesToDelete(group, token: \.shareCopyToken)
+            } else {
+                extra = Array(group.sorted(by: { $0.updatedAt > $1.updatedAt }).dropFirst())
             }
+            extra.forEach(context.delete)
+            removed = removed || !extra.isEmpty
         }
         if removed { try? context.save() }
     }

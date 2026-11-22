@@ -16,6 +16,9 @@ final class NoteFolder {
     var archivedAt: Date?
     /// Pinned projects always show in the list, whatever else changed since.
     var isPinned: Bool = false
+    /// Set on a bowl someone shared with me, taken from its zone (`BowlSharing`): a random token, so that every
+    /// device of mine keeps the same copy when two of them took it (`SharedBowlMerge.duplicatesToDelete`).
+    var shareCopyToken: String?
 
     var isArchived: Bool { archivedAt != nil }
 
