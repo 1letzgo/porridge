@@ -827,17 +827,36 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         library.save()
     }
 
+    /// A meeting recorded for an appointment offers its people as names in a menu, one click each; otherwise (and
+    /// with "Other Name…") the name is typed.
     @objc private func renameSpeaker(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue, let speaker = note.speakers.first(where: { $0.id == id }) else { return }
-        Alerts.ask("Rename Speaker", placeholder: "Name", value: speaker.name, action: "Save", in: view.window) { [weak self] text in
-            guard let self else { return }
-            let name = text.trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty else { return }
-            // Also teaches the voice under this name; earlier unnamed speakers get checked against it.
-            self.note.speakers = VoiceProfiles.rename(speakerID: speaker.id, to: name, in: self.note.speakers, context: self.library.context)
-            self.library.save()
-            VoiceProfiles.rematchAllMeetings(context: self.library.context)
+        let choices = SpeakerNaming.choices(for: id, in: note)
+        guard !choices.isEmpty else {
+            askSpeakerName(speaker)
+            return
         }
+        let menu = NSMenu()
+        menu.addItem(.sectionHeader(title: String(localized: "Invited")))
+        for name in choices {
+            menu.add(name) { [weak self] in self?.nameSpeaker(id, name) }
+        }
+        menu.addItem(.separator())
+        menu.add(String(localized: "Other Name…"), symbol: "pencil") { [weak self] in self?.askSpeakerName(speaker) }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    private func askSpeakerName(_ speaker: Speaker) {
+        Alerts.ask("Rename Speaker", placeholder: "Name", value: speaker.name, action: "Save", in: view.window) { [weak self] text in
+            self?.nameSpeaker(speaker.id, text)
+        }
+    }
+
+    /// Also teaches the voice under this name, checks earlier unnamed speakers against it and writes the summary
+    /// again with it (`SpeakerNaming.rename`).
+    private func nameSpeaker(_ id: String, _ name: String) {
+        SpeakerNaming.rename(id, to: name, in: note, context: library.context, processing: processing)
+        library.setNeedsReload()
     }
 
     private func reassign(_ segment: TranscriptSegment, to speaker: Speaker) {

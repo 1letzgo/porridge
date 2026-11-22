@@ -72,6 +72,8 @@ final class ProcessingService {
     @ObservationIgnored private var running: Job?
     @ObservationIgnored private var autoAttempts = AutoSummary.Attempts()
     @ObservationIgnored private var sweepTask: Task<Void, Never>?
+    /// Renamed speakers wait here a moment for more renames before the summary is written again (`SummaryRefresh`).
+    @ObservationIgnored private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     /// The documents read before this version got their first guess in this launch (`Documents.backfill`).
     @ObservationIgnored private var didBackfillDocuments = false
 
@@ -86,9 +88,11 @@ final class ProcessingService {
         guard !queue.contains(where: { $0.id == job.id && $0.kind == job.kind }), running.map({ $0.id == job.id && $0.kind == job.kind }) != true else { return }
         queue.append(job)
         if stages[job.id] == nil { stages[job.id] = "Waiting…" }
-        if case .summary(_, _, let model) = job {
+        if case .summary(_, let template, let model) = job {
             summarizing.insert(job.id)
             summaryModels[job.id] = model
+            // A new summary after a rename of the speakers takes the same template (`SummaryRefresh`).
+            SummaryRefresh.rememberTemplate(template.id, for: job.id)
         }
         if case .enhance = job { enhancing.insert(job.id) }
         runIfNeeded()
@@ -214,6 +218,7 @@ final class ProcessingService {
             try await SummaryService.summarize(note, onlyIfEmpty: true) { [weak self] status in self?.stages[id] = status }
             autoAttempts.succeeded(id)
             AutoSummary.clearOrigin(id)
+            SummaryRefresh.recordWritten(id, summary: note.summary)
             save()
         } catch is CancellationError {
             // Gone, or summarized or edited meanwhile: nothing to do.
@@ -557,6 +562,7 @@ final class ProcessingService {
                 #endif
             }
             succeeded = true
+            SummaryRefresh.recordWritten(id, summary: note.summary)
             save()
         } catch is CancellationError {
             // The note is gone; nobody is left to tell.
@@ -581,6 +587,55 @@ final class ProcessingService {
         } catch {
             enhanceErrors[id] = error.localizedDescription
         }
+    }
+
+    // MARK: - Speakers renamed
+
+    /// A speaker of `note` was renamed from `oldName`. The summary gets the new name in its text right away (an
+    /// edited summary keeps the user's work this way), and is written again a moment later when nothing else is
+    /// renamed meanwhile and `SummaryRefresh.shouldRefresh` allows it.
+    func speakersRenamed(_ note: Note, from oldName: String, to newName: String) {
+        if let summary = note.summary {
+            let untouched = SummaryRefresh.isUntouched(summary, writtenHash: SummaryRefresh.writtenHash(note.id))
+            let renamed = SummaryRefresh.replacingName(oldName, with: newName, in: summary)
+            if renamed != summary {
+                note.summary = renamed
+                note.updatedAt = Date()
+                // Still as the model wrote it, only with the name: it may be written again.
+                if untouched, SummaryRefresh.writtenHash(note.id) != nil { SummaryRefresh.recordWritten(note.id, summary: renamed) }
+                save()
+            }
+        }
+        scheduleSummaryRefresh(note.id)
+    }
+
+    private func scheduleSummaryRefresh(_ id: UUID) {
+        refreshTasks[id]?.cancel()
+        refreshTasks[id] = Task { [weak self] in
+            try? await Task.sleep(for: SummaryRefresh.debounce)
+            guard !Task.isCancelled, let self else { return }
+            self.refreshTasks[id] = nil
+            // A summary being written now read the old names: wait for it, then look again.
+            if self.summarizing.contains(id) || self.running?.id == id {
+                self.scheduleSummaryRefresh(id)
+                return
+            }
+            self.refreshSummaryIfAllowed(id)
+        }
+    }
+
+    private func refreshSummaryIfAllowed(_ id: UUID) {
+        guard let note = fetchNote(id), !note.isDeleted, note.isRecording, note.status == .ready else { return }
+        let model = SummaryRefresh.model(
+            lastLabel: note.summaryModel, available: SummaryModel.available, isUsable: \.isUsable,
+            fallback: SummaryService.canRunWithoutAsking ? .current : nil
+        )
+        guard SummaryRefresh.shouldRefresh(
+            summary: note.summary, writtenHash: SummaryRefresh.writtenHash(id),
+            autoEnabled: AppSettings.summarizeIncoming, hasModel: model != nil
+        ) else { return }
+        let template = SummaryRefresh.templateID(id).flatMap { chosen in SummaryTemplate.all.first { $0.id == chosen } } ?? .general
+        enqueue(.summary(id, template, model == .current ? nil : model))
     }
 
     // MARK: - Helpers

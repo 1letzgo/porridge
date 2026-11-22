@@ -69,6 +69,8 @@ struct PorridgeApp: App {
                     await ModelManager.clearCompiledModelsAfterUpdate()
                     LiveRecording.endStale()
                     processing.resumePending()
+                    // Alerts shortly before meetings, with Record (`MeetingAlerts`).
+                    MeetingAlertScheduler.shared.start()
                     await ModelManager.shared.resumeBackgroundDownloads()
                     // Loading the model takes a while (Neural Engine compile): do it before the first dictation.
                     if TranscriptionEngine.asrInstalled || AppSettings.speechEngine == .apple {

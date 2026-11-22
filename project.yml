@@ -81,7 +81,7 @@ targets:
         CKSharingSupported: true
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your device.
         NSCameraUsageDescription: Porridge scans letters, receipts and other documents with the camera and reads their text on your device.
-        NSCalendarsFullAccessUsageDescription: Porridge shows your calendar, lets you add events, and links recorded meetings to their appointment.
+        NSCalendarsFullAccessUsageDescription: Porridge reads your calendars to name recorded meetings after their appointment, offer the people invited as speaker names, and alert you shortly before a meeting so you can record it. It never changes your calendars.
         NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
         # A server of your own at home (Ollama) often has no certificate: plain http is allowed there, and only there.
         NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model.
@@ -175,7 +175,7 @@ targets:
         # Bowls can be shared with other iCloud users (CloudKit share links open the app).
         CKSharingSupported: true
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your Mac. For dictation it listens while you hold the shortcut.
-        NSCalendarsFullAccessUsageDescription: Porridge shows your calendar, lets you add events, and links recorded meetings to their appointment.
+        NSCalendarsFullAccessUsageDescription: Porridge reads your calendars to name recorded meetings after their appointment, offer the people invited as speaker names, and alert you shortly before a meeting so you can record it. It never changes your calendars.
         NSBluetoothAlwaysUsageDescription: Porridge connects to your Plaud recorder over Bluetooth to import your recordings.
         # A server of your own at home (Ollama) often has no certificate: plain http is allowed there, and only there.
         NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model.

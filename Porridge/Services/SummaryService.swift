@@ -328,7 +328,7 @@ enum SummaryService {
         - …
 
         ## \(language.headings.decisions)
-        - … (omit if there are none)
+        - <what was decided or agreed, one line each> (keep this heading; if nothing was decided, write one line saying so)
         """
         return """
         You summarize meeting transcripts. The meeting was held in \(language.name). Write the whole summary in \(language.name) and in no other language, even though these instructions are in English.
@@ -345,8 +345,8 @@ enum SummaryService {
         \(sections)
 
         ## \(language.headings.actionItems)
-        - [ ] <a concrete task from the transcript, as a short instruction that is clear on its own> – <owner, if known> – <deadline as YYYY-MM-DD, if one was named>
-        (one line for every task a person took on ("I'll do …", "can you …" – "yes"), also small ones; omit this heading if there are none. The deadline is the day the task is due, worked out from the meeting's "Date" ("next Friday", "end of the month", "by 3 December"), not the day of the meeting unless it is due that day; leave out the owner or the deadline when they are not named, never write a placeholder. A task for the person who recorded, see "Recorded by", gets that name as owner)
+        - [ ] <a concrete task from the transcript, as a short instruction that is clear on its own> – <owner> – <deadline as YYYY-MM-DD, if one was named>
+        (one line for every task a person took on ("I'll do …", "can you …" – "yes"), also small ones; omit this heading if there are none. The owner is the person who takes the task on: the speaker who said they will do it, or the one who was asked and agreed, written as the transcript names them (a name from "Participants" or "Invited"). A task for the person who recorded, see "Recorded by", gets that name as owner. The deadline is the day the task is due, worked out from the meeting's "Date" ("next Friday", "end of the month", "by 3 December"), not the day of the meeting unless it is due that day; leave out the owner or the deadline only when they really are not clear, never write a placeholder)
 
         TAGS: <3 to 5 short keywords in \(language.name), separated by commas, without # signs>
         """
@@ -357,6 +357,11 @@ enum SummaryService {
         let names = meeting.speakers.map(\.name)
         if !names.isEmpty {
             header += "\nParticipants: \(names.joined(separator: ", "))"
+        }
+        // The people of the calendar appointment the meeting was recorded for: the right spelling of their names.
+        let invited = MeetingLinks.attendees(for: meeting)
+        if !invited.isEmpty {
+            header += "\nInvited: \(invited.joined(separator: ", "))"
         }
         if let me = AppSettings.myName {
             header += "\nRecorded by: \(me)"

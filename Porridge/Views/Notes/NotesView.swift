@@ -48,6 +48,8 @@ struct NotesView: View {
     @State private var linkText = ""
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
+    /// The appointment itself: its people are offered for the speakers later (`MeetingLinks`).
+    @State private var appointment: CalendarAppointment?
     @State private var showNewProject = false
     @State private var projectName = ""
     @State private var renamingProject: NoteFolder?
@@ -1011,7 +1013,12 @@ struct NotesView: View {
         case .startMeeting:
             guard !showRecorder else { return }
             showCalendar = false
-            startRecording(titled: nil)
+            // Record from the alert before a meeting: the recording is made for its appointment.
+            if let event = MeetingAlertScheduler.shared.takePendingRecord() {
+                startRecording(for: event)
+            } else {
+                startRecording(titled: nil)
+            }
         case nil:
             break
         }
@@ -1020,11 +1027,13 @@ struct NotesView: View {
     /// Records a meeting for a calendar appointment: the note gets its title.
     private func startRecording(for event: CalendarAppointment) {
         startRecording(titled: event.title)
+        appointment = event
     }
 
     /// Opens the recorder once the sheet with the appointments is gone.
     private func startRecording(titled title: String?) {
         appointmentTitle = title
+        appointment = nil
         Task {
             try? await Task.sleep(for: .milliseconds(450))
             showRecorder = true
@@ -1038,6 +1047,8 @@ struct NotesView: View {
         note.title = appointmentTitle ?? Note.defaultMeetingTitle(for: note.createdAt)
         note.titleIsCustom = appointmentTitle != nil
         appointmentTitle = nil
+        if let appointment { MeetingLinks.remember(appointment, for: note.id) }
+        appointment = nil
         note.statusRaw = ProcessingStatus.recorded.rawValue
         note.audioFileName = result.fileName
         note.duration = result.duration

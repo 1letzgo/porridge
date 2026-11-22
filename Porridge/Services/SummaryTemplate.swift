@@ -7,7 +7,8 @@ struct SummaryTemplate: Codable, Hashable, Identifiable {
     var name: String
     /// Told to the model in its own words; empty for a plain summary.
     var focus: String
-    /// The sections between summary and tasks, nil for key points and decisions.
+    /// The sections between summary and tasks, nil for key points and decisions (the default meeting summary:
+    /// key points, decisions, then the action items with their owners). A custom template keeps what it was given.
     var sections: [String]?
 
     static let general = SummaryTemplate(id: "general", name: "General", focus: "", sections: nil)
@@ -26,8 +27,8 @@ struct SummaryTemplate: Codable, Hashable, Identifiable {
         ),
         SummaryTemplate(
             id: "customer", name: "Customer Call",
-            focus: "This is a call with a customer. Pay attention to what the customer needs, objections and open questions, what was promised and the next steps.",
-            sections: ["Customer Needs", "Objections and Questions", "Commitments"]
+            focus: "This is a call with a customer. Pay attention to what the customer needs, objections and open questions, what was decided, what was promised and the next steps.",
+            sections: ["Customer Needs", "Objections and Questions", "Decisions", "Commitments"]
         ),
         SummaryTemplate(
             id: "lecture", name: "Lecture",

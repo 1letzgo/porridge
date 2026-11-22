@@ -426,23 +426,32 @@ struct NoteDetailView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 ForEach(note.speakers) { speaker in
-                    Button {
-                        renameText = speaker.name
-                        renamingSpeaker = speaker
-                    } label: {
-                        HStack(spacing: 6) {
-                            Circle().fill(Color.speaker(speaker.colorIndex)).frame(width: 10, height: 10)
-                            Text(speaker.name).font(.subheadline.weight(.semibold))
-                            if AppSettings.isMe(speaker) { MeBadge() }
-                            Image(systemName: "pencil").font(.caption2.weight(.bold))
+                    // A meeting recorded for an appointment offers its people as names, one tap each.
+                    let choices = SpeakerNaming.choices(for: speaker.id, in: note)
+                    Group {
+                        if choices.isEmpty {
+                            Button {
+                                askName(for: speaker)
+                            } label: {
+                                speakerChip(speaker)
+                            }
+                        } else {
+                            Menu {
+                                Section("Invited") {
+                                    ForEach(choices, id: \.self) { name in
+                                        Button(name) { rename(speaker, to: name) }
+                                    }
+                                }
+                                Button("Other Name…", systemImage: "pencil") { askName(for: speaker) }
+                            } label: {
+                                speakerChip(speaker)
+                            }
+                            .menuStyle(.button)
                         }
-                        .foregroundStyle(Color.brandNavy)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .chunkyPill(fill: Color.speaker(speaker.colorIndex))
                     }
                     .buttonStyle(.plain)
                     .disabled(note.isDeleted)
+                    .accessibilityLabel("Rename \(speaker.name)")
                 }
             }
             .padding(.bottom, 4)
@@ -850,6 +859,29 @@ struct NoteDetailView: View {
         }
     }
 
+    private func speakerChip(_ speaker: Speaker) -> some View {
+        HStack(spacing: 6) {
+            Circle().fill(Color.speaker(speaker.colorIndex)).frame(width: 10, height: 10)
+            Text(speaker.name).font(.subheadline.weight(.semibold))
+            if AppSettings.isMe(speaker) { MeBadge() }
+            Image(systemName: "pencil").font(.caption2.weight(.bold))
+        }
+        .foregroundStyle(Color.brandNavy)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .chunkyPill(fill: Color.speaker(speaker.colorIndex))
+    }
+
+    private func askName(for speaker: Speaker) {
+        renameText = speaker.name
+        renamingSpeaker = speaker
+    }
+
+    /// Also teaches the voice under this name and writes the summary again with it (`SpeakerNaming.rename`).
+    private func rename(_ speaker: Speaker, to name: String) {
+        SpeakerNaming.rename(speaker.id, to: name, in: note, context: context, processing: processing)
+    }
+
     private func reassign(_ segment: TranscriptSegment, to speaker: Speaker) {
         note.segments = note.segments.map { item in
             var item = item
@@ -861,13 +893,8 @@ struct NoteDetailView: View {
 
     private func commitRename() {
         guard let speaker = renamingSpeaker else { return }
-        let name = renameText.trimmingCharacters(in: .whitespaces)
-        if !name.isEmpty {
-            // Also teaches the voice under this name; earlier unnamed speakers get checked against it.
-            note.speakers = VoiceProfiles.rename(speakerID: speaker.id, to: name, in: note.speakers, context: context)
-            try? context.save()
-            VoiceProfiles.rematchAllMeetings(context: context)
-        }
+        // Also teaches the voice under this name; earlier unnamed speakers get checked against it.
+        rename(speaker, to: renameText)
         renamingSpeaker = nil
     }
 
