@@ -98,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard RecordingWindowController.isRecording else { return .terminateNow }
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = "A Meeting Is Being Recorded"
         alert.informativeText = "Quitting stops the recording. What was recorded so far is kept."
         alert.addButton(withTitle: "Stop Recording and Quit")
@@ -145,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Any app or website can open a `porridge://meeting` link: Porridge is in front and asks first.
             if fromLink {
                 let alert = NSAlert()
+                alert.alertStyle = .warning
                 alert.messageText = String(localized: "Start Recording?")
                 alert.informativeText = String(localized: "A link asked Porridge to record a meeting.")
                 alert.addButton(withTitle: String(localized: "Start Recording"))

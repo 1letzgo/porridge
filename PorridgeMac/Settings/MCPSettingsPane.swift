@@ -74,7 +74,7 @@ final class MCPSettingsPane: SettingsPane {
         Alerts.confirm(
             "Make a New Token?",
             message: "Clients set up with the URL and token stop working until they get the new one. Claude Desktop and Claude Code set up with the command above keep working.",
-            action: "New Token", isDestructive: false, style: .warning, in: view.window
+            action: "New Token", isDestructive: false, in: view.window
         ) { [weak self] in
             MCPService.resetToken()
             self?.render()

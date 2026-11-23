@@ -39,6 +39,7 @@ enum SmartFilterSheet {
     ) {
         let form = Form(name: name, criteria: criteria)
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = title
         alert.informativeText = String(localized: "Lists every entry that fits, wherever it is. Nothing is moved: entries stay in their bowl or the Inbox.")
         alert.accessoryView = form.grid

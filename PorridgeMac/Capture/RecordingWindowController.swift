@@ -224,6 +224,7 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
     private func fail(_ message: String) {
         finished = true
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = "Can't Record"
         alert.informativeText = message
         alert.addButton(withTitle: "OK")

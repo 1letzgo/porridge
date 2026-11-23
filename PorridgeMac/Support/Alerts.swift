@@ -1,17 +1,18 @@
 import AppKit
 
-/// Alerts as sheets on a window: a question, or a question with a text field. Destructive buttons are red and
+/// Alerts as sheets on a window: a question, or a question with a text field. Every alert of the app is a
+/// warning (`.warning`), notices included. Destructive buttons are red and
 /// never the default; "Cancel" answers Escape.
 @MainActor
 enum Alerts {
     static func confirm(
-        _ title: String, message: String, action: String, isDestructive: Bool = true, style: NSAlert.Style? = nil,
+        _ title: String, message: String, action: String, isDestructive: Bool = true,
         in window: NSWindow?, then: @escaping () -> Void
     ) {
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = title
         alert.informativeText = message
-        alert.alertStyle = style ?? (isDestructive ? .warning : .informational)
         let button = alert.addButton(withTitle: action)
         button.hasDestructiveAction = isDestructive
         let cancel = alert.addButton(withTitle: "Cancel")
@@ -30,6 +31,7 @@ enum Alerts {
         validate: ((String) -> Bool)? = nil, in window: NSWindow?, then: @escaping (String) -> Void
     ) {
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = title
         alert.informativeText = message
         let field = NSTextField(string: value)
@@ -49,6 +51,7 @@ enum Alerts {
 
     static func inform(_ title: String, message: String, in window: NSWindow?) {
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = title
         alert.informativeText = message
         alert.addButton(withTitle: "OK")

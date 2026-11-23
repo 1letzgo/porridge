@@ -89,6 +89,8 @@ enum DocumentInfoSheet {
         grid.frame = NSRect(x: 0, y: 0, width: 330, height: grid.fittingSize.height)
 
         let alert = NSAlert()
+
+        alert.alertStyle = .warning
         alert.messageText = "Document"
         alert.informativeText = "What this document is. Set by hand, it is no longer changed automatically."
         alert.accessoryView = grid

@@ -65,7 +65,7 @@ final class GeneralSettingsPane: SettingsPane {
         render()
         Alerts.confirm(
             target.confirmTitle, message: target.confirmMessage, action: target.confirmAction,
-            isDestructive: target == .off, style: .warning, in: view.window
+            isDestructive: target == .off, in: view.window
         ) { [weak self] in
             UserDefaults.standard.set(target.rawValue, forKey: SyncMode.key)
             self?.render()

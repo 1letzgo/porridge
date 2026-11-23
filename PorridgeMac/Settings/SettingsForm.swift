@@ -384,6 +384,7 @@ final class ModelStateRow: NSView {
 
     private func confirmCancel() {
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = "Cancel Download of \(modelTitle)?"
         alert.informativeText = "What has been downloaded so far will be deleted."
         let stop = alert.addButton(withTitle: "Cancel Download")

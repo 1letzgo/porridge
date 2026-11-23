@@ -140,6 +140,7 @@ enum NoteOperations {
     /// A date and time of one's own for "Later", in a small dialog.
     static func pickLaterDate(for notes: [Note], in window: NSWindow?, after: (() -> Void)? = nil) {
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = notes.count == 1 ? "Later" : "Later: \(notes.count) Entries"
         alert.informativeText = "Back in the Inbox at this time, with a notification."
         let picker = NSDatePicker()
@@ -206,6 +207,7 @@ enum NoteOperations {
     static func merge(_ notes: [Note], in window: NSWindow?) {
         let ordered = Documents.sorted(notes)
         let alert = NSAlert()
+        alert.alertStyle = .warning
         alert.messageText = "Merge \(ordered.count) PDFs"
         alert.informativeText = "The pages of the others are added at the end of the chosen document, in the order of the list. It keeps what it is."
         let target = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 300, height: 26), pullsDown: false)
