@@ -138,6 +138,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func windowWillClose(_ notification: Notification) {
         split.detail.noteDetail?.flushEditing()
+        // A recording in this window's right column goes on in a window of its own.
+        MeetingRecorder.mainWindowWillClose(self)
         MainWindowController.all.removeAll { $0 === self }
         observers.cancelAll()
         library.stopObserving(libraryToken)

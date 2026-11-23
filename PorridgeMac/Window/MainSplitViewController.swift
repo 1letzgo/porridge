@@ -1,12 +1,15 @@
 import AppKit
 
-/// Sidebar, list and detail. The list column shows the notes of the page, or the chats on the chat page; the
-/// detail shows the open note or chat.
+/// Sidebar, list and detail, and on the right Record Meeting when it is open (today's appointments, then the
+/// running recording). The list column shows the notes of the page, or the chats on the chat page; the detail shows
+/// the open note or chat.
 final class MainSplitViewController: NSSplitViewController {
     let state: WindowState
     let sidebar: SidebarViewController
     let content: ContentColumnViewController
     let detail: DetailViewController
+    let meeting = MeetingPaneController()
+    private var meetingItem: NSSplitViewItem?
 
     init(state: WindowState) {
         self.state = state
@@ -34,8 +37,64 @@ final class MainSplitViewController: NSSplitViewController {
         addSplitViewItem(sidebarItem)
         addSplitViewItem(listItem)
         addSplitViewItem(detailItem)
+        let meetingItem = NSSplitViewItem(inspectorWithViewController: meeting)
+        meetingItem.minimumThickness = 320
+        meetingItem.maximumThickness = 480
+        meetingItem.canCollapse = true
+        meetingItem.holdingPriority = .init(260)
+        addSplitViewItem(meetingItem)
+        self.meetingItem = meetingItem
         splitView.autosaveName = "PorridgeMainSplit"
         splitView.dividerStyle = .thin
+        // Closed until Record Meeting opens it (the saved layout may say otherwise).
+        meetingItem.isCollapsed = true
+    }
+
+    /// Opens the right column with `content` (nil: as it is).
+    func showMeetingPane(_ content: NSViewController?) {
+        if let content { meeting.show(content) }
+        guard let meetingItem, meetingItem.isCollapsed else { return }
+        meetingItem.animator().isCollapsed = false
+    }
+
+    /// Closes the right column and empties it.
+    func hideMeetingPane() {
+        meetingItem?.animator().isCollapsed = true
+        meeting.show(nil)
+    }
+
+    /// What the right column shows (today's appointments or a recording), while it is open.
+    var meetingPaneContent: NSViewController? {
+        meetingItem?.isCollapsed == false ? meeting.content : nil
+    }
+}
+
+/// The right column of a main window: Record Meeting.
+final class MeetingPaneController: NSViewController {
+    private(set) var content: NSViewController?
+
+    override func loadView() {
+        view = NSView()
+    }
+
+    func show(_ new: NSViewController?) {
+        guard new !== content else { return }
+        content?.view.removeFromSuperview()
+        content?.removeFromParent()
+        content = new
+        guard let new else { return }
+        new.view.removeFromSuperview()
+        new.removeFromParent()
+        addChild(new)
+        view.addSubview(new.view)
+        // Below the toolbar (the window's content runs under it).
+        new.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            new.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            new.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            new.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            new.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
     }
 }
 

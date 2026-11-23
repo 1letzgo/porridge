@@ -70,6 +70,7 @@ enum VoiceProfiles {
         _ speakers: [Speaker],
         segments: [TranscriptSegment],
         audio: URL,
+        rightChannelAudio: URL? = nil,
         context: ModelContext
     ) async -> [Speaker] {
         guard !speakers.isEmpty else { return speakers }
@@ -77,13 +78,19 @@ enum VoiceProfiles {
 
         var result = speakers
         for index in result.indices {
-            guard let print = await fingerprint(of: result[index].id, in: segments, audio: audio) else { continue }
+            // The voices of the Mac's sound are measured on that channel alone, without the user's microphone.
+            let id = result[index].id
+            let onRight = id == SpeakerAssigner.rightChannelID || id.hasPrefix(SpeakerAssigner.rightChannelID + ".")
+            let source = onRight ? (rightChannelAudio ?? audio) : audio
+            guard let print = await fingerprint(of: id, in: segments, audio: source) else { continue }
             result[index].voice = VoiceMath.data(from: print.voice)
             result[index].voiceSeconds = print.seconds
         }
         // Speakers that were named while recording (e.g. the two DJI microphones) teach their voices right away.
         for index in result.indices
-        where result[index].profileID == nil && !result[index].name.hasPrefix(defaultNamePrefix) {
+        where result[index].profileID == nil && !result[index].name.hasPrefix(defaultNamePrefix)
+            // "Others" (the Mac's sound) is no person: never learned as a voice.
+            && result[index].name != SystemAudioMix.othersName {
             teach(&result[index], context: context)
         }
         try? context.save()
@@ -204,6 +211,68 @@ enum VoiceProfiles {
             if after != before { meeting.speakers = after }
         }
         try? context.save()
+        linkSharedMeetings(context: context)
+    }
+
+    // MARK: - Shared meetings
+
+    /// Links the speakers of a meeting that came from a shared bowl to the people known here. A shared meeting
+    /// carries names and voice prints, never links (`SharedNotePayload.sharedSpeakers`):
+    /// - a speaker that was linked here before and kept its name stays linked;
+    /// - a name known here links to that person;
+    /// - an unnamed speaker ("Speaker 2") whose voice fits a person clearly gets that person's name (it goes to the
+    ///   others like any naming);
+    /// - a named speaker whose voice fits a person clearly is linked and keeps the name it was given.
+    static func link(_ incoming: [Speaker], previous: [Speaker], profiles: [VoiceProfile]) -> [Speaker] {
+        guard !incoming.isEmpty, !profiles.isEmpty else { return incoming }
+        let known = Dictionary(profiles.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
+        var result = incoming
+        for index in result.indices {
+            let speaker = result[index]
+            if let id = speaker.profileID, known[id] != nil { continue }
+            result[index].profileID = nil
+            if let before = previous.first(where: { $0.id == speaker.id }), before.name == speaker.name,
+               let id = before.profileID, known[id] != nil {
+                result[index].profileID = id
+            } else if !speaker.name.hasPrefix(defaultNamePrefix),
+                      let person = profiles.first(where: { $0.name.caseInsensitiveCompare(speaker.name) == .orderedSame }) {
+                result[index].profileID = person.id.uuidString
+            }
+        }
+        let taken = Set(result.compactMap(\.profileID))
+        let others = profiles.filter { !taken.contains($0.id.uuidString) }
+        // Unnamed speakers: named by their voice.
+        result = match(result, against: others, refine: false)
+        // Named, but not by a name known here: linked by their voice, the name stays.
+        let stillFree = others.filter { person in !result.contains { $0.profileID == person.id.uuidString } }
+        var asUnnamed = result
+        var named: [Int] = []
+        for index in asUnnamed.indices where asUnnamed[index].profileID == nil && !asUnnamed[index].name.hasPrefix(defaultNamePrefix) {
+            asUnnamed[index].name = defaultNamePrefix + asUnnamed[index].id
+            named.append(index)
+        }
+        if !named.isEmpty {
+            let matched = match(asUnnamed, against: stillFree, refine: false)
+            for index in named { result[index].profileID = matched[index].profileID }
+        }
+        return result
+    }
+
+    /// Links the speakers of every meeting from a bowl shared with me (`link`): at launch, and after people were
+    /// taught here or came in from my other devices.
+    static func linkSharedMeetings(context: ModelContext) {
+        let profiles = (try? context.fetch(FetchDescriptor<VoiceProfile>())) ?? []
+        guard !profiles.isEmpty else { return }
+        var changed = false
+        for meeting in (try? context.fetch(FetchDescriptor<Note>())) ?? [] where meeting.shareCopyToken != nil && meeting.speakersData != nil {
+            let before = meeting.speakers
+            let after = link(before, previous: before, profiles: profiles)
+            if after != before {
+                meeting.speakers = after
+                changed = true
+            }
+        }
+        if changed { try? context.save() }
     }
 
     /// Renames a person everywhere.

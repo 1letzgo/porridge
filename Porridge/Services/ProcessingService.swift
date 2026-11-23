@@ -306,11 +306,16 @@ final class ProcessingService {
     private func transcribe(_ meeting: Note, fileName: String, stageID id: UUID) async throws {
         stages[id] = "Preparing audio…"
         let splitChannels = meeting.speakerMode == .channels
+        // The Mac's sound of a call: its voices are told apart on that channel alone.
+        let keepRight = splitChannels && SystemAudioMix.isSystemAudio(inputName: meeting.inputName)
         let source = AudioStore.url(for: fileName)
         let prepared = try await Task.detached(priority: .userInitiated) {
-            try AudioPreprocessor.prepare(source: source, measureChannels: splitChannels)
+            try AudioPreprocessor.prepare(source: source, measureChannels: splitChannels, keepRightChannel: keepRight)
         }.value
-        defer { try? FileManager.default.removeItem(at: prepared.monoURL) }
+        defer {
+            try? FileManager.default.removeItem(at: prepared.monoURL)
+            if let right = prepared.rightURL { try? FileManager.default.removeItem(at: right) }
+        }
 
         stages[id] = "Loading speech model…"
         try await ModelManager.shared.ensureASR()
@@ -335,7 +340,7 @@ final class ProcessingService {
                 stages[id] = "Detecting speakers…"
                 do {
                     try await ModelManager.shared.ensureDiarizer()
-                    let segments = try await TranscriptionEngine.shared.diarize(prepared.monoURL)
+                    let segments = try await TranscriptionEngine.shared.diarize(prepared.rightURL ?? prepared.monoURL)
                     let split = SpeakerAssigner.splitChannel(
                         output.words, ids: speakerIds, channel: SpeakerAssigner.rightChannelID, segments: segments)
                     if !split.added.isEmpty {
@@ -398,7 +403,8 @@ final class ProcessingService {
         if AppSettings.voiceRecognitionEnabled, !meeting.speakers.isEmpty {
             stages[id] = "Recognizing voices…"
             let identified = await VoiceProfiles.identify(
-                meeting.speakers, segments: meeting.segments, audio: prepared.monoURL, context: context)
+                meeting.speakers, segments: meeting.segments, audio: prepared.monoURL, rightChannelAudio: prepared.rightURL,
+                context: context)
             try stillThere(meeting, id)
             meeting.speakers = identified
         }

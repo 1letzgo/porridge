@@ -1,8 +1,10 @@
 import AppKit
 
-/// Today's appointments as a sheet: picking one starts a recording named after it, "New Meeting" one without.
+/// Record Meeting in the right column of the main window: today's appointments; picking one starts a recording
+/// named after it, "New Meeting" one without.
 final class RecordMeetingViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     private let onStart: (CalendarAppointment?) -> Void
+    private let onCancel: () -> Void
     private var appointments: [CalendarAppointment] = []
     private let table = NSTableView()
     private let message = NSTextField.label(color: .secondaryLabelColor, lines: 0)
@@ -14,8 +16,9 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
     private let spinner = NSProgressIndicator()
 
     /// `onStart` gets the appointment, or nil for a meeting that is not in the calendar.
-    init(onStart: @escaping (CalendarAppointment?) -> Void) {
+    init(onStart: @escaping (CalendarAppointment?) -> Void, onCancel: @escaping () -> Void) {
         self.onStart = onStart
+        self.onCancel = onCancel
         super.init(nibName: nil, bundle: nil)
         title = "Record Meeting"
     }
@@ -27,7 +30,6 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
         let heading = NSTextField.label("Record Meeting", font: .systemFont(ofSize: 17, weight: .bold))
         let newMeeting = PillButton(title: "New Meeting", symbol: "mic.fill", tint: .brandSky, target: self, action: #selector(startNew))
         newMeeting.isFilled = true
-        newMeeting.keyEquivalent = "\r"
         newMeeting.setAccessibilityLabel("New Meeting")
         let today = NSTextField.label("Today", font: .systemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .bold), color: .brandSkyText)
 
@@ -60,8 +62,9 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
             "Your microphone is you, your Mac's sound is the others.",
             font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor, lines: 0)
 
-        let cancel = ActionButton(title: "Cancel") { [weak self] in self?.dismiss(nil) }
-        cancel.keyEquivalent = "\u{1b}"
+        // Wrapped over several lines in the narrow column.
+        for label in [systemAudioNote, message] { label.lineBreakMode = .byWordWrapping }
+        let cancel = ActionButton(title: "Cancel") { [weak self] in self?.onCancel() }
         let record = ActionButton(title: "Record") { [weak self] in self?.startPicked() }
         let buttons = NSStackView.horizontal([cancel, NSView(), record], spacing: 8)
 
@@ -71,12 +74,17 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
         let root = NSView()
         root.addSubview(stack)
         stack.pinEdges(to: root, insets: NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20))
+        // The appointments take the height the column has.
+        let filler = NSView()
+        stack.insertArrangedSubview(filler, at: stack.arrangedSubviews.firstIndex(of: systemAudio) ?? 0)
+        filler.setContentHuggingPriority(.init(1), for: .vertical)
+        scroll.setContentHuggingPriority(.init(2), for: .vertical)
         NSLayoutConstraint.activate([
-            root.widthAnchor.constraint(equalToConstant: 420),
             scroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            scroll.heightAnchor.constraint(equalToConstant: 260),
+            scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120),
             buttons.widthAnchor.constraint(equalTo: stack.widthAnchor),
             message.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor),
+            systemAudioNote.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
         view = root
     }
@@ -130,7 +138,6 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
     }
 
     @objc private func startNew() {
-        dismiss(nil)
         onStart(nil)
     }
 
@@ -140,7 +147,6 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
             startNew()
             return
         }
-        dismiss(nil)
         onStart(appointments[row])
     }
 }

@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Quitting during a meeting recording would cut it off: ask first, and keep what was recorded.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard RecordingWindowController.isRecording else { return .terminateNow }
+        guard MeetingRecorder.isRecording else { return .terminateNow }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "A Meeting Is Being Recorded"
@@ -105,7 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let cancel = alert.addButton(withTitle: "Cancel")
         cancel.keyEquivalent = "\u{1b}"
         guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
-        RecordingWindowController.stopAll()
+        MeetingRecorder.stopAll()
         return .terminateNow
     }
 

@@ -35,7 +35,7 @@ final class MeetingAlertController: NSObject {
         if let panel, now > panel.appointment.start.addingTimeInterval(5 * 60) || !MeetingAlerts.isEnabled {
             close()
         }
-        if MeetingAlerts.isEnabled, panel == nil, !RecordingWindowController.isRecording,
+        if MeetingAlerts.isEnabled, panel == nil, !MeetingRecorder.isRecording,
            let due = scheduler.upcoming.first(where: { MeetingAlerts.isAlertDue(start: $0.start, now: now) && !shown.contains(MeetingAlerts.alertKey($0)) }) {
             shown.insert(MeetingAlerts.alertKey(due))
             show(due)
@@ -92,8 +92,8 @@ final class MeetingAlertController: NSObject {
     /// A Record Meeting for the appointment, in the front window.
     static func record(_ appointment: CalendarAppointment) {
         NSApp.activate()
-        if RecordingWindowController.isRecording {
-            RecordingWindowController.start(title: nil) { _ in }
+        if MeetingRecorder.isRecording {
+            MeetingRecorder.reveal()
             return
         }
         Capture.startRecording(for: appointment, state: MainWindowController.front.state)

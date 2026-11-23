@@ -1,10 +1,10 @@
 import AppKit
 
-/// A meeting being recorded, in a window of its own so the rest of the app stays usable: the clock, the levels
-/// (two named speakers on a split stereo microphone, or the user and the others when the Mac's sound is recorded
-/// too, see `SystemAudioTap`), the live transcript, notes typed along the way, pause and
-/// stop. Closing the window asks whether to discard the recording.
-final class RecordingWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
+/// Where a meeting is recorded: in the right column of the main window it was started from (`MainSplitViewController`),
+/// so the rest of the window stays usable; in a window of its own only when no main window is open (a global
+/// shortcut, the last main window closed while recording). Only one recording at a time.
+@MainActor
+enum MeetingRecorder {
     struct Finished {
         let result: RecordingResult
         let speakerNames: [String]
@@ -12,17 +12,125 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
         let written: [RecordingNote]
     }
 
-    private static var running: [RecordingWindowController] = []
+    private static var current: RecordingViewController?
+    private static weak var pane: MainWindowController?
+    private static var window: RecordingWindow?
 
-    /// A recording is running somewhere: only one at a time.
-    static var isRecording: Bool { !running.isEmpty }
+    /// A recording is running somewhere.
+    static var isRecording: Bool { current != nil }
 
     /// Ends the running recording as Stop does, so the meeting is kept (before quitting).
     static func stopAll() {
-        for controller in running { controller.stop() }
+        current?.stop()
     }
 
-    private let meetingTitle: String?
+    /// Starts recording in the right column of `controller` (the front main window when nil). A recording that runs
+    /// already comes to the front instead.
+    static func start(title: String?, continues: UUID? = nil, in controller: MainWindowController? = nil, onFinish: @escaping (Finished) -> Void) {
+        guard current == nil else {
+            reveal()
+            return
+        }
+        let recording = RecordingViewController(title: title, continues: continues, onFinish: onFinish)
+        recording.onClose = { close() }
+        current = recording
+        host(recording, in: controller ?? MainWindowController.frontIfAny)
+        Task { @MainActor in await recording.begin() }
+    }
+
+    /// Shows the running recording.
+    static func reveal() {
+        if let pane, let window = pane.window {
+            pane.split.showMeetingPane(nil)
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            window?.showWindow(nil)
+            window?.window?.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    /// The main window that shows the recording is closing: the recording goes on in a window of its own.
+    static func mainWindowWillClose(_ controller: MainWindowController) {
+        guard let current, pane === controller else { return }
+        controller.split.hideMeetingPane()
+        pane = nil
+        host(current, in: nil)
+    }
+
+    private static func host(_ recording: RecordingViewController, in controller: MainWindowController?) {
+        if let controller {
+            pane = controller
+            controller.split.showMeetingPane(recording)
+            controller.window?.makeKeyAndOrderFront(nil)
+        } else {
+            let window = RecordingWindow(recording)
+            self.window = window
+            window.showWindow(nil)
+            window.window?.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    /// The recording ended (stopped or discarded): its column closes, or its window.
+    private static func close() {
+        current?.tearDown()
+        current = nil
+        if let pane { pane.split.hideMeetingPane() }
+        pane = nil
+        let window = self.window
+        self.window = nil
+        window?.closeAfterRecording()
+    }
+}
+
+/// The window of a recording when no main window shows it. Closing it asks whether to discard the recording.
+final class RecordingWindow: NSWindowController, NSWindowDelegate {
+    private let recording: RecordingViewController
+    private var closing = false
+
+    init(_ recording: RecordingViewController) {
+        self.recording = recording
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 640),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false
+        )
+        window.title = recording.meetingTitle.map { "Recording · \($0)" } ?? "Recording"
+        window.minSize = NSSize(width: 360, height: 520)
+        window.tabbingMode = .disallowed
+        window.isRestorable = false
+        super.init(window: window)
+        window.delegate = self
+        recording.view.removeFromSuperview()
+        recording.removeFromParent()
+        window.contentViewController = recording
+        window.center()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func closeAfterRecording() {
+        closing = true
+        close()
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if closing { return true }
+        recording.confirmDiscard()
+        return false
+    }
+}
+
+/// A meeting being recorded: the clock, the levels (two named speakers on a split stereo microphone, or the user and
+/// the others when the Mac's sound is recorded too, see `SystemAudioTap`), the live transcript, notes typed along
+/// the way, pause and stop. Shown by `MeetingRecorder`.
+final class RecordingViewController: NSViewController, NSTextFieldDelegate {
+    typealias Finished = MeetingRecorder.Finished
+
+    /// Called once the recording ended (stopped or discarded).
+    var onClose: (() -> Void)?
+
+    let meetingTitle: String?
     private let continues: UUID?
     private let onFinish: (Finished) -> Void
     private let recorder = AudioRecorder()
@@ -46,41 +154,24 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
     private let pauseButton = NSButton()
     private let stopButton = NSButton()
 
-    static func start(title: String?, continues: UUID? = nil, onFinish: @escaping (Finished) -> Void) {
-        guard running.isEmpty else {
-            running.first?.showWindow(nil)
-            return
-        }
-        let controller = RecordingWindowController(title: title, continues: continues, onFinish: onFinish)
-        running.append(controller)
-        controller.showWindow(nil)
-        controller.window?.makeKeyAndOrderFront(nil)
-        Task { @MainActor in await controller.begin() }
-    }
+    private let heading = NSTextField.label(font: .systemFont(ofSize: 17, weight: .bold), lines: 2)
 
-    private init(title: String?, continues: UUID?, onFinish: @escaping (Finished) -> Void) {
+    init(title: String?, continues: UUID?, onFinish: @escaping (Finished) -> Void) {
         meetingTitle = title
         self.continues = continues
         self.onFinish = onFinish
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 640),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered, defer: false
-        )
-        window.title = title.map { "Recording · \($0)" } ?? "Recording"
-        window.minSize = NSSize(width: 420, height: 520)
-        window.tabbingMode = .disallowed
-        window.isRestorable = false
-        super.init(window: window)
+        super.init(nibName: nil, bundle: nil)
+        self.title = title.map { "Recording · \($0)" } ?? "Recording"
         // Meetings only: the Mac's sound on the right channel, the microphone (the user) on the left.
         if MeetingAudio.includesSystemAudio {
             recorder.secondChannel = SystemAudioTap()
             nameFields[0].stringValue = AppSettings.myName ?? "Me"
             nameFields[1].stringValue = SystemAudioMix.othersName
         }
-        window.delegate = self
-        window.contentView = buildContent()
-        window.center()
+    }
+
+    override func loadView() {
+        view = buildContent()
     }
 
     @available(*, unavailable)
@@ -90,6 +181,9 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
 
     private func buildContent() -> NSView {
         let root = NSView()
+        heading.stringValue = meetingTitle ?? String(localized: "Recording")
+        hint.lineBreakMode = .byWordWrapping
+        heading.alignment = .center
         clock.alignment = .center
         clock.setAccessibilityLabel("Elapsed Time")
 
@@ -156,18 +250,18 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
         stopButton.image = .symbol("stop.fill", size: 13, weight: .bold)
         stopButton.imagePosition = .imageLeading
         stopButton.contentTintColor = .systemRed
-        stopButton.keyEquivalent = "\r"
         stopButton.target = self
         stopButton.action = #selector(stop)
         stopButton.setAccessibilityLabel("Stop Recording")
         let discard = ActionButton(title: "Discard…") { [weak self] in self?.confirmDiscard() }
         let buttons = NSStackView.horizontal([discard, NSView(), pauseButton, stopButton], spacing: 12)
 
-        let stack = NSStackView.vertical([inputLabel, clock, meter, stereo, transcriptScroll, notesList, noteRow, hint, buttons], spacing: 14, alignment: .centerX)
+        let stack = NSStackView.vertical([heading, inputLabel, clock, meter, stereo, transcriptScroll, notesList, noteRow, hint, buttons], spacing: 14, alignment: .centerX)
         root.addSubview(stack)
         stack.pinEdges(to: root, insets: NSEdgeInsets(top: 18, left: 20, bottom: 16, right: 20))
         NSLayoutConstraint.activate([
             meter.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.7),
+            heading.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor),
             meter.heightAnchor.constraint(equalToConstant: 12),
             transcriptScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
             transcriptScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 140),
@@ -182,7 +276,7 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
 
     // MARK: Recording
 
-    private func begin() async {
+    func begin() async {
         guard await AudioRecorder.requestPermission() else {
             fail("Please allow microphone access in System Settings, under Privacy & Security.")
             return
@@ -228,11 +322,11 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
         alert.messageText = "Can't Record"
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
-        if let window {
-            alert.beginSheetModal(for: window) { [weak self] _ in self?.close() }
+        if let window = view.window {
+            alert.beginSheetModal(for: window) { [weak self] _ in self?.onClose?() }
         } else {
             alert.runModal()
-            close()
+            onClose?()
         }
     }
 
@@ -331,7 +425,7 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
         notesList.addArrangedSubview(bubble)
     }
 
-    @objc private func stop() {
+    @objc func stop() {
         guard !finished, let result = recorder.stop() else { return }
         finished = true
         let names = nameFields.enumerated().map { index, field in
@@ -346,33 +440,27 @@ final class RecordingWindowController: NSWindowController, NSWindowDelegate, NST
         if !unsent.isEmpty { written.append(RecordingNote(at: result.duration, text: unsent)) }
         onFinish(Finished(result: result, speakerNames: names, liveText: liveText, written: written))
         journal?.finish()
-        close()
+        onClose?()
     }
 
-    private func confirmDiscard() {
-        guard !finished else { close(); return }
-        Alerts.confirm("Discard Recording?", message: "The recording and the notes written during it are deleted.", action: "Discard", in: window) { [weak self] in
+    func confirmDiscard() {
+        guard !finished else { onClose?(); return }
+        Alerts.confirm("Discard Recording?", message: "The recording and the notes written during it are deleted.", action: "Discard", in: view.window) { [weak self] in
             guard let self else { return }
             self.finished = true
             self.recorder.cancel()
             self.live.cancel()
             self.journal?.finish()
             LiveRecording.end()
-            self.close()
+            self.onClose?()
         }
     }
 
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        if finished { return true }
-        confirmDiscard()
-        return false
-    }
-
-    func windowWillClose(_ notification: Notification) {
+    /// Ends the clock, the observers and the stop notification (`MeetingRecorder` when the recording ended).
+    func tearDown() {
         timer?.invalidate()
         observers.cancelAll()
         NotificationCenter.default.removeObserver(self)
-        RecordingWindowController.running.removeAll { $0 === self }
     }
 }
 

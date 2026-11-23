@@ -124,7 +124,7 @@ struct SharedNotePayload: Codable, Equatable {
         channelCount = note.channelCount
         speakerModeRaw = note.speakerModeRaw
         audioFileName = note.audioFileName
-        speakersData = note.speakersData
+        speakersData = Self.sharedSpeakers(note.speakersData)
         segmentsData = note.segmentsData
         sourceRaw = note.sourceRaw
         attachmentsData = note.attachmentsData
@@ -208,9 +208,27 @@ struct SharedNotePayload: Codable, Equatable {
     }
 
     static func decode(_ data: Data) -> SharedNotePayload? {
-        guard let payload = try? decoder.decode(SharedNotePayload.self, from: data) else { return nil }
+        guard var payload = try? decoder.decode(SharedNotePayload.self, from: data) else { return nil }
+        // Written by a version that still sent the links to voices.
+        payload.speakersData = sharedSpeakers(payload.speakersData)
         return payload
     }
+
+    /// The speakers of a meeting as they are shared: names, colors and voice prints, without the link to a person
+    /// (`Speaker.profileID`). The people someone taught live in that person's own iCloud, so a link means nothing
+    /// to the others; each device links the speakers to its own people (`VoiceProfiles.link`). Left in, every
+    /// device would write its own links and the meeting would go back and forth.
+    static func sharedSpeakers(_ data: Data?) -> Data? {
+        guard let data, var speakers = try? JSONDecoder().decode([Speaker].self, from: data) else { return data }
+        for index in speakers.indices { speakers[index].profileID = nil }
+        return (try? speakerEncoder.encode(speakers)) ?? data
+    }
+
+    private static let speakerEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
 
     /// Stands for the content: equal for equal notes, different as soon as anything of it changed.
     var fingerprint: String { SharedBowlNames.fingerprint(encoded()) }

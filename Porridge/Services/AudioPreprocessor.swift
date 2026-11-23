@@ -13,6 +13,9 @@ struct PreparedAudio: Sendable {
     let monoURL: URL
     let duration: Double
     let channelEnergy: ChannelEnergy?
+    /// 16 kHz mono of the right channel alone, when asked for (the Mac's sound of a call: only the others speak
+    /// there, so their voices are told apart without the user's in between). Delete when done.
+    var rightURL: URL? = nil
 }
 
 enum AudioPreprocessor {
@@ -20,56 +23,23 @@ enum AudioPreprocessor {
 
     /// Streams the recording once: mixes it down to 16 kHz mono and, for split-stereo
     /// recordings, measures the energy of both channels.
-    static func prepare(source: URL, measureChannels: Bool) throws -> PreparedAudio {
+    static func prepare(source: URL, measureChannels: Bool, keepRightChannel: Bool = false) throws -> PreparedAudio {
         let input = try AVAudioFile(forReading: source)
         let inFormat = input.processingFormat
         let channels = Int(inFormat.channelCount)
         let sampleRate = inFormat.sampleRate
         let measure = measureChannels && channels >= 2
 
-        guard let monoNative = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
-              let mono16k = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
-              let converter = AVAudioConverter(from: monoNative, to: mono16k)
+        guard let monoNative = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
         else { throw ASRPipelineError.audioFormat }
-
-        let outURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
-        let output = try AVAudioFile(
-            forWriting: outURL,
-            settings: [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVSampleRateKey: 16_000,
-                AVNumberOfChannelsKey: 1,
-                AVLinearPCMBitDepthKey: 16,
-                AVLinearPCMIsFloatKey: false,
-                AVLinearPCMIsBigEndianKey: false,
-            ],
-            commonFormat: .pcmFormatFloat32,
-            interleaved: false
-        )
+        let mix = try Mono16k(from: monoNative)
+        let rightOnly = keepRightChannel && channels >= 2 ? try Mono16k(from: monoNative) : nil
 
         let chunk = AVAudioFrameCount(max(4096, sampleRate))
         guard let inBuffer = AVAudioPCMBuffer(pcmFormat: inFormat, frameCapacity: chunk),
-              let monoBuffer = AVAudioPCMBuffer(pcmFormat: monoNative, frameCapacity: chunk)
+              let monoBuffer = AVAudioPCMBuffer(pcmFormat: monoNative, frameCapacity: chunk),
+              let rightBuffer = AVAudioPCMBuffer(pcmFormat: monoNative, frameCapacity: chunk)
         else { throw ASRPipelineError.audioFormat }
-
-        let ratio = 16_000 / sampleRate
-        func convert(_ buffer: AVAudioPCMBuffer?, endOfStream: Bool) throws {
-            let capacity = AVAudioFrameCount(Double(buffer?.frameLength ?? 0) * ratio) + 4096
-            guard let out = AVAudioPCMBuffer(pcmFormat: mono16k, frameCapacity: capacity) else { return }
-            var provided = false
-            var error: NSError?
-            let status = converter.convert(to: out, error: &error) { _, inputStatus in
-                if let buffer, !provided {
-                    provided = true
-                    inputStatus.pointee = .haveData
-                    return buffer
-                }
-                inputStatus.pointee = endOfStream ? .endOfStream : .noDataNow
-                return nil
-            }
-            if status == .error, let error { throw error }
-            if out.frameLength > 0 { try output.write(from: out) }
-        }
 
         let frameLength = max(1, Int(sampleRate * energyFrameDuration))
         var left: [Float] = []
@@ -96,6 +66,11 @@ enum AudioPreprocessor {
                 vDSP_vsmul(dst[0], 1, &scale, dst[0], 1, vDSP_Length(n))
             }
             monoBuffer.frameLength = AVAudioFrameCount(n)
+            if let rightOnly, let rightData = rightBuffer.floatChannelData {
+                rightData[0].update(from: src[1], count: n)
+                rightBuffer.frameLength = AVAudioFrameCount(n)
+                try rightOnly.write(rightBuffer, endOfStream: false)
+            }
 
             if measure {
                 let l = src[0], r = src[1]
@@ -113,9 +88,10 @@ enum AudioPreprocessor {
                 }
             }
 
-            try convert(monoBuffer, endOfStream: false)
+            try mix.write(monoBuffer, endOfStream: false)
         }
-        try convert(nil, endOfStream: true)
+        try mix.write(nil, endOfStream: true)
+        try rightOnly?.write(nil, endOfStream: true)
 
         if measure, accCount > 0 {
             left.append(accLeft / Float(accCount))
@@ -123,12 +99,63 @@ enum AudioPreprocessor {
         }
 
         return PreparedAudio(
-            monoURL: outURL,
+            monoURL: mix.url,
             duration: Double(totalFrames) / sampleRate,
             channelEnergy: measure
                 ? ChannelEnergy(frameDuration: Double(frameLength) / sampleRate, left: left, right: right)
-                : nil
+                : nil,
+            rightURL: rightOnly?.url
         )
+    }
+}
+
+/// A 16 kHz mono WAV in the temporary folder, written from mono buffers at the recording's rate.
+private final class Mono16k {
+    let url: URL
+    private let file: AVAudioFile
+    private let converter: AVAudioConverter
+    private let format: AVAudioFormat
+    private let ratio: Double
+
+    init(from native: AVAudioFormat) throws {
+        guard let mono16k = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: native, to: mono16k)
+        else { throw ASRPipelineError.audioFormat }
+        url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
+        file = try AVAudioFile(
+            forWriting: url,
+            settings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: 16_000,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+            ],
+            commonFormat: .pcmFormatFloat32,
+            interleaved: false
+        )
+        self.converter = converter
+        format = mono16k
+        ratio = 16_000 / native.sampleRate
+    }
+
+    func write(_ buffer: AVAudioPCMBuffer?, endOfStream: Bool) throws {
+        let capacity = AVAudioFrameCount(Double(buffer?.frameLength ?? 0) * ratio) + 4096
+        guard let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { return }
+        var provided = false
+        var error: NSError?
+        let status = converter.convert(to: out, error: &error) { _, inputStatus in
+            if let buffer, !provided {
+                provided = true
+                inputStatus.pointee = .haveData
+                return buffer
+            }
+            inputStatus.pointee = endOfStream ? .endOfStream : .noDataNow
+            return nil
+        }
+        if status == .error, let error { throw error }
+        if out.frameLength > 0 { try file.write(from: out) }
     }
 }
 

@@ -192,6 +192,8 @@ final class BowlSharing {
         retryEndings()
         scanSoon(after: .seconds(3))
         Task { await refreshPeople() }
+        // Meetings shared with me: their speakers linked to the people known here (also those that synced since).
+        if let context { VoiceProfiles.linkSharedMeetings(context: context) }
     }
 
     private func makeEngines() {
@@ -878,9 +880,12 @@ final class BowlSharing {
             payload.apply(to: note, bowlKey: bowlKey)
             note.shareCopyToken = UUID().uuidString
             context.insert(note)
+            linkSpeakers(of: note, previous: [], in: context)
         case .apply:
             if let local, SharedNotePayload(local).fingerprint != payload.fingerprint || local.projectIDs != [bowlKey] {
+                let previous = local.speakers
                 payload.apply(to: local, bowlKey: bowlKey)
+                linkSpeakers(of: local, previous: previous, in: context)
             }
         case .keepLocal, .keepOut:
             break
@@ -903,6 +908,15 @@ final class BowlSharing {
             info.fileOwners = owners
         }
         return true
+    }
+
+    /// The speakers of a meeting that came in: linked to the people known here (shared meetings carry no links).
+    private func linkSpeakers(of note: Note, previous: [Speaker], in context: ModelContext) {
+        guard note.speakersData != nil else { return }
+        let profiles = (try? context.fetch(FetchDescriptor<VoiceProfile>())) ?? []
+        let speakers = note.speakers
+        let linked = VoiceProfiles.link(speakers, previous: previous, profiles: profiles)
+        if linked != speakers { note.speakers = linked }
     }
 
     private func applyFile(_ record: CKRecord, name: String, info: inout SharedBowlInfo) {
