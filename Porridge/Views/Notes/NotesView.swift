@@ -993,6 +993,8 @@ struct NotesView: View {
         } label: {
             Label("Import", systemImage: "square.and.arrow.down")
         }
+        // Redrawn after the system's sharing sheet closed (its label can come back blank otherwise).
+        .id(BowlShareController.shared.sheetClosings)
         .accessibilityLabel("Import")
         .help("Import")
     }

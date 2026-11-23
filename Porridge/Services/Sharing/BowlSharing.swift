@@ -232,15 +232,19 @@ final class BowlSharing {
     /// The share of the bowl, made now if it is not shared yet: the bowl gets its own zone, its entries are copied
     /// into it, and the zone is shared as a whole. Hand the share to the system's sharing sheet.
     func share(_ bowl: NoteFolder) async throws -> CKShare {
+        try await share(bowlID: bowl.id, name: bowl.name)
+    }
+
+    /// `share(_:)` by the bowl's id and name (for the system's share sheet, which prepares the share itself).
+    func share(bowlID: UUID, name: String) async throws -> CKShare {
         guard let database = cloud?.privateCloudDatabase, privateEngine != nil else { throw BowlSharingError.unavailable }
-        let bowlID = bowl.id
         if let info = bowls[bowlID] {
             guard info.endingSince == nil else { throw BowlSharingError.ending }
             return try await fetchShare(info)
         }
         preparing.insert(bowlID)
         defer { preparing.remove(bowlID) }
-        let info = SharedBowlInfo(bowlID: bowlID, role: .owner, zoneOwnerName: CKCurrentUserDefaultName, name: bowl.name)
+        let info = SharedBowlInfo(bowlID: bowlID, role: .owner, zoneOwnerName: CKCurrentUserDefaultName, name: name)
         let zoneID = SharedBowlRecords.zoneID(info)
         let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
 
@@ -257,7 +261,7 @@ final class BowlSharing {
         }
         do {
             let share = CKShare(recordZoneID: zoneID)
-            share[CKShare.SystemFieldKey.title] = bowl.name
+            share[CKShare.SystemFieldKey.title] = name
             share.publicPermission = .none
             let saved = try await database.modifyRecords(saving: [share], deleting: [])
             guard let result = saved.saveResults[share.recordID] else { throw BowlSharingError.notShared }
@@ -456,25 +460,46 @@ final class BowlSharing {
             return
         }
         guard let cloud, let sharedEngine else {
+            // Opened as soon as iCloud is ready (`start`).
             waitingShares.append(metadata)
+            notice = String(localized: "The bowl opens as soon as iCloud is ready.")
             return
         }
-        guard metadata.containerIdentifier == AudioStore.containerIdentifier else { return }
+        let title = (metadata.share[CKShare.SystemFieldKey.title] as? String) ?? ""
+        guard metadata.containerIdentifier == AudioStore.containerIdentifier else {
+            notice = String(localized: "This link is not for Porridge (\(metadata.containerIdentifier)).")
+            return
+        }
         // My own bowl's link: it is in the list already.
-        guard metadata.participantRole != .owner else { return }
+        guard metadata.participantRole != .owner else {
+            notice = String(localized: "“\(title)” is your own bowl, it is in your list already. To try the invitation, open the link with another Apple Account.")
+            return
+        }
         do {
             _ = try await cloud.accept(metadata)
             let zoneID = metadata.share.recordID.zoneID
-            if let bowlID = SharedBowlNames.bowlID(fromZoneName: zoneID.zoneName), bowls[bowlID] == nil {
-                let title = (metadata.share[CKShare.SystemFieldKey.title] as? String) ?? ""
+            guard let bowlID = SharedBowlNames.bowlID(fromZoneName: zoneID.zoneName) else {
+                notice = String(localized: "The link was accepted, but it does not lead to a bowl (\(zoneID.zoneName)).")
+                return
+            }
+            if bowls[bowlID] == nil {
                 var info = SharedBowlInfo(bowlID: bowlID, role: .participant, zoneOwnerName: zoneID.ownerName, name: title)
                 info.people = SharedBowlRecords.people(of: metadata.share)
                 info.readOnly = SharedBowlRecords.canEdit(isOwner: false, permission: metadata.participantPermission).map { !$0 }
                     ?? SharedBowlRecords.isReadOnlyForMe(metadata.share)
                 store(info)
                 persist()
+                notice = String(localized: "“\(title)” was added to your bowls. Its entries are on their way.")
+            } else {
+                notice = String(localized: "“\(title)” is in your bowls already.")
             }
             try await sharedEngine.fetchChanges()
+            // Accepted, but the bowl itself did not come down (yet): say so instead of showing nothing.
+            try? await Task.sleep(for: .seconds(2))
+            let found = (try? context?.fetchCount(FetchDescriptor<NoteFolder>(predicate: #Predicate { $0.id == bowlID }))) ?? 0
+            if found == 0 {
+                notice = String(localized: "“\(title)” was accepted, but the bowl has not arrived from iCloud yet. Open the link again in a moment.")
+            }
         } catch {
             notice = String(localized: "The shared bowl could not be opened. \(error.localizedDescription)")
         }

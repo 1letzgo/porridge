@@ -2,32 +2,27 @@ import CloudKit
 import SwiftUI
 import UIKit
 
-/// Sharing a bowl on iOS: the system's sheet for the people of a share (`UICloudSharingController`), and the
-/// questions before stopping or leaving. Presented by UIKit over whatever is on screen, so every place that offers
-/// sharing (a bowl's row, its page) uses the same few calls.
+/// Sharing a bowl on iOS. A bowl that is not shared yet goes out through the system's share sheet (`ShareLink` with
+/// `BowlShareItem`): Messages, Mail or AirDrop send the invitation and add the people to the share. A shared bowl's
+/// people are managed in the system's sheet for a share (`UICloudSharingController`), presented by UIKit as Apple
+/// intends; inside a SwiftUI sheet it could not open Messages or Mail, so added people never got their invitation.
+/// The questions before stopping or leaving are SwiftUI alerts on the root view (`BowlShareHost`).
 @MainActor
-final class BowlShareController: NSObject, UICloudSharingControllerDelegate {
+@Observable
+final class BowlShareController {
     static let shared = BowlShareController()
 
-    private var shown: (bowlID: UUID, title: String)?
+    /// The question before stopping or leaving, while it is asked.
+    var question: BowlShareQuestion?
+    /// Counts the closings of the system's sharing sheet. After a UIKit sheet over SwiftUI, a SwiftUI `Menu` label
+    /// can come back blank (the home bar's Import); views that show one take this as their identity and redraw.
+    private(set) var sheetClosings = 0
 
-    /// Shares the bowl (made on the first time) and opens the sheet to invite people.
-    func share(_ bowl: NoteFolder) {
-        let bowlID = bowl.id
-        let title = bowl.name
-        Task {
-            do {
-                let share = try await BowlSharing.shared.share(bowl)
-                present(share, bowlID: bowlID, title: title)
-            } catch {
-                BowlSharing.shared.notice = String(localized: "The bowl could not be shared. \(error.localizedDescription)")
-            }
-        }
-    }
+    @ObservationIgnored private let sheetDelegate = CloudSharingDelegate()
 
     /// The sheet of a shared bowl: who is in it, invite more, stop sharing (the owner) or leave (everyone else).
     func manage(_ bowl: NoteFolder) {
-        guard let info = BowlSharing.shared.info(for: bowl.id) else { return share(bowl) }
+        guard let info = BowlSharing.shared.info(for: bowl.id) else { return }
         let title = bowl.name
         Task {
             do {
@@ -39,9 +34,24 @@ final class BowlShareController: NSObject, UICloudSharingControllerDelegate {
         }
     }
 
+    /// Copies the link of a shared bowl, to send some other way. Only people invited to the bowl can open it.
+    func copyLink(_ bowl: NoteFolder) {
+        guard let info = BowlSharing.shared.info(for: bowl.id) else { return }
+        Task {
+            do {
+                let share = try await BowlSharing.shared.fetchShare(info)
+                guard let url = share.url else { throw BowlSharingError.notShared }
+                UIPasteboard.general.url = url
+                BowlSharing.shared.notice = String(localized: "The link is copied. Only people invited to the bowl can open it.")
+            } catch {
+                BowlSharing.shared.notice = String(localized: "The link could not be loaded. \(error.localizedDescription)")
+            }
+        }
+    }
+
     func confirmStopSharing(_ bowl: NoteFolder) {
         let bowlID = bowl.id
-        ask(
+        question = BowlShareQuestion(
             title: String(localized: "Stop Sharing “\(bowl.name)”?"),
             message: String(localized: "The people you shared it with lose access. Its entries stay with you."),
             action: String(localized: "Stop Sharing")
@@ -56,7 +66,7 @@ final class BowlShareController: NSObject, UICloudSharingControllerDelegate {
 
     func confirmLeave(_ bowl: NoteFolder) {
         let bowlID = bowl.id
-        ask(
+        question = BowlShareQuestion(
             title: String(localized: "Leave “\(bowl.name)”?"),
             message: String(localized: "The bowl and its entries are removed from your devices. The owner keeps them."),
             action: String(localized: "Leave Bowl")
@@ -72,9 +82,11 @@ final class BowlShareController: NSObject, UICloudSharingControllerDelegate {
     // MARK: Presenting
 
     private func present(_ share: CKShare, bowlID: UUID, title: String) {
-        guard let cloud = BowlSharing.shared.cloud, let presenter = Self.topViewController() else { return }
-        let controller = UICloudSharingController(share: share, container: cloud)
-        controller.delegate = self
+        guard let cloud = BowlSharing.shared.cloud, let presenter = Self.topViewController(),
+              !(presenter is UICloudSharingController) else { return }
+        let controller = BowlCloudSharingController(share: share, container: cloud)
+        controller.delegate = sheetDelegate
+        controller.onClose = { [weak self] in self?.sheetClosings += 1 }
         // Invited people either see the bowl ("Can view") or add and change its entries too ("Can edit"); the owner
         // changes it for each person in this sheet. Only by invitation, never by a public link.
         controller.availablePermissions = [.allowPrivate, .allowReadOnly, .allowReadWrite]
@@ -83,30 +95,36 @@ final class BowlShareController: NSObject, UICloudSharingControllerDelegate {
             popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0)
             popover.permittedArrowDirections = []
         }
-        shown = (bowlID, title)
+        sheetDelegate.shown = (bowlID, title)
         presenter.present(controller, animated: true)
-    }
-
-    private func ask(title: String, message: String, action: String, then: @escaping () -> Void) {
-        guard let presenter = Self.topViewController() else { return }
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        alert.addAction(UIAlertAction(title: action, style: .destructive) { _ in then() })
-        presenter.present(alert, animated: true)
     }
 
     private static func topViewController() -> UIViewController? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let window = scenes.flatMap(\.windows).first(where: \.isKeyWindow) ?? scenes.first?.windows.first
         var top = window?.rootViewController
-        while let presented = top?.presentedViewController { top = presented }
+        while let presented = top?.presentedViewController, !presented.isBeingDismissed { top = presented }
         return top
     }
+}
 
-    // MARK: UICloudSharingControllerDelegate
+/// The system's sheet for a share, telling when it is gone.
+private final class BowlCloudSharingController: UICloudSharingController {
+    var onClose: (() -> Void)?
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed || presentingViewController == nil { onClose?() }
+    }
+}
+
+/// Answers the system's sheet for a share.
+private final class CloudSharingDelegate: NSObject, UICloudSharingControllerDelegate {
+    var shown: (bowlID: UUID, title: String)?
 
     func cloudSharingController(_ csc: UICloudSharingController, failedToSaveShareWithError error: Error) {
-        BowlSharing.shared.notice = String(localized: "The share could not be saved. \(error.localizedDescription)")
+        let text = String(localized: "The share could not be saved. \(error.localizedDescription)")
+        Task { @MainActor in BowlSharing.shared.notice = text }
     }
 
     func itemTitle(for csc: UICloudSharingController) -> String? {
@@ -119,14 +137,62 @@ final class BowlShareController: NSObject, UICloudSharingControllerDelegate {
 
     /// "Stop Sharing" (the owner) or "Remove Me" (anyone else) in the system's sheet.
     func cloudSharingControllerDidStopSharing(_ csc: UICloudSharingController) {
-        guard let bowlID = shown?.bowlID, let info = BowlSharing.shared.info(for: bowlID) else { return }
-        Task {
+        guard let bowlID = shown?.bowlID else { return }
+        Task { @MainActor in
+            guard let info = BowlSharing.shared.info(for: bowlID) else { return }
             if info.role == .owner {
                 try? await BowlSharing.shared.stopSharing(bowlID)
             } else {
                 try? await BowlSharing.shared.leave(bowlID)
             }
         }
+    }
+}
+
+/// A bowl for the system's share sheet: the share is made when a way to send it is picked, and the people the
+/// invitation goes to are added to it. Only by invitation, never by a public link.
+struct BowlShareItem: Transferable {
+    let bowlID: UUID
+    let name: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        CKShareTransferRepresentation { item in
+            let container = CKContainer(identifier: AudioStore.containerIdentifier)
+            let options = CKAllowedSharingOptions(
+                allowedParticipantPermissionOptions: .any,
+                allowedParticipantAccessOptions: .specifiedRecipientsOnly
+            )
+            return .prepareShare(container: container, allowedSharingOptions: options) {
+                try await BowlSharing.shared.share(bowlID: item.bowlID, name: item.name)
+            }
+        }
+    }
+}
+
+/// A question with one destructive answer (and Cancel).
+struct BowlShareQuestion: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+    let action: String
+    let then: () -> Void
+}
+
+/// Shows the questions of `BowlShareController` (on the root view).
+struct BowlShareHost: ViewModifier {
+    func body(content: Content) -> some View {
+        let controller = BowlShareController.shared
+        content
+            .alert(
+                controller.question?.title ?? "",
+                isPresented: Binding(get: { controller.question != nil }, set: { if !$0 { controller.question = nil } }),
+                presenting: controller.question
+            ) { question in
+                Button("Cancel", role: .cancel) {}
+                Button(question.action, role: .destructive) { question.then() }
+            } message: { question in
+                Text(question.message)
+            }
     }
 }
 
@@ -141,13 +207,16 @@ struct BowlShareMenuItems: View {
                 Button { BowlShareController.shared.manage(project) } label: {
                     Label("Manage Sharing…", systemImage: "person.2")
                 }
+                Button { BowlShareController.shared.copyLink(project) } label: {
+                    Label("Copy Link", systemImage: "link")
+                }
                 if info.role == .owner, info.endingSince == nil {
                     Button(role: .destructive) { BowlShareController.shared.confirmStopSharing(project) } label: {
                         Label("Stop Sharing…", systemImage: "person.2.slash")
                     }
                 }
             } else {
-                Button { BowlShareController.shared.share(project) } label: {
+                ShareLink(item: BowlShareItem(bowlID: project.id, name: project.name), preview: SharePreview(project.name)) {
                     Label("Share Bowl…", systemImage: "person.crop.circle.badge.plus")
                 }
                 .disabled(BowlSharing.shared.preparing.contains(project.id))
@@ -228,10 +297,16 @@ struct BowlShareBarButton: View {
     var body: some View {
         if BowlSharing.isAvailable {
             let isShared = BowlSharing.shared.isShared(project.id)
-            Button {
-                if isShared { BowlShareController.shared.manage(project) } else { BowlShareController.shared.share(project) }
-            } label: {
-                Label(isShared ? "Manage Sharing" : "Share Bowl", systemImage: isShared ? "person.2.fill" : "person.crop.circle.badge.plus")
+            Group {
+                if isShared {
+                    Button { BowlShareController.shared.manage(project) } label: {
+                        Label("Manage Sharing", systemImage: "person.2.fill")
+                    }
+                } else {
+                    ShareLink(item: BowlShareItem(bowlID: project.id, name: project.name), preview: SharePreview(project.name)) {
+                        Label("Share Bowl", systemImage: "person.crop.circle.badge.plus")
+                    }
+                }
             }
             .disabled(BowlSharing.shared.preparing.contains(project.id))
             .help(isShared ? "Manage Sharing" : "Share Bowl")

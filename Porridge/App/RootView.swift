@@ -15,6 +15,8 @@ struct RootView: View {
             }
             // The progress of an export and what to do with the archive.
             .modifier(ExportSheetHost())
+            // Sharing a bowl: the system's sheet for its people, and the questions before stopping or leaving.
+            .modifier(BowlShareHost())
             .fullScreenCoverOrSheet(isPresented: .init(get: { !onboardingDone }, set: { onboardingDone = !$0 })) {
                 OnboardingView { onboardingDone = true }
             }
