@@ -26,6 +26,8 @@ struct NotesView: View {
     @State private var searchKind: SearchKind?
     /// What the list column shows: the one long list, or a page reached from it.
     @State private var page = ListPage.home
+    /// The day the Today page shows; nil is today. Only while the app runs: opening Today starts on today.
+    @State private var todayDay: Date?
     /// "More" was tapped: the list shows all projects, not only the latest.
     @State private var showAllProjects = false
     @AppStorage(HomeList.recentProjectsKey) private var recentBowls = HomeList.defaultRecentProjects
@@ -176,6 +178,8 @@ struct NotesView: View {
             // Another page: what was chosen there is let go.
             isSelecting = false
             chosen = []
+            // Today opens on today.
+            if new == .today, old != .today { todayDay = nil }
         }
         .onChange(of: selection) {
             // Leaving an empty new note leaves nothing behind, once its page has slid away.
@@ -421,7 +425,7 @@ struct NotesView: View {
             todosPage
         case .today:
             TodayPage(
-                notes: notes, selection: $selection, onRemove: { remove($0) },
+                notes: notes, day: $todayDay, selection: $selection, onRemove: { remove($0) },
                 onRecord: { startRecording(for: $0) },
                 onNewNote: { addNote(for: $0) }
             )
@@ -910,6 +914,16 @@ struct NotesView: View {
     /// The actions of the list, shown as plain icons at the right of the custom bar (iOS).
     @ViewBuilder
     private func listActions(_ shown: ListPage) -> some View {
+        // Another day in Today: back to today.
+        if shown == .today, todayDay != nil {
+            Button { withAnimation(.snappy) { todayDay = nil } } label: {
+                Text("Today")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 6)
+            }
+            .help("Go to Today")
+            .accessibilityIdentifier("TodayBackToToday")
+        }
         if shown == .trash, notes.contains(where: \.isDeleted) {
             Button(role: .destructive) { confirmEmptyTrash = true } label: {
                 Label("Delete All", systemImage: "trash")
@@ -1027,7 +1041,7 @@ struct NotesView: View {
         case .project: project(on: shown)?.name ?? "Porridge"
         case .inbox: "Inbox"
         case .todos: "To-dos"
-        case .today: "Today"
+        case .today: todayDay.map { TodayDay.title($0) } ?? "Today"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Porridge"
         case .chat: "Chat"
         case .search: "Search"

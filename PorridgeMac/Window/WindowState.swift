@@ -73,6 +73,8 @@ final class WindowState {
                 isTriaging = false
                 showsLater = false
             }
+            // Today opens on today.
+            todayDay = nil
             // What others added or changed in a shared bowl is seen as far as the bowl goes, on the way in and out.
             BowlSharing.shared.markVisited(oldValue.projectID)
             BowlSharing.shared.markVisited(page.projectID)
@@ -90,6 +92,17 @@ final class WindowState {
     var searchTags: [String] = []
     /// Narrows a bowl's list or the search to one kind.
     var kindFilter: KindFilter?
+
+    /// The day Today shows; nil is today. Not kept: a window starts on today, and goes back to it when the day turns.
+    var todayDay: Date?
+    /// The day Today shows, today as its start.
+    var todayShownDay: Date { todayDay ?? TodayCalendar.shared.today }
+
+    /// Pages Today a day on or back (`TodayDay.step`); today is kept as nil.
+    func stepToday(by days: Int) {
+        let next = TodayDay.step(todayShownDay, by: days)
+        todayDay = TodayDay.isToday(next) ? nil : next
+    }
 
     /// The Inbox in triage: J/K go through it, L puts the entry away for later, F files it, D ticks a to-do.
     var isTriaging = false

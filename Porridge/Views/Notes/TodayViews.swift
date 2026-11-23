@@ -34,9 +34,11 @@ struct TodayTile: View {
 // MARK: - The Today page
 
 /// Today: the day's appointments, each with what is linked to it, then the to-dos due today or before and those
-/// done today.
+/// done today. Paged a day at a time (`TodayDay`): another day shows its appointments and the to-dos due on it.
 struct TodayPage: View {
     let notes: [Note]
+    /// The day shown; nil is today.
+    @Binding var day: Date?
     @Binding var selection: UUID?
     var onRemove: (Note) -> Void
     /// Records a meeting for the appointment.
@@ -45,16 +47,42 @@ struct TodayPage: View {
     var onNewNote: (CalendarAppointment) -> Void
 
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
 
     var body: some View {
         let calendar = TodayCalendar.shared
+        let shown = day ?? calendar.today
+        let isToday = TodayDay.isToday(shown)
+        VStack(spacing: 0) {
+            TodayDayBar(day: shown, isToday: isToday, onStep: step, onToday: { withAnimation(.snappy) { day = nil } })
+            list(shown, isToday: isToday)
+        }
+        .task {
+            calendar.refresh()
+            AppointmentLinks.shared.linkRecentMeetings(notes, in: context)
+        }
+        // A new day (also one that began while the app was away) starts on it again.
+        .onChange(of: calendar.today) { day = nil }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { calendar.refresh() }
+        }
+    }
+
+    /// A day on or back; today is kept as nil.
+    private func step(_ days: Int) {
+        let next = TodayDay.step(day ?? TodayCalendar.shared.today, by: days)
+        withAnimation(.snappy) { day = TodayDay.isToday(next) ? nil : next }
+    }
+
+    private func list(_ shown: Date, isToday: Bool) -> some View {
+        let calendar = TodayCalendar.shared
         let links = AppointmentLinks.shared
-        let appointments = calendar.appointments
+        let appointments = calendar.appointments(on: shown)
         // A to-do under one of the appointments is not listed twice.
         let underAppointments = calendar.status == .granted ? Set(appointments.flatMap { links.notes(for: $0, among: notes).map(\.id) }) : []
-        let open = TodayTodos.open(notes).filter { !underAppointments.contains($0.id) }
-        let done = TodayTodos.doneToday(notes).filter { !underAppointments.contains($0.id) }
+        let open = TodayTodos.open(notes, on: shown).filter { !underAppointments.contains($0.id) }
+        let done = TodayTodos.done(notes, on: shown).filter { !underAppointments.contains($0.id) }
         let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
         func buckets(_ note: Note) -> [String] { note.projectIDs.compactMap { names[$0] } }
         return List(selection: $selection) {
@@ -62,7 +90,7 @@ struct TodayPage: View {
                 switch calendar.status {
                 case .granted:
                     if appointments.isEmpty {
-                        Text("No appointments today")
+                        Text(isToday ? String(localized: "No appointments today") : String(localized: "No appointments on this day"))
                             .foregroundStyle(.secondary)
                             .cardListRow()
                             .lastInSection(true)
@@ -107,7 +135,7 @@ struct TodayPage: View {
             }
             Section {
                 if open.isEmpty, done.isEmpty {
-                    Text("Nothing due today")
+                    Text(isToday ? String(localized: "Nothing due today") : String(localized: "Nothing due on this day"))
                         .foregroundStyle(.secondary)
                         .cardListRow()
                         .lastInSection(true)
@@ -123,10 +151,59 @@ struct TodayPage: View {
         .cardList()
         .roomForFloatingButtons()
         .refreshable { calendar.refresh() }
-        .task {
-            calendar.refresh()
-            links.linkRecentMeetings(notes, in: context)
+    }
+}
+
+/// Under the bar of the Today page: the day before and after, and the whole date of the day shown; a tap on the
+/// date or a horizontal swipe across the row pages too.
+struct TodayDayBar: View {
+    let day: Date
+    let isToday: Bool
+    var onStep: (Int) -> Void
+    var onToday: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button { onStep(-1) } label: {
+                Label("Previous Day", systemImage: "chevron.left")
+            }
+            .accessibilityIdentifier("TodayPreviousDay")
+            Spacer(minLength: 4)
+            Button(action: onToday) {
+                Text(TodayDay.fullDate(day))
+                    .font(.subheadline.weight(isToday ? .regular : .semibold))
+                    .foregroundStyle(isToday ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.brandNavy.readable))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .buttonStyle(.plain)
+            .disabled(isToday)
+            .accessibilityLabel(TodayDay.fullDate(day))
+            .accessibilityHint(isToday ? "" : String(localized: "Back to today"))
+            .accessibilityIdentifier("TodayDate")
+            Spacer(minLength: 4)
+            Button { onStep(1) } label: {
+                Label("Next Day", systemImage: "chevron.right")
+            }
+            .accessibilityIdentifier("TodayNextDay")
         }
+        .labelStyle(.iconOnly)
+        .font(.body.weight(.semibold))
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .foregroundStyle(Color.brandNavy.readable)
+        .buttonStyle(ChromePillButtonStyle(tint: Color.brandNavy.readable))
+        .padding(.horizontal, 20)
+        .padding(.bottom, 8)
+        .contentShape(Rectangle())
+        // Only this row takes the swipe: the rows of the list keep their own swipe actions.
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    let width = value.translation.width
+                    guard abs(width) > 50, abs(width) > abs(value.translation.height) * 1.5 else { return }
+                    onStep(width < 0 ? 1 : -1)
+                }
+        )
     }
 }
 

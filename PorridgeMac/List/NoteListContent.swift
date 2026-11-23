@@ -37,7 +37,7 @@ enum NoteListContent {
         let notes = library.notes
         switch state.page {
         case .today:
-            return today(notes)
+            return today(notes, day: state.todayShownDay)
         case .inbox:
             let waiting = Inbox.notes(notes)
             var sections: [(ListSection, [ListItem])] = waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]
@@ -133,34 +133,37 @@ enum NoteListContent {
         }
     }
 
-    /// Today: each appointment with the entries linked to it, then the to-dos due today or before and those done
-    /// today (those under an appointment not twice).
-    static func today(_ notes: [Note]) -> Built {
+    /// Today (or the day paged to): each appointment with the entries linked to it, then the to-dos due (on today
+    /// those due before too) and those done that day (those under an appointment not twice).
+    static func today(_ notes: [Note], day: Date) -> Built {
         let calendar = TodayCalendar.shared
         let links = AppointmentLinks.shared
+        let isToday = TodayDay.isToday(day)
+        let appointments = calendar.appointments(on: day)
         var sections: [(ListSection, [ListItem])] = []
         var shown = Set<UUID>()
-        if calendar.status == .granted, !calendar.appointments.isEmpty {
+        if calendar.status == .granted, !appointments.isEmpty {
             var items: [ListItem] = []
-            for appointment in calendar.appointments {
+            for appointment in appointments {
                 items.append(.appointment(appointment.key))
                 for note in links.notes(for: appointment, among: notes) where !shown.contains(note.id) {
                     shown.insert(note.id)
                     items.append(.note(note.id))
                 }
             }
-            sections.append((ListSection(id: "today-appointments", title: String(localized: "Appointments"), tint: .navy, count: calendar.appointments.count), items))
+            sections.append((ListSection(id: "today-appointments", title: String(localized: "Appointments"), tint: .navy, count: appointments.count), items))
         } else if calendar.status == .denied {
             sections.append((ListSection(id: "today-appointments", title: String(localized: "Appointments"), tint: .navy,
                                          footnote: String(localized: "Allow Porridge in System Settings under Privacy & Security, Calendars, to see your appointments here.")), []))
         }
-        let todos = (TodayTodos.open(notes) + TodayTodos.doneToday(notes)).filter { !shown.contains($0.id) }
+        let todos = (TodayTodos.open(notes, on: day) + TodayTodos.done(notes, on: day)).filter { !shown.contains($0.id) }
         if !todos.isEmpty {
             sections.append((ListSection(id: "today-todos", title: String(localized: "To-dos"), tint: .task, count: todos.filter { !$0.isDone }.count), todos.map { .note($0.id) }))
         }
         return Built(
-            sections: sections, emptyTitle: "Nothing Today",
-            emptyMessage: "Today's appointments and the to-dos due show up here.", emptySymbol: "calendar"
+            sections: sections, emptyTitle: isToday ? "Nothing Today" : "Nothing on This Day",
+            emptyMessage: isToday ? "Today's appointments and the to-dos due show up here." : "The day's appointments and the to-dos due on it show up here.",
+            emptySymbol: "calendar"
         )
     }
 

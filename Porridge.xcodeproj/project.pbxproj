@@ -335,6 +335,7 @@
 		AEAE848B76D8557398F799BE /* SplitNoteViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0B032D3D8A75CD30063473 /* SplitNoteViewController.swift */; };
 		B07CCDF233B4047E47870049 /* WeeklyReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E8A3FF0534966E1E1C21EC3 /* WeeklyReviewView.swift */; };
 		B1AFC996F0E1DFC3DC4A105F /* NoteImageAttaching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FDADE8C1BFCE48C9E9BD19 /* NoteImageAttaching.swift */; };
+		B1C32999FC316EDC790C9137 /* TodayDayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 937957DBCBF155C63D4ABB3F /* TodayDayTests.swift */; };
 		B2336A64EB596AC69B212C59 /* PlaudImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9252D20181C0B25CCC7F3D13 /* PlaudImporter.swift */; };
 		B2D38982B34590617CA67AEC /* DocumentExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F51C5E9B32E6036E0FCDBB /* DocumentExtractor.swift */; };
 		B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB2150AC1E2D50129B73B9 /* SummaryService.swift */; };
@@ -731,6 +732,7 @@
 		9252D20181C0B25CCC7F3D13 /* PlaudImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudImporter.swift; sourceTree = "<group>"; };
 		9260BE803CBBC1BD3287E936 /* SimilarEntriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimilarEntriesView.swift; sourceTree = "<group>"; };
 		93420CE470F379F0877B30D2 /* MCPSettingsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPSettingsPane.swift; sourceTree = "<group>"; };
+		937957DBCBF155C63D4ABB3F /* TodayDayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayDayTests.swift; sourceTree = "<group>"; };
 		93B8DFE97590EDE5A2D24620 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		95ECCF408E170696A24132B0 /* NoteDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteDetailViewController.swift; sourceTree = "<group>"; };
 		968E269B396F7489301488C0 /* TaskDetectionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetectionBar.swift; sourceTree = "<group>"; };
@@ -1142,6 +1144,7 @@
 				07AAE9F8DA020CCDB79635EF /* SummaryTemplateTests.swift */,
 				08CEA65413426393941A1ADA /* SystemAudioMixTests.swift */,
 				CD474FF11205A6CC122FBC7E /* TestStore.swift */,
+				937957DBCBF155C63D4ABB3F /* TodayDayTests.swift */,
 				CC14015A2F2FE664AC0FE641 /* TodoRepeatTests.swift */,
 				DB032AAA624975E24BC692DD /* TodosTests.swift */,
 				C7FF1452B4C9F52060E78DA1 /* TodoSuggestionsDateGuessTests.swift */,
@@ -2273,6 +2276,7 @@
 				2487F1CA6330738A38A66962 /* SummaryTemplateTests.swift in Sources */,
 				0D911C18E12676E90922C4A1 /* SystemAudioMixTests.swift in Sources */,
 				6569AA53BCC35A58EF9AB20E /* TestStore.swift in Sources */,
+				B1C32999FC316EDC790C9137 /* TodayDayTests.swift in Sources */,
 				E2D2F199C9B9DBDD9969384D /* TodoRepeatTests.swift in Sources */,
 				A960CBE9C4C443D4FE6B1927 /* TodoSuggestionsDateGuessTests.swift in Sources */,
 				A174D2303CB962C9FB697F41 /* TodoSuggestionsTests.swift in Sources */,

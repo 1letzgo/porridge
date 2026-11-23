@@ -10,8 +10,14 @@ final class TodayCalendar {
 
     private(set) var appointments: [CalendarAppointment] = []
     private(set) var status = CalendarAccess.status
+    /// The start of the current day; it moves when the day turns, and the Today page goes back to it then.
+    private(set) var today = Calendar.current.startOfDay(for: Date())
+    /// Counts the calendar's changes, so the appointments of other days are read again.
+    private var version = 0
 
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    /// The appointments of other days paged to on the Today page, read once per change of the calendar.
+    @ObservationIgnored private var otherDays: [Date: [CalendarAppointment]] = [:]
 
     private init() {
         let center = NotificationCenter.default
@@ -26,8 +32,23 @@ final class TodayCalendar {
 
     func refresh() {
         status = CalendarAccess.status
+        let day = Calendar.current.startOfDay(for: Date())
+        if day != today { today = day }
         let read = CalendarAccess.todaysAppointments().filter { !$0.isDeclined }
         if read != appointments { appointments = read }
+        otherDays = [:]
+        version += 1
+    }
+
+    /// The appointments of a day: today's as kept, another day's read from the calendar (declined ones left out).
+    func appointments(on day: Date, calendar: Calendar = .current) -> [CalendarAppointment] {
+        let start = calendar.startOfDay(for: day)
+        guard start != today else { return appointments }
+        _ = version
+        if let known = otherDays[start] { return known }
+        let read = CalendarAccess.appointments(on: start, calendar: calendar).filter { !$0.isDeclined }
+        otherDays[start] = read
+        return read
     }
 
     #if DEBUG
@@ -50,17 +71,78 @@ final class TodayCalendar {
     }
 }
 
-/// What the Today card and page show of the to-dos: open ones due today or before, and those done today.
+/// The day the Today page shows: paged a day at a time, as view state only (not kept, back to today at launch and
+/// when the day turns). Days are their start in the device calendar.
+enum TodayDay {
+    /// The day `days` after (or before) `day`, by the calendar, so a day of 23 or 25 hours is still one day.
+    static func step(_ day: Date, by days: Int, calendar: Calendar = .current) -> Date {
+        let start = calendar.startOfDay(for: day)
+        return calendar.date(byAdding: .day, value: days, to: start).map { calendar.startOfDay(for: $0) } ?? start
+    }
+
+    /// Whole days from today to `day` (negative before today).
+    static func offset(of day: Date, now: Date = Date(), calendar: Calendar = .current) -> Int {
+        calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: day)).day ?? 0
+    }
+
+    static func isToday(_ day: Date, now: Date = Date(), calendar: Calendar = .current) -> Bool {
+        calendar.isDate(day, inSameDayAs: now)
+    }
+
+    /// The page's title: "Today", "Tomorrow", "Yesterday", otherwise weekday and date ("Wednesday 25 Nov"), with
+    /// the year when it is another one; in the device's locale.
+    static func title(_ day: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
+        switch offset(of: day, now: now, calendar: calendar) {
+        case 0: return String(localized: "Today")
+        case 1: return String(localized: "Tomorrow")
+        case -1: return String(localized: "Yesterday")
+        default: break
+        }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = locale
+        let sameYear = calendar.component(.year, from: day) == calendar.component(.year, from: now)
+        formatter.setLocalizedDateFormatFromTemplate(sameYear ? "EEEEdMMM" : "EEEEdMMMy")
+        return formatter.string(from: day)
+    }
+
+    /// The whole date for VoiceOver and tooltips ("Wednesday, 25 November 2026").
+    static func fullDate(_ day: Date, calendar: Calendar = .current, locale: Locale = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = locale
+        formatter.dateStyle = .full
+        formatter.timeStyle = .none
+        return formatter.string(from: day)
+    }
+}
+
+/// What the Today card and page show of the to-dos: on today the open ones due today or before (the late ones
+/// come along) and those done today; on another day the open ones due on exactly that day and those done that day.
 enum TodayTodos {
     static func open(_ notes: [Note], now: Date = Date(), calendar: Calendar = .current) -> [Note] {
-        Todos.byDue(notes.filter { note in
+        open(notes, on: now, now: now, calendar: calendar)
+    }
+
+    static func open(_ notes: [Note], on day: Date, now: Date = Date(), calendar: Calendar = .current) -> [Note] {
+        let isToday = TodayDay.isToday(day, now: now, calendar: calendar)
+        let key = Todos.dueKey(day, calendar: calendar)
+        return Todos.byDue(notes.filter { note in
             guard note.isTodo, !note.isDone, !note.isDeleted, let due = note.todoDue else { return false }
+            if !isToday { return due == key }
             return Todos.dueStatus(due, now: now, calendar: calendar).map { $0 != .later } ?? false
         })
     }
 
     static func doneToday(_ notes: [Note], now: Date = Date(), calendar: Calendar = .current) -> [Note] {
-        notes.filter { $0.isTodo && $0.isDone && !$0.isDeleted && $0.todoDoneAt.map { calendar.isDate($0, inSameDayAs: now) } == true }
+        done(notes, on: now, calendar: calendar)
+    }
+
+    /// To-dos ticked on the day, the latest first.
+    static func done(_ notes: [Note], on day: Date, calendar: Calendar = .current) -> [Note] {
+        notes.filter { $0.isTodo && $0.isDone && !$0.isDeleted && $0.todoDoneAt.map { calendar.isDate($0, inSameDayAs: day) } == true }
             .sorted { ($0.todoDoneAt ?? .distantPast) > ($1.todoDoneAt ?? .distantPast) }
     }
 }

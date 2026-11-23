@@ -119,7 +119,12 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         }
         header.onTriage = { [weak self] in self?.toggleTriage() }
         header.onToggleLater = { [weak self] in self?.state.showsLater.toggle() }
-        table.onKey = { [weak self] event in self?.handleTriageKey(event) ?? false }
+        header.onStepDay = { [weak self] days in self?.state.stepToday(by: days) }
+        header.onToday = { [weak self] in self?.state.todayDay = nil }
+        table.onKey = { [weak self] event in
+            guard let self else { return false }
+            return self.handleTriageKey(event) || self.handleTodayKey(event)
+        }
         header.onEmptyTrash = { [weak self] in
             guard let self, let window = self.view.window else { return }
             NoteOperations.confirmEmptyTrash(in: window, state: self.state)
@@ -129,8 +134,15 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         // Today's appointments and the links to them (from other devices too).
         observers.append(Observing { [weak self] in
             guard let self, self.state.page == .today else { return }
-            _ = (TodayCalendar.shared.appointments, TodayCalendar.shared.status, AppointmentLinks.shared.ledger)
+            // The day paged to is read through `appointments(on:)`, which follows the calendar's changes.
+            _ = (TodayCalendar.shared.appointments(on: self.state.todayShownDay), TodayCalendar.shared.status, AppointmentLinks.shared.ledger, self.state.todayDay)
             self.reload()
+        })
+        // A new day: Today goes back to it.
+        observers.append(Observing { [weak self] in
+            guard let self else { return }
+            _ = TodayCalendar.shared.today
+            if self.state.todayDay != nil { self.state.todayDay = nil }
         })
         observers.append(Observing { [weak self] in
             guard let self else { return }
@@ -203,7 +215,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             return cell
         case .appointment(let key):
             let cell = table.makeView(withIdentifier: AppointmentCellView.identifier, owner: nil) as? AppointmentCellView ?? AppointmentCellView()
-            if let appointment = TodayCalendar.shared.appointments.first(where: { $0.key == key }) {
+            if let appointment = TodayCalendar.shared.appointments(on: state.todayShownDay).first(where: { $0.key == key }) {
                 cell.show(appointment, notes: library.notes)
                 cell.menuProvider = { [weak self] appointment in
                     AppointmentActions.menu(for: appointment, in: self?.view.window?.windowController as? MainWindowController)
@@ -276,7 +288,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             return
         }
         if clicked >= 0, case .appointment(let key)? = dataSource.itemIdentifier(forRow: clicked),
-           let appointment = TodayCalendar.shared.appointments.first(where: { $0.key == key }) {
+           let appointment = TodayCalendar.shared.appointments(on: state.todayShownDay).first(where: { $0.key == key }) {
             let built = AppointmentActions.menu(for: appointment, in: view.window?.windowController as? MainWindowController)
             for item in built.items {
                 built.removeItem(item)
@@ -326,6 +338,21 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         case "f": triageFile()
         case "d": triageDone()
         default: return false
+        }
+        return true
+    }
+
+    /// ← and → page Today a day back and on, T goes back to today (while the list has the keyboard).
+    private func handleTodayKey(_ event: NSEvent) -> Bool {
+        guard state.page == .today else { return false }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
+        guard flags.isEmpty else { return false }
+        switch event.keyCode {
+        case 123: state.stepToday(by: -1)
+        case 124: state.stepToday(by: 1)
+        default:
+            guard event.charactersIgnoringModifiers?.lowercased() == "t" else { return false }
+            state.todayDay = nil
         }
         return true
     }

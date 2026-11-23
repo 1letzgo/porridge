@@ -13,6 +13,9 @@ final class ListHeaderView: NSView {
     /// The Inbox's triage switched on or off, and its "Later" section shown or hidden.
     var onTriage: (() -> Void)?
     var onToggleLater: (() -> Void)?
+    /// Today paged a day back (-1) or on (1), and back to today.
+    var onStepDay: ((Int) -> Void)?
+    var onToday: (() -> Void)?
 
     private let icon = NSImageView()
     private let iconBox = NSView()
@@ -80,7 +83,7 @@ final class ListHeaderView: NSView {
     @MainActor
     func show(page: SidebarPage, library: Library, state: WindowState, kindCounts: [KindFilter: Int]) {
         let (name, symbol, tint): (String, String, NSColor) = switch page {
-        case .today: ("Today", "calendar", .brandNavy)
+        case .today: (TodayDay.title(state.todayShownDay), "calendar", .brandNavy)
         case .inbox: ("Inbox", "tray.fill", .brandSky)
         case .todos: ("To-dos", "checklist", .brandTask)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)
@@ -91,13 +94,31 @@ final class ListHeaderView: NSView {
         case .search: ("Search", "magnifyingglass", .brandNavy)
         }
         title.stringValue = name
-        title.setAccessibilityLabel(name)
+        title.setAccessibilityLabel(page == .today ? TodayDay.fullDate(state.todayShownDay) : name)
         icon.image = .symbol(symbol, size: 11, weight: .bold)
         icon.contentTintColor = tint.onFill
         iconTint = tint
         iconBox.layer?.backgroundColor = tint.resolved(for: self)
 
         trailing.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        // Today: the day before and after (also ← and → in the list), and back to today from another day.
+        if page == .today {
+            let isToday = state.todayDay == nil
+            let previous = ActionButton(title: "", symbol: "chevron.left") { [weak self] in self?.onStepDay?(-1) }
+            let today = ActionButton(title: String(localized: "Today")) { [weak self] in self?.onToday?() }
+            let next = ActionButton(title: "", symbol: "chevron.right") { [weak self] in self?.onStepDay?(1) }
+            for (button, label, key) in [(previous, String(localized: "Previous Day"), "←"), (today, String(localized: "Go to Today"), "T"), (next, String(localized: "Next Day"), "→")] {
+                button.controlSize = .small
+                button.bezelStyle = .push
+                button.toolTip = "\(label) (\(key))"
+                button.setAccessibilityLabel(label)
+            }
+            today.isEnabled = !isToday
+            previous.setAccessibilityIdentifier("TodayPreviousDay")
+            today.setAccessibilityIdentifier("TodayBackToToday")
+            next.setAccessibilityIdentifier("TodayNextDay")
+            [previous, today, next].forEach(trailing.addArrangedSubview)
+        }
         // The Inbox: what came in this week, and the hint of the day.
         if page == .inbox {
             let review = ActionButton(title: "", symbol: "calendar.badge.checkmark") { [weak self] in self?.onReview?() }
@@ -145,7 +166,7 @@ final class ListHeaderView: NSView {
             button.toolTip = String(localized: "Edit Smart Filter")
             trailing.addArrangedSubview(button)
         } else {
-            title.toolTip = nil
+            title.toolTip = page == .today ? TodayDay.fullDate(state.todayShownDay) : nil
         }
         // What was searched for, kept as a smart filter.
         if page == .search, state.hasSearch {
