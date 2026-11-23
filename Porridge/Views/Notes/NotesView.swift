@@ -257,9 +257,9 @@ struct NotesView: View {
                 projectName = ""
             }
         }
-        .confirmationDialog(
+        .alert(
             "Delete “\(deletingProject?.name ?? "")”?", isPresented: Binding(get: { deletingProject != nil }, set: { if !$0 { deletingProject = nil } }),
-            titleVisibility: .visible, presenting: deletingProject
+            presenting: deletingProject
         ) { project in
             // The bowl comes with the dialog: closing it may clear `deletingProject` before this runs.
             Button("Delete Bowl", role: .destructive) {
@@ -325,7 +325,8 @@ struct NotesView: View {
         } message: {
             Text("A link asked Porridge to record a meeting.")
         }
-        .confirmationDialog("Delete All in Recently Deleted?", isPresented: $confirmEmptyTrash, titleVisibility: .visible) {
+        .alert("Delete All in Recently Deleted?", isPresented: $confirmEmptyTrash) {
+            Button("Cancel", role: .cancel) {}
             Button("Delete All", role: .destructive) {
                 if let selection, notes.first(where: { $0.id == selection })?.isDeleted == true { self.selection = nil }
                 notes.filter(\.isDeleted).forEach { NoteStore.deletePermanently($0, in: context) }
@@ -333,11 +334,11 @@ struct NotesView: View {
         } message: {
             Text("This cannot be undone.")
         }
-        .confirmationDialog(
+        .alert(
             "Delete Note Now?",
-            isPresented: Binding(get: { deletingNow != nil }, set: { if !$0 { deletingNow = nil } }),
-            titleVisibility: .visible
+            isPresented: Binding(get: { deletingNow != nil }, set: { if !$0 { deletingNow = nil } })
         ) {
+            Button("Cancel", role: .cancel) { deletingNow = nil }
             Button("Delete Now", role: .destructive) {
                 if let note = deletingNow {
                     if selection == note.id { selection = nil }
@@ -366,9 +367,9 @@ struct NotesView: View {
                 renamingFilter = nil
             }
         }
-        .confirmationDialog(
+        .alert(
             "Delete “\(deletingFilter?.name ?? "")”?", isPresented: Binding(get: { deletingFilter != nil }, set: { if !$0 { deletingFilter = nil } }),
-            titleVisibility: .visible, presenting: deletingFilter
+            presenting: deletingFilter
         ) { filter in
             Button("Delete Smart Filter", role: .destructive) {
                 if page == .smartFilter(filter.id) { page = .home }

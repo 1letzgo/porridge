@@ -390,11 +390,11 @@ struct SettingsView: View {
                     title: model.name, subtitle: model.place, state: .installed,
                     onDelete: { modelToRemove = model }
                 ) {}
-                .confirmationDialog(
+                .alert(
                     "Remove \(model.name)?",
-                    isPresented: .init(get: { modelToRemove?.id == model.id }, set: { if !$0 { modelToRemove = nil } }),
-                    titleVisibility: .visible
+                    isPresented: .init(get: { modelToRemove?.id == model.id }, set: { if !$0 { modelToRemove = nil } })
                 ) {
+                    Button("Cancel", role: .cancel) {}
                     Button("Remove", role: .destructive) {
                         SummaryModel.remove(model)
                         refreshSummaryModels()

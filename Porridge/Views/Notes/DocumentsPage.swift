@@ -119,9 +119,9 @@ struct NoteSelectionBar: View {
         } message: {
             Text("The pages of the others are added at its end, in the order of the list. It keeps what it is.")
         }
-        .confirmationDialog(
+        .alert(
             "Delete the Merged Documents?",
-            isPresented: Binding(get: { !mergedAway.isEmpty }, set: { if !$0 { mergedAway = [] } }), titleVisibility: .visible
+            isPresented: Binding(get: { !mergedAway.isEmpty }, set: { if !$0 { mergedAway = [] } })
         ) {
             Button("Move \(mergedAway.count) to Recently Deleted", role: .destructive) {
                 mergedAway.forEach { NoteStore.trash($0, in: context) }
