@@ -3,6 +3,8 @@ import Observation
 
 /// What the sidebar of a window shows; the Mac form of the list pages of iOS (`ListPage`).
 enum SidebarPage: Hashable, Codable {
+    /// The day's appointments with what is linked to them, and the to-dos due (`TodayCalendar`, `TodayTodos`).
+    case today
     /// What is new or in no bowl.
     case inbox
     /// Every open to-do by due day, wherever it is filed: a view, not a place (`Todos.folder`).

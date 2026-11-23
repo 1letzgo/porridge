@@ -60,8 +60,11 @@ enum Capture {
             note.segments = [TranscriptSegment(speakerId: nil, start: 0, end: result.duration, text: finished.liveText)]
         }
         if let project { note.projectIDs = [project] }
-        if let appointment { MeetingLinks.remember(appointment, for: note.id) }
         let library = Library.shared
+        if let appointment {
+            MeetingLinks.remember(appointment, for: note.id)
+            AppointmentLinks.shared.linkMeeting(note, to: appointment, in: library.context)
+        }
         library.context.insert(note)
         library.save()
         library.setNeedsReload()

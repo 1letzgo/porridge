@@ -419,6 +419,12 @@ struct NotesView: View {
             inboxPage
         case .todos:
             todosPage
+        case .today:
+            TodayPage(
+                notes: notes, selection: $selection, onRemove: { remove($0) },
+                onRecord: { startRecording(for: $0) },
+                onNewNote: { addNote(for: $0) }
+            )
         case .smartFilter(let id):
             if let filter = SmartFilterStore.shared.filter(id) {
                 SmartFilterPage(filter: filter, notes: notes, selection: $selection) { remove($0) }
@@ -480,7 +486,10 @@ struct NotesView: View {
             // every open to-do, wherever it is filed), as two buttons side by side.
             let todoFolder = Todos.folder(notes)
             Section {
-                UpNextRow(waiting: waiting, folder: todoFolder, onInbox: { page = .inbox }, onTodos: { page = .todos })
+                UpNextRow(
+                    notes: notes, waiting: waiting, folder: todoFolder,
+                    onToday: { page = .today }, onInbox: { page = .inbox }, onTodos: { page = .todos }
+                )
             } header: {
                 ListHeader(title: "Up Next", tint: .brandSky, isFirst: true)
             }
@@ -1018,6 +1027,7 @@ struct NotesView: View {
         case .project: project(on: shown)?.name ?? "Porridge"
         case .inbox: "Inbox"
         case .todos: "To-dos"
+        case .today: "Today"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Porridge"
         case .chat: "Chat"
         case .search: "Search"
@@ -1036,6 +1046,7 @@ struct NotesView: View {
         case .archive, .chat, .search, .smartFilter: .brandNavy
         case .trash: .red
         case .todos: .brandTask
+        case .today: .brandNavy
         default: .brandSky
         }
     }
@@ -1053,6 +1064,7 @@ struct NotesView: View {
         case .project: project(on: shown) == nil ? "tray.full.fill" : "folder.fill"
         case .inbox: "tray.fill"
         case .todos: "checklist"
+        case .today: "calendar"
         case .smartFilter: "line.3.horizontal.decrease"
         case .chat: "bubble.left.and.bubble.right.fill"
         case .search: "magnifyingglass"
@@ -1183,6 +1195,20 @@ struct NotesView: View {
         column = .detail
     }
 
+    /// A new note for an appointment: named after it, linked to it and in its bowl (else the one open).
+    private func addNote(for appointment: CalendarAppointment) {
+        let note = Note()
+        note.source = .note
+        note.title = appointment.title
+        if let bowl = AppointmentLinks.shared.bowl(for: appointment) ?? projectForNew {
+            note.projectIDs = [bowl]
+        }
+        AppointmentLinks.shared.link(note, to: appointment, in: nil)
+        draft = note
+        selection = note.id
+        column = .detail
+    }
+
     /// A note or to-do made from a template, opened at once. Into the template's bowl, else the bowl that is open.
     private func addFromTemplate(_ template: NoteTemplate, title: String) {
         let note = NoteTemplates.create(from: template, title: title, fallbackBowl: projectForNew, in: context)
@@ -1254,7 +1280,10 @@ struct NotesView: View {
         note.title = appointmentTitle ?? Note.defaultMeetingTitle(for: note.createdAt)
         note.titleIsCustom = appointmentTitle != nil
         appointmentTitle = nil
-        if let appointment { MeetingLinks.remember(appointment, for: note.id) }
+        if let appointment {
+            MeetingLinks.remember(appointment, for: note.id)
+            AppointmentLinks.shared.linkMeeting(note, to: appointment, in: context)
+        }
         appointment = nil
         note.statusRaw = ProcessingStatus.recorded.rawValue
         note.audioFileName = result.fileName
@@ -1329,7 +1358,9 @@ struct NoteRow: View {
             ThingsRowIcon(systemImage: note.kindSymbol, tint: tint, isPinned: note.isPinned)
                 .accessibilityLabel(note.kindName)
                 .padding(.top, 1)
+            let thumbnail = note.attachmentsData == nil ? nil : note.attachments.first(where: { $0.kind != .file })
             VStack(alignment: .leading, spacing: 3) {
+              VStack(alignment: .leading, spacing: 3) {
                 Text(note.displayTitle)
                     .font(.body)
                     .foregroundStyle(note.isDone ? .secondary : .primary)
@@ -1349,6 +1380,9 @@ struct NoteRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(document == nil ? 2 : 1)
                 }
+              }
+              // The footer must start below the picture, which is beside the text above it.
+              .frame(minHeight: thumbnail == nil ? 0 : 52, alignment: .top)
                 // The full line when there is room (narrow sidebar on the Mac); otherwise without domain and speakers.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) { footer(compact: false) }
@@ -1358,13 +1392,16 @@ struct NoteRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .padding(.top, 2)
+                // Under a picture the line runs on to its trailing edge (the picture, the gap before it and the
+                // spacing around the spacer), so the status ends where it does in rows without one.
+                .padding(.trailing, thumbnail == nil ? 0 : -76)
                 // Someone else added or changed it in a shared bowl, and it was not opened here since.
                 if let activity = BowlSharing.shared.activityLine(for: note) {
                     SharedActivityLabel(text: activity)
                 }
             }
             // The first picture or PDF of the note, small.
-            if let attachment = note.attachmentsData == nil ? nil : note.attachments.first(where: { $0.kind != .file }) {
+            if let attachment = thumbnail {
                 Spacer(minLength: 0)
                 RowThumbnail(attachment: attachment)
             }
@@ -1485,6 +1522,8 @@ enum ListPage: Hashable {
     case inbox
     /// The virtual folder of every open to-do by due day (`Todos.folder`), in the "Up Next" section of the home list.
     case todos
+    /// The day's appointments with their entries and the to-dos due (`TodayPage`), first in "Up Next".
+    case today
     /// A saved search (`SmartFilter`): the entries that fit it, wherever they are.
     case smartFilter(UUID)
     /// The chat with the notes.

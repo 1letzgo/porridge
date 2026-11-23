@@ -80,6 +80,7 @@ final class ListHeaderView: NSView {
     @MainActor
     func show(page: SidebarPage, library: Library, state: WindowState, kindCounts: [KindFilter: Int]) {
         let (name, symbol, tint): (String, String, NSColor) = switch page {
+        case .today: ("Today", "calendar", .brandNavy)
         case .inbox: ("Inbox", "tray.fill", .brandSky)
         case .todos: ("To-dos", "checklist", .brandTask)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)

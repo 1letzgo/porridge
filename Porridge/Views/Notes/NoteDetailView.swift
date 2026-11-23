@@ -56,6 +56,7 @@ struct NoteDetailView: View {
     @State private var addingTag = false
     @State private var newTag = ""
     @State private var pickingDue = false
+    @State private var pickingAppointment = false
     /// "Split into Bowl…" is open; after it, what it made, while it can be taken back.
     @State private var showSplit = false
     @State private var lastSplit: BowlChange?
@@ -149,6 +150,8 @@ struct NoteDetailView: View {
             if !note.isDeleted, !editor.isEditing, !focused, dictation.phase == .idle, note.modelContext != nil {
                 // The entries that link here, and those that name it without a link.
                 EntryLinksSection(note: note)
+                // The other entries of its appointment, next to the similar ones.
+                AppointmentEntriesSection(note: note)
                 SimilarEntriesSection(note: note)
             }
         }
@@ -271,6 +274,7 @@ struct NoteDetailView: View {
             saveIfFilled()
         }
         .sheet(isPresented: $pickingDue) { DueDatePickerSheet(note: note) }
+        .sheet(isPresented: $pickingAppointment) { AppointmentPicker(note: note) }
         .sheet(isPresented: $showExport) {
             MeetingExportSheet(note: note)
         }
@@ -587,6 +591,10 @@ struct NoteDetailView: View {
                     onRemove: { Undoable.remove($0, from: note, in: context) }
                 )
                 .disabled(isReadOnly)
+                // The appointment it belongs to, after its bowl.
+                if !isReadOnly, note.modelContext != nil {
+                    AppointmentChip(note: note, isPicking: $pickingAppointment)
+                }
                 // A stored file: what it is as a document, after its bowls; a tap sets it (and so marks it as one).
                 if note.isStored, !isLocked {
                     DocumentChip(note: note)

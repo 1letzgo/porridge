@@ -4,6 +4,8 @@ import Foundation
 enum ListItem: Hashable {
     case note(UUID)
     case project(UUID)
+    /// An appointment of the day (Today), by `CalendarAppointment.key`.
+    case appointment(String)
 }
 
 /// A section of the middle column: its header and color.
@@ -34,6 +36,8 @@ enum NoteListContent {
     static func build(for state: WindowState, library: Library) -> Built {
         let notes = library.notes
         switch state.page {
+        case .today:
+            return today(notes)
         case .inbox:
             let waiting = Inbox.notes(notes)
             var sections: [(ListSection, [ListItem])] = waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]
@@ -127,6 +131,37 @@ enum NoteListContent {
         case .chat:
             return Built(sections: [], emptyTitle: "", emptyMessage: "", emptySymbol: "bubble.left.and.bubble.right")
         }
+    }
+
+    /// Today: each appointment with the entries linked to it, then the to-dos due today or before and those done
+    /// today (those under an appointment not twice).
+    static func today(_ notes: [Note]) -> Built {
+        let calendar = TodayCalendar.shared
+        let links = AppointmentLinks.shared
+        var sections: [(ListSection, [ListItem])] = []
+        var shown = Set<UUID>()
+        if calendar.status == .granted, !calendar.appointments.isEmpty {
+            var items: [ListItem] = []
+            for appointment in calendar.appointments {
+                items.append(.appointment(appointment.key))
+                for note in links.notes(for: appointment, among: notes) where !shown.contains(note.id) {
+                    shown.insert(note.id)
+                    items.append(.note(note.id))
+                }
+            }
+            sections.append((ListSection(id: "today-appointments", title: String(localized: "Appointments"), tint: .navy, count: calendar.appointments.count), items))
+        } else if calendar.status == .denied {
+            sections.append((ListSection(id: "today-appointments", title: String(localized: "Appointments"), tint: .navy,
+                                         footnote: String(localized: "Allow Porridge in System Settings under Privacy & Security, Calendars, to see your appointments here.")), []))
+        }
+        let todos = (TodayTodos.open(notes) + TodayTodos.doneToday(notes)).filter { !shown.contains($0.id) }
+        if !todos.isEmpty {
+            sections.append((ListSection(id: "today-todos", title: String(localized: "To-dos"), tint: .task, count: todos.filter { !$0.isDone }.count), todos.map { .note($0.id) }))
+        }
+        return Built(
+            sections: sections, emptyTitle: "Nothing Today",
+            emptyMessage: "Today's appointments and the to-dos due show up here.", emptySymbol: "calendar"
+        )
     }
 
     /// What the search finds among the notes, those in archived bowls included; strictly a timeline.

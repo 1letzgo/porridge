@@ -138,9 +138,9 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let buckets = library.activeProjects
         // Pinned bowls first, then by name.
         let sorted = buckets.filter(\.isPinned) + buckets.filter { !$0.isPinned }
-        // "Up Next", as the section of the home list on iOS: the Inbox and, under it, the to-dos
+        // "Up Next", as the section of the home list on iOS: Today, the Inbox and, under it, the to-dos
         // folder while there are to-dos to show.
-        var upNext: [SidebarNode] = [SidebarNode(.page(.inbox))]
+        var upNext: [SidebarNode] = [SidebarNode(.page(.today)), SidebarNode(.page(.inbox))]
         if !Todos.folder(notes).isEmpty || state.page == .todos { upNext.append(SidebarNode(.page(.todos))) }
         var top: [SidebarNode] = [SidebarNode(.group("Up Next"), children: upNext)]
         top.append(SidebarNode(.group("Bowls"), children: sorted.map { SidebarNode(.page(.project($0.id))) }))
@@ -253,6 +253,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private func configure(_ cell: SidebarCell, for page: SidebarPage) {
         let notes = library.notes
         switch page {
+        case .today:
+            // What is left of the day: appointments not over yet and the to-dos due.
+            let now = Date()
+            let left = TodayCalendar.shared.appointments.filter { $0.end > now }.count + TodayTodos.open(notes).count
+            cell.configure(title: "Today", symbol: "calendar", tint: .brandNavy, badge: left)
         case .inbox:
             let now = Date()
             let count = notes.lazy.filter { $0.isWaitingInInbox(now: now) }.count

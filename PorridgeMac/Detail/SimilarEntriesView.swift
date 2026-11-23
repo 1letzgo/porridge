@@ -5,16 +5,17 @@ import AppKit
 final class SimilarEntriesView: NSView {
     var onOpen: ((Note) -> Void)?
     private let flow = FlowView()
+    private let heading: NSTextField
     private var shown: [UUID] = []
 
-    init() {
+    /// "Similar" by default; the entries of the same appointment use it with their own heading.
+    init(title: String = String(localized: "Similar"), symbol: String = "sparkle.magnifyingglass", label: String = String(localized: "Similar Entries")) {
+        heading = NSTextField.label(title, font: .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .bold), color: .secondaryLabelColor)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        let icon = NSImageView(image: .symbol("sparkle.magnifyingglass", size: 11, weight: .bold))
+        let icon = NSImageView(image: .symbol(symbol, size: 11, weight: .bold))
         icon.contentTintColor = .secondaryLabelColor
-        let heading = NSTextField.label(
-            String(localized: "Similar"), font: .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .bold), color: .secondaryLabelColor
-        )
+        heading.lineBreakMode = .byTruncatingTail
         let head = NSStackView.horizontal([icon, heading], spacing: 4)
         flow.translatesAutoresizingMaskIntoConstraints = false
         let stack = NSStackView.vertical([head, flow], spacing: 6)
@@ -23,12 +24,17 @@ final class SimilarEntriesView: NSView {
         flow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel(String(localized: "Similar Entries"))
+        setAccessibilityLabel(label)
         isHidden = true
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// A heading of its own (the appointment's title and day).
+    func setHeading(_ text: String) {
+        if heading.stringValue != text { heading.stringValue = text }
+    }
 
     @MainActor
     func show(_ notes: [Note]) {

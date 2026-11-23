@@ -4,6 +4,7 @@ import AppKit
 /// the site, the length and its state. An entry in the inbox shows its suggested bowls under it.
 /// The cell follows its note: a title typed in the detail shows here at once.
 final class NoteCellView: NSTableCellView {
+    private var leading: NSLayoutConstraint!
     static let identifier = NSUserInterfaceItemIdentifier("note")
 
     private let icon = KindIconView()
@@ -20,6 +21,9 @@ final class NoteCellView: NSTableCellView {
     private(set) var noteID: UUID?
     private var namesBuckets = false
     private var thumbnailFile: String?
+    /// The footer's width: that of the text, or, beside a picture, on to the picture's trailing edge and below it.
+    private var footerBesideText: NSLayoutConstraint!
+    private var footerUnderPicture: [NSLayoutConstraint] = []
 
     /// Ticks a to-do from its box in the row.
     var onToggleDone: ((Note) -> Void)?
@@ -60,20 +64,27 @@ final class NoteCellView: NSTableCellView {
         row.setCustomSpacing(10, after: thumbnail)
         row.distribution = .fill
         addSubview(row)
+        leading = row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10)
         NSLayoutConstraint.activate([
             todoBox.widthAnchor.constraint(equalToConstant: 30),
             todoBox.heightAnchor.constraint(equalToConstant: 30),
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            leading,
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             row.topAnchor.constraint(equalTo: topAnchor, constant: 9),
             row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -9),
-            footer.widthAnchor.constraint(equalTo: text.widthAnchor),
             titleLabel.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
             previewLabel.widthAnchor.constraint(equalTo: text.widthAnchor),
             documentLabel.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
             thumbnail.widthAnchor.constraint(equalToConstant: 44),
             thumbnail.heightAnchor.constraint(equalToConstant: 44),
         ])
+        // The status ends at the row's trailing edge in every row, also under a picture.
+        footerBesideText = footer.widthAnchor.constraint(equalTo: text.widthAnchor)
+        footerBesideText.isActive = true
+        footerUnderPicture = [
+            footer.trailingAnchor.constraint(equalTo: thumbnail.trailingAnchor),
+            footer.topAnchor.constraint(greaterThanOrEqualTo: thumbnail.bottomAnchor, constant: 3),
+        ]
         textField = titleLabel
     }
 
@@ -82,6 +93,11 @@ final class NoteCellView: NSTableCellView {
 
     /// Shows the note and follows it until another one is shown.
     /// `namesBuckets`: the row names its bowls in place of the date (a list that mixes bowls, the to-dos folder).
+    /// Under an appointment (Today): moved in a little, as belonging to it.
+    var isIndented = false {
+        didSet { leading.constant = isIndented ? 34 : 10 }
+    }
+
     func show(_ note: Note, buckets: [NoteFolder], showsSuggestions: Bool, namesBuckets: Bool = false) {
         self.namesBuckets = namesBuckets
         noteID = note.id
@@ -148,6 +164,13 @@ final class NoteCellView: NSTableCellView {
         // The first picture or PDF of the note, small.
         let attachment = note.attachmentsData == nil ? nil : note.attachments.first { $0.kind != .file }
         thumbnail.isHidden = attachment == nil
+        if attachment == nil {
+            NSLayoutConstraint.deactivate(footerUnderPicture)
+            footerBesideText.isActive = true
+        } else {
+            footerBesideText.isActive = false
+            NSLayoutConstraint.activate(footerUnderPicture)
+        }
         if let attachment, attachment.fileName != thumbnailFile {
             thumbnailFile = attachment.fileName
             thumbnail.image = nil

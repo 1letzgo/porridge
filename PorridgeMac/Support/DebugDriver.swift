@@ -49,6 +49,7 @@ enum DebugDriver {
             switch argument {
             case "chat": state.page = .chat
             case "todos": state.page = .todos
+            case "today": state.page = .today
             case "archive": state.page = .archive
             case "trash": state.page = .trash
             case "search": state.page = .search
@@ -181,6 +182,18 @@ enum DebugDriver {
         case "quit":
             // A regular quit, so the windows' state is written for the next launch.
             NSApp.terminate(nil)
+        case "fake-appointment":
+            // `fake-appointment <title>`: an appointment of the next hour, in memory only, linked to the open note.
+            let start = Date().addingTimeInterval(600)
+            let appointment = CalendarAppointment(id: "debug-\(argument)", title: argument, start: start, end: start.addingTimeInterval(3600), isAllDay: false, calendarName: "Debug", externalID: "debug-\(argument)")
+            TodayCalendar.shared.addForTesting(appointment)
+            if let note = library.notes.first(where: { !$0.isDeleted && $0.isRecording }) { AppointmentLinks.shared.link(note, to: appointment, in: nil) }
+            if let note = library.notes.first(where: { !$0.isDeleted && !$0.isRecording && !$0.isTodo }) { AppointmentLinks.shared.link(note, to: appointment, in: nil) }
+        case "fake-appointment-clear":
+            // Takes the links of `fake-appointment` away again.
+            for note in library.notes where AppointmentLinks.shared.appointment(for: note.id)?.seriesID.hasPrefix("debug-") == true {
+                AppointmentLinks.shared.link(note, to: nil, in: nil)
+            }
         case "dump":
             dump()
         case "shot":
@@ -347,6 +360,8 @@ enum DebugDriver {
             log("window \(window.title) visible=\(window.isVisible) frame=\(window.frame) toolbar=\(window.toolbar?.items.map(\.itemIdentifier.rawValue) ?? [])")
         }
         log("notes=\(Library.shared.notes.count) projects=\(Library.shared.projects.count)")
+        let today = TodayCalendar.shared
+        log("calendar=\(today.status) appointments=\(today.appointments.map(\.title)) todos=\(TodayTodos.open(Library.shared.notes).count) links=\(AppointmentLinks.shared.ledger.notes.count)")
     }
 }
 #endif

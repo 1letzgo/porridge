@@ -108,6 +108,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     private var windowTitle: String {
         switch state.page {
+        case .today: "Today"
         case .inbox: "Inbox"
         case .todos: "To-dos"
         case .chat: "Chat"
@@ -360,6 +361,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     @objc func newNote(_ sender: Any?) { addNote(todo: false) }
     @objc func newTodo(_ sender: Any?) { addNote(todo: true) }
+
+    /// A new note for an appointment: named after it, linked to it, in its bowl (else the one open).
+    func addNote(for appointment: CalendarAppointment) {
+        if state.page == .chat || state.page == .search { state.page = .today }
+        let note = Note()
+        note.source = .note
+        note.title = appointment.title
+        if let bowl = AppointmentLinks.shared.bowl(for: appointment) ?? state.projectForNew { note.projectIDs = [bowl] }
+        AppointmentLinks.shared.link(note, to: appointment, in: nil)
+        state.draft = note
+        state.draftStartsRecording = false
+        state.selection = [note.id]
+        split.detail.noteDetail?.focusTitle()
+    }
 
     /// A new note opens at once; it is stored once it has content. In a bowl it goes into it; in the to-dos
     /// folder it is a to-do, in no bowl.

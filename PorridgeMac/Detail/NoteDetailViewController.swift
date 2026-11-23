@@ -85,6 +85,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private lazy var playerBar = PlayerBarView(player: player)
     /// The entries most like this one, under the page.
     private let similar = SimilarEntriesView()
+    /// Next to "Similar": the other entries of the appointment this one is linked to.
+    private let sameAppointment = SimilarEntriesView(title: "", symbol: "calendar", label: String(localized: "Entries of the Same Appointment"))
     /// The entries that link here, and those that name it without a link.
     private let entryLinks = EntryLinksView()
     private let fetchBar = NSStackView()
@@ -184,9 +186,10 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         fetchBar.spacing = 6
         playerBar.onDelete = { [weak self] in self?.confirmDeleteRecording() }
         similar.onOpen = { [weak self] other in self?.state.reveal(other) }
+        sameAppointment.onOpen = { [weak self] other in self?.state.reveal(other) }
         entryLinks.onOpen = { [weak self] other in self?.state.reveal(other) }
         entryLinks.onChange = { [weak self] in self?.renderEntryLinks(force: true) }
-        let bottom = NSStackView.vertical([entryLinks, similar, playerBar, fetchBar], spacing: 8, alignment: .leading)
+        let bottom = NSStackView.vertical([entryLinks, sameAppointment, similar, playerBar, fetchBar], spacing: 8, alignment: .leading)
 
         page.addSubview(head)
         page.addSubview(content)
@@ -235,6 +238,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             playerBar.widthAnchor.constraint(equalTo: bottom.widthAnchor),
             // Room on the right for the microphone's button, which lies over the corner.
             similar.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -72),
+            sameAppointment.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -72),
             entryLinks.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -72),
             fetchBar.widthAnchor.constraint(equalTo: bottom.widthAnchor),
             micButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -22),
@@ -436,6 +440,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             guard self.note.modelContext == nil || self.library.note(self.note.id) != nil else { return }
             self.render()
             self.renderSimilar()
+            self.renderSameAppointment()
             self.renderEntryLinks()
         }
         renderEntryLinks()
@@ -443,6 +448,11 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         observers.append(Observing { [weak self] in
             _ = NoteIndex.shared.version
             self?.renderSimilar()
+        })
+        // The links to appointments change here and on other devices.
+        observers.append(Observing { [weak self] in
+            _ = AppointmentLinks.shared.ledger
+            self?.renderSameAppointment()
         })
         observers.append(Observing { [weak self] in
             guard let self else { return }
@@ -681,6 +691,15 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             guard !Task.isCancelled, let self, self.note.id == note.id else { return }
             self.entryLinks.show(linkedFrom: found.linkedFrom, mentions: found.mentions, target: note)
         }
+    }
+
+    private func renderSameAppointment() {
+        guard !note.isDeleted, note.modelContext != nil, let ref = AppointmentLinks.shared.appointment(for: note.id) else {
+            sameAppointment.show([])
+            return
+        }
+        sameAppointment.setHeading("\(ref.title) · \(ref.when)")
+        sameAppointment.show(AppointmentLinks.shared.others(linkedWith: note, among: library.notes))
     }
 
     private func renderSimilar() {

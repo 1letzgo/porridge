@@ -126,6 +126,12 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         }
 
         libraryToken = library.observe { [weak self] in self?.reload() }
+        // Today's appointments and the links to them (from other devices too).
+        observers.append(Observing { [weak self] in
+            guard let self, self.state.page == .today else { return }
+            _ = (TodayCalendar.shared.appointments, TodayCalendar.shared.status, AppointmentLinks.shared.ledger)
+            self.reload()
+        })
         observers.append(Observing { [weak self] in
             guard let self else { return }
             // Read what the list depends on, so a change of it rebuilds the list.
@@ -144,6 +150,13 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     // MARK: Content
 
     private func reload() {
+        if state.page == .today {
+            let calendar = TodayCalendar.shared
+            // Opening Today asks for the calendars, once.
+            if calendar.status == .notDetermined { Task { await calendar.requestAccess() } }
+            // Meetings recorded for an appointment are linked to it, also those from before.
+            Task { @MainActor [library] in AppointmentLinks.shared.linkRecentMeetings(library.notes, in: library.context) }
+        }
         let built = NoteListContent.build(for: state, library: library)
         let pageChanged = shownPage != state.page
         shownPage = state.page
@@ -182,10 +195,20 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
                 cell.show(note, buckets: library.activeProjects, showsSuggestions: state.page == .inbox, namesBuckets: state.page == .todos || state.page.smartFilterID != nil)
                 cell.onToggleDone = { note in TodoBridge.setDone(!TodoBridge.isDone(note), note) }
             }
+            cell.isIndented = dataSource.snapshot().sectionIdentifier(containingItem: item)?.id == "today-appointments"
             return cell
         case .project(let id):
             let cell = table.makeView(withIdentifier: BucketCellView.identifier, owner: nil) as? BucketCellView ?? BucketCellView()
             if let project = library.project(id) { cell.show(project, notes: library.notes) }
+            return cell
+        case .appointment(let key):
+            let cell = table.makeView(withIdentifier: AppointmentCellView.identifier, owner: nil) as? AppointmentCellView ?? AppointmentCellView()
+            if let appointment = TodayCalendar.shared.appointments.first(where: { $0.key == key }) {
+                cell.show(appointment, notes: library.notes)
+                cell.menuProvider = { [weak self] appointment in
+                    AppointmentActions.menu(for: appointment, in: self?.view.window?.windowController as? MainWindowController)
+                }
+            }
             return cell
         }
     }
@@ -213,7 +236,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
                 // An archived bowl opens like any bowl.
                 state.page = .project(id)
                 return
-            case nil: break
+            case .appointment?, nil: break
             }
         }
         // A new note that was not written in yet stays open until another one is chosen.
@@ -221,7 +244,11 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        dataSource.itemIdentifier(forRow: row) != nil
+        switch dataSource.itemIdentifier(forRow: row) {
+        case .note?, .project?: true
+        // An appointment is not opened; its menu is at the end of its row.
+        case .appointment?, nil: false
+        }
     }
 
     /// The notes the context menu or a command is about: the clicked row (with the selection when it is in it).
@@ -246,6 +273,15 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         let clicked = table.clickedRow
         if clicked >= 0, case .project(let id)? = dataSource.itemIdentifier(forRow: clicked), let project = library.project(id) {
             BucketActions.addItems(for: project, to: menu, state: state, window: view.window)
+            return
+        }
+        if clicked >= 0, case .appointment(let key)? = dataSource.itemIdentifier(forRow: clicked),
+           let appointment = TodayCalendar.shared.appointments.first(where: { $0.key == key }) {
+            let built = AppointmentActions.menu(for: appointment, in: view.window?.windowController as? MainWindowController)
+            for item in built.items {
+                built.removeItem(item)
+                menu.addItem(item)
+            }
             return
         }
         let notes = targetedNotes

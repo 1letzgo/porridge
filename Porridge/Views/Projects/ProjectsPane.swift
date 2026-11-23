@@ -102,7 +102,7 @@ struct ProjectRow: View {
     }
 }
 
-/// One of the two buttons of "Up Next" on the home list: in the color of its symbol, as the row icons, half the row wide.
+/// One of the three buttons of "Up Next" on the home list: in the color of its symbol, as the row icons, a third of the row wide.
 struct UpNextTile<Detail: View>: View {
     let title: String
     let systemImage: String
@@ -120,10 +120,12 @@ struct UpNextTile<Detail: View>: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 detail
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
@@ -147,25 +149,28 @@ private struct UpNextTileStyle: ButtonStyle {
     }
 }
 
-/// "Up Next" on the home list: the Inbox (what is new or in no bowl) and the to-dos folder (every open to-do,
-/// wherever it is filed) as two buttons that share the row.
+/// "Up Next" on the home list: Today (the day's appointments and to-dos), the Inbox (what is new or in no bowl)
+/// and the to-dos folder (every open to-do, wherever it is filed), side by side in one row.
 struct UpNextRow: View {
+    let notes: [Note]
     let waiting: [Note]
     let folder: Todos.Folder
+    var onToday: () -> Void
     var onInbox: () -> Void
     var onTodos: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        // All three side by side, as high as the tallest.
+        HStack(spacing: 10) {
+            TodayTile(notes: notes, onOpen: onToday)
             UpNextTile(title: String(localized: "Inbox"), systemImage: "tray.fill", tint: .brandSky, onOpen: onInbox) {
                 Text(waiting.isEmpty ? "Nothing waiting" : "\(waiting.count) waiting")
             }
             .accessibilityIdentifier("InboxCategory")
             UpNextTile(title: String(localized: "To-dos"), systemImage: "checklist", tint: .brandTask, onOpen: onTodos) {
-                HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(folder.open == 0 ? String(localized: "Nothing open") : folder.open == 1 ? String(localized: "1 open") : String(localized: "\(folder.open) open"))
                     if folder.overdue > 0 {
-                        Text(" · ")
                         Text(String(localized: "\(folder.overdue) overdue"))
                             .foregroundStyle(Color.brandDangerText)
                             .fontWeight(.semibold)
@@ -174,7 +179,6 @@ struct UpNextRow: View {
             }
             .accessibilityIdentifier("TodosFolder")
         }
-        // Both as high as the taller one.
         .fixedSize(horizontal: false, vertical: true)
         .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 12, trailing: 20))
         .listRowBackground(Color.clear)

@@ -359,7 +359,6 @@ struct SimilarEntriesSection: View {
     let note: Note
 
     @Environment(\.allNotes) private var allNotes
-    @Environment(\.openNote) private var openNote
     @State private var similar: [Note] = []
 
     var body: some View {
@@ -368,32 +367,7 @@ struct SimilarEntriesSection: View {
                 Text("Similar")
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(Color.brandNavy.readable)
-                VStack(spacing: 0) {
-                    ForEach(similar) { other in
-                        Button { openNote(other.id) } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: other.kindSymbol)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 20)
-                                Text(other.displayTitle)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Spacer(minLength: 8)
-                                Text(other.createdAt.formatted(.dateTime.day().month(.abbreviated)))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(.vertical, 8)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Open \(other.displayTitle)")
-                        if other.id != similar.last?.id { Divider() }
-                    }
-                }
+                RelatedEntryRows(notes: similar)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -18,6 +18,15 @@ struct CalendarAppointment: Identifiable, Hashable, Codable {
     var videoURL: URL?
     /// The user declined the invitation.
     var isDeclined = false
+    /// `EKEvent.calendarItemExternalIdentifier`: the same on every device and for every occurrence of a series
+    /// (falls back to the event's identifier here). Links to entries and bowls are kept by it (`AppointmentLinks`).
+    /// Optional so that appointments remembered before it decode.
+    var externalID: String?
+
+    /// The series (or the single appointment), the same on every device.
+    var seriesID: String { externalID.flatMap { $0.isEmpty ? nil : $0 } ?? id }
+    /// This occurrence of the appointment, the same on every device.
+    var key: String { AppointmentRef.key(seriesID: seriesID, start: start) }
 }
 
 /// Reads appointments from the calendars on this device.
@@ -47,8 +56,12 @@ enum CalendarAccess {
     static var eventStore: EKEventStore { store }
 
     static func todaysAppointments() -> [CalendarAppointment] {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: Date())
+        appointments(on: Date())
+    }
+
+    /// The appointments of one day, all-day ones first.
+    static func appointments(on day: Date, calendar: Calendar = .current) -> [CalendarAppointment] {
+        let start = calendar.startOfDay(for: day)
         guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return [] }
         return appointments(from: start, to: end)
             .sorted { ($0.isAllDay ? 0 : 1, $0.start) < ($1.isAllDay ? 0 : 1, $1.start) }
@@ -90,7 +103,8 @@ enum CalendarAccess {
             calendarID: event.calendar.calendarIdentifier,
             attendees: MeetingAlerts.unique(names),
             videoURL: MeetingAlerts.videoLink(in: [event.url?.absoluteString, event.location, event.notes]),
-            isDeclined: me?.participantStatus == .declined
+            isDeclined: me?.participantStatus == .declined,
+            externalID: event.calendarItemExternalIdentifier ?? event.eventIdentifier ?? ""
         )
     }
 }

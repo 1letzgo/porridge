@@ -75,6 +75,25 @@ final class NoteChipsView: NSView {
             add.setAccessibilityLabel("Add to Bowl")
             views.append(add)
         }
+        // The appointment it belongs to, after its bowl: a click changes it (or links one).
+        if !locked, note.modelContext != nil {
+            if let ref = AppointmentLinks.shared.appointment(for: note.id) {
+                let title = ref.title.count > 34 ? String(ref.title.prefix(33)) + "…" : ref.title
+                let pill = PillButton(title: "\(title) · \(ref.when)", symbol: "calendar", tint: .brandNavy, target: self, action: #selector(showAppointments(_:)))
+                pill.setAccessibilityLabel(String(localized: "Appointment \(ref.title), \(ref.when)"))
+                pill.toolTip = String(localized: "Change Appointment")
+                views.append(pill)
+                let remove = NSButton(image: .symbol("xmark", size: 10, weight: .bold, label: "Remove Appointment"), target: self, action: #selector(removeAppointment))
+                remove.isBordered = false
+                remove.contentTintColor = .brandNavy
+                remove.toolTip = String(localized: "Remove Appointment")
+                views.append(remove)
+            } else {
+                let add = PillButton(title: String(localized: "Appointment"), symbol: "plus", tint: .brandNavy, target: self, action: #selector(showAppointments(_:)))
+                add.setAccessibilityLabel(String(localized: "Link to Appointment"))
+                views.append(add)
+            }
+        }
         // A stored file: what it is as a document, after its bowls ("Invoice · Telekom" in orange, or an
         // outlined "+ Document" to mark it as one); a click sets it.
         if note.isStored, !locked {
@@ -147,6 +166,16 @@ final class NoteChipsView: NSView {
         guard let note else { return }
         let menu = NoteOperations.bucketMenu(for: [note], window: hostWindow)
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    @objc private func showAppointments(_ sender: NSButton) {
+        guard let note else { return }
+        AppointmentActions.linkMenu(for: note).popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    @objc private func removeAppointment() {
+        guard let note else { return }
+        AppointmentLinks.shared.link(note, to: nil, in: nil)
     }
 
     @objc private func removeTag(_ sender: NSButton) {
