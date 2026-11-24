@@ -35,6 +35,18 @@ struct PorridgeShortcuts: AppShortcutsProvider {
             systemImageName: "magnifyingglass"
         )
         AppShortcut(
+            intent: OpenTodayIntent(),
+            phrases: ["Open \(.applicationName) today", "Open Today in \(.applicationName)"],
+            shortTitle: "Open Today",
+            systemImageName: "calendar"
+        )
+        AppShortcut(
+            intent: OpenBowlsIntent(),
+            phrases: ["Open \(.applicationName) bowls", "Open my bowls in \(.applicationName)"],
+            shortTitle: "Open Bowls",
+            systemImageName: "folder.fill"
+        )
+        AppShortcut(
             intent: OpenInboxIntent(),
             phrases: ["Open \(.applicationName) inbox", "Open my inbox in \(.applicationName)"],
             shortTitle: "Open Inbox",

@@ -2,19 +2,23 @@ import SwiftData
 import SwiftUI
 import UserNotifications
 
+/// The app's root on iPhone and iPad: the three places Today · Inbox · Bowls and the search. On a phone each place is
+/// a tab with its own stack (an entry opens on top of it); on an iPad the places share one stack in the sidebar of a
+/// split view, the Bowls place at its root with the other places on top of it. Holds what every place shares: the
+/// Add sheet and what it starts, quick actions, links and the dialogs about bowls and smart filters.
 struct NotesView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(ProcessingService.self) private var processing
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
-    /// The tasks and decisions of all notes, taken from their summaries.
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
 
     @State private var selection: UUID?
-    /// The pages on the stack: those of the list column, and on a phone the open note on top.
-    @State private var path: [ListRoute] = []
+    /// The place in front on a phone, kept per scene: the last one used; Today on the first launch.
+    @SceneStorage("place") private var place: Place = .today
+    /// The pages on each place's stack: those of the list column, and on a phone the open note on top.
+    @State private var paths: [Place: [ListRoute]] = [:]
     /// A new note that is not saved yet; it is stored when it gets its first content.
     @State private var draft: Note?
     /// Which column is shown on a narrow screen. Set from code so a new note opens reliably.
@@ -24,13 +28,8 @@ struct NotesView: View {
     @State private var tagTokens: [TagToken] = []
     /// Kind of element the search is narrowed to.
     @State private var searchKind: SearchKind?
-    /// What the list column shows: the one long list, or a page reached from it.
-    @State private var page = ListPage.home
     /// The day the Today page shows; nil is today. Only while the app runs: opening Today starts on today.
     @State private var todayDay: Date?
-    /// "More" was tapped: the list shows all projects, not only the latest.
-    @State private var showAllProjects = false
-    @AppStorage(HomeList.recentProjectsKey) private var recentBowls = HomeList.defaultRecentProjects
     @AppStorage(HomeList.bowlOrderKey) private var bowlOrder = HomeList.BowlOrder.lastChange
     /// The chat page: which chat shows, kept while the app runs.
     @State private var chatNavigation = ChatNavigation()
@@ -42,17 +41,21 @@ struct NotesView: View {
     @State private var showCalendar = false
     /// Dialog for a link typed or pasted by hand.
     @State private var showAddLink = false
-    /// "New from Template": the templates to pick from.
-    @State private var showTemplatePicker = false
-    /// The plus button is unfolded into its options.
-    @State private var showCreate = false
+    /// The Add sheet ("+" of every place).
+    @State private var showAdd = false
+    /// What the Add sheet asked for: done once the sheet is gone (a sheet cannot open while another one closes).
+    @State private var pendingAdd: AddChoice?
+    /// The bowl the Add sheet's "Into:" chose (`.some(nil)`: the Inbox); nil when no Add sheet chose: the open bowl then.
+    @State private var addInto: String??
+    /// A template that needs a title first.
+    @State private var askingTemplate: NoteTemplate?
+    @State private var templateTitle = ""
     @State private var showAudioImporter = false
     @State private var showFileImporter = false
     /// The document camera is open.
     @State private var showScanner = false
     @State private var audioImportError: String?
     @State private var showPlaud = false
-    @State private var plaudSignedIn = PlaudAccount.isSignedIn
     @State private var linkText = ""
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
@@ -67,9 +70,9 @@ struct NotesView: View {
     @State private var chosen = Set<UUID>()
     /// A note in Recently Deleted that is about to go for good.
     @State private var deletingNow: Note?
-    /// The Inbox's "Later" section is unfolded.
-    @State private var showsLater = false
-    /// The weekly review (from the Inbox's bar).
+    /// The Inbox shows what was put away for later (its segment New / Later).
+    @State private var inboxShowsLater = false
+    /// The weekly review (from Today's row).
     @State private var showReview = false
     @AppStorage(DailyHint.enabledKey) private var hintsEnabled = true
     /// The smart filter being made or changed (`SmartFilterEditor`).
@@ -77,6 +80,8 @@ struct NotesView: View {
     @State private var renamingFilter: SmartFilter?
     @State private var deletingFilter: SmartFilter?
     @State private var filterName = ""
+    /// A long press on "+" made a note: the tap that ends it opens no Add sheet.
+    @State private var plusLongPressed = false
 
     /// The note that is open, a new one not saved yet included.
     private var selectedNote: Note? {
@@ -84,75 +89,123 @@ struct NotesView: View {
         return notes.first { $0.id == selection } ?? (draft?.id == selection ? draft : nil)
     }
 
+    /// The stack that is in front: the tab's on a phone, the sidebar's (the Bowls place) on an iPad.
+    private var activePlace: Place { sizeClass == .compact ? place : .bowls }
+
+    private var currentPath: [ListRoute] { paths[activePlace] ?? [] }
+
+    /// What the list column shows in front: the top page of the stack, else the place itself.
+    private var page: ListPage { currentPath.compactMap(\.page).last ?? activePlace.root }
+
+    private func pathBinding(_ place: Place) -> Binding<[ListRoute]> {
+        Binding(get: { paths[place] ?? [] }, set: { paths[place] = $0 })
+    }
+
     private var splitView: some View {
         NavigationSplitView(preferredCompactColumn: $column) {
-            pageStack
+            placeStack(.bowls)
         } detail: {
             if let note = selectedNote {
-                NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id)
-                    .id(note.id)
-                    .environment(\.openNote, { openNote($0) })
-                    .environment(\.askAboutBowl, { askAbout($0) })
-                    .environment(\.allNotes, notes)
+                noteView(note, onBack: nil)
             } else {
                 EmptyStateView(title: "No Note Selected", message: "Pick a note from the list.", systemImage: "note.text")
             }
         }
     }
 
+    /// The three places and the search as tabs; each has its own stack, so a place keeps where it was.
+    private var tabs: some View {
+        TabView(selection: $place) {
+            Tab("Today", systemImage: "calendar", value: Place.today) { placeStack(.today) }
+                .badge(Places.todayCount(notes))
+                .accessibilityIdentifier("TabToday")
+            Tab("Inbox", systemImage: "tray.fill", value: Place.inbox) { placeStack(.inbox) }
+                .badge(inboxCount)
+                .accessibilityIdentifier("TabInbox")
+            Tab("Bowls", systemImage: "folder.fill", value: Place.bowls) { placeStack(.bowls) }
+                .accessibilityIdentifier("TabBowls")
+            Tab(value: Place.search, role: .search) { placeStack(.search) }
+        }
+    }
+
+    private var inboxCount: Int {
+        // Read so that an entry coming back from later is counted again.
+        _ = InboxSnoozeScheduler.shared.tick
+        return Places.inboxCount(notes)
+    }
+
     /// Every page is a real page of the system's stack: it slides in, the swipe from the edge follows the finger,
-    /// and what lies below keeps its scroll position. The floating buttons stay in place above the pages.
-    private var pageStack: some View {
-        NavigationStack(path: $path) {
-            listColumn(.home)
+    /// and what lies below keeps its scroll position.
+    private func placeStack(_ shown: Place) -> some View {
+        NavigationStack(path: pathBinding(shown)) {
+            listColumn(shown.root)
                 .navigationDestination(for: ListRoute.self) { route in
                     switch route {
-                    case .page(let shown):
-                        listColumn(shown)
+                    case .page(let next):
+                        listColumn(next)
                     case .note(let id):
                         // By its id: the note stays on the page while the page slides away.
                         if let note = notes.first(where: { $0.id == id }) ?? (draft?.id == id ? draft : nil) {
-                            NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id, onBack: { selection = nil })
-                                .id(note.id)
-                                .environment(\.openNote, { openNote($0) })
-                                .environment(\.askAboutBowl, { askAbout($0) })
-                                .environment(\.allNotes, notes)
+                            noteView(note, onBack: { selection = nil })
                         }
                     }
                 }
         }
-        .overlay {
-            if sizeClass != .compact || selection == nil {
-                createMenu
-            }
-        }
+    }
+
+    private func noteView(_ note: Note, onBack: (() -> Void)?) -> some View {
+        NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id, onBack: onBack)
+            .id(note.id)
+            .environment(\.openNote, { openNote($0) })
+            .environment(\.askAboutBowl, { askAbout($0) })
+            .environment(\.allNotes, notes)
     }
 
     /// The open note is on the stack only on a phone; elsewhere it has the detail column.
     private func syncNoteRoute() {
-        var routes = path.filter(\.isPage)
+        var routes = currentPath.filter(\.isPage)
         if sizeClass == .compact, let selection { routes.append(.note(selection)) }
-        if routes != path { path = routes }
+        if routes != currentPath { paths[activePlace] = routes }
     }
 
-    /// `page` changed in code: go back to it if it is on the stack, otherwise it opens on top.
-    private func syncPageRoutes() {
-        let pages = path.compactMap(\.page)
-        guard page != (pages.last ?? .home) else { return }
-        if page == .home {
-            path.removeAll()
-        } else if let index = path.firstIndex(of: .page(page)) {
-            path = Array(path[...index])
-        } else {
-            path = pages.map(ListRoute.page) + [.page(page)]
+    /// Goes to a page: a place's own page brings its tab to the front at its start; any other page is pushed onto
+    /// the stack it belongs to (Open To-dos onto Today, a bowl, a smart filter, Archive, Recently Deleted and Settings
+    /// onto Bowls, the chat onto the search), or the stack is taken back to it when it is on it already.
+    private func go(_ target: ListPage) {
+        if sizeClass != .compact {
+            // iPad: one stack in the sidebar with the Bowls place at its root.
+            push(target, on: .bowls)
+            return
         }
+        if let root = Place(root: target) {
+            place = root
+            paths[root] = []
+            return
+        }
+        let owner = currentPath.contains(.page(target)) ? place : target.place
+        place = owner
+        push(target, on: owner)
+    }
+
+    private func push(_ target: ListPage, on owner: Place) {
+        if target == owner.root {
+            paths[owner] = []
+            return
+        }
+        var routes = (paths[owner] ?? []).filter(\.isPage)
+        if let index = routes.firstIndex(of: .page(target)) {
+            routes = Array(routes[...index])
+        } else {
+            routes.append(.page(target))
+        }
+        paths[owner] = routes
     }
 
     @ViewBuilder
     private var columns: some View {
         Group {
             if sizeClass == .compact {
-                pageStack
+                tabs
             } else {
                 splitView
             }
@@ -160,26 +213,32 @@ struct NotesView: View {
         .onAppear(perform: syncNoteRoute)
         .onChange(of: selection) { syncNoteRoute() }
         .onChange(of: sizeClass) { syncNoteRoute() }
-        .onChange(of: page) { syncPageRoutes() }
-        .onChange(of: path) {
-            page = path.compactMap(\.page).last ?? .home
+        .onChange(of: currentPath) {
             // Swiped back from the note.
-            if sizeClass == .compact, selection != nil, path.last?.isPage != false { selection = nil }
+            if sizeClass == .compact, selection != nil, currentPath.last?.isPage != false { selection = nil }
+        }
+        .onChange(of: place) { old, new in
+            guard sizeClass == .compact else { return }
+            // A new note left empty in the tab that was left goes with it.
+            if let draft, draft.modelContext == nil, paths[old]?.last == .note(draft.id) { paths[old]?.removeLast() }
+            // The tab in front says which note is open: the one on top of its stack, if any.
+            if case .note(let id)? = paths[new]?.last { selection = id } else { selection = nil }
         }
     }
 
     var body: some View {
-        smartFilterDialogs(columns)
-        // The search page was left: what was asked is forgotten. (A found note opened from it keeps the page.)
+        smartFilterDialogs(bowlDialogs(columns))
         .onChange(of: page) { old, new in
+            // The search page was left: what was asked is forgotten. (A found note opened from it keeps the page.)
             if old == .search, new != .search {
                 search = ""
                 tagTokens = []
                 searchKind = nil
             }
-            // Another page: what was chosen there is let go.
+            // Another page: what was chosen there is let go, and so is the Add sheet's last "Into:".
             isSelecting = false
             chosen = []
+            addInto = nil
             // Today opens on today.
             if new == .today, old != .today { todayDay = nil }
         }
@@ -192,6 +251,15 @@ struct NotesView: View {
         }
         .onChange(of: notes.map(\.id)) {
             if let draft, draft.modelContext != nil { self.draft = nil }
+            // An entry link that came before its entry was loaded.
+            if EntryLinkRouter.waiting != nil { openRequestedEntry() }
+        }
+        .sheet(isPresented: $showAdd, onDismiss: runPendingAdd) {
+            AddSheet(into: defaultInto, projects: projects) { choice, into in
+                pendingAdd = choice
+                addInto = .some(into)
+                showAdd = false
+            }
         }
         .fullScreenCoverOrSheet(isPresented: $showRecorder) {
             RecordingView(title: appointmentTitle) { result, names, liveText, written in
@@ -219,9 +287,6 @@ struct NotesView: View {
         } message: {
             Text(audioImportError ?? "")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .plaudAccountChanged)) { _ in
-            plaudSignedIn = PlaudAccount.isSignedIn
-        }
         .modifier(ReviewAndHint(
             showReview: $showReview, notes: notes, projects: projects, signature: indexSignature, hintsEnabled: hintsEnabled
         ) { openNote($0) })
@@ -231,8 +296,15 @@ struct NotesView: View {
                 onNew: { startRecording(titled: nil) }
             )
         }
-        .sheet(isPresented: $showTemplatePicker) {
-            NoteTemplatePicker { template, title in addFromTemplate(template, title: title) }
+        .alert(askingTemplate?.name ?? "", isPresented: Binding(get: { askingTemplate != nil }, set: { if !$0 { askingTemplate = nil } })) {
+            TextField("Title", text: $templateTitle)
+            Button("Cancel", role: .cancel) { askingTemplate = nil }
+            Button("Create") {
+                if let askingTemplate { addFromTemplate(askingTemplate, title: templateTitle) }
+                askingTemplate = nil
+            }
+        } message: {
+            Text("What is it about?")
         }
         .alert("Add Link", isPresented: $showAddLink) {
             TextField("https://", text: $linkText)
@@ -242,44 +314,6 @@ struct NotesView: View {
                 .disabled(LinkImport.webAddress(from: linkText) == nil)
         } message: {
             Text("The page is saved as a note and summarized.")
-        }
-        .alert("New Bowl", isPresented: $showNewProject) {
-            TextField("Name", text: $projectName)
-            Button("Cancel", role: .cancel) { projectName = "" }
-            Button("Create") {
-                if let project = Projects.create(projectName, in: context) { page = .project(project.id) }
-                projectName = ""
-            }
-        }
-        .alert("Rename Bowl", isPresented: .constant(renamingProject != nil)) {
-            TextField("Name", text: $projectName)
-            Button("Cancel", role: .cancel) {
-                renamingProject = nil
-                projectName = ""
-            }
-            Button("Rename") {
-                if let renamingProject { Projects.rename(renamingProject, to: projectName, in: context) }
-                renamingProject = nil
-                projectName = ""
-            }
-        }
-        .alert(
-            "Delete “\(deletingProject?.name ?? "")”?", isPresented: Binding(get: { deletingProject != nil }, set: { if !$0 { deletingProject = nil } }),
-            presenting: deletingProject
-        ) { project in
-            // The bowl comes with the dialog: closing it may clear `deletingProject` before this runs.
-            Button("Delete Bowl", role: .destructive) {
-                if page == .project(project.id) { page = .home }
-                // A shared bowl stops being shared first, so its entries do not leave it one by one for the others.
-                BowlSharing.shared.bowlWillBeDeleted(project.id)
-                Projects.delete(project, in: context)
-                deletingProject = nil
-            }
-            Button("Cancel", role: .cancel) { deletingProject = nil }
-        } message: { project in
-            Text(BowlSharing.shared.isShared(project.id)
-                ? "Its meetings, notes and links stay. The people you shared it with lose access."
-                : "Its meetings, notes and links stay.")
         }
         .task {
             LegacyMigration.run(in: context)
@@ -298,9 +332,9 @@ struct NotesView: View {
         }
         // The share sheet offers the bowls: it reads this list, it cannot open the store.
         .task(id: shareProjects) { ShareInbox.writeProjects(shareProjects) }
-        // The search index follows the notes: only what changed is cut again.
         // Entries put away for later: their notifications planned here, and a tick when one comes back.
         .task(id: snoozeSignature) { InboxSnoozeScheduler.shared.refresh(notes) }
+        // The search index follows the notes: only what changed is cut again.
         .task(id: indexSignature) {
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled else { return }
@@ -357,12 +391,55 @@ struct NotesView: View {
         }
     }
 
-    /// The smart filters' editor, renaming and deleting (a function of its own: the body's chain is long enough).
+    /// New bowl, renaming and deleting one (a function of its own: the body's chain is long enough).
+    private func bowlDialogs(_ content: some View) -> some View {
+        content
+        .alert("New Bowl", isPresented: $showNewProject) {
+            TextField("Name", text: $projectName)
+            Button("Cancel", role: .cancel) { projectName = "" }
+            Button("Create") {
+                if let project = Projects.create(projectName, in: context) { go(.project(project.id)) }
+                projectName = ""
+            }
+        }
+        .alert("Rename Bowl", isPresented: .constant(renamingProject != nil)) {
+            TextField("Name", text: $projectName)
+            Button("Cancel", role: .cancel) {
+                renamingProject = nil
+                projectName = ""
+            }
+            Button("Rename") {
+                if let renamingProject { Projects.rename(renamingProject, to: projectName, in: context) }
+                renamingProject = nil
+                projectName = ""
+            }
+        }
+        .alert(
+            "Delete “\(deletingProject?.name ?? "")”?", isPresented: Binding(get: { deletingProject != nil }, set: { if !$0 { deletingProject = nil } }),
+            presenting: deletingProject
+        ) { project in
+            // The bowl comes with the dialog: closing it may clear `deletingProject` before this runs.
+            Button("Delete Bowl", role: .destructive) {
+                leave(.project(project.id))
+                // A shared bowl stops being shared first, so its entries do not leave it one by one for the others.
+                BowlSharing.shared.bowlWillBeDeleted(project.id)
+                Projects.delete(project, in: context)
+                deletingProject = nil
+            }
+            Button("Cancel", role: .cancel) { deletingProject = nil }
+        } message: { project in
+            Text(BowlSharing.shared.isShared(project.id)
+                ? "Its meetings, notes and links stay. The people you shared it with lose access."
+                : "Its meetings, notes and links stay.")
+        }
+    }
+
+    /// The smart filters' editor, renaming and deleting.
     private func smartFilterDialogs(_ content: some View) -> some View {
         content
         .sheet(item: $smartFilterDraft) { draft in
             SmartFilterEditor(draft: draft, notes: notes) { saved in
-                if draft.existing == nil { page = .smartFilter(saved.id) }
+                if draft.existing == nil { go(.smartFilter(saved.id)) }
             }
         }
         .alert("Rename Smart Filter", isPresented: Binding(get: { renamingFilter != nil }, set: { if !$0 { renamingFilter = nil } })) {
@@ -378,13 +455,20 @@ struct NotesView: View {
             presenting: deletingFilter
         ) { filter in
             Button("Delete Smart Filter", role: .destructive) {
-                if page == .smartFilter(filter.id) { page = .home }
+                leave(.smartFilter(filter.id))
                 SmartFilterStore.shared.delete(filter.id)
                 deletingFilter = nil
             }
             Button("Cancel", role: .cancel) { deletingFilter = nil }
         } message: { _ in
             Text("Only the saved search is deleted. The entries stay where they are.")
+        }
+    }
+
+    /// A page that is about to go (its bowl or filter deleted) leaves every stack it is on.
+    private func leave(_ gone: ListPage) {
+        for (owner, routes) in paths {
+            if let index = routes.firstIndex(of: .page(gone)) { paths[owner] = Array(routes[..<index]) }
         }
     }
 
@@ -412,8 +496,29 @@ struct NotesView: View {
     @ViewBuilder
     private func pageContent(_ shown: ListPage) -> some View {
         switch shown {
-        case .home:
-            home
+        case .bowls:
+            BowlsPlace(
+                notes: notes, projects: projects, order: bowlOrder, showsPlaces: sizeClass != .compact,
+                onOpen: { go($0) },
+                onNewBowl: { showNewProject = true },
+                onRename: { project in
+                    projectName = project.name
+                    renamingProject = project
+                },
+                onDelete: { deletingProject = $0 },
+                onSelect: { project in
+                    go(.project(project.id))
+                    Task { withAnimation(.snappy) { isSelecting = true } }
+                },
+                onAsk: { askAbout(Projects.key($0)) },
+                onNewSmartFilter: { smartFilterDraft = .new(from: SmartFilterCriteria()) },
+                onEditFilter: { smartFilterDraft = .edit($0) },
+                onRenameFilter: { filter in
+                    filterName = filter.name
+                    renamingFilter = filter
+                },
+                onDeleteFilter: { deletingFilter = $0 }
+            )
         case .project:
             if let project = project(on: shown) {
                 ProjectPage(
@@ -423,17 +528,26 @@ struct NotesView: View {
                 .id(project.id)
             } else {
                 // Deleted on another device.
-                home
+                EmptyStateView(title: "Bowl Deleted", message: "This bowl is gone.", systemImage: "folder")
             }
         case .inbox:
-            inboxPage
+            InboxPlace(
+                notes: notes, projects: projects, selection: $selection, isSelecting: $isSelecting, chosen: $chosen,
+                showsLater: $inboxShowsLater,
+                onRemove: { remove($0) },
+                onAdd: { openAdd() },
+                onEndSelecting: { endSelecting() }
+            )
         case .todos:
             todosPage
         case .today:
             TodayPage(
                 notes: notes, day: $todayDay, selection: $selection, onRemove: { remove($0) },
                 onRecord: { startRecording(for: $0) },
-                onNewNote: { addNote(for: $0) }
+                onNewNote: { addNote(for: $0) },
+                onHint: { openHint($0) },
+                onOpenTodos: { go(.todos) },
+                onReview: { showReview = true }
             )
         case .smartFilter(let id):
             if let filter = SmartFilterStore.shared.filter(id) {
@@ -441,7 +555,7 @@ struct NotesView: View {
                     .id(filter.id)
             } else {
                 // Deleted on another device.
-                home
+                EmptyStateView(title: "Smart Filter Deleted", message: "This smart filter is gone.", systemImage: "line.3.horizontal.decrease")
             }
         case .search:
             searchPage
@@ -453,7 +567,7 @@ struct NotesView: View {
             trash
         case .settings:
             SettingsView(isEmbedded: true)
-                .environment(\.openListPage, { page = $0 })
+                .environment(\.openListPage, { go($0) })
         case .voices:
             VoicesView()
         case .acknowledgements:
@@ -461,93 +575,33 @@ struct NotesView: View {
         }
     }
 
-    /// The search as a page of its own: what is found opens from it, and going back returns to the results.
+    /// The search as a page of its own: what is found opens from it, and going back returns to the results. Until
+    /// the search and the chat become one field (stage 5) the chat is a row of its empty page.
     private var searchPage: some View {
         SearchPane(
             text: $search, tokens: $tagTokens, kind: $searchKind,
             tags: TagToken.counts(notes.filter { !$0.isDeleted }),
-            hasQuery: hasQuery
+            hasQuery: hasQuery,
+            onChat: { openChat() }
         ) {
             searchResults
         }
     }
 
-    /// ✦ AI › Ask About This Bowl on an entry: the entry closes, the chat about its bowl opens.
+    /// ✦ AI › Ask About This Bowl on an entry, or the bowl's ⋯: the chat about the bowl opens in the search.
     private func askAbout(_ bowl: String) {
         selection = nil
         chatNavigation.open(from: bowl, threads: chatThreads)
-        page = .chat
+        go(.chat)
     }
 
-    /// Opens the chat page. From a bowl the chat is about that bowl; the last chat about it is taken up again.
+    /// Opens the chat page (the search's "Chat" row): the last chat about all bowls is taken up again.
     private func openChat() {
-        chatNavigation.open(from: projectForNew, threads: chatThreads)
-        page = .chat
+        chatNavigation.open(from: nil, threads: chatThreads)
+        go(.chat)
     }
 
-    /// The one long list: the projects as folders on top, then what is in no project, open tasks first; at the
-    /// end the way to the archive and the trash.
-    private var home: some View {
-        let folders = HomeList.activeProjects(projects)
-        let contents = ProjectContent.byProject(notes)
-        let recent = HomeList.shownProjects(folders, showAll: showAllProjects, limit: recentBowls, order: bowlOrder) { project in
-            max(project.updatedAt, contents[Projects.key(project)]?.lastChange ?? .distantPast)
-        }
-        // Read so that an entry coming back from later is counted again.
-        _ = InboxSnoozeScheduler.shared.tick
-        let waiting = Inbox.notes(notes)
-        let archived = HomeList.archivedProjects(projects).count
-        let isEmpty = folders.isEmpty && waiting.isEmpty
-        return List(selection: $selection) {
-            // "Up Next" is the first category: the Inbox (what is new or in no bowl) and the to-dos folder (a view of
-            // every open to-do, wherever it is filed), as two buttons side by side.
-            let todoFolder = Todos.folder(notes)
-            Section {
-                UpNextRow(
-                    notes: notes, waiting: waiting, folder: todoFolder,
-                    onToday: { page = .today }, onInbox: { page = .inbox }, onTodos: { page = .todos }
-                )
-            } header: {
-                ListHeader(title: "Up Next", tint: .brandSky, isFirst: true)
-            }
-            // The bowls as a list: the pinned and the latest few, the rest behind "More".
-            if !folders.isEmpty {
-                projectsSection(recent.shown, contents: contents, isFirst: false, hidden: recent.hidden)
-            }
-            // Saved searches, below the bowls: only views, nothing is moved into them.
-            let smartFilters = SmartFilterStore.shared.filters
-            if !smartFilters.isEmpty {
-                SmartFiltersSection(
-                    filters: smartFilters, notes: notes,
-                    onOpen: { page = .smartFilter($0.id) },
-                    onEdit: { smartFilterDraft = .edit($0) },
-                    onRename: { filter in
-                        filterName = filter.name
-                        renamingFilter = filter
-                    },
-                    onDelete: { deletingFilter = $0 }
-                )
-            }
-            if archived > 0 {
-                Section {} header: {
-                    ListHeaderButton(title: "Archive", count: archived, tint: .brandNavy, isFirst: false) { page = .archive }
-                }
-            }
-        }
-        .cardList()
-        .roomForFloatingButtons()
-        .overlay {
-            if isEmpty, archived == 0 {
-                EmptyStateView(
-                    title: "Nothing Here Yet",
-                    message: "Add notes, meetings, links and bowls with the plus button.",
-                    systemImage: "note.text"
-                )
-            }
-        }
-    }
-
-    /// The to-dos folder opened: every open to-do by due day, grouped as the search's "Open To-dos", then those
+    /// Open To-dos (Today's row): every open to-do by due day, grouped as the search's "Open To-dos", then those
     /// done today. Each row names its bowls. Only a view: the to-dos stay where they are.
     private var todosPage: some View {
         let folder = Todos.folder(notes)
@@ -579,7 +633,6 @@ struct NotesView: View {
             }
         }
         .cardList()
-        .roomForFloatingButtons()
         .overlay {
             if folder.isEmpty {
                 EmptyStateView(title: "Nothing to Do", message: "Open to-dos from the inbox and every bowl show up here.", systemImage: "checklist")
@@ -587,70 +640,12 @@ struct NotesView: View {
         }
     }
 
-    /// The inbox opened: what is in no bowl, newest first, each with its suggested bowls.
-    private var inboxPage: some View {
-        // Read so that an entry coming back from later shows up.
-        _ = InboxSnoozeScheduler.shared.tick
-        let waiting = Inbox.notes(notes)
-        let later = InboxSnooze.snoozed(notes)
-        let buckets = projects.filter { !$0.isArchived }
-        let rows = Group {
-            Section {
-                ForEach(waiting) { note in
-                    let isLast = note.id == waiting.last?.id
-                    // While choosing, the suggestions give way to the selection.
-                    if isSelecting || FilingBar.suggested(for: note, among: buckets).isEmpty {
-                        NoteListRow(note: note, inInbox: true) { remove(note) }
-                            .lastInSection(isLast)
-                    } else {
-                        NoteListRow(note: note, inInbox: true) { remove(note) }
-                        FilingBar(note: note, projects: buckets)
-                            .lastInSection(isLast)
-                    }
-                }
-            }
-            // What was put away for later, folded at the end.
-            if !later.isEmpty, !isSelecting {
-                LaterSection(notes: later, isExpanded: $showsLater) { remove($0) }
-            }
-        }
-        return VStack(spacing: 0) {
-            if isSelecting {
-                NoteSelectionBar(notes: waiting, chosen: $chosen, offersLater: true) { endSelecting() }
-            } else {
-                if let hint = DailyHints.shared.current {
-                    DailyHintBanner(hint: hint) { openHint(hint) }
-                        .transition(.opacity)
-                }
-                // Entries that belong together: one suggestion for a new bowl at a time (`InboxBundler`).
-                InboxBundleCard(notes: notes, projects: projects)
-                    .padding(.horizontal)
-                    .padding(.top, 4)
-            }
-            Group {
-                if isSelecting {
-                    List(selection: $chosen) { rows }
-                        .environment(\.editMode, .constant(.active))
-                } else {
-                    List(selection: $selection) { rows }
-                }
-            }
-            .cardList()
-        .roomForFloatingButtons()
-        .overlay {
-            if waiting.isEmpty, later.isEmpty {
-                EmptyStateView(title: "Inbox Empty", message: "What is new or in no bowl waits here.", systemImage: "tray")
-            }
-        }
-        }
-    }
-
     /// The hint of the day was tapped: what it is about opens.
     private func openHint(_ hint: DailyHint) {
         switch hint.kind {
         case .meetingTodos: if let id = hint.noteID { openNote(id) }
-        case .overdue: page = .todos
-        case .inbox: break
+        case .overdue: go(.todos)
+        case .inbox: go(.inbox)
         }
     }
 
@@ -664,18 +659,35 @@ struct NotesView: View {
     /// The archive: archived bowls only. Notes are never archived.
     private var archive: some View {
         let folders = HomeList.archivedProjects(projects)
+        let contents = ProjectContent.byProject(notes)
         return List(selection: $selection) {
             if !folders.isEmpty {
-                projectsSection(folders, contents: ProjectContent.byProject(notes), isFirst: true)
+                Section {
+                    ForEach(folders) { project in
+                        ProjectRow(
+                            project: project,
+                            content: contents[Projects.key(project)] ?? ProjectContent(),
+                            onOpen: { go(.project(project.id)) },
+                            onRename: {
+                                projectName = project.name
+                                renamingProject = project
+                            },
+                            onDelete: { deletingProject = project },
+                            onAsk: { askAbout(Projects.key(project)) }
+                        )
+                        .lastInSection(project.id == folders.last?.id)
+                    }
+                } header: {
+                    ListHeader(title: String(localized: "Bowls"), tint: .brandProject, isFirst: true)
+                }
             }
         }
         .cardList()
-        .roomForFloatingButtons()
         .overlay {
             if folders.isEmpty {
                 EmptyStateView(
                     title: "Nothing Archived",
-                    message: "Archive a bowl with a swipe or a long press.",
+                    message: "Archive a bowl from its ⋯ menu, with a swipe or a long press.",
                     systemImage: "archivebox"
                 )
             }
@@ -687,7 +699,10 @@ struct NotesView: View {
         return List(selection: $selection) {
             if !deleted.isEmpty {
                 Section {
-                    ForEach(deleted) { note in row(note, isLast: note.id == deleted.last?.id) }
+                    ForEach(deleted) { note in
+                        NoteListRow(note: note) { remove(note) }
+                            .lastInSection(note.id == deleted.last?.id)
+                    }
                 } header: {
                     Text("Notes are deleted after \(NoteStore.trashDays) days.")
                         .font(.footnote)
@@ -696,7 +711,6 @@ struct NotesView: View {
             }
         }
         .cardList()
-        .roomForFloatingButtons()
         .overlay {
             if deleted.isEmpty {
                 EmptyStateView(title: "Nothing Deleted", message: "Deleted notes stay here for \(NoteStore.trashDays) days.", systemImage: "trash")
@@ -736,39 +750,6 @@ struct NotesView: View {
                 ContentUnavailableView.search(text: search.isEmpty ? tagTokens.map { "#" + $0.name }.joined(separator: " ") : search)
             }
         }
-    }
-
-    private func projectsSection(_ folders: [NoteFolder], contents: [String: ProjectContent], isFirst: Bool, hidden: Int = 0) -> some View {
-        Section {
-            ForEach(folders) { project in
-                ProjectRow(
-                    project: project,
-                    content: contents[Projects.key(project)] ?? ProjectContent(),
-                    onOpen: { page = .project(project.id) },
-                    onRename: {
-                        projectName = project.name
-                        renamingProject = project
-                    },
-                    onDelete: { deletingProject = project }
-                )
-                // With "More" below it the row is not the last one.
-                .lastInSection(hidden == 0 && project.id == folders.last?.id)
-            }
-            if hidden > 0 {
-                moreRow(hidden: hidden, isExpanded: showAllProjects, tint: .brandProject) { showAllProjects.toggle() }
-            }
-        } header: {
-            ListHeader(title: "Bowls", tint: .brandProject, isFirst: isFirst)
-        }
-    }
-
-    private func row(_ note: Note, isLast: Bool) -> some View {
-        NoteListRow(note: note) { remove(note) }
-            .lastInSection(isLast)
-    }
-
-    private func moreRow(hidden: Int, isExpanded: Bool, tint: Color, toggle: @escaping () -> Void) -> some View {
-        MoreRow(hidden: hidden, isExpanded: isExpanded, tint: tint, toggle: toggle)
     }
 
     /// Changes when a note's content changed (the index compares hashes, this only wakes it up).
@@ -811,202 +792,204 @@ struct NotesView: View {
         }
     }
 
-    /// The ways to start something: one plus button bottom right, the same in every view, that unfolds into
-    /// link, meeting and note (and bowl on the long list). Bottom left the chat and the search.
-    private var createMenu: some View {
-        ZStack(alignment: .bottom) {
-            if showCreate {
-                // Tapping anywhere else folds the menu again.
-                Color.black.opacity(0.08)
-                    .ignoresSafeArea()
-                    .onTapGesture { withAnimation(.snappy) { showCreate = false } }
-                    .transition(.opacity)
-                    .accessibilityHidden(true)
-            }
-            VStack(spacing: 14) {
-                if !page.hidesFloatingButtons {
-                    HStack(alignment: .bottom, spacing: 12) {
-                        // The chat with the notes and the search, bottom left: each opens its own page.
-                        FloatingActionButton(
-                            systemImage: "bubble.left.and.bubble.right.fill", label: "Chat", fill: .appBackground, foreground: .brandNavy
-                        ) {
-                            withAnimation(.snappy) { showCreate = false }
-                            openChat()
-                        }
-                        FloatingActionButton(systemImage: "magnifyingglass", label: "Search", fill: .appBackground, foreground: .brandNavy) {
-                            withAnimation(.snappy) { showCreate = false }
-                            page = .search
-                        }
-                        Spacer()
-                        if page != .archive, page != .trash {
-                            VStack(alignment: .trailing, spacing: 14) {
-                                if showCreate {
-                                    if page == .home {
-                                        createOption("Bowl", systemImage: "folder.badge.plus", tint: .brandProject) { showNewProject = true }
-                                    }
-                                    if DocumentScanner.isAvailable {
-                                        createOption("Scan", systemImage: "doc.viewfinder", tint: .brandNavy) { showScanner = true }
-                                    }
-                                    createOption("Link", systemImage: "link", tint: .brandLink) { showAddLink = true }
-                                    createOption("Meeting", systemImage: "mic.fill", tint: .brandNavy) { showCalendar = true }
-                                    if !NoteTemplateStore.shared.templates.isEmpty {
-                                        createOption("Template", systemImage: "doc.on.doc", tint: .brandNavy) { showTemplatePicker = true }
-                                    }
-                                    createOption("To-do", systemImage: "checklist", tint: .brandTask) { addNote(todo: true) }
-                                    createOption("Note", systemImage: "square.and.pencil", tint: .brandSky) { addNote() }
-                                }
-                                FloatingActionButton(systemImage: "plus", label: showCreate ? "Close" : "Create") {
-                                    // In the to-dos folder the plus makes a to-do, without the menu.
-                                    if page == .todos, !showCreate { addNote(todo: true); return }
-                                    withAnimation(.snappy) {
-                                        // Signed in on another device, or the sign-in ran out.
-                                        plaudSignedIn = PlaudAccount.isSignedIn
-                                        showCreate.toggle()
-                                    }
-                                }
-                                .rotationEffect(.degrees(showCreate ? 45 : 0))
-                            }
-                            // Only the button takes room in the row; the options reach out over it to the left.
-                            .frame(width: 58, alignment: .trailing)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 22)
-            .padding(.bottom, 16)
-            // While something is unfolded, VoiceOver stays in it and the escape gesture folds it.
-            .accessibilityElement(children: .contain)
-            .accessibilityAddTraits(showCreate ? .isModal : [])
-            .accessibilityAction(.escape) {
-                withAnimation(.snappy) { showCreate = false }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-    }
+    // MARK: - The bar
 
-    /// One unfolded option: a single white pill, icon on the left in the color of its kind, then the text.
-    private func createOption(_ title: LocalizedStringKey, systemImage: String, tint: Color, action: @escaping () -> Void) -> some View {
-        Button {
-            withAnimation(.snappy) { showCreate = false }
-            action()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(tint.readable)
-                    .frame(minWidth: 22)
-                Text(title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-            }
-            .fixedSize()
-            // Beyond this the longest option no longer fits the width of the phone.
-            .dynamicTypeSize(...DynamicTypeSize.accessibility3)
-            .padding(.leading, 16)
-            .padding(.trailing, 20)
-            .frame(minHeight: 48)
-            // In dark mode the page is black: the pill takes the raised surface, or it vanishes into the list.
-            .background(colorScheme == .dark ? Color.appSecondaryBackground : Color.appBackground, in: Capsule())
-            .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity)))
-    }
-
-    /// Opens Recently Deleted; shown next to Settings while it holds notes.
-    private var trashButton: some View {
-        Button { page = .trash } label: {
-            Label("Recently Deleted", systemImage: "trash")
-        }
-        .foregroundStyle(.red)
-        .accessibilityLabel("Recently Deleted")
-        .help("Recently Deleted")
-    }
-
-    /// The actions of the list, shown as plain icons at the right of the custom bar (iOS).
+    /// The actions of the one-row bar of each page (iOS), "+" last: what does not fit the row is the first row of
+    /// the content (the Inbox's New / Later, a bowl's sharing line) or in a menu (a bowl's ⋯).
     @ViewBuilder
     private func listActions(_ shown: ListPage) -> some View {
-        // Today pages a day back and on; a tap on the title (another day) goes back to today.
-        if shown == .today {
+        switch shown {
+        case .today:
+            // Today pages a day back and on; a tap on the title (another day) goes back to today.
             todayPager
-        }
-        if shown == .trash, notes.contains(where: \.isDeleted) {
-            Button(role: .destructive) { confirmEmptyTrash = true } label: {
-                Label("Delete All", systemImage: "trash")
-            }
-        }
-        if shown == .chat {
-            ChatBarActions(navigation: chatNavigation)
-        }
-        // What was searched for, kept as a smart filter.
-        if shown == .search, hasQuery {
-            Button {
-                let kind: SmartFilterKind? = switch searchKind {
-                case .todos?: .openTodos
-                case .meetings?: .meetings
-                case .notes?: .notes
-                case .links?: .links
-                case .images?: .images
-                case .files?: .files
-                case nil: nil
+            addButton
+        case .inbox:
+            if isSelecting {
+                doneSelectingButton
+            } else {
+                // Several entries of the Inbox at once: into a bowl, their kind or sender, merged.
+                Button { withAnimation(.snappy) { isSelecting = true } } label: {
+                    Label("Select", systemImage: "checkmark.circle")
                 }
-                smartFilterDraft = .new(from: SmartFilterCriteria.fromSearch(text: search, tags: tagTokens.map(\.name), kind: kind))
-            } label: {
-                Label("Save as Smart Filter", systemImage: "line.3.horizontal.decrease.circle")
+                .help("Select")
+                .disabled(inboxShowsLater || Inbox.notes(notes).isEmpty)
+                addButton
             }
-            .help("Save as Smart Filter")
-            .accessibilityIdentifier("SaveAsSmartFilter")
-        }
-        if case .smartFilter(let id) = shown, let filter = SmartFilterStore.shared.filter(id) {
-            Menu {
-                Button { smartFilterDraft = .edit(filter) } label: { Label("Edit…", systemImage: "slider.horizontal.3") }
-                Button {
-                    filterName = filter.name
-                    renamingFilter = filter
-                } label: { Label("Rename", systemImage: "pencil") }
-                Divider()
-                Button(role: .destructive) { deletingFilter = filter } label: { Label("Delete", systemImage: "trash") }
-            } label: {
-                Label("Smart Filter", systemImage: "ellipsis.circle")
-            }
-            .menuStyle(.button)
-        }
-        if shown == .home, notes.contains(where: \.isDeleted) {
-            trashButton
-        }
-        // What came in this week, from the Inbox.
-        if shown == .inbox, !isSelecting {
-            Button { showReview = true } label: {
-                Label("Weekly Review", systemImage: "calendar.badge.checkmark")
-            }
-            .help("Weekly Review")
-        }
-        // Several entries of the Inbox or a bowl at once: into a bowl, their kind or sender, merged. Not in a bowl
-        // shared with me to view only.
-        if shown == .inbox || project(on: shown).map({ !BowlSharing.shared.isReadOnly($0.id) }) == true {
-            Button {
-                if isSelecting { endSelecting() } else { withAnimation(.snappy) { isSelecting = true } }
-            } label: {
-                Label(isSelecting ? "Done" : "Select", systemImage: isSelecting ? "checkmark.circle.fill" : "checkmark.circle")
-            }
-            .help(isSelecting ? "Done" : "Select")
-        }
-        // A bowl's page shares the bowl (with iCloud sync on), or shows who it is shared with.
-        if let project = project(on: shown) {
-            BowlShareBarButton(project: project)
-        }
-        // What is brought in from outside has its own menu in the bar; on a bowl's page it goes into the bowl.
-        if shown == .home || project(on: shown).map({ !BowlSharing.shared.isReadOnly($0.id) }) == true {
-            importMenu
-                .menuStyle(.button)
-        }
-        if shown == .home {
-            Button {
-                page = .settings
-            } label: {
+        case .bowls:
+            bowlSortMenu
+            Button { go(.settings) } label: {
                 Label("Settings", systemImage: "gearshape")
             }
+            .help("Settings")
+            addButton
+        case .project:
+            if isSelecting {
+                doneSelectingButton
+            } else if let project = project(on: shown) {
+                Menu {
+                    BowlMenuItems(
+                        project: project,
+                        onSelect: { withAnimation(.snappy) { isSelecting = true } },
+                        onRename: {
+                            projectName = project.name
+                            renamingProject = project
+                        },
+                        onAsk: { askAbout(Projects.key(project)) },
+                        onDelete: { deletingProject = project }
+                    )
+                } label: {
+                    Label("Bowl", systemImage: "ellipsis")
+                }
+                .menuStyle(.button)
+                // Redrawn after the system's sharing sheet closed (its label can come back blank otherwise).
+                .id(BowlShareController.shared.sheetClosings)
+                .accessibilityLabel("Bowl")
+                .accessibilityIdentifier("BowlMenu")
+                .help("Bowl")
+                addButton
+            }
+        case .todos:
+            addButton
+        case .trash:
+            if notes.contains(where: \.isDeleted) {
+                Button(role: .destructive) { confirmEmptyTrash = true } label: {
+                    Label("Delete All", systemImage: "trash")
+                }
+            }
+        case .chat:
+            ChatBarActions(navigation: chatNavigation)
+        case .search:
+            // What was searched for, kept as a smart filter.
+            if hasQuery {
+                Button {
+                    let kind: SmartFilterKind? = switch searchKind {
+                    case .todos?: .openTodos
+                    case .meetings?: .meetings
+                    case .notes?: .notes
+                    case .links?: .links
+                    case .images?: .images
+                    case .files?: .files
+                    case nil: nil
+                    }
+                    smartFilterDraft = .new(from: SmartFilterCriteria.fromSearch(text: search, tags: tagTokens.map(\.name), kind: kind))
+                } label: {
+                    Label("Save as Smart Filter", systemImage: "line.3.horizontal.decrease.circle")
+                }
+                .help("Save as Smart Filter")
+                .accessibilityIdentifier("SaveAsSmartFilter")
+            }
+        case .smartFilter(let id):
+            if let filter = SmartFilterStore.shared.filter(id) {
+                Menu {
+                    Button { smartFilterDraft = .edit(filter) } label: { Label("Edit…", systemImage: "slider.horizontal.3") }
+                    Button {
+                        filterName = filter.name
+                        renamingFilter = filter
+                    } label: { Label("Rename", systemImage: "pencil") }
+                    Divider()
+                    Button(role: .destructive) { deletingFilter = filter } label: { Label("Delete", systemImage: "trash") }
+                } label: {
+                    Label("Smart Filter", systemImage: "ellipsis")
+                }
+                .menuStyle(.button)
+            }
+        case .archive, .settings, .voices, .acknowledgements:
+            EmptyView()
+        }
+    }
+
+    /// "+": the Add sheet; a long press makes a note at once. Into the open bowl, else the Inbox. In Open To-dos it
+    /// makes a to-do.
+    private var addButton: some View {
+        Button {
+            if plusLongPressed {
+                plusLongPressed = false
+                return
+            }
+            if page == .todos {
+                addNote(todo: true)
+            } else {
+                openAdd()
+            }
+        } label: {
+            Label("Add", systemImage: "plus")
+                .fontWeight(.semibold)
+        }
+        .buttonStyle(ChromePillButtonStyle(fill: .brandSky))
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+            plusLongPressed = true
+            addInto = nil
+            addNote()
+            // The tap that ends the press may land outside the button: the flag does not outlive it.
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                plusLongPressed = false
+            }
+        })
+        .help(page == .todos ? "New To-do" : "Add")
+        .accessibilityIdentifier("PlaceAdd")
+        .accessibilityAction(named: "New Note") { addNote() }
+    }
+
+    private var doneSelectingButton: some View {
+        Button { endSelecting() } label: {
+            Text("Done").fontWeight(.semibold).padding(.horizontal, 10)
+        }
+        .buttonStyle(ChromePillButtonStyle(fill: .brandSky))
+        .labelStyle(.titleOnly)
+    }
+
+    /// Sort Bowls By as a menu in the Bowls bar (the same setting as Settings › General, on this device).
+    private var bowlSortMenu: some View {
+        Menu {
+            Picker("Sort Bowls By", selection: $bowlOrder) {
+                ForEach(HomeList.BowlOrder.allCases, id: \.self) { order in
+                    Text(order.title).tag(order)
+                }
+            }
+        } label: {
+            Label("Sort Bowls By", systemImage: "arrow.up.arrow.down")
+        }
+        .menuStyle(.button)
+        .accessibilityIdentifier("BowlSort")
+        .help("Sort Bowls By")
+    }
+
+    /// The Add sheet, with "Into:" the place it was opened from.
+    private func openAdd() {
+        addInto = nil
+        showAdd = true
+    }
+
+    /// Where the Add sheet puts things at first: the open bowl (not one shared with me to view only), else the Inbox.
+    private var defaultInto: String? {
+        guard let project = openProject, !BowlSharing.shared.isReadOnly(project.id) else { return nil }
+        return Projects.key(project)
+    }
+
+    /// What the Add sheet asked for, once it is gone.
+    private func runPendingAdd() {
+        guard let choice = pendingAdd else { return }
+        pendingAdd = nil
+        switch choice {
+        case .note: addNote()
+        case .todo: addNote(todo: true)
+        case .meeting: showCalendar = true
+        case .link: showAddLink = true
+        case .scan: showScanner = true
+        case .file: showFileImporter = true
+        case .audio: showAudioImporter = true
+        case .plaud: showPlaud = true
+        case .template(let template):
+            if template.needsTitle {
+                templateTitle = ""
+                askingTemplate = template
+            } else {
+                addFromTemplate(template, title: "")
+            }
+        case .bowl:
+            projectName = ""
+            showNewProject = true
         }
     }
 
@@ -1039,26 +1022,6 @@ struct NotesView: View {
         withAnimation(.snappy) { todayDay = TodayDay.isToday(next) ? nil : next }
     }
 
-    /// Import: audio, a photo or a file, recordings from Plaud.
-    private var importMenu: some View {
-        Menu {
-            Button { showAudioImporter = true } label: { Label("Import Audio", systemImage: "waveform") }
-            if plaudSignedIn {
-                Button { showPlaud = true } label: { Label("Import Plaud", systemImage: "recordingtape") }
-            }
-            Button { showFileImporter = true } label: { Label("Photo or File", systemImage: "paperclip") }
-            if DocumentScanner.isAvailable {
-                Button { showScanner = true } label: { Label("Scan Document", systemImage: "doc.viewfinder") }
-            }
-        } label: {
-            Label("Import", systemImage: "square.and.arrow.down")
-        }
-        // Redrawn after the system's sharing sheet closed (its label can come back blank otherwise).
-        .id(BowlShareController.shared.sheetClosings)
-        .accessibilityLabel("Import")
-        .help("Import")
-    }
-
     // MARK: - Content of the list
 
     /// The project shown, if any (it may have been deleted on another device).
@@ -1073,12 +1036,12 @@ struct NotesView: View {
 
     private func listTitle(_ shown: ListPage) -> String {
         switch shown {
-        case .home: "Porridge"
-        case .project: project(on: shown)?.name ?? "Porridge"
+        case .bowls: "Bowls"
+        case .project: project(on: shown)?.name ?? "Bowl"
         case .inbox: "Inbox"
-        case .todos: "To-dos"
+        case .todos: "Open To-dos"
         case .today: todayDay.map { TodayDay.title($0) } ?? "Today"
-        case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Porridge"
+        case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Smart Filter"
         case .chat: "Chat"
         case .search: "Search"
         case .archive: "Archive"
@@ -1093,6 +1056,7 @@ struct NotesView: View {
     private func listTint(_ shown: ListPage) -> Color {
         switch shown {
         case .project: project(on: shown) == nil ? .brandSky : .brandProject
+        case .bowls: .brandProject
         case .archive, .chat, .search, .smartFilter: .brandNavy
         case .trash: .red
         case .todos: .brandTask
@@ -1101,17 +1065,18 @@ struct NotesView: View {
         }
     }
 
-    /// The back pill of the bar: from a page to the long list, from an archived project to the archive.
+    /// The back pill of the bar: on every page above the place's own (on an iPad above the Bowls place).
     private func barBack(_ shown: ListPage) -> (() -> Void)? {
-        guard shown != .home else { return nil }
-        return { if !path.isEmpty { path.removeLast() } }
+        let isRoot = sizeClass == .compact ? Place(root: shown) != nil : shown == .bowls
+        guard !isRoot else { return nil }
+        return { if !currentPath.isEmpty { paths[activePlace]?.removeLast() } }
     }
 
     /// Symbol in the colored square in front of the title (the list icon of Things).
     private func listIcon(_ shown: ListPage) -> String {
         switch shown {
-        case .home: "tray.full.fill"
-        case .project: project(on: shown) == nil ? "tray.full.fill" : "folder.fill"
+        case .bowls: "folder.fill"
+        case .project: "folder.fill"
         case .inbox: "tray.fill"
         case .todos: "checklist"
         case .today: "calendar"
@@ -1225,10 +1190,11 @@ struct NotesView: View {
         column = .detail
     }
 
-    /// The project new things go into: the one that is open (not one shared with me to view only: then the inbox).
+    /// The bowl new things go into: the Add sheet's "Into:", else the one that is open (not one shared with me to
+    /// view only: then the Inbox).
     private var projectForNew: String? {
-        guard let project = openProject, !BowlSharing.shared.isReadOnly(project.id) else { return nil }
-        return Projects.key(project)
+        if let addInto { return addInto }
+        return defaultInto
     }
 
     /// A new note, or a to-do: the same note with a done state, made the same way.
@@ -1259,21 +1225,26 @@ struct NotesView: View {
         column = .detail
     }
 
-    /// A note or to-do made from a template, opened at once. Into the template's bowl, else the bowl that is open.
+    /// A note or to-do made from a template, opened at once. Into the template's bowl, else the bowl chosen.
     private func addFromTemplate(_ template: NoteTemplate, title: String) {
         let note = NoteTemplates.create(from: template, title: title, fallbackBowl: projectForNew, in: context)
         selection = note.id
         column = .detail
     }
 
-    /// Opens the entry an entry link asked for, when this device has it.
+    /// Opens the entry an entry link asked for, when this device has it. On a cold start the link comes before the
+    /// entries are loaded: it waits until they are (`onChange` of the notes), and is not thrown away.
     private func openRequestedEntry() {
-        guard let id = EntryLinkRouter.take(), notes.contains(where: { $0.id == id }) else { return }
-        openNote(id)
+        guard let id = EntryLinkRouter.waiting, notes.contains(where: { $0.id == id }) else { return }
+        _ = EntryLinkRouter.take()
+        // Straight away, not in a later task: the tab's stack takes the entry in the same update.
+        selection = id
+        column = .detail
     }
 
     private func runQuickAction() {
         guard let (action, fromLink) = QuickActionCenter.takeRequest() else { return }
+        addInto = nil
         if action == .startMeeting, fromLink {
             if !showRecorder { confirmLinkMeeting = true }
             return
@@ -1292,15 +1263,21 @@ struct NotesView: View {
             } else {
                 startRecording(titled: nil)
             }
+        case .openToday:
+            selection = nil
+            go(.today)
         case .openInbox:
             selection = nil
-            page = .inbox
+            go(.inbox)
+        case .openBowls:
+            selection = nil
+            go(.bowls)
         case .openTodos:
             selection = nil
-            page = .todos
+            go(.todos)
         case .search(let query):
             selection = nil
-            page = .search
+            go(.search)
             search = query
         case .openNote(let id):
             openNote(id)
@@ -1562,32 +1539,61 @@ enum ListRoute: Hashable {
     var isPage: Bool { page != nil }
 }
 
+/// The three places and the search: the tabs of the phone, in this order.
+enum Place: String, CaseIterable {
+    case today, inbox, bowls, search
+
+    /// The page at the start of the place's stack.
+    var root: ListPage {
+        switch self {
+        case .today: .today
+        case .inbox: .inbox
+        case .bowls: .bowls
+        case .search: .search
+        }
+    }
+
+    /// The place whose own page `page` is, nil for a page pushed onto a place.
+    init?(root page: ListPage) {
+        guard let place = Place.allCases.first(where: { $0.root == page }) else { return nil }
+        self = place
+    }
+}
+
 /// What the list column shows.
 enum ListPage: Hashable {
-    /// The one long list.
-    case home
+    /// Today: the day's appointments with their entries and the to-dos due (`TodayPage`). A place.
+    case today
+    /// The inbox: what is new or in no bowl. A place.
+    case inbox
+    /// Every bowl, the smart filters, Archive and Recently Deleted (`BowlsPlace`). A place.
+    case bowls
+    /// The search through everything. The fourth tab.
+    case search
     /// One project with everything in it.
     case project(UUID)
-    /// The inbox: what is new or in no bowl.
-    case inbox
-    /// The virtual folder of every open to-do by due day (`Todos.folder`), in the "Up Next" section of the home list.
+    /// Open To-dos: every open to-do by due day (`Todos.folder`), a fixed row of Today; a view, not a place.
     case todos
-    /// The day's appointments with their entries and the to-dos due (`TodayPage`), first in "Up Next".
-    case today
     /// A saved search (`SmartFilter`): the entries that fit it, wherever they are.
     case smartFilter(UUID)
-    /// The chat with the notes.
+    /// The chat with the notes; reached from the search (its "Chat" row) and Ask About This Bowl until stage 5
+    /// makes search and chat one field.
     case chat
-    /// The search through everything.
-    case search
     case archive
     case trash
     case settings
     case voices
     case acknowledgements
 
-    /// The page has its own bottom (the chat's field, the settings): the round buttons stay away.
-    var hidesFloatingButtons: Bool { isSettings || self == .chat || self == .search }
+    /// The stack a page is pushed onto when it is opened from elsewhere.
+    var place: Place {
+        switch self {
+        case .today, .todos: .today
+        case .inbox: .inbox
+        case .search, .chat: .search
+        case .bowls, .project, .smartFilter, .archive, .trash, .settings, .voices, .acknowledgements: .bowls
+        }
+    }
 
     var isSettings: Bool {
         switch self {

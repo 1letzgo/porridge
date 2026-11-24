@@ -50,6 +50,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         table.setDraggingSourceOperationMask([.move, .copy], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.target = self
+        table.action = #selector(rowClicked(_:))
         table.doubleAction = #selector(openInNewWindow(_:))
         table.onIntake = { [weak self] pasteboard in
             guard let self else { return false }
@@ -111,14 +112,15 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             if !self.state.searchTags.contains(where: { $0.lowercased() == tag.lowercased() }) { self.state.searchTags.append(tag) }
         }
         header.onRemoveTag = { [weak self] tag in self?.state.searchTags.removeAll { $0.lowercased() == tag.lowercased() } }
-        header.onReview = { [weak self] in
-            (self?.view.window?.windowController as? MainWindowController)?.showWeeklyReview(nil)
-        }
         header.onHint = { [weak self] hint in
             DailyHintFeed.open(hint, in: self?.view.window?.windowController as? MainWindowController)
         }
         header.onTriage = { [weak self] in self?.toggleTriage() }
-        header.onToggleLater = { [weak self] in self?.state.showsLater.toggle() }
+        header.onShowLater = { [weak self] later in
+            guard let self else { return }
+            self.state.showsLater = later
+            if later { self.state.isTriaging = false }
+        }
         header.onStepDay = { [weak self] days in self?.state.stepToday(by: days) }
         header.onToday = { [weak self] in self?.state.todayDay = nil }
         table.onKey = { [weak self] event in
@@ -164,8 +166,9 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     private func reload() {
         if state.page == .today {
             let calendar = TodayCalendar.shared
-            // Opening Today asks for the calendars, once.
-            if calendar.status == .notDetermined { Task { await calendar.requestAccess() } }
+            // Opening Today asks for the calendars, once (Today is the first place now, so this is mostly at the first
+            // launch). Never with test data (`PORRIDGE_TEST_DATA`): a test run asks nobody.
+            if calendar.status == .notDetermined, DataLocation.testFolder == nil { Task { await calendar.requestAccess() } }
             // Meetings recorded for an appointment are linked to it, also those from before.
             Task { @MainActor [library] in AppointmentLinks.shared.linkRecentMeetings(library.notes, in: library.context) }
         }
@@ -213,6 +216,10 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             let cell = table.makeView(withIdentifier: BucketCellView.identifier, owner: nil) as? BucketCellView ?? BucketCellView()
             if let project = library.project(id) { cell.show(project, notes: library.notes) }
             return cell
+        case .link(let link):
+            let cell = table.makeView(withIdentifier: LinkCellView.identifier, owner: nil) as? LinkCellView ?? LinkCellView()
+            cell.show(link, library: library)
+            return cell
         case .appointment(let key):
             let cell = table.makeView(withIdentifier: AppointmentCellView.identifier, owner: nil) as? AppointmentCellView ?? AppointmentCellView()
             if let appointment = TodayCalendar.shared.appointments(on: state.todayShownDay).first(where: { $0.key == key }) {
@@ -245,10 +252,10 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             switch dataSource.itemIdentifier(forRow: row) {
             case .note(let id)?: ids.append(id)
             case .project(let id)?:
-                // An archived bowl opens like any bowl.
+                // A bowl of the Bowls place or the archive opens.
                 state.page = .project(id)
                 return
-            case .appointment?, nil: break
+            case .appointment?, .link?, nil: break
             }
         }
         // A new note that was not written in yet stays open until another one is chosen.
@@ -258,8 +265,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
         switch dataSource.itemIdentifier(forRow: row) {
         case .note?, .project?: true
-        // An appointment is not opened; its menu is at the end of its row.
-        case .appointment?, nil: false
+        // An appointment is not opened; its menu is at the end of its row. A fixed row acts on a click.
+        case .appointment?, .link?, nil: false
         }
     }
 
@@ -287,6 +294,16 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             BucketActions.addItems(for: project, to: menu, state: state, window: view.window)
             return
         }
+        if clicked >= 0, case .link(.smartFilter(let id))? = dataSource.itemIdentifier(forRow: clicked), let filter = SmartFilterStore.shared.filter(id) {
+            let window = view.window
+            let state = state
+            menu.add("Open", symbol: "line.3.horizontal.decrease") { state.page = .smartFilter(id) }
+            menu.add("Edit…", symbol: "slider.horizontal.3") { SmartFilterSheet.edit(filter, in: window) }
+            menu.add("Rename…", symbol: "pencil") { SmartFilterSheet.rename(filter, in: window) }
+            menu.addSeparator()
+            menu.add("Delete Smart Filter…", symbol: "trash", isDestructive: true) { SmartFilterSheet.confirmDelete(filter, state: state, in: window) }
+            return
+        }
         if clicked >= 0, case .appointment(let key)? = dataSource.itemIdentifier(forRow: clicked),
            let appointment = TodayCalendar.shared.appointments(on: state.todayShownDay).first(where: { $0.key == key }) {
             let built = AppointmentActions.menu(for: appointment, in: view.window?.windowController as? MainWindowController)
@@ -306,6 +323,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     /// Triage on or off; on, the list takes the keys and the first entry is chosen when none is.
     func toggleTriage() {
         guard state.page == .inbox else { return }
+        // Triage goes through what is new.
+        state.showsLater = false
         state.isTriaging.toggle()
         guard state.isTriaging else { return }
         focusList()
@@ -416,6 +435,27 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         step(1)
     }
 
+    /// A click on a fixed row (Open To-dos, Weekly Review, a smart filter, Archive, Recently Deleted, New Smart Filter…).
+    @objc private func rowClicked(_ sender: Any?) {
+        guard table.clickedRow >= 0, case .link(let link)? = dataSource.itemIdentifier(forRow: table.clickedRow) else { return }
+        open(link)
+    }
+
+    func open(_ link: ListLink) {
+        let controller = view.window?.windowController as? MainWindowController
+        switch link {
+        case .openTodos: state.page = .todos
+        case .weeklyReview: controller?.showWeeklyReview(nil)
+        case .archive: state.page = .archive
+        case .trash: state.page = .trash
+        case .smartFilter(let id): state.page = .smartFilter(id)
+        case .newBowl: controller?.newBucket(nil)
+        case .newSmartFilter:
+            let state = state
+            SmartFilterSheet.create(SmartFilterCriteria(), in: view.window) { state.page = .smartFilter($0.id) }
+        }
+    }
+
     @objc private func openInNewWindow(_ sender: Any?) {
         guard table.clickedRow >= 0, case .note(let id)? = dataSource.itemIdentifier(forRow: table.clickedRow) else { return }
         NoteWindowController.open(id)
@@ -504,7 +544,93 @@ private final class GroupRowView: NSTableRowView {
     override func drawBackground(in dirtyRect: NSRect) {}
 }
 
-/// An archived bowl in the archive's list.
+/// A fixed row that leads somewhere: a symbol in its color, the name, a line about what is there, a count.
+final class LinkCellView: NSTableCellView {
+    static let identifier = NSUserInterfaceItemIdentifier("link")
+    private let icon = KindIconView()
+    private let name = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize + 1, weight: .medium))
+    private let summary = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize), color: .secondaryLabelColor)
+    private let count = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular), color: .secondaryLabelColor)
+    private let chevron = NSImageView()
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.identifier
+        chevron.image = .symbol("chevron.right", size: 10, weight: .bold)
+        chevron.contentTintColor = .tertiaryLabelColor
+        summary.lineBreakMode = .byTruncatingTail
+        summary.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        name.lineBreakMode = .byTruncatingTail
+        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        count.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let text = NSStackView.vertical([name, summary], spacing: 3)
+        let row = NSStackView.horizontal([icon, text, NSView(), count, chevron], spacing: 12)
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 9),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -9),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    @MainActor
+    func show(_ link: ListLink, library: Library) {
+        let notes = library.notes
+        var number = 0
+        var detail: String?
+        switch link {
+        case .openTodos:
+            let folder = Todos.folder(notes)
+            number = folder.open
+            detail = folder.open == 0 ? String(localized: "None open")
+                : folder.overdue > 0 ? String(localized: "\(folder.open) open · \(folder.overdue) overdue") : String(localized: "\(folder.open) open")
+            set("Open To-dos", symbol: "checklist", tint: .brandTask)
+        case .weeklyReview:
+            detail = String(localized: "This Week · \(Places.newThisWeek(notes)) new entries")
+            set("Weekly Review", symbol: "calendar.badge.checkmark", tint: .brandNavy)
+        case .archive:
+            number = HomeList.archivedProjects(library.projects).count
+            detail = number == 0 ? String(localized: "Empty") : number == 1 ? String(localized: "1 bowl") : String(localized: "\(number) bowls")
+            set("Archive", symbol: "archivebox.fill", tint: .brandNavy)
+        case .trash:
+            number = notes.lazy.filter(\.isDeleted).count
+            detail = number == 0 ? String(localized: "Empty")
+                : number == 1 ? String(localized: "1 entry · deleted after \(NoteStore.trashDays) days")
+                : String(localized: "\(number) entries · deleted after \(NoteStore.trashDays) days")
+            set("Recently Deleted", symbol: "trash.fill", tint: .systemRed)
+        case .smartFilter(let id):
+            let filter = SmartFilterStore.shared.filter(id)
+            number = filter.map { SmartFilters.results($0.criteria, in: notes).count } ?? 0
+            let names = Dictionary(library.projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
+            detail = filter.map { SmartFilters.summary(of: $0.criteria) { names[$0] } }
+            set(filter?.name ?? String(localized: "Smart Filter"), symbol: "line.3.horizontal.decrease", tint: .brandNavy)
+        case .newSmartFilter:
+            set(String(localized: "New Smart Filter…"), symbol: "plus", tint: .brandNavy)
+        case .newBowl:
+            detail = String(localized: "No bowls yet. A bowl holds everything about one topic.")
+            set(String(localized: "New Bowl…"), symbol: "folder.badge.plus", tint: .brandProject)
+        }
+        summary.stringValue = detail ?? ""
+        summary.isHidden = detail == nil
+        count.stringValue = number > 0 ? "\(number)" : ""
+        count.isHidden = number == 0
+        chevron.isHidden = link == .newSmartFilter || link == .newBowl
+        setAccessibilityRole(.button)
+        setAccessibilityLabel([name.stringValue, detail].compactMap { $0 }.joined(separator: ", "))
+    }
+
+    private func set(_ title: String, symbol: String, tint: NSColor) {
+        name.stringValue = title
+        icon.symbol = symbol
+        icon.tint = tint
+    }
+}
+
+/// A bowl in the Bowls place or the archive's list.
 final class BucketCellView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("bucket")
     private let icon = KindIconView()
@@ -534,7 +660,7 @@ final class BucketCellView: NSTableCellView {
         name.stringValue = project.name
         let key = Projects.key(project)
         let count = notes.lazy.filter { !$0.isDeleted && $0.projectIDs.contains(key) }.count
-        summary.stringValue = count == 0 ? String(localized: "Empty") : String(localized: "\(count) entries")
+        summary.stringValue = count == 0 ? String(localized: "Empty") : count == 1 ? String(localized: "1 entry") : String(localized: "\(count) entries")
         icon.isPinned = project.isPinned
         setAccessibilityLabel("Bowl \(project.name), \(summary.stringValue)")
     }

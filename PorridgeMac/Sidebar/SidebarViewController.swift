@@ -6,6 +6,8 @@ private final class SidebarNode: NSObject {
     enum Kind: Equatable {
         case page(SidebarPage)
         case group(String)
+        /// A row that does something instead of showing a page ("New Smart Filter…").
+        case action(String)
     }
 
     let kind: Kind
@@ -28,13 +30,14 @@ private final class SidebarNode: NSObject {
         switch kind {
         case .page(let page): page.hashValue
         case .group(let name): name.hashValue
+        case .action(let name): ("action-" + name).hashValue
         }
     }
 }
 
-/// The sidebar as a source list: Up Next (the Inbox and the to-dos folder), the bowls, the smart filters (saved
-/// searches, while there are any), then More (the chat, the archive and Recently Deleted).
-/// Notes dropped on a bowl go into it; files dropped on it are brought in there.
+/// The sidebar as a source list: the three places Today, Inbox and Bowls (⌘1–3; Bowls unfolds into every bowl in the
+/// order of Sort Bowls By, no limit), the smart filters with "New Smart Filter…", then Archive and Recently Deleted
+/// (⌘4, ⌘5), always there. Notes dropped on a bowl go into it; files dropped on it are brought in there.
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSTextFieldDelegate {
     private let state: WindowState
     private let library = Library.shared
@@ -49,6 +52,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private var renamingFilter: SmartFilter?
     /// The content changed while a name was edited.
     private var rebuildAfterRename = false
+    /// Rows folded by hand (Bowls, Smart Filters): they stay folded when the sidebar is built again.
+    private var collapsed = Set<Int>()
 
     init(state: WindowState) {
         self.state = state
@@ -135,30 +140,22 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         }
         rebuildAfterRename = false
         let notes = library.notes
-        let buckets = library.activeProjects
-        // Pinned bowls first, then by name.
-        let sorted = buckets.filter(\.isPinned) + buckets.filter { !$0.isPinned }
-        // "Up Next", as the section of the home list on iOS: Today, the Inbox and, under it, the to-dos
-        // folder while there are to-dos to show.
-        var upNext: [SidebarNode] = [SidebarNode(.page(.today)), SidebarNode(.page(.inbox))]
-        if !Todos.folder(notes).isEmpty || state.page == .todos { upNext.append(SidebarNode(.page(.todos))) }
-        var top: [SidebarNode] = [SidebarNode(.group("Up Next"), children: upNext)]
-        top.append(SidebarNode(.group("Bowls"), children: sorted.map { SidebarNode(.page(.project($0.id))) }))
+        // Every bowl, pinned first, in the order the iPhone's Bowls place uses (Settings › General › Sort Bowls By).
+        let bowls = HomeList.bowls(library.projects, notes: notes)
+        var top: [SidebarNode] = [
+            SidebarNode(.page(.today)),
+            SidebarNode(.page(.inbox)),
+            SidebarNode(.page(.bowls), children: bowls.map { SidebarNode(.page(.project($0.id))) }),
+        ]
         let filters = SmartFilterStore.shared.filters
-        if !filters.isEmpty {
-            top.append(SidebarNode(.group("Smart Filters"), children: filters.map { SidebarNode(.page(.smartFilter($0.id))) }))
-        }
-        // The chat is a place to go, not something waiting: it leads the other places under "More".
-        var more: [SidebarNode] = [SidebarNode(.page(.chat))]
-        let archived = HomeList.archivedProjects(library.projects).count
-        if archived > 0 || state.page == .archive { more.append(SidebarNode(.page(.archive))) }
-        if notes.contains(where: \.isDeleted) || state.page == .trash { more.append(SidebarNode(.page(.trash))) }
-        if !more.isEmpty { top.append(SidebarNode(.group("More"), children: more)) }
-        // An open bowl that is archived shows under the archive, but the sidebar still marks it.
+        top.append(SidebarNode(.group("Smart Filters"), children: filters.map { SidebarNode(.page(.smartFilter($0.id))) } + [SidebarNode(.action("newSmartFilter"))]))
+        // Always there, also when empty.
+        top.append(SidebarNode(.page(.archive)))
+        top.append(SidebarNode(.page(.trash)))
         roots = top
         isSyncingSelection = true
         outline.reloadData()
-        for node in roots where !node.children.isEmpty || node.kind == .group("Bowls") { outline.expandItem(node) }
+        for node in roots where !node.children.isEmpty && !collapsed.contains(node.hash) { outline.expandItem(node) }
         isSyncingSelection = false
         syncSelection()
     }
@@ -183,16 +180,27 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     }
 
     #if DEBUG
+    /// Where the rows are drawn: the outline's frame, and each row's rect and cell title (debug driver).
+    var debugGeometry: String {
+        let rows = (0..<min(outline.numberOfRows, 4)).map { row -> String in
+            let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? NSTableCellView
+            return "\(outline.rect(ofRow: row)) '\(cell?.textField?.stringValue ?? "-")' hidden=\(cell?.isHidden ?? true) alpha=\(cell?.alphaValue ?? 0)"
+        }
+        return "outline=\(outline.frame) visible=\(outline.visibleRect) window=\(outline.window != nil) " + rows.joined(separator: "; ")
+    }
+
     /// The rows as drawn, for the debug driver: "name" or "[group]", with a "+" when a group is expanded.
     var debugRows: [String] {
         (0..<outline.numberOfRows).compactMap { row in
             guard let node = outline.item(atRow: row) as? SidebarNode else { return nil }
             switch node.kind {
             case .group(let name): return "[\(name)\(outline.isItemExpanded(node) ? "+" : "-")]"
+            case .action(let name): return "(\(name))"
             case .page(let page):
                 if case .project(let id) = page { return library.project(id)?.name ?? "?" }
                 if case .smartFilter(let id) = page { return SmartFilterStore.shared.filter(id)?.name ?? "?" }
-                return "\(page)"
+                let count = (cellBadge(for: page)).map { " \($0)" } ?? ""
+                return "\(page)" + (node.children.isEmpty ? "" : outline.isItemExpanded(node) ? "+" : "-") + count
             }
         }
     }
@@ -209,8 +217,17 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        if case .group = (item as? SidebarNode)?.kind { return true }
-        return false
+        guard let node = item as? SidebarNode else { return false }
+        if case .group = node.kind { return true }
+        return !node.children.isEmpty
+    }
+
+    func outlineViewItemDidCollapse(_ notification: Notification) {
+        if let node = notification.userInfo?["NSObject"] as? SidebarNode { collapsed.insert(node.hash) }
+    }
+
+    func outlineViewItemDidExpand(_ notification: Notification) {
+        if let node = notification.userInfo?["NSObject"] as? SidebarNode { collapsed.remove(node.hash) }
     }
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
@@ -219,7 +236,19 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     }
 
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        (item as? SidebarNode)?.page != nil
+        guard let node = item as? SidebarNode else { return false }
+        if case .action = node.kind {
+            // "New Smart Filter…": the editor, the page stays.
+            if !isSyncingSelection { newSmartFilter() }
+            return false
+        }
+        return node.page != nil
+    }
+
+    /// "New Smart Filter…": the editor with nothing asked yet; the new filter opens.
+    @objc func newSmartFilter() {
+        let state = state
+        SmartFilterSheet.create(SmartFilterCriteria(), in: view.window) { state.page = .smartFilter($0.id) }
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
@@ -233,6 +262,24 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             let cell = outlineView.makeView(withIdentifier: SidebarCell.identifier, owner: self) as? SidebarCell ?? SidebarCell()
             configure(cell, for: page)
             return cell
+        case .action:
+            let cell = outlineView.makeView(withIdentifier: SidebarCell.identifier, owner: self) as? SidebarCell ?? SidebarCell()
+            cell.configure(title: String(localized: "New Smart Filter…"), symbol: "plus", tint: .secondaryLabelColor, badge: 0)
+            cell.textField?.isEditable = false
+            cell.textField?.textColor = .secondaryLabelColor
+            return cell
+        }
+    }
+
+    /// The count of a page's row: what is due today, what waits in the Inbox, the archived bowls, the deleted entries.
+    private func cellBadge(for page: SidebarPage) -> Int? {
+        let notes = library.notes
+        switch page {
+        case .today: return Places.todayCount(notes)
+        case .inbox: return Places.inboxCount(notes)
+        case .archive: return HomeList.archivedProjects(library.projects).count
+        case .trash: return notes.lazy.filter(\.isDeleted).count
+        default: return nil
         }
     }
 
@@ -254,17 +301,15 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let notes = library.notes
         switch page {
         case .today:
-            // What is left of the day: appointments not over yet and the to-dos due.
-            let now = Date()
-            let left = TodayCalendar.shared.appointments.filter { $0.end > now }.count + TodayTodos.open(notes).count
-            cell.configure(title: "Today", symbol: "calendar", tint: .brandNavy, badge: left)
+            // The to-dos due today or before, as on the iPhone's tab (`Places`).
+            cell.configure(title: "Today", symbol: "calendar", tint: .brandNavy, badge: cellBadge(for: page) ?? 0)
         case .inbox:
-            let now = Date()
-            let count = notes.lazy.filter { $0.isWaitingInInbox(now: now) }.count
-            cell.configure(title: "Inbox", symbol: "tray.fill", tint: .brandSky, badge: count)
+            cell.configure(title: "Inbox", symbol: "tray.fill", tint: .brandSky, badge: cellBadge(for: page) ?? 0)
+        case .bowls:
+            cell.configure(title: "Bowls", symbol: "folder.fill", tint: .brandProject, badge: 0)
         case .todos:
             let folder = Todos.folder(notes)
-            cell.configure(title: "To-dos", symbol: "checklist", tint: .brandTask, badge: folder.open, alert: folder.overdue)
+            cell.configure(title: "Open To-dos", symbol: "checklist", tint: .brandTask, badge: folder.open, alert: folder.overdue)
         case .chat:
             cell.configure(title: "Chat", symbol: "bubble.left.and.bubble.right.fill", tint: .brandNavy, badge: 0)
         case .project(let id):
@@ -281,9 +326,9 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             let count = filter.map { SmartFilters.results($0.criteria, in: notes).count } ?? 0
             cell.configure(title: filter?.name ?? String(localized: "Smart Filter"), symbol: "line.3.horizontal.decrease", tint: .brandNavy, badge: count)
         case .archive:
-            cell.configure(title: "Archive", symbol: "archivebox.fill", tint: .brandNavy, badge: 0)
+            cell.configure(title: "Archive", symbol: "archivebox.fill", tint: .brandNavy, badge: cellBadge(for: page) ?? 0)
         case .trash:
-            cell.configure(title: "Recently Deleted", symbol: "trash.fill", tint: .systemRed, badge: 0)
+            cell.configure(title: "Recently Deleted", symbol: "trash.fill", tint: .systemRed, badge: cellBadge(for: page) ?? 0)
         case .search:
             cell.configure(title: "Search", symbol: "magnifyingglass", tint: .brandNavy, badge: 0)
         }
@@ -361,31 +406,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         switch page {
         case .project(let id):
             guard let project = library.project(id) else { return }
-            let pin = menu.addItem(withTitle: project.isPinned ? "Unpin" : "Pin", action: #selector(togglePin(_:)), keyEquivalent: "")
-            pin.representedObject = project
-            pin.target = self
-            // A bowl shared with me to view only keeps the owner's name.
-            if !BowlSharing.shared.isReadOnly(project.id) {
-                let rename = menu.addItem(withTitle: "Rename", action: #selector(rename(_:)), keyEquivalent: "")
-                rename.representedObject = project
-                rename.target = self
+            // The bowl's menu (the same as its ⋯ in the list head); Rename… edits the name in place.
+            BucketActions.addItems(for: project, to: menu, state: state, window: view.window) { [weak self] in
+                self?.beginRenaming(project)
             }
-            let archive = menu.addItem(withTitle: project.isArchived ? "Unarchive" : "Archive", action: #selector(toggleArchive(_:)), keyEquivalent: "")
-            archive.representedObject = project
-            archive.target = self
-            let chat = menu.addItem(withTitle: "Chat with Bowl", action: #selector(chatWithBucket(_:)), keyEquivalent: "")
-            chat.representedObject = project
-            chat.target = self
-            BowlShareMac.shared.addItems(for: project, to: menu, in: view.window)
-            let export = menu.addItem(withTitle: "Export Bowl…", action: #selector(exportBowl(_:)), keyEquivalent: "")
-            export.representedObject = project
-            export.target = self
-            menu.addItem(.separator())
-            // A bowl someone shared with me is left, not deleted (`BucketActions.confirmDelete` asks which).
-            let title = BowlSharing.shared.isSharedWithMe(project.id) ? "Leave Bowl…" : "Delete Bowl…"
-            let delete = menu.addItem(withTitle: title, action: #selector(deleteBucket(_:)), keyEquivalent: "")
-            delete.representedObject = project
-            delete.target = self
         case .smartFilter(let id):
             guard let filter = SmartFilterStore.shared.filter(id) else { return }
             let window = view.window
@@ -396,42 +420,12 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             menu.add("Delete Smart Filter…", symbol: "trash", isDestructive: true) { SmartFilterSheet.confirmDelete(filter, state: state, in: window) }
         case .trash:
             menu.addItem(withTitle: "Delete All…", action: #selector(MainWindowController.emptyTrash(_:)), keyEquivalent: "")
+        case .bowls:
+            menu.addItem(withTitle: "New Bowl…", action: #selector(MainWindowController.newBucket(_:)), keyEquivalent: "")
+            menu.add("New Smart Filter…", symbol: "line.3.horizontal.decrease") { [weak self] in self?.newSmartFilter() }
         default:
             menu.addItem(withTitle: "New Bowl…", action: #selector(MainWindowController.newBucket(_:)), keyEquivalent: "")
         }
-    }
-
-    @objc private func togglePin(_ sender: NSMenuItem) {
-        guard let project = sender.representedObject as? NoteFolder else { return }
-        project.isPinned.toggle()
-        project.updatedAt = Date()
-        library.save()
-    }
-
-    @objc private func exportBowl(_ sender: NSMenuItem) {
-        guard let project = sender.representedObject as? NoteFolder else { return }
-        ExportSheetController.export(.bowl(project.id), title: String(localized: "Export “\(project.name)”"), in: view.window)
-    }
-
-    @objc private func toggleArchive(_ sender: NSMenuItem) {
-        guard let project = sender.representedObject as? NoteFolder else { return }
-        Archive.set(!project.isArchived, project, in: library.context)
-    }
-
-    @objc private func chatWithBucket(_ sender: NSMenuItem) {
-        guard let project = sender.representedObject as? NoteFolder else { return }
-        state.page = .project(project.id)
-        state.openChat(threads: library.threads)
-    }
-
-    @objc private func deleteBucket(_ sender: NSMenuItem) {
-        guard let project = sender.representedObject as? NoteFolder, let window = view.window else { return }
-        BucketActions.confirmDelete(project, state: state, in: window)
-    }
-
-    @objc private func rename(_ sender: NSMenuItem) {
-        guard let project = sender.representedObject as? NoteFolder else { return }
-        beginRenaming(project)
     }
 
     @objc private func doubleClicked() {

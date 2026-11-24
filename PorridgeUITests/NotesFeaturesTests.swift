@@ -68,9 +68,7 @@ final class NotesFeaturesTests: XCTestCase {
         app.newNote(title: name)
         app.goBack()
         // A new note waits in the inbox, the newest on top.
-        let inbox = app.buttons["InboxCategory"]
-        XCTAssertTrue(inbox.waitForExistence(timeout: 10), "Inbox missing on the home list")
-        inbox.tap()
+        app.openTab("Inbox")
         let row = app.staticTexts[name]
         XCTAssertTrue(app.reveal(row), "new note missing in the inbox")
 
@@ -113,8 +111,7 @@ final class NotesFeaturesTests: XCTestCase {
         app.goBack()
 
         // The search offers the tags as chips; picking one filters the notes.
-        XCTAssertTrue(app.buttons["Search"].waitForExistence(timeout: 10))
-        app.buttons["Search"].tap()
+        app.openTab("Search")
         let suggestion = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "#\(tag)")).firstMatch
         XCTAssertTrue(suggestion.waitForExistence(timeout: 5), "tag not offered")
         suggestion.tap()
@@ -147,7 +144,7 @@ final class NotesFeaturesTests: XCTestCase {
         field.typeText(name)
         app.confirmAlert("Create")
         // A new project opens or shows in the list; go back to the list if it opened.
-        if !app.buttons["Create"].waitForExistence(timeout: 3) { app.goBack() }
+        if !app.buttons["BowlSort"].waitForExistence(timeout: 3) { app.goBack() }
         let back = app.buttons["Back"]
         if back.waitForExistence(timeout: 2) { back.tap() }
         let row = app.staticTexts[name]

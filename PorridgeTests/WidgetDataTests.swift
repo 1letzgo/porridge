@@ -40,7 +40,7 @@ final class WidgetDataTests: XCTestCase {
 
     func testLinksRoundTrip() {
         let id = UUID()
-        let actions: [QuickAction] = [.newNote, .startMeeting, .openInbox, .openTodos, .search("Q3 plan & budget"), .openNote(id)]
+        let actions: [QuickAction] = [.newNote, .startMeeting, .openToday, .openInbox, .openBowls, .openTodos, .search("Q3 plan & budget"), .openNote(id)]
         for action in actions {
             XCTAssertEqual(QuickAction(url: action.url), action, action.url.absoluteString)
         }

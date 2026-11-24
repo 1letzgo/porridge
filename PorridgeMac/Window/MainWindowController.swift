@@ -135,7 +135,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         switch state.page {
         case .today: "Today"
         case .inbox: "Inbox"
-        case .todos: "To-dos"
+        case .bowls: "Bowls"
+        case .todos: "Open To-dos"
         case .chat: "Chat"
         case .project(let id): library.project(id)?.name ?? "Porridge"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Porridge"
@@ -212,20 +213,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     private enum Item {
         static let new = NSToolbarItem.Identifier("new")
-        static let importMenu = NSToolbarItem.Identifier("import")
         static let listSeparator = NSToolbarItem.Identifier("listSeparator")
         static let share = NSToolbarItem.Identifier("share")
         static let noteMenu = NSToolbarItem.Identifier("noteMenu")
         static let ai = NSToolbarItem.Identifier("ai")
-        static let chat = NSToolbarItem.Identifier("chat")
         static let search = NSToolbarItem.Identifier("search")
         static let settings = NSToolbarItem.Identifier("settings")
         static let recording = NSToolbarItem.Identifier("recording")
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Item.new, Item.importMenu, Item.listSeparator,
-         Item.recording, .flexibleSpace, Item.ai, Item.share, Item.noteMenu, Item.chat, Item.search,
+        // Import is a group of the "+" menu; the chat is reached from AI › New Chat, Ask About This Bowl and ⌘K.
+        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Item.new, Item.listSeparator,
+         Item.recording, .flexibleSpace, Item.ai, Item.share, Item.noteMenu, Item.search,
          // The inspector (Details | Record) keeps the part of the toolbar above it to itself: while it is open the
          // items before this separator, the search included, stay over the columns to its left.
          .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector]
@@ -244,18 +244,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.toolTip = "New"
             item.showsIndicator = true
             item.menu = newMenu()
-            return item
-        case Item.importMenu:
-            let item = NSMenuToolbarItem(itemIdentifier: identifier)
-            item.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "Import")
-            item.label = "Import"
-            item.toolTip = "Import"
-            item.showsIndicator = true
-            let menu = NSMenu()
-            menu.addItem(withTitle: "Import Audio…", action: #selector(importAudio(_:)), keyEquivalent: "")
-            menu.addItem(withTitle: "Import Plaud…", action: #selector(importPlaud(_:)), keyEquivalent: "")
-            menu.addItem(withTitle: "Photo or File…", action: #selector(importFile(_:)), keyEquivalent: "")
-            item.menu = menu
             return item
         case Item.listSeparator:
             return NSTrackingSeparatorToolbarItem(identifier: identifier, splitView: split.splitView, dividerIndex: 1)
@@ -291,15 +279,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.toolTip = "More"
             item.showsIndicator = false
             item.menu = EntryToolbarMenu.make(.more)
-            return item
-        case Item.chat:
-            let item = NSToolbarItem(itemIdentifier: identifier)
-            item.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: "Chat")
-            item.label = "Chat"
-            item.toolTip = "Chat with Your Bowls"
-            item.isBordered = true
-            item.action = #selector(openChat(_:))
-            item.target = self
             return item
         case Item.recording:
             let item = NSToolbarItem(itemIdentifier: identifier)
@@ -340,21 +319,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
+    /// "+": the four kinds, then Import (folded in from the toolbar's Import menu), templates and New Bowl…, in the
+    /// words and groups of the iPhone's Add sheet.
     private func newMenu() -> NSMenu {
         let menu = NSMenu()
-        let entries: [(String, String, Selector, NSColor)] = [
-            ("New Note", "square.and.pencil", #selector(newNote(_:)), .brandSky),
-            ("New To-do", "checklist", #selector(newTodo(_:)), .brandTask),
-            ("Record Meeting", "mic.fill", #selector(recordMeeting(_:)), .brandNavy),
-            ("Add Link…", "link", #selector(addLink(_:)), .brandLink),
-            ("New Bowl…", "folder.badge.plus", #selector(newBucket(_:)), .brandProject),
-        ]
-        for (title, symbol, action, tint) in entries {
-            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
+        func add(_ title: String, _ symbol: String, _ action: Selector, _ tint: NSColor, key: String = "", modifiers: NSEvent.ModifierFlags = .command) {
+            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
             item.image = NSImage.symbol(symbol, size: 13, weight: .medium).tinted(tint.readable)
         }
-        // A note or to-do from one of the note templates, after New To-do.
-        menu.insertItem(NoteTemplateMenu.item(for: self), at: 2)
+        add("New Note", "square.and.pencil", #selector(newNote(_:)), .brandSky, key: "n")
+        add("New To-do", "checklist", #selector(newTodo(_:)), .brandTask, key: "n", modifiers: [.command, .shift])
+        add("Record Meeting", "mic.fill", #selector(recordMeeting(_:)), .brandNavy, key: "r")
+        add("Add Link…", "link", #selector(addLink(_:)), .brandLink, key: "l")
+        menu.addItem(.separator())
+        add("Photo or File…", "paperclip", #selector(importFile(_:)), .brandNavy, key: "i", modifiers: [.command, .shift])
+        add("Audio…", "waveform", #selector(importAudio(_:)), .brandNavy)
+        add("From Plaud…", "recordingtape", #selector(importPlaud(_:)), .brandNavy)
+        // Continuity Camera: the system fills it with "Take Photo" and "Scan Documents" of the iPhone or iPad nearby.
+        let device = NSMenuItem(title: "From iPhone or iPad", action: nil, keyEquivalent: "")
+        device.identifier = NSMenuItem.importFromDeviceIdentifier
+        device.image = NSImage.symbol("iphone", size: 13, weight: .medium).tinted(NSColor.brandNavy.readable)
+        menu.addItem(device)
+        menu.addItem(.separator())
+        // A note or to-do from one of the note templates.
+        menu.addItem(NoteTemplateMenu.item(for: self))
+        menu.addItem(.separator())
+        add("New Bowl…", "folder.badge.plus", #selector(newBucket(_:)), .brandProject, key: "n", modifiers: [.command, .control])
         return menu
     }
 
@@ -404,7 +395,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
-        case Item.new, Item.importMenu: state.page.allowsCreating
+        case Item.new: state.page.allowsCreating
         case Item.noteMenu: openNote != nil
         case Item.ai: openNote.map { !EntryMenus.ai(for: $0, context: entryContext(for: $0)).isEmpty } ?? false
         case Item.share: openNote.map { EntryMenus.share(for: $0) != nil } ?? false
@@ -477,9 +468,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: Pages
 
+    @objc func showToday(_ sender: Any?) { state.page = .today }
     @objc func showInbox(_ sender: Any?) { state.page = .inbox }
+    @objc func showBowls(_ sender: Any?) { state.page = .bowls }
     @objc func showTodos(_ sender: Any?) { state.page = .todos }
-    @objc func showChat(_ sender: Any?) { state.page = .chat }
     @objc func showArchive(_ sender: Any?) { state.page = .archive }
     @objc func showTrash(_ sender: Any?) { state.page = .trash }
 
@@ -548,11 +540,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         split.detail.noteDetail?.focusTitle()
     }
 
-    /// A new note opens at once; it is stored once it has content. In a bowl it goes into it; in the to-dos
-    /// folder it is a to-do, in no bowl.
+    /// A new note opens at once; it is stored once it has content. In a bowl it goes into it; in Open To-dos it is
+    /// a to-do, in no bowl. From the Bowls place, the chat or the search it goes into the Inbox, which opens.
     private func addNote(todo asked: Bool) {
         let todo = asked || state.page == .todos
-        if !state.page.allowsCreating || state.page == .chat || state.page == .search { state.page = .inbox }
+        if !state.page.allowsCreating || state.page == .chat || state.page == .search || state.page == .bowls { state.page = .inbox }
         let note = Note()
         note.source = .note
         if todo { TodoBridge.makeTodo(note) }
@@ -567,7 +559,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         Alerts.ask("Add Link", message: "The page is saved as a note and summarized.", placeholder: "https://", action: "Add",
                    validate: { LinkImport.webAddress(from: $0) != nil }, in: window) { [weak self] text in
             guard let self, let address = LinkImport.webAddress(from: text) else { return }
-            if self.state.page == .search || self.state.page == .chat { self.state.page = .inbox }
+            if self.state.page == .search || self.state.page == .chat || self.state.page == .bowls { self.state.page = .inbox }
             Intake.addLink(address, project: self.state.projectForNew, state: self.state)
         }
     }

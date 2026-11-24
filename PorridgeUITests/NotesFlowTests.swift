@@ -11,7 +11,7 @@ final class NotesFlowTests: XCTestCase {
         app.newNote()
         sleep(3)
         XCTAssertTrue(app.titleField.exists, "note closed again by itself")
-        XCTAssertFalse(app.buttons["Create"].isHittable, "list is showing again")
+        XCTAssertFalse(app.buttons.matching(identifier: "PlaceAdd").allElementsBoundByIndex.contains { $0.isHittable }, "list is showing again")
     }
 
     /// Create a note, leave it empty, go back, create another one: it must open and stay open.
@@ -30,6 +30,8 @@ final class NotesFlowTests: XCTestCase {
     /// Settings and its subpages open in place; afterwards the list still answers as before.
     func testRecordNewNotesSwitchInSettings() throws {
         let app = launchApp()
+        // Settings is the gear in the Bowls bar.
+        app.openTab("Bowls")
         let settings = app.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 30), "settings button missing")
         settings.tap()
@@ -41,6 +43,7 @@ final class NotesFlowTests: XCTestCase {
 
     func testSettingsSubpageAndBack() throws {
         let app = launchApp()
+        app.openTab("Bowls")
         let settings = app.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 30), "settings button missing")
         settings.tap()
@@ -54,8 +57,8 @@ final class NotesFlowTests: XCTestCase {
         app.buttons["Back"].firstMatch.tap()
         XCTAssertTrue(row.waitForExistence(timeout: 10), "settings missing after going back")
         app.goBack()
-        app.buttons["Create"].tap()
-        XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 5), "plus did not open its menu")
+        app.addButton.tap()
+        XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 5), "plus did not open the Add sheet")
     }
 
     /// A note with content is kept and can be opened again from the search.
@@ -84,10 +87,8 @@ final class NotesFlowTests: XCTestCase {
         field.tap()
         field.typeText(title)
         app.buttons["Back"].firstMatch.tap()
-        // A new note waits in the inbox, the first entry of the home list.
-        let inbox = app.buttons["InboxCategory"]
-        XCTAssertTrue(inbox.waitForExistence(timeout: 10), "Inbox missing on the home list")
-        inbox.tap()
+        // A new note waits in the Inbox, the second tab.
+        app.openTab("Inbox")
         let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10), "row is not a button:\n\(app.debugDescription)")
         row.tap()
@@ -99,23 +100,28 @@ final class NotesFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
-        XCTAssertTrue(app.buttons["Create"].waitForExistence(timeout: 30))
-        XCTAssertTrue(app.buttons["Create"].isHittable)
-        app.buttons["Create"].tap()
+        XCTAssertTrue(app.addButton.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.addButton.isHittable, "the bar's + is cut off")
+        for tab in ["Inbox", "Bowls", "Today"] {
+            app.openTab(tab)
+            XCTAssertTrue(app.addButton.isHittable, "\(tab): the bar's + is cut off")
+        }
+        app.addButton.tap()
         sleep(1)
         let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "largest-text-plus-menu"
+        attachment.name = "largest-text-add-sheet"
         attachment.lifetime = .keepAlways
         add(attachment)
     }
 
-    /// After an export from Settings and going back, the bar of the home screen shows its Import button right away.
-    /// (Presented by UIKit over the root, the export sheet left the Import menu without its label for seconds.)
-    func testImportButtonShowsAfterExport() throws {
+    /// After an export from Settings and going back, the Bowls bar shows its sort menu right away. (Presented by UIKit
+    /// over the root, the export sheet once left a menu of the bar without its label for seconds.)
+    func testBarMenuShowsAfterExport() throws {
         let app = launchApp()
-        let importButton = app.buttons["Import"]
+        app.openTab("Bowls")
+        let importButton = app.buttons["BowlSort"]
         let settings = app.buttons["Settings"]
-        XCTAssertTrue(importButton.waitForExistence(timeout: 30), "import button missing")
+        XCTAssertTrue(importButton.waitForExistence(timeout: 30), "sort menu missing")
         settings.tap()
         XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
         app.buttons["General"].firstMatch.tap()
@@ -127,13 +133,13 @@ final class NotesFlowTests: XCTestCase {
         done.tap()
         XCTAssertTrue(done.waitForNonExistence(timeout: 10), "export sheet did not close")
         app.buttons["Back"].firstMatch.tap()
-        XCTAssertTrue(settings.waitForExistence(timeout: 10), "home missing after going back")
+        XCTAssertTrue(settings.waitForExistence(timeout: 10), "Bowls missing after going back")
         // The button is in the tree all along; what went missing was its picture. Compared with the gear next to it.
         let deadline = Date().addingTimeInterval(3)
         while Date() < deadline {
             let shown = Self.inkedPixels(importButton.screenshot().image)
             let reference = Self.inkedPixels(settings.screenshot().image)
-            XCTAssertGreaterThan(shown, reference / 3, "import button drawn without its icon (\(shown) of \(reference))")
+            XCTAssertGreaterThan(shown, reference / 3, "sort menu drawn without its icon (\(shown) of \(reference))")
             if shown <= reference / 3 { break }
         }
     }
@@ -154,6 +160,98 @@ final class NotesFlowTests: XCTestCase {
             if difference > 120 { count += 1 }
         }
         return count
+    }
+
+    /// The three places and the search are tabs; each place's bar ends in "+"; Today ends in its fixed rows, Bowls in
+    /// Smart Filters, Archive and Recently Deleted, also when they are empty.
+    func testThreePlacesAsTabs() throws {
+        let app = launchApp()
+        for tab in ["Today", "Inbox", "Bowls", "Search"] {
+            XCTAssertTrue(app.tabBars.buttons[tab].waitForExistence(timeout: 30), "tab \(tab) missing")
+        }
+        app.openTab("Today")
+        XCTAssertTrue(app.addButton.waitForExistence(timeout: 10), "Today has no +")
+        XCTAssertTrue(app.buttons["TodayNextDay"].exists, "Today has no day paging")
+        XCTAssertTrue(app.reveal(app.buttons["TodayOpenTodos"]), "Open To-dos row missing in Today")
+        XCTAssertTrue(app.buttons["TodayWeeklyReview"].exists, "Weekly Review row missing in Today")
+        app.buttons["TodayOpenTodos"].tap()
+        XCTAssertTrue(app.staticTexts["Open To-dos"].waitForExistence(timeout: 5), "Open To-dos did not open")
+        app.buttons["Back"].firstMatch.tap()
+        app.openTab("Inbox")
+        XCTAssertTrue(app.segmentedControls["InboxSegment"].waitForExistence(timeout: 5), "Inbox has no New / Later")
+        XCTAssertTrue(app.buttons["Select"].exists, "Inbox has no Select")
+        app.openTab("Bowls")
+        XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 5), "Bowls has no sort menu")
+        XCTAssertTrue(app.buttons["Settings"].exists, "Bowls has no Settings gear")
+        let archive = app.buttons["BowlsArchive"]
+        XCTAssertTrue(app.reveal(archive), "Archive row missing")
+        XCTAssertTrue(app.buttons["BowlsRecentlyDeleted"].exists, "Recently Deleted row missing")
+        XCTAssertTrue(app.buttons["NewSmartFilter"].exists, "New Smart Filter… missing")
+        archive.tap()
+        XCTAssertTrue(app.staticTexts["Archive"].waitForExistence(timeout: 5), "Archive did not open")
+        app.buttons["Back"].firstMatch.tap()
+        app.openTab("Search")
+        XCTAssertTrue(app.textFields["SearchField"].waitForExistence(timeout: 5), "the search tab has no field")
+        XCTAssertTrue(app.buttons["SearchChat"].exists, "the chat is not reachable from the search")
+    }
+
+    /// "+" in a bowl: the Add sheet puts new things into that bowl ("Into:"); its ⋯ holds the bowl's management.
+    func testAddSheetAndBowlMenu() throws {
+        let app = launchApp()
+        let name = unique("Bowl")
+        app.openTab("Bowls")
+        app.create("Bowl")
+        let field = app.alerts.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText(name)
+        app.confirmAlert("Create")
+        // The new bowl opens on the Bowls tab.
+        XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 10), "the new bowl did not open")
+        let menu = app.buttons["BowlMenu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5), "bowl has no ⋯")
+        menu.tap()
+        for item in ["Select Entries", "Pin", "Rename…", "Ask About This Bowl", "Export Bowl…", "Archive", "Delete Bowl…"] {
+            XCTAssertTrue(app.buttons[item].waitForExistence(timeout: 3), "bowl menu lacks \(item)")
+        }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.6)).tap()
+        app.addButton.tap()
+        let into = app.buttons["AddInto"]
+        XCTAssertTrue(into.waitForExistence(timeout: 5), "Add sheet has no Into")
+        XCTAssertTrue(into.label.contains(name), "Into is not the open bowl: \(into.label)")
+        for item in ["Note", "To-do", "Meeting", "Link", "Photo or File"] {
+            XCTAssertTrue(app.buttons[item].exists, "Add sheet lacks \(item)")
+        }
+        app.collectionViews.firstMatch.swipeUp()
+        for item in ["Import Audio", "Import from Plaud", "New Bowl…"] {
+            XCTAssertTrue(app.buttons[item].waitForExistence(timeout: 3), "Add sheet lacks \(item)")
+        }
+        app.collectionViews.firstMatch.swipeDown()
+        app.buttons["Note"].tap()
+        XCTAssertTrue(app.waitForTitleField(), "the note did not open")
+        app.titleField.tap()
+        app.titleField.typeText(unique("In bowl"))
+        app.goBack()
+        XCTAssertTrue(app.staticTexts[name].exists, "back is not the bowl")
+    }
+
+    /// A `porridge://entry/<id>` link opens the entry at once, on the tab in front, without another tap.
+    func testEntryLinkOpensAtOnce() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES"]
+        app.launch()
+        app.openTab("Bowls")
+        XCTAssertTrue(app.addButton.waitForExistence(timeout: 30))
+        app.open(URL(string: "porridge://entry/5EED0000-0000-4000-8000-000000000005")!)
+        let opened = app.textFields.matching(NSPredicate(format: "value == %@", "Packing list & plan")).firstMatch
+        XCTAssertTrue(opened.waitForExistence(timeout: 5), "the entry of the link did not open by itself")
+        // Again from another tab, with an entry open.
+        app.openTab("Today")
+        app.open(URL(string: "porridge://entry/5EED0000-0000-4000-8000-000000000002")!)
+        let todo = app.textFields.matching(NSPredicate(format: "value == %@", "Choose worktop colour")).firstMatch
+        XCTAssertTrue(todo.waitForExistence(timeout: 5), "the second link did not open by itself")
+        // `porridge://bowls` brings the Bowls place to the front.
+        app.open(URL(string: "porridge://bowls")!)
+        XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 5), "porridge://bowls did not open Bowls")
     }
 
     /// An entry's head opens Details at the section of a value; the bowl is changed there.

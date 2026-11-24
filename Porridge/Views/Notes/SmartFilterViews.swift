@@ -1,33 +1,9 @@
 import SwiftData
 import SwiftUI
 
-// MARK: - Home list
+// MARK: - In the Bowls place
 
-/// The smart filters as their own small section of the home list, below the bowls.
-struct SmartFiltersSection: View {
-    let filters: [SmartFilter]
-    let notes: [Note]
-    var onOpen: (SmartFilter) -> Void
-    var onEdit: (SmartFilter) -> Void
-    var onRename: (SmartFilter) -> Void
-    var onDelete: (SmartFilter) -> Void
-
-    var body: some View {
-        Section {
-            ForEach(filters) { filter in
-                SmartFilterRow(
-                    filter: filter, count: SmartFilters.results(filter.criteria, in: notes).count,
-                    onOpen: { onOpen(filter) }, onEdit: { onEdit(filter) }, onRename: { onRename(filter) }, onDelete: { onDelete(filter) }
-                )
-                .lastInSection(filter.id == filters.last?.id)
-            }
-        } header: {
-            ListHeader(title: String(localized: "Smart Filters"), tint: .brandNavy)
-        }
-    }
-}
-
-/// A smart filter in the home list: its name, what it asks for, how many entries fit.
+/// A smart filter in the Bowls place: its name, what it asks for, how many entries fit.
 struct SmartFilterRow: View {
     let filter: SmartFilter
     let count: Int
@@ -110,7 +86,6 @@ struct SmartFilterPage: View {
             }
         }
         .cardList()
-        .roomForFloatingButtons()
         .overlay {
             if found.isEmpty {
                 EmptyStateView(

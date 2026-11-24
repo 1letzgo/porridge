@@ -12,7 +12,13 @@ final class GeneralSettingsPane: SettingsPane {
     private lazy var iCloudSync = SettingsCheckbox("iCloud Sync") { [weak self] on in
         self?.syncTapped(on ? .iCloud : .off)
     }
-    private lazy var dailyHint = SettingsCheckbox("Daily hint in the Inbox") { on in
+    /// Sort Bowls By: the order of the sidebar's bowls and the Bowls place (the iPhone has the same setting).
+    private lazy var bowlOrder = SettingsPopUp { index in
+        guard HomeList.BowlOrder.allCases.indices.contains(index) else { return }
+        UserDefaults.standard.set(HomeList.BowlOrder.allCases[index].rawValue, forKey: HomeList.bowlOrderKey)
+        Library.shared.setNeedsReload()
+    }
+    private lazy var dailyHint = SettingsCheckbox("Daily Hint in Today") { on in
         UserDefaults.standard.set(on, forKey: DailyHint.enabledKey)
         DailyHints.shared.refresh(notes: Library.shared.notes)
     }
@@ -25,6 +31,10 @@ final class GeneralSettingsPane: SettingsPane {
         form.separator()
 
         form.row("", iCloudSync)
+        form.separator()
+
+        form.row("Sort Bowls By", bowlOrder)
+        form.note("Pinned bowls are always shown first.")
         form.separator()
 
         form.row("Templates", NSButton.push("Edit Note Templates…") { [weak self] in
@@ -58,6 +68,7 @@ final class GeneralSettingsPane: SettingsPane {
         plaudButton.hasDestructiveAction = signedIn
         iCloudSync.isOn = SyncMode.chosen == .iCloud
         dailyHint.isOn = DailyHint.isEnabled
+        bowlOrder.set(HomeList.BowlOrder.allCases.map(\.title), selected: HomeList.BowlOrder.allCases.firstIndex(of: HomeList.bowlOrder))
     }
 
     /// Asks before switching sync; the checkbox shows the stored mode until the user confirms.

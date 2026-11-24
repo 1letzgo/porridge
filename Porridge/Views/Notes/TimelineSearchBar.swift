@@ -55,6 +55,8 @@ struct SearchPane<Results: View>: View {
     @Binding var kind: SearchKind?
     let tags: [(key: String, name: String, count: Int)]
     let hasQuery: Bool
+    /// The chat with the bowls, as the first row of the empty search (until search and chat are one field).
+    var onChat: (() -> Void)?
     @ViewBuilder var results: Results
 
     @FocusState private var focused: Bool
@@ -98,6 +100,9 @@ struct SearchPane<Results: View>: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
+                        if let onChat {
+                            chatRow(onChat)
+                        }
                         if openTags.isEmpty, tokens.isEmpty {
                             Text("Type a word to search your notes and meetings. Tags show up here once you have some.")
                                 .font(.subheadline)
@@ -118,6 +123,30 @@ struct SearchPane<Results: View>: View {
                 .scrollDismissesKeyboard(.interactively)
             }
         }
+    }
+
+    /// "Chat": a question to the bowls instead of a search.
+    private func chatRow(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ThingsRowIcon(systemImage: "bubble.left.and.bubble.right.fill", tint: .brandNavy)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Chat")
+                        .foregroundStyle(.primary)
+                    Text("Ask your bowls a question")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("SearchChat")
+        .padding(.bottom, 4)
     }
 
     private func kindChip(_ option: SearchKind) -> some View {

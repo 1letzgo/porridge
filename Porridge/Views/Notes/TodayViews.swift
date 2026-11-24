@@ -1,40 +1,12 @@
 import SwiftData
 import SwiftUI
 
-// MARK: - Today in "Up Next"
-
-/// The Today card beside Inbox and To-dos: how many appointments the day has and how many to-dos are due.
-struct TodayTile: View {
-    let notes: [Note]
-    var onOpen: () -> Void
-
-    @Environment(\.modelContext) private var context
-
-    var body: some View {
-        let calendar = TodayCalendar.shared
-        let appointments = calendar.appointments
-        let todos = TodayTodos.open(notes).count
-        UpNextTile(title: String(localized: "Today"), systemImage: "calendar", tint: .brandNavy, onOpen: onOpen) {
-            // A third of the row: the appointments, then the to-dos due, each on its own short line.
-            VStack(alignment: .leading, spacing: 2) {
-                if calendar.status == .granted {
-                    Text(appointments.isEmpty ? String(localized: "No appointments") : appointments.count == 1 ? String(localized: "1 appointment") : String(localized: "\(appointments.count) appointments"))
-                }
-                if todos > 0 || calendar.status != .granted {
-                    Text(todos == 0 ? String(localized: "Nothing due") : todos == 1 ? String(localized: "1 to-do") : String(localized: "\(todos) to-dos"))
-                }
-            }
-        }
-        .accessibilityIdentifier("TodayCategory")
-        // Meetings recorded for an appointment are linked to it, also those from before.
-        .task(id: notes.count) { AppointmentLinks.shared.linkRecentMeetings(notes, in: context) }
-    }
-}
-
 // MARK: - The Today page
 
-/// Today: the day's appointments, each with what is linked to it, then the to-dos due today or before and those
-/// done today. Paged a day at a time (`TodayDay`): another day shows its appointments and the to-dos due on it.
+/// Today: the hint of the day, the day's appointments, each with what is linked to it, then the to-dos due today or
+/// before and those done today, Up Next (the next seven days, at most five rows, foldable) and the fixed rows Open
+/// To-dos and Weekly Review. Paged a day at a time (`TodayDay`): another day shows its appointments and the to-dos
+/// due on it, nothing else.
 struct TodayPage: View {
     let notes: [Note]
     /// The day shown; nil is today.
@@ -45,16 +17,33 @@ struct TodayPage: View {
     var onRecord: (CalendarAppointment) -> Void
     /// A new note for the appointment, linked to it.
     var onNewNote: (CalendarAppointment) -> Void
+    /// The hint of the day was tapped.
+    var onHint: (DailyHint) -> Void = { _ in }
+    /// The fixed rows: Open To-dos and Weekly Review.
+    var onOpenTodos: () -> Void = {}
+    var onReview: () -> Void = {}
 
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
+    /// Up Next folded (on this device).
+    @AppStorage("todayUpNextFolded") private var upNextFolded = false
+
+    /// Up Next shows this many rows at most.
+    static let upNextLimit = 5
 
     var body: some View {
         let calendar = TodayCalendar.shared
         let shown = day ?? calendar.today
         let isToday = TodayDay.isToday(shown)
-        list(shown, isToday: isToday)
+        VStack(spacing: 0) {
+            // The hint of the day ("1 to-do is overdue"), today only.
+            if isToday, let hint = DailyHints.shared.current {
+                DailyHintBanner(hint: hint) { onHint(hint) }
+                    .transition(.opacity)
+            }
+            list(shown, isToday: isToday)
+        }
         .task {
             calendar.refresh()
             AppointmentLinks.shared.linkRecentMeetings(notes, in: context)
@@ -74,6 +63,8 @@ struct TodayPage: View {
         let underAppointments = calendar.status == .granted ? Set(appointments.flatMap { links.notes(for: $0, among: notes).map(\.id) }) : []
         let open = TodayTodos.open(notes, on: shown).filter { !underAppointments.contains($0.id) }
         let done = TodayTodos.done(notes, on: shown).filter { !underAppointments.contains($0.id) }
+        let overdue = open.filter { $0.todoDue.flatMap { Todos.dueStatus($0) } == .overdue }.count
+        let upcoming = isToday ? Array(TodayTodos.upcoming(notes).prefix(Self.upNextLimit)) : []
         let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
         func buckets(_ note: Note) -> [String] { note.projectIDs.compactMap { names[$0] } }
         return List(selection: $selection) {
@@ -136,11 +127,52 @@ struct TodayPage: View {
                         .lastInSection(note.id == (open + done).last?.id)
                 }
             } header: {
-                ListHeader(title: String(localized: "To-dos"), count: open.isEmpty ? nil : open.count, tint: .brandTask)
+                ListHeader(
+                    title: overdue > 0 ? String(localized: "Due \(open.count) · \(overdue) overdue") : String(localized: "Due"),
+                    count: open.isEmpty || overdue > 0 ? nil : open.count, tint: overdue > 0 ? .red : .brandTask
+                )
+            }
+            if isToday {
+                // The next seven days, a few rows, foldable.
+                if !upcoming.isEmpty {
+                    Section {
+                        if !upNextFolded {
+                            ForEach(upcoming) { note in
+                                NoteListRow(note: note, buckets: buckets(note)) { onRemove(note) }
+                                    .lastInSection(note.id == upcoming.last?.id)
+                            }
+                        }
+                    } header: {
+                        ListHeaderButton(title: String(localized: "Up Next"), count: upcoming.count, tint: .brandNavy, isOpen: !upNextFolded) {
+                            withAnimation(.snappy) { upNextFolded.toggle() }
+                        }
+                        .accessibilityHint(upNextFolded ? "Shows the to-dos of the next seven days" : "Hides the to-dos of the next seven days")
+                    }
+                }
+                // Fixed rows: the place looks the same every day.
+                Section {
+                    let folder = Todos.folder(notes)
+                    PlaceLinkRow(
+                        title: String(localized: "Open To-dos"),
+                        subtitle: folder.open == 0 ? String(localized: "None open")
+                            : folder.overdue > 0 ? String(localized: "\(folder.open) open · \(folder.overdue) overdue") : String(localized: "\(folder.open) open"),
+                        systemImage: "checklist", tint: .brandTask, count: folder.open, action: onOpenTodos
+                    )
+                    .accessibilityIdentifier("TodayOpenTodos")
+                    PlaceLinkRow(
+                        title: String(localized: "Weekly Review"),
+                        subtitle: String(localized: "This Week · \(Places.newThisWeek(notes)) new entries"),
+                        systemImage: "calendar.badge.checkmark", tint: .brandNavy, action: onReview
+                    )
+                    .lastInSection(true)
+                    .accessibilityIdentifier("TodayWeeklyReview")
+                } header: {
+                    Rectangle().fill(Look.hairline).frame(height: 0.5)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 4, trailing: 20))
+                }
             }
         }
         .cardList()
-        .roomForFloatingButtons()
         .refreshable { calendar.refresh() }
     }
 }

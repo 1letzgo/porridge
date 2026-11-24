@@ -9,6 +9,8 @@ struct NoteSelectionBar: View {
     @Binding var chosen: Set<UUID>
     /// The Inbox: the chosen entries can be put away for later.
     var offersLater = false
+    /// Its own "Done" at the end; off where the bar of the page has it (the places' one-row bar).
+    var showsDone = true
     var onDone: () -> Void
 
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
@@ -90,8 +92,10 @@ struct NoteSelectionBar: View {
                     actionLabel("Merge", systemImage: "arrow.triangle.merge", isOn: canMerge)
                 }
                 .disabled(!canMerge)
-                Button("Done", action: onDone)
-                    .font(.subheadline.weight(.bold))
+                if showsDone {
+                    Button("Done", action: onDone)
+                        .font(.subheadline.weight(.bold))
+                }
             }
             .padding(.horizontal, 20)
         }

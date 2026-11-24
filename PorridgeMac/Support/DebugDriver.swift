@@ -5,7 +5,7 @@ import SwiftData
 /// Lets a developer drive the app from the command line in a debug build, for checking the interface without
 /// clicking: with PORRIDGE_DEBUG_DRIVER set, commands written to `commandFile` are run. Not part of release builds.
 ///
-/// Commands: `page inbox|todos|chat|archive|trash|search`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
+/// Commands: `page today|inbox|bowls|later|todos|chat|archive|trash|search`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
 /// `search <text>`, `dump`, `shot <path.png>`, `key <window title>` (orders a window front), `title <text>` / `body <text>` (types
 /// into the open note), `settings <tab>`.
 @MainActor
@@ -50,6 +50,8 @@ enum DebugDriver {
             case "chat": state.page = .chat
             case "todos": state.page = .todos
             case "today": state.page = .today
+            case "bowls": state.page = .bowls
+            case "later": state.page = .inbox; state.showsLater = true
             case "archive": state.page = .archive
             case "trash": state.page = .trash
             case "search": state.page = .search
@@ -163,10 +165,47 @@ enum DebugDriver {
                 project.isPinned = true
                 library.save()
             }
+        case "bucket-archive":
+            // Archives the bowl of that name (test data for the Bowls place and the archive).
+            for project in library.projects where project.name == argument { Archive.set(true, project, in: library.context) }
+        case "smart-filter":
+            // `smart-filter <name>`: a smart filter for meetings, named so.
+            _ = SmartFilterStore.shared.add(name: argument, criteria: SmartFilterCriteria(kind: .meetings))
+        case "list":
+            // The rows of the middle column as built: "[section]" then the items.
+            let built = NoteListContent.build(for: state, library: library)
+            var rows: [String] = []
+            for (section, items) in built.sections {
+                rows.append("[\(section.title)\(section.footnote.map { " – " + $0 } ?? "")]")
+                for item in items {
+                    switch item {
+                    case .note(let id): rows.append(library.note(id)?.displayTitle ?? "?")
+                    case .project(let id): rows.append("bowl " + (library.project(id)?.name ?? "?"))
+                    case .appointment(let key): rows.append("appointment " + key)
+                    case .link(let link): rows.append("link \(link)")
+                    }
+                }
+            }
+            log("list \(state.page): " + (rows.isEmpty ? "empty – \(built.emptyTitle)" : rows.joined(separator: " | ")))
+        case "plus-menu":
+            // The toolbar's "+" menu as titles.
+            guard let item = controller.window?.toolbar?.items.first(where: { $0.itemIdentifier.rawValue == "new" }) as? NSMenuToolbarItem else { log("plus-menu: none"); return }
+            item.menu.update()
+            log("plus-menu: " + item.menu.items.map { $0.isSeparatorItem ? "|" : $0.title + ($0.keyEquivalent.isEmpty ? "" : " ⌘" + $0.keyEquivalent) }.joined(separator: " · "))
+        case "shot-sidebar":
+            // The sidebar alone, drawn into an image (its window material does not come out in `shot`).
+            let view = controller.split.sidebar.view
+            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { log("shot-sidebar: none"); return }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
+            log("shot-sidebar: \(argument)")
+        case "toolbar":
+            log("toolbar: " + (controller.window?.toolbar?.items.map(\.itemIdentifier.rawValue).joined(separator: ", ") ?? "none"))
         case "bucket-delete":
             for project in library.projects where project.name == argument { Projects.delete(project, in: library.context) }
         case "sidebar":
             log("sidebar: " + controller.split.sidebar.debugRows.joined(separator: " | "))
+            log("sidebar geometry: " + controller.split.sidebar.debugGeometry)
         case "filter":
             state.kindFilter = KindFilter(rawValue: argument)
         case "due":

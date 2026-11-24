@@ -101,25 +101,3 @@ struct LaterPickerSheet: View {
         }
     }
 }
-
-/// The end of the Inbox: what was put away for later, folded until it is asked for.
-struct LaterSection: View {
-    let notes: [Note]
-    @Binding var isExpanded: Bool
-    var onRemove: (Note) -> Void
-
-    var body: some View {
-        Section {
-            if isExpanded {
-                ForEach(notes) { note in
-                    NoteListRow(note: note) { onRemove(note) }
-                        .lastInSection(note.id == notes.last?.id)
-                }
-            }
-        } header: {
-            ListHeaderButton(title: String(localized: "Later"), count: notes.count, tint: .brandNavy, isFirst: false, isOpen: isExpanded) {
-                withAnimation(.snappy) { isExpanded.toggle() }
-            }
-        }
-    }
-}

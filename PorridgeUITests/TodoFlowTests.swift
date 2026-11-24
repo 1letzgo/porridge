@@ -58,9 +58,7 @@ final class TodoFlowTests: XCTestCase {
         screenshot("todo-detail", app)
 
         app.goBack()
-        let inbox = app.buttons["InboxCategory"]
-        XCTAssertTrue(inbox.waitForExistence(timeout: 15), "Inbox missing on the home list")
-        inbox.tap()
+        app.openTab("Inbox")
         let row = app.staticTexts[title]
         XCTAssertTrue(app.reveal(row), "to-do not in the inbox")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Due Today'")).firstMatch.exists,
@@ -123,12 +121,11 @@ final class TodoFlowTests: XCTestCase {
         app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
         app.launch()
 
-        let entry = app.buttons["TodosFolder"]
-        XCTAssertTrue(entry.waitForExistence(timeout: 15), "to-dos folder missing under the inbox")
-        XCTAssertTrue(entry.label.contains("overdue"), "the folder does not say that to-dos are late: \(entry.label)")
-        // The section of Inbox and To-dos is "Up Next"; the entry itself stays "Inbox".
-        XCTAssertTrue(app.staticTexts["Up Next"].exists, "the first section is not called Up Next")
-        XCTAssertTrue(app.buttons["InboxCategory"].label.hasPrefix("Inbox"), "the inbox entry lost its name")
+        // Open To-dos is a fixed row at the end of Today.
+        app.openTab("Today")
+        let entry = app.buttons["TodayOpenTodos"]
+        XCTAssertTrue(app.reveal(entry), "Open To-dos missing in Today")
+        XCTAssertTrue(entry.label.contains("overdue"), "the row does not say that to-dos are late: \(entry.label)")
         screenshot("inbox-todos-folder-home", app)
         entry.tap()
 
@@ -148,7 +145,7 @@ final class TodoFlowTests: XCTestCase {
         XCTAssertTrue(app.reveal(app.staticTexts["Done Today"]), "no Done Today group after ticking")
 
         // The plus makes a to-do right here.
-        app.buttons["Create"].tap()
+        app.addButton.tap()
         XCTAssertTrue(app.waitForTitleField(), "the plus did not make a to-do")
         XCTAssertTrue(app.switches["To-do"].firstMatch.waitForExistence(timeout: 5), "the plus made a note, not a to-do")
     }

@@ -1,13 +1,18 @@
 import SwiftData
 import SwiftUI
 
-/// A project as a folder in a list: name, what is in it, when it last changed.
+/// A bowl as a row of a list (the Bowls place, the archive): name, what is in it, how many entries. Swipe right pins
+/// it, swipe left archives or deletes it; the long press is the bowl's ⋯ menu (`BowlMenuItems`).
 struct ProjectRow: View {
     let project: NoteFolder
     let content: ProjectContent
     var onOpen: () -> Void
     var onRename: () -> Void
     var onDelete: () -> Void
+    /// Ask About This Bowl: the chat about it.
+    var onAsk: () -> Void = {}
+    /// Select Entries: the bowl opens with its selection on.
+    var onSelect: (() -> Void)?
 
     @Environment(\.modelContext) private var context
 
@@ -29,9 +34,11 @@ struct ProjectRow: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                if let last = content.lastChange {
-                    Text(last.formatted(.dateTime.day().month(.abbreviated)))
-                        .font(.caption)
+                let count = content.count(.all)
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.subheadline)
+                        .monospacedDigit()
                         .foregroundStyle(.secondary)
                         .fixedSize()
                 }
@@ -42,30 +49,17 @@ struct ProjectRow: View {
         .cardListRow()
         .swipeActions(edge: .leading) {
             if !project.isArchived {
-                pinButton.tint(.brandNavy)
+                BowlPinButton(project: project).tint(.brandNavy)
             }
         }
         .swipeActions(edge: .trailing) {
             deleteButton
-            archiveButton.tint(.brandNavy)
             if !BowlSharing.shared.isReadOnly(project.id) {
-                Button(action: onRename) { Label("Rename", systemImage: "pencil") }
-                    .tint(.brandProject)
+                BowlArchiveButton(project: project).tint(.brandNavy)
             }
         }
         .contextMenu {
-            if !project.isArchived {
-                pinButton
-            }
-            // A bowl shared with me to view only keeps the owner's name.
-            if !BowlSharing.shared.isReadOnly(project.id) {
-                Button(action: onRename) { Label("Rename", systemImage: "pencil") }
-            }
-            archiveButton
-            BowlShareMenuItems(project: project)
-            ExportBowlButton(project: project)
-            Divider()
-            deleteButton
+            BowlMenuItems(project: project, onSelect: onSelect, onRename: onRename, onAsk: onAsk, onDelete: onDelete)
         }
     }
 
@@ -80,8 +74,82 @@ struct ProjectRow: View {
             Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
         }
     }
+}
 
-    private var pinButton: some View {
+/// The bowl's menu: the ⋯ of its page, the long press of its row in the Bowls place and the archive. Select Entries,
+/// Pin, Rename… | Ask About This Bowl | Manage Sharing… (or Share Bowl…), Copy Link, Export Bowl… | Archive, Stop
+/// Sharing…, Delete Bowl…. A bowl shared with me offers Leave Bowl… instead of Delete; one I may only view keeps
+/// Pin, Ask, Copy Link, Export Bowl… and Leave Bowl….
+struct BowlMenuItems: View {
+    let project: NoteFolder
+    var onSelect: (() -> Void)?
+    var onRename: () -> Void
+    var onAsk: () -> Void
+    var onDelete: () -> Void
+
+    var body: some View {
+        let readOnly = BowlSharing.shared.isReadOnly(project.id)
+        let info = BowlSharing.isAvailable ? BowlSharing.shared.info(for: project.id) : nil
+        Section {
+            if let onSelect, !readOnly {
+                Button(action: onSelect) { Label("Select Entries", systemImage: "checkmark.circle") }
+            }
+            if !project.isArchived {
+                BowlPinButton(project: project)
+            }
+            if !readOnly {
+                Button(action: onRename) { Label("Rename…", systemImage: "pencil") }
+            }
+        }
+        Section {
+            Button(action: onAsk) { Label("Ask About This Bowl", systemImage: "bubble.left.and.text.bubble.right") }
+        }
+        Section {
+            if BowlSharing.isAvailable {
+                if info != nil {
+                    if !readOnly {
+                        Button { BowlShareController.shared.manage(project) } label: {
+                            Label("Manage Sharing…", systemImage: "person.2")
+                        }
+                    }
+                    Button { BowlShareController.shared.copyLink(project) } label: {
+                        Label("Copy Link", systemImage: "link")
+                    }
+                } else if !readOnly {
+                    ShareLink(item: BowlShareItem(bowlID: project.id, name: project.name), preview: SharePreview(project.name)) {
+                        Label("Share Bowl…", systemImage: "person.crop.circle.badge.plus")
+                    }
+                    .disabled(BowlSharing.shared.preparing.contains(project.id))
+                }
+            }
+            ExportBowlButton(project: project)
+        }
+        Section {
+            if !readOnly {
+                BowlArchiveButton(project: project)
+            }
+            if let info, info.role == .owner, info.endingSince == nil {
+                Button(role: .destructive) { BowlShareController.shared.confirmStopSharing(project) } label: {
+                    Label("Stop Sharing…", systemImage: "person.2.slash")
+                }
+            }
+            if BowlSharing.shared.isSharedWithMe(project.id) {
+                Button(role: .destructive) { BowlShareController.shared.confirmLeave(project) } label: {
+                    Label("Leave Bowl…", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            } else {
+                Button(role: .destructive, action: onDelete) { Label("Delete Bowl…", systemImage: "trash") }
+            }
+        }
+    }
+}
+
+/// Pin or Unpin a bowl.
+struct BowlPinButton: View {
+    let project: NoteFolder
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
         Button {
             withAnimation(.snappy) {
                 project.isPinned.toggle()
@@ -92,97 +160,19 @@ struct ProjectRow: View {
             Label(project.isPinned ? "Unpin" : "Pin", systemImage: project.isPinned ? "pin.slash" : "pin")
         }
     }
+}
 
-    private var archiveButton: some View {
+/// Archive or Unarchive a bowl.
+struct BowlArchiveButton: View {
+    let project: NoteFolder
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
         Button {
             withAnimation(.snappy) { Archive.set(!project.isArchived, project, in: context) }
         } label: {
             Label(project.isArchived ? "Unarchive" : "Archive", systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox")
         }
-    }
-}
-
-/// One of the three buttons of "Up Next" on the home list: in the color of its symbol, as the row icons, a third of the row wide.
-struct UpNextTile<Detail: View>: View {
-    let title: String
-    let systemImage: String
-    let tint: Color
-    var onOpen: () -> Void
-    @ViewBuilder var detail: Detail
-
-    var body: some View {
-        Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: 6) {
-                Image(systemName: systemImage)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(tint.readable)
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                detail
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .frame(maxHeight: .infinity, alignment: .top)
-            // As the symbols in front of the rows: a wash of the color with a border of it.
-            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous).strokeBorder(tint.opacity(0.55), lineWidth: 1.5))
-            .contentShape(RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
-        }
-        .buttonStyle(UpNextTileStyle())
-    }
-}
-
-/// Pressed, a tile dims a little and shrinks a touch.
-private struct UpNextTileStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.85 : 1)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
-    }
-}
-
-/// "Up Next" on the home list: Today (the day's appointments and to-dos), the Inbox (what is new or in no bowl)
-/// and the to-dos folder (every open to-do, wherever it is filed), side by side in one row.
-struct UpNextRow: View {
-    let notes: [Note]
-    let waiting: [Note]
-    let folder: Todos.Folder
-    var onToday: () -> Void
-    var onInbox: () -> Void
-    var onTodos: () -> Void
-
-    var body: some View {
-        // All three side by side, as high as the tallest.
-        HStack(spacing: 10) {
-            TodayTile(notes: notes, onOpen: onToday)
-            UpNextTile(title: String(localized: "Inbox"), systemImage: "tray.fill", tint: .brandSky, onOpen: onInbox) {
-                Text(waiting.isEmpty ? "Nothing waiting" : "\(waiting.count) waiting")
-            }
-            .accessibilityIdentifier("InboxCategory")
-            UpNextTile(title: String(localized: "To-dos"), systemImage: "checklist", tint: .brandTask, onOpen: onTodos) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(folder.open == 0 ? String(localized: "Nothing open") : folder.open == 1 ? String(localized: "1 open") : String(localized: "\(folder.open) open"))
-                    if folder.overdue > 0 {
-                        Text(String(localized: "\(folder.overdue) overdue"))
-                            .foregroundStyle(Color.brandDangerText)
-                            .fontWeight(.semibold)
-                    }
-                }
-            }
-            .accessibilityIdentifier("TodosFolder")
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 12, trailing: 20))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
     }
 }
 
@@ -213,7 +203,7 @@ struct ProjectPage: View {
             BowlShareLine(project: project)
             if isSelecting {
                 // Choosing: what can be done with the chosen entries takes the place of the kinds.
-                NoteSelectionBar(notes: list, chosen: $chosen) {
+                NoteSelectionBar(notes: list, chosen: $chosen, showsDone: false) {
                     withAnimation(.snappy) {
                         isSelecting = false
                         chosen = []
@@ -240,7 +230,6 @@ struct ProjectPage: View {
                 }
             }
             .cardList()
-            .roomForFloatingButtons()
             // What others added or changed is seen as far as the bowl goes, on the way in and on the way out.
             .onAppear { BowlSharing.shared.markVisited(project.id) }
             .onDisappear { BowlSharing.shared.markVisited(project.id) }
@@ -248,7 +237,7 @@ struct ProjectPage: View {
                 if content.count(filter) == 0 {
                     EmptyStateView(
                         title: "Nothing Here Yet",
-                        message: "Add meetings, notes and links to the bowl from their page.",
+                        message: "Add to the bowl with +, or move entries into it from their Details.",
                         systemImage: "folder"
                     )
                 }

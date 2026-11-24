@@ -30,7 +30,7 @@ extension Notification.Name {
 /// The one router of the app's `porridge://` links, for the iPhone app (`onOpenURL`) and the Mac
 /// (`application(_:open:)`). `porridge://entry/<UUID>` (and the older `porridge://note/<UUID>`) opens that entry
 /// and waits here until a window can show it: on a cold launch the URL comes before any view exists. The other
-/// routes (`new`, `meeting`, `inbox`, `todos`, `search?q=…`, see `QuickAction`) go to `QuickActionCenter`; any app
+/// routes (`new`, `meeting`, `today`, `inbox`, `bowls`, `todos`, `search?q=…`, see `QuickAction`) go to `QuickActionCenter`; any app
 /// or website can open these, so `meeting` only asks whether to start recording.
 @MainActor
 enum EntryLinkRouter {
@@ -53,6 +53,9 @@ enum EntryLinkRouter {
         pending = id
         NotificationCenter.default.post(name: .porridgeOpenEntry, object: nil)
     }
+
+    /// The waiting entry, left waiting (the list may not have loaded it yet).
+    static var waiting: UUID? { pending }
 
     /// The waiting entry, handed out once.
     static func take() -> UUID? {

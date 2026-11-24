@@ -83,4 +83,30 @@ struct OpenInboxIntent: AppIntent {
         return .result()
     }
 }
+
+/// Opens Today.
+struct OpenTodayIntent: AppIntent {
+    static let title: LocalizedStringResource = "Open Today"
+    static let description = IntentDescription("Opens Today in Porridge: the day's appointments and the to-dos due.")
+    static let openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        QuickActionCenter.request(.openToday)
+        return .result()
+    }
+}
+
+/// Opens the Bowls place.
+struct OpenBowlsIntent: AppIntent {
+    static let title: LocalizedStringResource = "Open Bowls"
+    static let description = IntentDescription("Opens your bowls in Porridge.")
+    static let openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        QuickActionCenter.request(.openBowls)
+        return .result()
+    }
+}
 #endif

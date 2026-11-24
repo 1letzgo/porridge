@@ -163,20 +163,13 @@ final class TodosTests: XCTestCase {
         XCTAssertEqual(filed.todoState, .open)
     }
 
-    /// The home list shows the pinned bowls and the latest changed others up to the limit from the settings; 0 shows all.
-    func testHomeListBowlLimit() throws {
+    /// The Bowls place and the Mac's sidebar show every bowl: no limit, the pinned ones first.
+    func testBowlsHaveNoLimitPinnedFirst() throws {
         let bowls = (0..<8).map { NoteFolder(name: "B\($0)") }
         bowls[7].isPinned = true
         let date: (NoteFolder) -> Date = { Date(timeIntervalSince1970: Double(Int($0.name.dropFirst())!)) }
-        let three = HomeList.shownProjects(bowls, showAll: false, limit: 3, lastChange: date)
-        XCTAssertEqual(three.shown.map(\.name), ["B7", "B6", "B5", "B4"])
-        XCTAssertEqual(three.hidden, 4)
-        let all = HomeList.shownProjects(bowls, showAll: false, limit: 0, lastChange: date)
-        XCTAssertEqual(all.shown.count, 8)
-        XCTAssertEqual(all.hidden, 0)
-        let expanded = HomeList.shownProjects(bowls, showAll: true, limit: 3, lastChange: date)
-        XCTAssertEqual(expanded.shown.count, 8)
-        XCTAssertEqual(expanded.hidden, 4)
+        let all = HomeList.ordered(bowls, order: .lastChange, lastChange: date)
+        XCTAssertEqual(all.map(\.name), ["B7", "B6", "B5", "B4", "B3", "B2", "B1", "B0"])
     }
 
     /// The bowls by last change, by creation or by name; the pinned ones first in the same order.
@@ -189,13 +182,32 @@ final class TodosTests: XCTestCase {
         let changed: [String: Double] = ["Alpha": 1, "beta": 3, "Gamma": 2]
         let date: (NoteFolder) -> Date = { Date(timeIntervalSince1970: changed[$0.name]!) }
         func names(_ order: HomeList.BowlOrder) -> [String] {
-            HomeList.shownProjects([a, b, c], showAll: true, limit: 0, order: order, lastChange: date).shown.map(\.name)
+            HomeList.ordered([a, b, c], order: order, lastChange: date).map(\.name)
         }
         XCTAssertEqual(names(.lastChange), ["Gamma", "beta", "Alpha"])
         XCTAssertEqual(names(.created), ["Gamma", "Alpha", "beta"])
         XCTAssertEqual(names(.name), ["Gamma", "Alpha", "beta"])
         c.isPinned = false
         XCTAssertEqual(names(.name), ["Alpha", "beta", "Gamma"])
+    }
+
+    /// The last change of a bowl is its newest entry when that is newer than the bowl; archived bowls are left out
+    /// and deleted entries do not count. iPhone and Mac read the same function.
+    func testBowlsByLastChangeOfTheirEntries() throws {
+        let old = NoteFolder(name: "Old"), busy = NoteFolder(name: "Busy"), archived = NoteFolder(name: "Archived")
+        old.updatedAt = Date(timeIntervalSince1970: 100)
+        busy.updatedAt = Date(timeIntervalSince1970: 50)
+        archived.updatedAt = Date(timeIntervalSince1970: 500)
+        archived.archivedAt = Date()
+        let recent = Note()
+        recent.projectIDs = [Projects.key(busy)]
+        recent.updatedAt = Date(timeIntervalSince1970: 200)
+        let gone = Note()
+        gone.projectIDs = [Projects.key(old)]
+        gone.updatedAt = Date(timeIntervalSince1970: 900)
+        gone.deletedAt = Date()
+        XCTAssertEqual(HomeList.bowls([old, busy, archived], notes: [recent, gone], order: .lastChange).map(\.name), ["Busy", "Old"])
+        XCTAssertEqual(HomeList.bowls([old, busy, archived], notes: [recent, gone], order: .name).map(\.name), ["Busy", "Old"])
     }
 
     func testNotesArchivedByEarlierVersionsComeBackWithoutAChange() throws {

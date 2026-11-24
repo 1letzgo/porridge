@@ -1,16 +1,11 @@
 import Foundation
 import SwiftData
 
-/// What the home list shows of the bowls, and what is in the archive (archived bowls only).
+/// The bowls as the Bowls place (iPhone) and the Mac's sidebar list them: all of them, the pinned ones first, then
+/// the others in the one order of Settings › General › Sort Bowls By (per device). The archive holds archived bowls only.
 enum HomeList {
-    /// How many bowls that are not pinned the list shows before "More" (Settings › General, on this device);
-    /// 0 shows them all.
-    static let recentProjectsKey = "homeRecentBowls"
-    static let defaultRecentProjects = 5
-    static let recentProjectsChoices = [3, 5, 10, 20, 0]
-
-    /// How the home list orders the bowls that are not pinned (Settings › General, on this device). The pinned
-    /// ones come first in the same order.
+    /// How the bowls are ordered (Settings › General › Sort Bowls By, on this device, read by iPhone and Mac). The
+    /// pinned ones come first in the same order.
     enum BowlOrder: String, CaseIterable {
         case lastChange, created, name
 
@@ -25,8 +20,9 @@ enum HomeList {
 
     static let bowlOrderKey = "homeBowlOrder"
 
-    static var recentProjects: Int {
-        UserDefaults.standard.object(forKey: recentProjectsKey) as? Int ?? defaultRecentProjects
+    /// The order chosen on this device; Last Change when none was.
+    static var bowlOrder: BowlOrder {
+        UserDefaults.standard.string(forKey: bowlOrderKey).flatMap(BowlOrder.init(rawValue:)) ?? .lastChange
     }
 
     static func activeProjects(_ projects: [NoteFolder]) -> [NoteFolder] {
@@ -41,31 +37,58 @@ enum HomeList {
         projects.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    /// The projects the list shows: all pinned ones, then the others in `order`, up to `recentProjects`
-    /// (`limit`, 0 for all) unless all are asked for. `hidden` is how many others that leaves out when not all are shown.
-    static func shownProjects(
-        _ projects: [NoteFolder], showAll: Bool, limit: Int = recentProjects, order: BowlOrder = .lastChange,
-        lastChange: (NoteFolder) -> Date
-    ) -> (shown: [NoteFolder], hidden: Int) {
+    /// When each bowl last changed (`Projects.key`): the bowl itself or the newest entry in it, deleted ones left out.
+    static func lastChanges(_ projects: [NoteFolder], notes: [Note]) -> [String: Date] {
+        var dates = Dictionary(projects.map { (Projects.key($0), $0.updatedAt) }, uniquingKeysWith: { max($0, $1) })
+        for note in notes where !note.isDeleted {
+            for key in note.projectIDs where dates[key] != nil { dates[key] = max(dates[key] ?? .distantPast, note.updatedAt) }
+        }
+        return dates
+    }
+
+    /// All bowls given, the pinned ones first, then the others, both in `order`. No limit: every bowl is shown.
+    static func ordered(_ projects: [NoteFolder], order: BowlOrder = bowlOrder, lastChange: (NoteFolder) -> Date) -> [NoteFolder] {
         func byName(_ a: NoteFolder, _ b: NoteFolder) -> Bool {
             a.name.localizedStandardCompare(b.name) == .orderedAscending
         }
-        let latest: [NoteFolder]
+        let all: [NoteFolder]
         switch order {
         case .lastChange:
-            latest = projects
+            all = projects
                 .map { (project: $0, date: lastChange($0)) }
                 .sorted { a, b in a.date != b.date ? a.date > b.date : byName(a.project, b.project) }
                 .map(\.project)
         case .created:
-            latest = projects.sorted { a, b in a.createdAt != b.createdAt ? a.createdAt > b.createdAt : byName(a, b) }
+            all = projects.sorted { a, b in a.createdAt != b.createdAt ? a.createdAt > b.createdAt : byName(a, b) }
         case .name:
-            latest = projects.sorted(by: byName)
+            all = projects.sorted(by: byName)
         }
-        let pinned = latest.filter(\.isPinned)
-        let others = latest.filter { !$0.isPinned }
-        if showAll || limit <= 0 { return (pinned + others, limit <= 0 ? 0 : max(0, others.count - limit)) }
-        return (pinned + others.prefix(limit), max(0, others.count - limit))
+        return all.filter(\.isPinned) + all.filter { !$0.isPinned }
+    }
+
+    /// The bowls that are not archived, in the order of the Bowls place and the Mac's sidebar.
+    static func bowls(_ projects: [NoteFolder], notes: [Note], order: BowlOrder = bowlOrder) -> [NoteFolder] {
+        let active = projects.filter { !$0.isArchived }
+        let changes = order == .lastChange ? lastChanges(active, notes: notes) : [:]
+        return ordered(active, order: order) { changes[Projects.key($0)] ?? $0.updatedAt }
+    }
+}
+
+/// The counts on the three places: Today's tab and sidebar row show the to-dos due today or overdue, the Inbox's
+/// what waits in it (not put away for later). The same numbers on iPhone and Mac.
+enum Places {
+    static func todayCount(_ notes: [Note], now: Date = Date()) -> Int {
+        TodayTodos.open(notes, now: now).count
+    }
+
+    static func inboxCount(_ notes: [Note], now: Date = Date()) -> Int {
+        notes.lazy.filter { $0.isWaitingInInbox(now: now) }.count
+    }
+
+    /// Entries that came in during the week of `now` (Weekly Review's row in Today).
+    static func newThisWeek(_ notes: [Note], now: Date = Date(), calendar: Calendar = .current) -> Int {
+        let week = WeeklyReview.week(containing: now, calendar: calendar)
+        return notes.lazy.filter { !$0.isDeleted && week.contains($0.createdAt) }.count
     }
 }
 

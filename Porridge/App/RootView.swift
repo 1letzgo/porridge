@@ -4,14 +4,15 @@ struct RootView: View {
     @AppStorage(AppSettings.onboardingDoneKey) private var onboardingDone = false
 
     @State private var showStoreError = AppContainer.storeError != nil
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
-        // The settings are a page of the list (NotesView).
+        // The three places as tabs (iPhone) or a split view (iPad); Settings is a page of the Bowls place.
         NotesView()
-            // The undo toast after deleting, moving or clearing something; above the floating buttons.
+            // The undo toast after deleting, moving or clearing something; above the tab bar.
             .overlay(alignment: .bottom) {
                 UndoToastView()
-                    .padding(.bottom, 92)
+                    .padding(.bottom, sizeClass == .compact ? 62 : 16)
             }
             // The progress of an export and what to do with the archive.
             .modifier(ExportSheetHost())

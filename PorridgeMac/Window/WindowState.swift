@@ -1,15 +1,20 @@
 import Foundation
 import Observation
 
-/// What the sidebar of a window shows; the Mac form of the list pages of iOS (`ListPage`).
+/// What the sidebar of a window shows; the Mac form of the list pages of iOS (`ListPage`). The three places Today,
+/// Inbox and Bowls come first in the sidebar (⌘1–3), Archive and Recently Deleted last (⌘4, ⌘5).
 enum SidebarPage: Hashable, Codable {
     /// The day's appointments with what is linked to them, and the to-dos due (`TodayCalendar`, `TodayTodos`).
     case today
     /// What is new or in no bowl.
     case inbox
-    /// Every open to-do by due day, wherever it is filed: a view, not a place (`Todos.folder`).
+    /// Every bowl like the iPhone's Bowls place, the smart filters, Archive and Recently Deleted (`NoteListContent`).
+    case bowls
+    /// Open To-dos: every open to-do by due day, wherever it is filed: a view, not a place (`Todos.folder`); a row
+    /// of Today, View › Open To-dos and the command bar, not a sidebar row.
     case todos
-    /// The chat with the bowls.
+    /// The chat with the bowls: AI › New Chat, Ask About This Bowl and the command bar (no sidebar row; stage 5 moves
+    /// it into the detail column).
     case chat
     /// One bowl with everything in it.
     case project(UUID)
@@ -64,7 +69,7 @@ enum KindFilter: String, CaseIterable, Codable {
 @MainActor
 @Observable
 final class WindowState {
-    var page: SidebarPage = .inbox {
+    var page: SidebarPage = .today {
         didSet {
             guard page != oldValue else { return }
             if oldValue == .search, page != .search { clearSearch() }
@@ -106,7 +111,7 @@ final class WindowState {
 
     /// The Inbox in triage: J/K go through it, L puts the entry away for later, F files it, D ticks a to-do.
     var isTriaging = false
-    /// The Inbox lists what was put away for later too, in a section at its end.
+    /// The Inbox shows the Later half of its segment (New / Later): what was put away for later.
     var showsLater = false
 
     /// Which chat shows; nil is a new one that is not kept until its first question.
@@ -145,8 +150,8 @@ final class WindowState {
             page = .project(bucket)
         } else {
             page = .inbox
-            // Put away for later: its section is shown, so the entry is there.
-            if note.isSnoozed() { showsLater = true }
+            // Put away for later: the Later half of the segment shows, so the entry is there.
+            showsLater = note.isSnoozed()
         }
         selection = [note.id]
     }

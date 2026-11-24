@@ -179,7 +179,7 @@ struct SettingsView: View {
             SyncCard()
             NoteTemplatesCard()
             ExportCard()
-            HomeCard()
+            BowlsCard()
             HintCard()
             aboutCard
         case .recording:
@@ -500,23 +500,16 @@ private struct SyncCard: View {
     }
 }
 
-/// How the home list orders its bowls and how many it shows before "More": the pinned ones always first.
-private struct HomeCard: View {
-    @AppStorage(HomeList.recentProjectsKey) private var recent = HomeList.defaultRecentProjects
+/// How the bowls are ordered in the Bowls place and the Mac's sidebar, the pinned ones always first (on this device).
+private struct BowlsCard: View {
     @AppStorage(HomeList.bowlOrderKey) private var order = HomeList.BowlOrder.lastChange
 
     var body: some View {
-        SettingsCard(title: "Home") {
+        SettingsCard(title: "Bowls") {
             MenuRow(
                 title: "Sort Bowls By",
                 selection: $order,
                 options: HomeList.BowlOrder.allCases.map { (value: $0, title: $0.title) }
-            )
-            CardDivider()
-            MenuRow(
-                title: "Bowls Before “More”",
-                selection: $recent,
-                options: HomeList.recentProjectsChoices.map { (value: $0, title: $0 == 0 ? String(localized: "All") : "\($0)") }
             )
             Text("Pinned bowls are always shown first.")
                 .font(.footnote)
@@ -525,13 +518,13 @@ private struct HomeCard: View {
     }
 }
 
-/// The quiet hint of the day in the Inbox ("12 entries in the Inbox"): on or off, on this device.
+/// The quiet hint of the day at the top of Today ("12 entries in the Inbox"): on or off, on this device.
 private struct HintCard: View {
     @AppStorage(DailyHint.enabledKey) private var enabled = true
 
     var body: some View {
         SettingsCard(title: "Hints") {
-            Toggle("Daily Hint in the Inbox", isOn: $enabled)
+            Toggle("Daily Hint in Today", isOn: $enabled)
                 .font(.body)
                 .tint(Color.brandSky)
             Text("At most one a day, across your devices. Hints you leave alone go quiet for a while.")

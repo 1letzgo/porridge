@@ -66,15 +66,16 @@ final class TodayDayTests: XCTestCase {
         XCTAssertEqual(title(TodayDay.step(now, by: 1, calendar: calendar)), String(localized: "Tomorrow"))
         XCTAssertEqual(title(TodayDay.step(now, by: -1, calendar: calendar)), String(localized: "Yesterday"))
         let friday = title(date(2026, 11, 27, calendar: calendar))
-        XCTAssertTrue(friday.contains("Friday"), friday)
+        XCTAssertTrue(friday.contains("Fri"), friday)
+        XCTAssertFalse(friday.contains("Friday"), "the short weekday fits the bar: \(friday)")
         XCTAssertTrue(friday.contains("27"), friday)
         XCTAssertTrue(friday.contains("Nov"), friday)
         XCTAssertFalse(friday.contains("2026"), friday)
         // Another year shows it; across the year's end too.
         let nextYear = title(date(2027, 1, 2, calendar: calendar))
-        XCTAssertTrue(nextYear.contains("Saturday") && nextYear.contains("2027"), nextYear)
+        XCTAssertTrue(nextYear.contains("Sat") && nextYear.contains("2027"), nextYear)
         // In the device's language.
-        XCTAssertTrue(TodayDay.title(date(2026, 11, 27, calendar: calendar), now: now, calendar: calendar, locale: Locale(identifier: "de_DE")).contains("Freitag"))
+        XCTAssertTrue(TodayDay.title(date(2026, 11, 27, calendar: calendar), now: now, calendar: calendar, locale: Locale(identifier: "de_DE")).contains("Fr"))
     }
 
     func testTitleCountsCalendarDaysNotHoursAcrossDaylightSaving() {

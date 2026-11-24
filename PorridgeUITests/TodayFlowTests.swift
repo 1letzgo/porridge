@@ -1,6 +1,6 @@
 import XCTest
 
-/// Today in "Up Next": the card, its page with appointments and to-dos, and linking an entry to an appointment.
+/// Today, the first tab: its page with appointments and to-dos, and linking an entry to an appointment.
 final class TodayFlowTests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -19,19 +19,13 @@ final class TodayFlowTests: XCTestCase {
         app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
         app.launch()
 
-        let card = app.buttons["TodayCategory"]
-        XCTAssertTrue(card.waitForExistence(timeout: 15), "no Today card in Up Next")
-        XCTAssertTrue(card.label.hasPrefix("Today"), "the card is not called Today: \(card.label)")
-        XCTAssertTrue(app.buttons["InboxCategory"].exists && app.buttons["TodosFolder"].exists, "Inbox and To-dos are gone")
-        screenshot("today-home", app)
-
-        card.tap()
+        // Today is the first tab.
+        app.openTab("Today")
         XCTAssertTrue(app.staticTexts["Appointments"].waitForExistence(timeout: 10), "no appointments on the Today page")
-        XCTAssertTrue(app.staticTexts["To-dos"].exists, "no to-dos on the Today page")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Due'")).firstMatch.exists, "no to-dos due on the Today page")
         // The seeded to-do due today and the one long overdue are there; the one due later is not.
         XCTAssertTrue(app.staticTexts["\(prefix) long overdue"].waitForExistence(timeout: 5), "an overdue to-do is missing")
         screenshot("today-page", app)
-        app.buttons["Back"].firstMatch.tap()
 
         // A note offers its appointment in the row of its bowl and tags.
         app.newNote(title: unique("Appointment note"))

@@ -155,7 +155,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard alert.runModal() == .alertFirstButtonReturn else { return }
             }
             controller.recordMeeting(nil)
+        case .openToday: controller.showToday(nil)
         case .openInbox: controller.showInbox(nil)
+        case .openBowls: controller.showBowls(nil)
         case .openTodos: controller.showTodos(nil)
         case .search(let query): controller.search(for: query)
         case .openNote(let id): EntryLinkRouter.request(id)

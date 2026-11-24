@@ -84,8 +84,15 @@ enum TestSeed {
     /// link in "Reading", a note in "Berlin Trip" and an image. Added once (by their fixed ids).
     @MainActor
     static func seedEntryKinds(_ context: ModelContext) {
-        let existing = (try? context.fetch(FetchDescriptor<Note>()))?.map(\.id) ?? []
-        guard !existing.contains(KindID.meeting) else { return }
+        // Made again on every launch: a test that changed one of them (its bowl, its kind) leaves nothing behind for
+        // the next one.
+        let seeded: Set<UUID> = [KindID.meeting, KindID.todo, KindID.pdf, KindID.link, KindID.note, KindID.image]
+        let existing = (try? context.fetch(FetchDescriptor<Note>())) ?? []
+        let old = existing.filter { seeded.contains($0.id) }
+        if !old.isEmpty {
+            old.forEach(context.delete)
+            try? context.save()
+        }
         var folders = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
         func bowl(_ name: String) -> String {
             if let found = folders.first(where: { $0.name == name }) { return Projects.key(found) }

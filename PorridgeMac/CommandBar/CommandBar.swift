@@ -108,11 +108,26 @@ enum CommandBarItems {
                 NSApp.activate()
                 SettingsWindowController.shared.show(tab: nil)
             },
+            CommandItem(kind: .command, title: String(localized: "Go to Today"), symbol: "calendar", tint: .brandNavy, keywords: "show day appointments") { [weak controller] in
+                controller?.state.page = .today
+            },
             CommandItem(kind: .command, title: String(localized: "Go to Inbox"), symbol: "tray.fill", tint: .brandSky, keywords: "show") { [weak controller] in
                 controller?.state.page = .inbox
             },
-            CommandItem(kind: .command, title: String(localized: "Go to To-dos"), symbol: "checklist", tint: .brandTask, keywords: "show tasks") { [weak controller] in
+            CommandItem(kind: .command, title: String(localized: "Go to Bowls"), symbol: "folder.fill", tint: .brandProject, keywords: "show all bowls") { [weak controller] in
+                controller?.state.page = .bowls
+            },
+            CommandItem(kind: .command, title: String(localized: "Open To-dos"), symbol: "checklist", tint: .brandTask, keywords: "show tasks go to") { [weak controller] in
                 controller?.state.page = .todos
+            },
+            CommandItem(kind: .command, title: String(localized: "Triage Inbox"), symbol: "keyboard", tint: .brandSky, keywords: "inbox file sort") { [weak controller] in
+                controller?.triageInbox(nil)
+            },
+            CommandItem(kind: .command, title: String(localized: "Go to Archive"), symbol: "archivebox.fill", tint: .brandNavy, keywords: "show archived bowls") { [weak controller] in
+                controller?.state.page = .archive
+            },
+            CommandItem(kind: .command, title: String(localized: "Go to Recently Deleted"), symbol: "trash.fill", tint: .systemRed, keywords: "show trash bin") { [weak controller] in
+                controller?.state.page = .trash
             },
             CommandItem(kind: .command, title: String(localized: "Chat"), symbol: "bubble.left.and.bubble.right", tint: .brandNavy, keywords: "ask question") { [weak controller] in
                 controller?.openChat(nil)

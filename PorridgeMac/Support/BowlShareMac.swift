@@ -70,6 +70,22 @@ final class BowlShareMac: NSObject, @preconcurrency NSCloudSharingServiceDelegat
 
     /// The sharing entries of a bowl's menu. A bowl shared with me offers "Leave Bowl…" in place of "Delete Bowl…"
     /// (`isSharedWithMe`), added by the caller where the delete entry would be.
+    /// Copies the link of a shared bowl, to send some other way. Only people invited to the bowl can open it.
+    func copyLink(_ bowl: NoteFolder, in window: NSWindow?) {
+        guard let info = BowlSharing.shared.info(for: bowl.id) else { return }
+        Task {
+            do {
+                let share = try await BowlSharing.shared.fetchShare(info)
+                guard let url = share.url else { throw BowlSharingError.notShared }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.writeObjects([url as NSURL])
+                Alerts.inform(String(localized: "Link Copied"), message: String(localized: "Only people invited to the bowl can open it."), in: window)
+            } catch {
+                Alerts.inform(String(localized: "Sharing"), message: String(localized: "The link could not be loaded. \(error.localizedDescription)"), in: window)
+            }
+        }
+    }
+
     func addItems(for bowl: NoteFolder, to menu: NSMenu, in window: NSWindow?) {
         guard BowlSharing.isAvailable else { return }
         if let info = BowlSharing.shared.info(for: bowl.id) {

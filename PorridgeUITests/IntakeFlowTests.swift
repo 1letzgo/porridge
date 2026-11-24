@@ -22,10 +22,8 @@ final class IntakeFlowTests: XCTestCase {
         app.newNote(title: title)
         app.goBack()
 
-        // The inbox is the first category on the home list; opened, the newest is on top.
-        let inbox = app.buttons["InboxCategory"]
-        XCTAssertTrue(inbox.waitForExistence(timeout: 15), "Inbox missing on the home list")
-        inbox.tap()
+        // The Inbox is the second tab; the newest is on top.
+        app.openTab("Inbox")
         let row = app.staticTexts[title]
         XCTAssertTrue(app.reveal(row), "new note not in the inbox")
 

@@ -8,7 +8,10 @@ import WidgetKit
 enum QuickAction: Equatable {
     case newNote
     case startMeeting
+    case openToday
     case openInbox
+    case openBowls
+    /// Today's "Open To-dos" (every open to-do by due day).
     case openTodos
     /// The search page with this query.
     case search(String)
@@ -17,15 +20,17 @@ enum QuickAction: Equatable {
 
     static let scheme = PorridgeURL.scheme
 
-    /// The link that asks for this action: `porridge://new`, `porridge://meeting`, `porridge://inbox`,
-    /// `porridge://todos`, `porridge://search?q=…`, `porridge://entry/<id>` (`porridge://note/<id>` is read too).
+    /// The link that asks for this action: `porridge://new`, `porridge://meeting`, `porridge://today`,
+    /// `porridge://inbox`, `porridge://bowls`, `porridge://todos`, `porridge://search?q=…`, `porridge://entry/<id>` (`porridge://note/<id>` is read too).
     var url: URL {
         var components = URLComponents()
         components.scheme = Self.scheme
         switch self {
         case .newNote: components.host = "new"
         case .startMeeting: components.host = "meeting"
+        case .openToday: components.host = "today"
         case .openInbox: components.host = "inbox"
+        case .openBowls: components.host = "bowls"
         case .openTodos: components.host = "todos"
         case .search(let query):
             components.host = "search"
@@ -42,7 +47,9 @@ enum QuickAction: Equatable {
         switch components.host?.lowercased() {
         case "new": self = .newNote
         case "meeting": self = .startMeeting
+        case "today": self = .openToday
         case "inbox": self = .openInbox
+        case "bowls": self = .openBowls
         case "todos": self = .openTodos
         case "search":
             self = .search(components.queryItems?.first { $0.name == "q" }?.value ?? "")

@@ -7,12 +7,11 @@ final class ListHeaderView: NSView {
     var onTag: ((String) -> Void)?
     var onRemoveTag: ((String) -> Void)?
     var onEmptyTrash: (() -> Void)?
-    /// The Inbox's "Weekly Review", and a click on the hint of the day.
-    var onReview: (() -> Void)?
+    /// A click on the hint of the day (in Today's head).
     var onHint: ((DailyHint) -> Void)?
-    /// The Inbox's triage switched on or off, and its "Later" section shown or hidden.
+    /// The Inbox's triage switched on or off, and its segment New / Later (true: Later).
     var onTriage: (() -> Void)?
-    var onToggleLater: (() -> Void)?
+    var onShowLater: ((Bool) -> Void)?
     /// Today paged a day back (-1) or on (1), and back to today.
     var onStepDay: ((Int) -> Void)?
     var onToday: (() -> Void)?
@@ -20,6 +19,10 @@ final class ListHeaderView: NSView {
     private let icon = NSImageView()
     private let iconBox = NSView()
     private let title = NSTextField.label(font: .systemFont(ofSize: 17, weight: .bold))
+    /// Today's date under its title.
+    private let dateLine = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize + 1), color: .secondaryLabelColor)
+    /// The Inbox's New / Later.
+    private let segment = NSSegmentedControl()
     private let filters = NSStackView()
     private let tags = NSStackView()
     private let trailing = NSStackView()
@@ -49,7 +52,17 @@ final class ListHeaderView: NSView {
         triageKeys.lineBreakMode = .byTruncatingTail
         triageKeys.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         triageKeys.isHidden = true
-        let stack = NSStackView.vertical([titleRow, hintRow, triageKeys, filters, tags], spacing: 10)
+        segment.segmentStyle = .rounded
+        segment.trackingMode = .selectOne
+        segment.segmentCount = 2
+        segment.controlSize = .small
+        segment.target = self
+        segment.action = #selector(segmentChanged)
+        segment.setAccessibilityIdentifier("InboxSegment")
+        segment.setAccessibilityLabel(String(localized: "Inbox"))
+        dateLine.isHidden = true
+        let stack = NSStackView.vertical([titleRow, dateLine, segment, hintRow, triageKeys, filters, tags], spacing: 10)
+        stack.setCustomSpacing(2, after: titleRow)
         hintRow.onOpen = { [weak self] hint in self?.onHint?(hint) }
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -85,7 +98,8 @@ final class ListHeaderView: NSView {
         let (name, symbol, tint): (String, String, NSColor) = switch page {
         case .today: (TodayDay.title(state.todayShownDay), "calendar", .brandNavy)
         case .inbox: ("Inbox", "tray.fill", .brandSky)
-        case .todos: ("To-dos", "checklist", .brandTask)
+        case .bowls: ("Bowls", "folder.fill", .brandProject)
+        case .todos: ("Open To-dos", "checklist", .brandTask)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)
         case .project(let id): (library.project(id)?.name ?? "Bowl", "folder.fill", .brandProject)
         case .smartFilter(let id): (SmartFilterStore.shared.filter(id)?.name ?? String(localized: "Smart Filter"), "line.3.horizontal.decrease", .brandNavy)
@@ -119,33 +133,41 @@ final class ListHeaderView: NSView {
             next.setAccessibilityIdentifier("TodayNextDay")
             [previous, today, next].forEach(trailing.addArrangedSubview)
         }
-        // The Inbox: what came in this week, and the hint of the day.
+        dateLine.stringValue = page == .today ? TodayDay.fullDate(state.todayShownDay) : ""
+        dateLine.isHidden = page != .today
+        // The Bowls place: the one order of the bowls (Settings › General › Sort Bowls By, also the iPhone's).
+        if page == .bowls {
+            let sort = NSPopUpButton(frame: .zero, pullsDown: false)
+            sort.controlSize = .small
+            sort.bezelStyle = .push
+            for order in HomeList.BowlOrder.allCases { sort.addItem(withTitle: order.title) }
+            sort.selectItem(at: HomeList.BowlOrder.allCases.firstIndex(of: HomeList.bowlOrder) ?? 0)
+            sort.target = self
+            sort.action = #selector(sortChanged(_:))
+            sort.toolTip = String(localized: "Sort Bowls By")
+            sort.setAccessibilityLabel(String(localized: "Sort Bowls By"))
+            sort.setAccessibilityIdentifier("BowlSort")
+            trailing.addArrangedSubview(sort)
+        }
+        // The Inbox: its segment New / Later in the second row, and its triage.
+        segment.isHidden = page != .inbox || state.isTriaging
         if page == .inbox {
-            let review = ActionButton(title: "", symbol: "calendar.badge.checkmark") { [weak self] in self?.onReview?() }
-            review.controlSize = .small
-            review.bezelStyle = .push
-            review.toolTip = String(localized: "Weekly Review")
-            review.setAccessibilityLabel(String(localized: "Weekly Review"))
-            trailing.addArrangedSubview(review)
-            // What was put away for later: shown at the end of the list on a click.
+            let waiting = Inbox.notes(library.notes).count
             let later = InboxSnooze.snoozed(library.notes).count
-            if later > 0 || state.showsLater {
-                let pill = PillButton(title: "Later  \(later)", symbol: "clock", tint: .brandNavy, target: self, action: #selector(toggleLater))
-                pill.isFilled = state.showsLater
-                pill.toolTip = state.showsLater ? String(localized: "Hide Entries for Later") : String(localized: "Show Entries for Later")
-                pill.setAccessibilityLabel(String(localized: "Later, \(later) entries"))
-                pill.setAccessibilityValue(state.showsLater ? "Shown" : "Hidden")
-                trailing.insertArrangedSubview(pill, at: 0)
-            }
+            segment.setLabel(String(localized: "New  \(waiting)"), forSegment: 0)
+            segment.setLabel(String(localized: "Later  \(later)"), forSegment: 1)
+            segment.selectedSegment = state.showsLater ? 1 : 0
             let triage = ActionButton(title: state.isTriaging ? String(localized: "End Triage") : String(localized: "Triage"), symbol: "keyboard") { [weak self] in self?.onTriage?() }
             triage.controlSize = .small
             triage.bezelStyle = .push
             triage.toolTip = String(localized: "Go through the Inbox with the keyboard")
             triage.setAccessibilityIdentifier("InboxTriage")
+            triage.isEnabled = !state.showsLater && waiting > 0 || state.isTriaging
             trailing.addArrangedSubview(triage)
         }
         triageKeys.isHidden = !(page == .inbox && state.isTriaging)
-        let hint = page == .inbox ? DailyHints.shared.current : nil
+        // The hint of the day: in Today's head, on today.
+        let hint = page == .today && state.todayDay == nil ? DailyHints.shared.current : nil
         hintRow.show(hint)
         if page == .trash, library.notes.contains(where: \.isDeleted) {
             let button = NSButton(title: "Delete All…", target: self, action: #selector(emptyTrash))
@@ -204,7 +226,24 @@ final class ListHeaderView: NSView {
             button.bezelStyle = .push
             button.isEnabled = !BowlSharing.shared.preparing.contains(id)
             button.toolTip = info == nil ? String(localized: "Share Bowl") : String(localized: "Manage Sharing")
+            if BowlSharing.shared.isReadOnly(id), info != nil { button.setHandler { [weak self] in BowlShareMac.shared.manage(project, in: self?.window) } }
             trailing.addArrangedSubview(button)
+        }
+        // A bowl: its ⋯ menu, the same as the sidebar row's.
+        if case .project(let id) = page, let project = library.project(id) {
+            let more = ActionButton(title: "", symbol: "ellipsis.circle") {}
+            more.controlSize = .small
+            more.bezelStyle = .push
+            more.toolTip = String(localized: "Bowl")
+            more.setAccessibilityLabel(String(localized: "Bowl"))
+            more.setAccessibilityIdentifier("BowlMenu")
+            more.setHandler { [weak self, weak more] in
+                guard let self, let more else { return }
+                let menu = NSMenu()
+                BucketActions.addItems(for: project, to: menu, state: state, window: self.window, opens: false)
+                menu.popUp(positioning: nil, at: NSPoint(x: 0, y: more.bounds.height + 4), in: more)
+            }
+            trailing.addArrangedSubview(more)
         }
 
         // The kinds: of a bowl only those it holds (the one chosen stays while it is); all of them in the search.
@@ -285,8 +324,15 @@ final class ListHeaderView: NSView {
         if let tag = sender.identifier?.rawValue { onRemoveTag?(tag) }
     }
 
-    @objc private func toggleLater() {
-        onToggleLater?()
+    @objc private func segmentChanged() {
+        onShowLater?(segment.selectedSegment == 1)
+    }
+
+    @objc private func sortChanged(_ sender: NSPopUpButton) {
+        let orders = HomeList.BowlOrder.allCases
+        guard orders.indices.contains(sender.indexOfSelectedItem) else { return }
+        UserDefaults.standard.set(orders[sender.indexOfSelectedItem].rawValue, forKey: HomeList.bowlOrderKey)
+        Library.shared.setNeedsReload()
     }
 
     @objc private func emptyTrash() {

@@ -33,15 +33,35 @@ extension XCUIApplication {
         XCTAssertFalse(alert.exists, "alert did not close")
     }
 
-    /// One of the options behind the plus at the bottom right.
+    /// The "+" pill of the place in front (the last pill of its bar).
+    var addButton: XCUIElement {
+        buttons.matching(identifier: "PlaceAdd").allElementsBoundByIndex.first { $0.exists && $0.isHittable }
+            ?? buttons.matching(identifier: "PlaceAdd").firstMatch
+    }
+
+    /// One of the places' tabs: Today, Inbox, Bowls, Search.
+    func openTab(_ name: String) {
+        let tab = tabBars.buttons[name].exists ? tabBars.buttons[name] : buttons[name].firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 30), "tab \(name) missing")
+        tab.tap()
+    }
+
+    /// One of the choices of the Add sheet ("+" in the bar): Note, To-do, Meeting, Link, Photo or File, New Bowl…
+    /// ("Bowl" stands for New Bowl…).
     func create(_ option: String) {
         // An alert that is still going away has a "Create" of its own.
         _ = alerts.firstMatch.waitForNonExistence(timeout: 5)
-        let plus = buttons["Create"]
+        let plus = addButton
         XCTAssertTrue(plus.waitForExistence(timeout: 30), "plus button missing")
         plus.tap()
-        let choice = buttons.matching(NSPredicate(format: "label ENDSWITH %@", option)).firstMatch
-        XCTAssertTrue(choice.waitForExistence(timeout: 5), "\(option) missing behind the plus")
+        XCTAssertTrue(navigationBars["Add"].waitForExistence(timeout: 5), "the Add sheet did not open")
+        let label = option == "Bowl" ? "New Bowl…" : option
+        let choice = buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
+        // The sheet opens at half height: rows further down appear once it is scrolled.
+        for _ in 0..<4 where !(choice.waitForExistence(timeout: 2) && choice.isHittable) {
+            collectionViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(choice.waitForExistence(timeout: 5), "\(label) missing in the Add sheet")
         choice.tap()
     }
 
@@ -65,7 +85,7 @@ extension XCUIApplication {
 
     func goBack() {
         buttons["Back"].firstMatch.tap()
-        XCTAssertTrue(buttons["Create"].waitForExistence(timeout: 10), "list missing after going back")
+        XCTAssertTrue(addButton.waitForExistence(timeout: 10), "list missing after going back")
     }
 
     /// Earlier runs leave notes behind, so a new row can be below the fold.
@@ -83,7 +103,7 @@ extension XCUIApplication {
     }
 
     func search(for text: String) {
-        buttons["Search"].tap()
+        openTab("Search")
         let field = textFields["SearchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 10), "search field missing")
         field.tap()

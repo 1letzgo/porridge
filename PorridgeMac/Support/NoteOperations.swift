@@ -338,8 +338,24 @@ enum BucketActions {
         }
     }
 
-    static func addItems(for project: NoteFolder, to menu: NSMenu, state: WindowState, window: NSWindow?) {
-        menu.add("Open", symbol: "folder") { state.page = .project(project.id) }
+    /// The bowl's menu, the same on the sidebar row, the bowl's ⋯ in the list head and a row of the Bowls place (and
+    /// on the iPhone): Open | Open in New Window | Pin, Rename… | Ask About This Bowl | Manage Sharing… (or Share Bowl…),
+    /// Copy Link, Export Bowl… | Archive, Stop Sharing…, Delete Bowl… (Leave Bowl… for one shared with me). A bowl I
+    /// may only view keeps Pin, Ask, Copy Link, Export and Leave. `rename` renames in place (the sidebar).
+    static func addItems(
+        for project: NoteFolder, to menu: NSMenu, state: WindowState, window: NSWindow?, opens: Bool = true,
+        rename renameInPlace: (() -> Void)? = nil
+    ) {
+        let readOnly = BowlSharing.shared.isReadOnly(project.id)
+        if opens {
+            menu.add("Open", symbol: "folder") { state.page = .project(project.id) }
+        }
+        menu.add("Open in New Window", symbol: "macwindow.badge.plus") {
+            let next = WindowState()
+            next.page = .project(project.id)
+            MainWindowController.open(state: next)
+        }
+        menu.addSeparator()
         if !project.isArchived {
             menu.add(project.isPinned ? "Unpin" : "Pin", symbol: project.isPinned ? "pin.slash" : "pin") {
                 project.isPinned.toggle()
@@ -347,17 +363,39 @@ enum BucketActions {
                 library.save()
             }
         }
-        if !BowlSharing.shared.isReadOnly(project.id) {
-            menu.add("Rename…", symbol: "pencil") { rename(project, in: window) }
+        if !readOnly {
+            menu.add("Rename…", symbol: "pencil") { renameInPlace?() ?? rename(project, in: window) }
         }
-        menu.add(project.isArchived ? "Unarchive" : "Archive", symbol: project.isArchived ? "tray.and.arrow.up" : "archivebox") {
-            Archive.set(!project.isArchived, project, in: library.context)
+        menu.addSeparator()
+        menu.add("Ask About This Bowl", symbol: "bubble.left.and.text.bubble.right") {
+            state.openChat(about: Projects.key(project), threads: library.threads)
         }
-        BowlShareMac.shared.addItems(for: project, to: menu, in: window)
+        menu.addSeparator()
+        let info = BowlSharing.isAvailable ? BowlSharing.shared.info(for: project.id) : nil
+        if BowlSharing.isAvailable {
+            if info != nil {
+                if !readOnly {
+                    menu.add("Manage Sharing…", symbol: "person.2") { BowlShareMac.shared.manage(project, in: window) }
+                }
+                menu.add("Copy Link", symbol: "link") { BowlShareMac.shared.copyLink(project, in: window) }
+            } else if !readOnly {
+                menu.add("Share Bowl…", symbol: "person.crop.circle.badge.plus", enabled: !BowlSharing.shared.preparing.contains(project.id)) {
+                    BowlShareMac.shared.share(project, in: window)
+                }
+            }
+        }
         menu.add("Export Bowl…", symbol: "square.and.arrow.up") {
             ExportSheetController.export(.bowl(project.id), title: String(localized: "Export “\(project.name)”"), in: window)
         }
         menu.addSeparator()
+        if !readOnly {
+            menu.add(project.isArchived ? "Unarchive" : "Archive", symbol: project.isArchived ? "tray.and.arrow.up" : "archivebox") {
+                Archive.set(!project.isArchived, project, in: library.context)
+            }
+        }
+        if let info, info.role == .owner, info.endingSince == nil {
+            menu.add("Stop Sharing…", symbol: "person.2.slash", isDestructive: true) { BowlShareMac.shared.confirmStopSharing(project, in: window) }
+        }
         let leaves = BowlSharing.shared.isSharedWithMe(project.id)
         menu.add(leaves ? "Leave Bowl…" : "Delete Bowl…", symbol: leaves ? "rectangle.portrait.and.arrow.right" : "trash", isDestructive: true) {
             guard let window else { return }

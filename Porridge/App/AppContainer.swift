@@ -77,6 +77,12 @@ enum AppContainer {
     /// iCloud sync is on; otherwise local only.
     static func make() -> ModelContainer {
         let schema = Schema([Meeting.self, Note.self, NoteFolder.self, VoiceProfile.self, ChatThread.self, ChatEntry.self])
+        #if DEBUG
+        // UI tests and screenshots of the empty places (`-emptyStore YES`): a store in memory, gone at the end.
+        if UserDefaults.standard.bool(forKey: "emptyStore") {
+            return try! ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+        }
+        #endif
         if let folder = DataLocation.testFolder {
             let url = folder.appendingPathComponent("test.store")
             return try! ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none))

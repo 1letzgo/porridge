@@ -89,8 +89,8 @@ enum TodayDay {
         calendar.isDate(day, inSameDayAs: now)
     }
 
-    /// The page's title: "Today", "Tomorrow", "Yesterday", otherwise weekday and date ("Wednesday 25 Nov"), with
-    /// the year when it is another one; in the device's locale.
+    /// The page's title: "Today", "Tomorrow", "Yesterday", otherwise the short weekday and date ("Wed 25 Nov"), so it
+    /// fits the one-row bar beside ‹ › and "+"; with the year when it is another one; in the device's locale.
     static func title(_ day: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
         switch offset(of: day, now: now, calendar: calendar) {
         case 0: return String(localized: "Today")
@@ -103,7 +103,7 @@ enum TodayDay {
         formatter.timeZone = calendar.timeZone
         formatter.locale = locale
         let sameYear = calendar.component(.year, from: day) == calendar.component(.year, from: now)
-        formatter.setLocalizedDateFormatFromTemplate(sameYear ? "EEEEdMMM" : "EEEEdMMMy")
+        formatter.setLocalizedDateFormatFromTemplate(sameYear ? "EEEdMMM" : "EEEdMMMy")
         return formatter.string(from: day)
     }
 
@@ -133,6 +133,16 @@ enum TodayTodos {
             guard note.isTodo, !note.isDone, !note.isDeleted, let due = note.todoDue else { return false }
             if !isToday { return due == key }
             return Todos.dueStatus(due, now: now, calendar: calendar).map { $0 != .later } ?? false
+        })
+    }
+
+    /// "Up Next" in Today: open to-dos due on one of the next `days` days (after today), by due day.
+    static func upcoming(_ notes: [Note], days: Int = 7, now: Date = Date(), calendar: Calendar = .current) -> [Note] {
+        let today = Todos.dueKey(now, calendar: calendar)
+        let last = Todos.dueKey(calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: now)) ?? now, calendar: calendar)
+        return Todos.byDue(notes.filter { note in
+            guard note.isTodo, !note.isDone, !note.isDeleted, let due = note.todoDue else { return false }
+            return due > today && due <= last
         })
     }
 

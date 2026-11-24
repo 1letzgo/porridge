@@ -1,11 +1,20 @@
 import Foundation
 
-/// An entry of the middle column: a note, or a bowl (in the archive).
+/// An entry of the middle column: a note, or a bowl (the Bowls place, the archive).
 enum ListItem: Hashable {
     case note(UUID)
     case project(UUID)
     /// An appointment of the day (Today), by `CalendarAppointment.key`.
     case appointment(String)
+    /// A fixed row that leads somewhere (Today's Open To-dos and Weekly Review; the Bowls place's smart filters,
+    /// Archive and Recently Deleted).
+    case link(ListLink)
+}
+
+/// Where a fixed row of the list leads.
+enum ListLink: Hashable {
+    case openTodos, weeklyReview, archive, trash, newSmartFilter, newBowl
+    case smartFilter(UUID)
 }
 
 /// A section of the middle column: its header and color.
@@ -39,17 +48,24 @@ enum NoteListContent {
         case .today:
             return today(notes, day: state.todayShownDay)
         case .inbox:
-            let waiting = Inbox.notes(notes)
-            var sections: [(ListSection, [ListItem])] = waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]
-            // What was put away for later, at the end while it is asked for (the header's "Later").
-            let later = state.showsLater ? InboxSnooze.snoozed(notes) : []
-            if !later.isEmpty {
-                sections.append((ListSection(id: "inbox-later", title: String(localized: "Later"), tint: .navy, count: later.count), later.map { .note($0.id) }))
+            // The segment New / Later of the header: what waits, or what was put away for later.
+            if state.showsLater {
+                let later = InboxSnooze.snoozed(notes)
+                return Built(
+                    sections: later.isEmpty ? [] : [(ListSection(id: "inbox-later", title: "", tint: .navy), later.map { .note($0.id) })],
+                    emptyTitle: "Nothing for Later", emptyMessage: "Put an entry away with Entry › Later or L in triage: it comes back at the time you choose.",
+                    emptySymbol: "clock"
+                )
             }
+            let waiting = Inbox.notes(notes)
+            let later = InboxSnooze.snoozed(notes)
+            let next = later.compactMap(\.snoozedUntil).min().map { " " + String(localized: "\(later.count) come back from Later · next \(InboxSnooze.timeLabel($0)).") } ?? ""
             return Built(
-                sections: sections,
-                emptyTitle: "Inbox Empty", emptyMessage: "What is new or in no bowl waits here.", emptySymbol: "tray"
+                sections: waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })],
+                emptyTitle: "Inbox Empty", emptyMessage: "Everything is filed. Drop files, mails or links here, or press ⌘N." + next, emptySymbol: "tray"
             )
+        case .bowls:
+            return bowls(notes, library: library)
         case .todos:
             // Exactly the groups of the search's "Open To-dos", then those done today (`Todos.folder`).
             let folder = Todos.folder(notes)
@@ -158,13 +174,49 @@ enum NoteListContent {
         }
         let todos = (TodayTodos.open(notes, on: day) + TodayTodos.done(notes, on: day)).filter { !shown.contains($0.id) }
         if !todos.isEmpty {
-            sections.append((ListSection(id: "today-todos", title: String(localized: "To-dos"), tint: .task, count: todos.filter { !$0.isDone }.count), todos.map { .note($0.id) }))
+            let open = todos.filter { !$0.isDone }
+            let overdue = open.filter { $0.todoDue.flatMap { Todos.dueStatus($0) } == .overdue }.count
+            sections.append((ListSection(
+                id: "today-todos", title: overdue > 0 ? String(localized: "Due · \(overdue) overdue") : String(localized: "Due"),
+                tint: overdue > 0 ? .red : .task, count: open.count
+            ), todos.map { .note($0.id) }))
+        }
+        if isToday {
+            // The next seven days, a few rows; then the fixed rows, so Today looks the same every day.
+            let upcoming = TodayTodos.upcoming(notes).filter { !shown.contains($0.id) }.prefix(5)
+            if !upcoming.isEmpty {
+                sections.append((ListSection(id: "today-upnext", title: String(localized: "Up Next"), tint: .navy), upcoming.map { .note($0.id) }))
+            }
+            sections.append((ListSection(id: "today-links", title: "", tint: .navy), [.link(.openTodos), .link(.weeklyReview)]))
         }
         return Built(
             sections: sections, emptyTitle: isToday ? "Nothing Today" : "Nothing on This Day",
             emptyMessage: isToday ? "Today's appointments and the to-dos due show up here." : "The day's appointments and the to-dos due on it show up here.",
             emptySymbol: "calendar"
         )
+    }
+
+    /// The Bowls place (⌘3): every bowl like the iPhone's tab (pinned, then all in the order of Sort Bowls By), the
+    /// smart filters with "New Smart Filter…", Archive and Recently Deleted. Never empty.
+    static func bowls(_ notes: [Note], library: Library) -> Built {
+        let bowls = HomeList.bowls(library.projects, notes: notes)
+        let pinned = bowls.filter(\.isPinned)
+        let others = bowls.filter { !$0.isPinned }
+        var sections: [(ListSection, [ListItem])] = []
+        if !pinned.isEmpty {
+            sections.append((ListSection(id: "bowls-pinned", title: String(localized: "Pinned"), tint: .project), pinned.map { .project($0.id) }))
+        }
+        if !others.isEmpty || pinned.isEmpty {
+            sections.append((
+                ListSection(id: "bowls-all", title: String(localized: "All Bowls"), tint: .project, footnote: String(localized: "by \(HomeList.bowlOrder.title)")),
+                others.isEmpty ? [.link(.newBowl)] : others.map { .project($0.id) }
+            ))
+        }
+        let filters = SmartFilterStore.shared.filters
+        sections.append((ListSection(id: "bowls-filters", title: String(localized: "Smart Filters"), tint: .navy),
+                         filters.map { .link(.smartFilter($0.id)) } + [.link(.newSmartFilter)]))
+        sections.append((ListSection(id: "bowls-more", title: "", tint: .navy), [.link(.archive), .link(.trash)]))
+        return Built(sections: sections, emptyTitle: "", emptyMessage: "", emptySymbol: "folder")
     }
 
     /// What the search finds among the notes, those in archived bowls included; strictly a timeline.

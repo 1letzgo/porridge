@@ -365,6 +365,91 @@ bowl ("Into:" right), long press on "+" makes a note, swipe-back inside each tab
 when empty, deep links and widgets land in the right tab, iPhone SE width and Dynamic Type XXXL (bar pills stay whole, the title shrinks to 70 % and then truncates; "Wed 2 Dec", "Inbox", "Bowls" at full size on a 390 pt iPhone; long bowl names truncate as today), dark mode. Mac: ⌘1–5, sidebar drag & drop onto bowls and the Inbox, bowl sort shared, Today
 paging (‹ › and ← → T).
 
+**As built (stage 4):**
+
+- iOS: `NotesView` stays the coordinator (no separate `PlacesView` file): on a phone a `TabView` with
+  `Tab("Today")`, `Tab("Inbox")`, `Tab("Bowls")`, `Tab(role: .search)`, one `NavigationStack` per tab
+  (`paths: [Place: [ListRoute]]`), the tab in `@SceneStorage("place")` (first launch Today). Badges: Today =
+  `Places.todayCount` (open to-dos due today or before), Inbox = `Places.inboxCount`; the Mac sidebar shows the same
+  numbers. `go(_ page:)` brings a place to the front at its start, or pushes a page onto the stack it belongs to
+  (`ListPage.place`: Open To-dos → Today; bowl, smart filter, Archive, Recently Deleted, Settings → Bowls; chat →
+  Search). The open entry is pushed onto the tab in front; switching tabs keeps each tab's entry, an empty new note
+  left in another tab goes. iPad (regular width): the split view stays, its sidebar is the Bowls place with a first
+  section "Places" (Today, Inbox, Search) pushing onto the one sidebar stack.
+- New files: `Views/Places/BowlsPlace.swift` (Pinned, All Bowls "by …", Smart Filters + New Smart Filter…, Archive
+  and Recently Deleted always, "No Bowls Yet" + New Bowl; `PlaceLinkRow` for fixed rows), `InboxPlace.swift`
+  (segment New N / Later N as the first row, bundle card under it, empty Inbox with "Add" and when Later comes
+  back), `AddSheet.swift` (Into: menu, Note · To-do · Meeting · Link, Capture, From Template + Edit, New Bowl…; the
+  choice runs once the sheet is gone; a template that needs a title asks for it). `ProjectsPane.swift` gained
+  `BowlMenuItems` (the bowl ⋯ and the long press of a bowl row), `BowlPinButton`, `BowlArchiveButton`.
+- One-row bars: Today `‹ ›` · "+"; Inbox Select · "+" (Select becomes a filled Done while choosing, the
+  `NoteSelectionBar` loses its own Done there); Bowls sort menu · gear · "+"; bowl ⋯ · "+"; Open To-dos "+" makes a
+  to-do at once; Smart Filter ⋯; Recently Deleted Delete All. "+" is `ChromePillButtonStyle(fill: .brandSky)`,
+  identifier `PlaceAdd`, long press = new note (also an accessibility action "New Note").
+- Today: hint of the day on top (today only), Appointments, "Due" (red "Due N · M overdue" when late), Up Next (next
+  7 days, at most 5, folds, `todayUpNextFolded`), fixed rows Open To-dos and Weekly Review (today only).
+  `TodayDay.title` is now the short "Wed 2 Dec" (Today / Tomorrow / Yesterday stay words). `TodayTodos.upcoming`,
+  `Places.newThisWeek` are shared with the Mac.
+- `HomeList`: no limit any more (`recentProjectsKey`, `shownProjects` gone); `bowls(_:notes:order:)` = active bowls,
+  pinned first, by `bowlOrder` (Last Change = newest of bowl and its entries); read by the Bowls place, the Mac
+  sidebar and the Mac Bowls page. Settings › General "Home" card is now "Bowls" with only Sort Bowls By; "Daily Hint
+  in Today".
+- Links and shortcuts: `porridge://today`, `porridge://bowls` (`QuickAction.openToday/openBowls`), App Shortcuts
+  Open Today / Open Bowls; `porridge://todos` and the To-dos widgets open Today › Open To-dos, `inbox` the Inbox tab,
+  `search?q=` the search tab, `new` / `meeting` as before. **Entry links fixed:** `porridge://entry/<id>` used to be
+  taken and dropped when it came before the list had loaded the entry (cold start), and opened via a deferred task;
+  now `EntryLinkRouter.waiting` keeps it until the entry is there (also retried when the notes change) and it opens
+  in the same update. UI test `testEntryLinkOpensAtOnce` (running app, two links, then `porridge://bowls`); unit
+  test `PlacesTests.testEntryLinkWaitsUntilTaken`.
+- Mac: sidebar Today · Inbox · Bowls (unfolds into every bowl in the shared order; folding is kept while the app
+  runs) · Smart Filters (+ "New Smart Filter…" row) · Archive · Recently Deleted (always, with counts). The To-dos
+  and Chat rows and the groups Up Next / More are gone. `SidebarPage.bowls` (Bowls page: Pinned, All Bowls, smart
+  filters, New Smart Filter…, Archive, Recently Deleted as `ListItem.link` rows, `LinkCellView`). View: Today ⌘1,
+  Inbox ⌘2, Bowls ⌘3, Archive ⌘4, Recently Deleted ⌘5, Open To-dos, Weekly Review, Triage Inbox. List head: Today
+  ‹ Today › + date line + hint; Inbox segment New / Later (replaces the Later pill and the Weekly Review button) +
+  Triage; bowl Share… + ⋯ (`BucketActions.addItems`, the same menu as the sidebar row, now in the design's order with
+  Ask About This Bowl, Copy Link, Open in New Window); Bowls page sort pop-up. Toolbar: Import and Chat items gone;
+  "+" = New Note, New To-do, Record Meeting, Add Link… | Photo or File…, Audio…, From Plaud…, From iPhone or iPad |
+  New from Template | New Bowl…. Chat (no sidebar row until stage 5): AI › New Chat ⇧⌘K, Ask About This Bowl, the
+  command bar's "Chat". Settings › General "Sort Bowls By". New windows open on Today.
+- Where the old doors went:
+
+  | Old | Now |
+  |---|---|
+  | Home "Up Next": Today tile, Inbox tile | Today and Inbox tabs (badges); Mac sidebar rows |
+  | Home To-dos tile; Mac sidebar To-dos | Today › Open To-dos row; Mac View › Open To-dos, command bar |
+  | Home bowl list with "More" | Bowls tab (all bowls, sort menu); Mac sidebar under Bowls, Bowls page ⌘3 |
+  | Home Smart Filters section | Bowls › Smart Filters + New Smart Filter…; Mac sidebar group + row |
+  | "Archive N ›" header; Mac conditional Archive | Bowls › Archive row (always); Mac ⌘4 row (always) |
+  | Red trash pill; Mac conditional Recently Deleted | Bowls › Recently Deleted row; Mac ⌘5 row |
+  | Gear in the home bar | Gear in the Bowls bar |
+  | "+" fan (Note, To-do, Meeting, Link, Scan, Template, Bowl) | Add sheet; long press "+" = note; Mac "+" menu |
+  | Import menu (home and bowl bar); Mac toolbar Import | Add sheet › Capture; Mac "+" Import group, File menu |
+  | Floating Search | Search tab |
+  | Floating Chat; Mac toolbar Chat, sidebar Chat | Search tab › Chat row, bowl ⋯ / ✦ Ask About This Bowl; Mac AI menu, command bar |
+  | Inbox Weekly Review button (iPhone and Mac) | Today › Weekly Review row; Mac View › Weekly Review |
+  | Inbox Later section / Mac Later pill | Inbox segment New / Later |
+  | Daily hint in the Inbox | Top of Today (both) |
+  | Bowl bar Select / Share / Import | Bowl ⋯ Select Entries / Manage Sharing… (Share Bowl…), Copy Link, Stop Sharing… / Add sheet |
+  | Bowl row swipe Rename | Bowl ⋯ and long press Rename… |
+  | Settings "Bowls Before More" | removed (no limit) |
+  | Mac ⌘1 Inbox, ⌘2 To-dos, ⌘3 Chat | ⌘1 Today, ⌘2 Inbox, ⌘3 Bowls; Open To-dos and Chat as above |
+
+- **Deviations:** `ListPage.chat` stays a page (pushed on the Search tab) until stage 5 merges search and chat. The
+  "✦ Bowl" word instead of the suggestion pill bar and the one-line bundle card are left for stage 6 with the
+  swipes (the `FilingBar` stays). No Triage pill on iOS (triage does not exist there yet: stage 6). Mac Bowls page:
+  a single click opens a bowl (as in the archive), rows say "N entries" (no iPhone-style summary); Archive and
+  Recently Deleted are the last rows of the outline, not a pinned footer; Up Next on the Mac does not fold. A view-only
+  bowl's ⋯ also has Ask About This Bowl and Leave Bowl… (the table listed Pin, Copy Link, Export only). The Mac only
+  asks for the calendars on Today when it does not run on test data (`PORRIDGE_TEST_DATA`).
+- Tests: `PlacesTests` (badges, Up Next, new this week, links, page → place, entry link waits), `TodosTests` bowl
+  order without limit and by entries; UI: `NotesFlowTests` updated to tabs / gear / Add sheet plus
+  `testThreePlacesAsTabs`, `testAddSheetAndBowlMenu`, `testEntryLinkOpensAtOnce`; `PlacesShotsTests` writes
+  screenshots to /tmp/porridge-s4-shots. `-seedEntryKinds` now makes its entries again on every launch, so a test
+  that changed one (the meeting's bowl) does not break the next; `-emptyStore YES` (Debug) runs on an empty store in
+  memory. `ChromePillButtonStyle` dims a disabled pill (Select in an empty Inbox). Debug driver: `page bowls|later`, `bucket-archive`, `smart-filter`, `list`, `plus-menu`, `toolbar`,
+  `shot-sidebar`, sidebar geometry.
+
 ---
 
 ## Stage 5 · Search & Ask

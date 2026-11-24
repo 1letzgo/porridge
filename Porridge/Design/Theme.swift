@@ -161,11 +161,6 @@ extension View {
             .environment(\.defaultMinListHeaderHeight, 0)
     }
 
-    /// Room below the last row of a list, so it can scroll out from under the floating buttons (iOS).
-    func roomForFloatingButtons() -> some View {
-        contentMargins(.bottom, 96, for: .scrollContent)
-    }
-
     /// Small capsule label (speaker chips): a wash of the color.
     func chunkyPill(fill: Color) -> some View {
         background(fill.opacity(0.18), in: Capsule())
@@ -230,6 +225,8 @@ struct ListHeader: View {
     var count: Int?
     var tint: Color = .brandSky
     var isFirst = false
+    /// A quiet word after the title ("by Last Change").
+    var detail: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -237,6 +234,11 @@ struct ListHeader: View {
                 Text(title)
                 if let count {
                     Text("\(count)").foregroundStyle(.secondary)
+                }
+                if let detail {
+                    Text(detail)
+                        .fontWeight(.regular)
+                        .foregroundStyle(.secondary)
                 }
             }
             .font(.subheadline.weight(.bold))
@@ -376,6 +378,18 @@ struct ChromePillButtonStyle: ButtonStyle {
     var tint: Color?
 
     func makeBody(configuration: Configuration) -> some View {
+        ChromePill(configuration: configuration, fill: fill, tint: tint)
+    }
+}
+
+/// The pill itself: dimmed while its button is disabled (Select in an empty Inbox).
+private struct ChromePill: View {
+    let configuration: ButtonStyleConfiguration
+    let fill: Color?
+    let tint: Color?
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
         configuration.label
             .foregroundStyle(fill.map { AnyShapeStyle($0.onFill) } ?? AnyShapeStyle(tint ?? .accentColor))
             .frame(minWidth: 44, minHeight: 36)
@@ -384,6 +398,7 @@ struct ChromePillButtonStyle: ButtonStyle {
                 in: Capsule()
             )
             .contentShape(Capsule())
+            .opacity(isEnabled ? 1 : 0.4)
             .animation(.snappy(duration: 0.12), value: configuration.isPressed)
     }
 }
@@ -607,35 +622,5 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
 
     public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         viewControllers.count > 1
-    }
-}
-
-/// Unfolds in place what a list leaves out.
-struct MoreRow: View {
-    let hidden: Int
-    let isExpanded: Bool
-    let tint: Color
-    var toggle: () -> Void
-
-    var body: some View {
-        Button {
-            withAnimation(.snappy, toggle)
-        } label: {
-            HStack(spacing: 4) {
-                Text(isExpanded ? "Less" : "More")
-                if !isExpanded {
-                    Text("\(hidden)").foregroundStyle(.secondary)
-                }
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.caption.weight(.bold))
-                Spacer(minLength: 0)
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(tint.readable)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .cardListRow()
-        .listRowSeparator(.hidden, edges: .bottom)
     }
 }
