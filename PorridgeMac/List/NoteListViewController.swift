@@ -6,7 +6,7 @@ import SwiftData
 final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMenuDelegate {
     private let state: WindowState
     private let library = Library.shared
-    private let table = NoteTableView()
+    let table = NoteTableView()
     private let scroll = NSScrollView()
     private let header = ListHeaderView()
     private let empty = EmptyMessageView()
@@ -183,6 +183,13 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             snapshot.appendItems(items, toSection: section)
             sectionsByID[section.id] = section
         }
+        // The fixed rows (Open To-dos "5 open · 1 overdue", a smart filter's count) say what is in them: the same item
+        // keeps its cell, so it is drawn again.
+        let shown = Set(dataSource.snapshot().itemIdentifiers)
+        let links = snapshot.itemIdentifiers.filter { item in
+            if case .link = item { shown.contains(item) } else { false }
+        }
+        if !pageChanged, !links.isEmpty { snapshot.reloadItems(links) }
         // While rows move the table keeps its selection by row number and reports that after the animation:
         // it is not the user's choice, so the open note stays the one of the state.
         isApplying += 1
@@ -343,13 +350,18 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         }
     }
 
-    /// J/K, L, F, D and Esc while the Inbox is in triage. Returns whether the key was taken.
+    /// J/K, L, F, D, ⌫ and Esc while the Inbox is in triage. Returns whether the key was taken.
     private func handleTriageKey(_ event: NSEvent) -> Bool {
         guard state.isTriaging, state.page == .inbox else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
         guard flags.isEmpty else { return false }
         if event.keyCode == 53 {
             state.isTriaging = false
+            return true
+        }
+        // ⌫ / ⌦: the entry to Recently Deleted (with the one undo toast), then the next one.
+        if event.keyCode == 51 || event.keyCode == 117 {
+            triageDelete()
             return true
         }
         switch event.charactersIgnoringModifiers?.lowercased() {
@@ -417,15 +429,28 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         popUp(menu, for: note)
     }
 
-    /// F: the bowls, as in the context menu; the next entry is chosen when it was filed.
+    /// F: into the suggested bowl ("✦ Bowl" of the row) at once, else the bowls as in the context menu; the next
+    /// entry is chosen once it was filed.
     private func triageFile() {
         guard let note = triageNote, !BowlSharing.shared.isReadOnly(note) else { return NSSound.beep() }
         let next = neighbor(of: note.id)
+        if InboxTriage.file(note, bowls: library.activeProjects, in: library.context) {
+            state.selection = next.map { [$0] } ?? []
+            return
+        }
         popUp(NoteOperations.bucketMenu(for: [note], window: view.window), for: note)
         DispatchQueue.main.async { [weak self] in
             guard let self, !note.isInInbox, self.state.selection == [note.id] else { return }
             self.state.selection = next.map { [$0] } ?? []
         }
+    }
+
+    /// ⌫: to Recently Deleted, then the next entry.
+    private func triageDelete() {
+        guard let note = triageNote, !BowlSharing.shared.isReadOnly(note) else { return NSSound.beep() }
+        let next = neighbor(of: note.id)
+        Undoable.trash([note], in: library.context)
+        state.selection = next.map { [$0] } ?? []
     }
 
     /// D: a to-do done (it stays in the Inbox, ticked), then on to the next. Other entries have nothing to be done.

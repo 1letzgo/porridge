@@ -18,9 +18,12 @@ struct InboxBundleCard: View {
     }
 
     var body: some View {
-        Group {
+        // A stack, not a Group: with no suggestion yet a Group has no view, and its task would never run.
+        VStack(spacing: 0) {
             if let bundle {
                 suggestion(bundle)
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
             }
         }
         .task(id: signature) {
@@ -38,40 +41,43 @@ struct InboxBundleCard: View {
         }
     }
 
+    /// One line: "✦ New bowl “Berlin Trip” for 3 entries?", Review…, and the cross. The entries' titles are
+    /// in the review sheet (and read by VoiceOver).
     private func suggestion(_ bundle: InboxBundle) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "sparkles").foregroundStyle(Color.brandProject)
-                Text(bundle.isExistingBowl
-                     ? "These \(bundle.noteIDs.count) entries belong together. Into bowl “\(bundle.name)”?"
-                     : "These \(bundle.noteIDs.count) entries belong together. New bowl “\(bundle.name)”?")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.brandNavy)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-                Button {
-                    withAnimation(.snappy) {
-                        InboxBundler.dismiss(bundle)
-                        self.bundle = nil
-                    }
-                } label: {
-                    Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
-                        .contentShape(Rectangle().inset(by: -8))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss Suggestion")
-            }
-            Text(titles(bundle))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(Color.brandProject.readable)
+                .accessibilityHidden(true)
+            Text(bundle.line)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.brandProject.readable)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .accessibilityHint(titles(bundle))
+            Spacer(minLength: 4)
             Button("Review…") { reviewing = bundle }
-                .buttonStyle(PillButtonStyle())
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Color.brandNavy.readable)
+                .fixedSize()
                 .accessibilityIdentifier("InboxBundleReview")
+            Button {
+                withAnimation(.snappy) {
+                    InboxBundler.dismiss(bundle)
+                    self.bundle = nil
+                }
+            } label: {
+                Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                    .frame(width: 26, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss Suggestion")
         }
-        .padding(14)
-        .background(Color.brandProject.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.brandProject.opacity(0.3), lineWidth: 1))
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
+        .frame(minHeight: 40)
+        .background(Color.brandProject.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.brandProject.opacity(0.25), lineWidth: 1))
     }
 
     private func titles(_ bundle: InboxBundle) -> String {

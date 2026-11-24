@@ -78,6 +78,8 @@ struct NotesView: View {
     @State private var inboxShowsLater = false
     /// The weekly review (from Today's row).
     @State private var showReview = false
+    /// Triage: the Inbox one entry at a time, full screen (`TriageView`).
+    @State private var showTriage = false
     @AppStorage(DailyHint.enabledKey) private var hintsEnabled = true
     /// The smart filter being made or changed (`SmartFilterEditor`).
     @State private var smartFilterDraft: SmartFilterDraft?
@@ -269,6 +271,7 @@ struct NotesView: View {
                 showAdd = false
             }
         }
+        .fullScreenCover(isPresented: $showTriage) { TriageView() }
         .fullScreenCoverOrSheet(isPresented: $showRecorder) {
             RecordingView(title: appointmentTitle) { result, names, liveText, written in
                 addRecording(from: result, speakerNames: names, liveText: liveText, written: written)
@@ -499,6 +502,8 @@ struct NotesView: View {
         .navigationTitle(listTitle(shown))
         // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
         .toolbar(.hidden, for: .navigationBar)
+        // While choosing several entries the selection bar takes the tab bar's place.
+        .toolbar(isSelecting && shown == page ? .hidden : .automatic, for: .tabBar)
     }
 
     @ViewBuilder
@@ -543,8 +548,7 @@ struct NotesView: View {
                 notes: notes, projects: projects, selection: $selection, isSelecting: $isSelecting, chosen: $chosen,
                 showsLater: $inboxShowsLater,
                 onRemove: { remove($0) },
-                onAdd: { openAdd() },
-                onEndSelecting: { endSelecting() }
+                onAdd: { openAdd() }
             )
         case .todos:
             todosPage
@@ -646,6 +650,10 @@ struct NotesView: View {
         case .bowls: go(.bowls)
         case .openTodos: go(.todos)
         case .weeklyReview: showReview = true
+        case .triage:
+            go(.inbox)
+            inboxShowsLater = false
+            showTriage = !Inbox.notes(notes).isEmpty
         case .archive: go(.archive)
         case .trash: go(.trash)
         case .settings: go(.settings)
@@ -856,6 +864,7 @@ struct NotesView: View {
         switch target.destination {
         case .bowl: .brandProject
         case .smartFilter, .settings, .archive, .weeklyReview, .allChats: .brandNavy
+        case .triage: .brandSky
         case .trash: .red
         case .openTodos: .brandTask
         case .today: .brandNavy
@@ -919,12 +928,20 @@ struct NotesView: View {
             if isSelecting {
                 doneSelectingButton
             } else {
-                // Several entries of the Inbox at once: into a bowl, their kind or sender, merged.
+                let isEmpty = inboxShowsLater || Inbox.notes(notes).isEmpty
+                // One entry at a time, full screen: File, Later, Skip, Delete (Done for to-dos).
+                Button { showTriage = true } label: {
+                    Label("Triage", systemImage: "bolt.fill")
+                }
+                .help("Triage")
+                .disabled(isEmpty)
+                .accessibilityIdentifier("InboxTriage")
+                // Several entries of the Inbox at once: into a bowl, later, done, their kind or sender, merged.
                 Button { withAnimation(.snappy) { isSelecting = true } } label: {
                     Label("Select", systemImage: "checkmark.circle")
                 }
                 .help("Select")
-                .disabled(inboxShowsLater || Inbox.notes(notes).isEmpty)
+                .disabled(isEmpty)
                 addButton
             }
         case .bowls:
@@ -1444,6 +1461,9 @@ struct NoteRow: View {
     var buckets: [String] = []
     /// In the Inbox's list: how long the entry has been waiting there.
     var showsInboxAge = false
+    /// The suggested bowl of an Inbox entry: "✦ Bowl" at the end of the footer, a tap files it (`onFile`).
+    var suggestion: NoteFolder?
+    var onFile: () -> Void = {}
 
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.modelContext) private var context
@@ -1588,6 +1608,11 @@ struct NoteRow: View {
             }
         }
         .fixedSize()
+        // The suggested bowl as one violet word: a tap files the entry there (with Undo).
+        if let suggestion {
+            SuggestionWord(name: suggestion.name, onFile: onFile)
+                .layoutPriority(1)
+        }
     }
 
     private func daysLeft(_ deletedAt: Date) -> String {

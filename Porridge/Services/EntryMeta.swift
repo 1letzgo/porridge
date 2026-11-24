@@ -167,9 +167,16 @@ enum EntryMeta {
 
     // MARK: Suggestion
 
-    /// The bowl of the "✦ File into …" pill: the first suggestion of an entry in the Inbox. An action, not a value;
+    /// The bowl of the "✦ Bowl" word and "File into …": the first suggestion of an entry in the Inbox. An action, not a value;
     /// gone once the entry is filed.
     static func suggestion(for note: Note, context: EntryContext) -> NoteFolder? {
         EntryDetails.suggestion(for: note, context: context)
+    }
+
+    /// The same for a list row ("✦ Bowl" in the Inbox, the swipe "File", triage): only the bowls and whether the
+    /// entry may be changed here are needed.
+    static func suggestion(for note: Note, bowls: [NoteFolder]) -> NoteFolder? {
+        guard note.isInInbox, !note.suggestedProjectIDs.isEmpty else { return nil }
+        return suggestion(for: note, context: EntryContext(bowls: bowls, isReadOnly: !note.isDeleted && BowlSharing.shared.isReadOnly(note)))
     }
 }

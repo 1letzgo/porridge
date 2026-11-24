@@ -13,6 +13,14 @@ struct InboxBundle: Equatable {
 
     /// The same group, whatever the order.
     var key: String { noteIDs.map(\.uuidString).sorted().joined(separator: ",") }
+
+    /// The one line of the Inbox's card (iPhone and Mac), short enough for one line beside "Review…" on a 390 pt
+    /// iPhone: "New bowl “Berlin Trip” for 3 entries?", "3 entries for “Reading”?".
+    var line: String {
+        isExistingBowl
+            ? String(localized: "\(noteIDs.count) entries for “\(name)”?")
+            : String(localized: "New bowl “\(name)” for \(noteIDs.count) entries?")
+    }
 }
 
 enum InboxBundler {

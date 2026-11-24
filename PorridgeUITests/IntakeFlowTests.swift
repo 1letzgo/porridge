@@ -90,4 +90,111 @@ final class IntakeFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 10), "the chat was not taken up again")
         XCTAssertTrue(app.buttons["New Chat"].exists, "no way to start another chat")
     }
+
+    // MARK: Inbox work (stage 6)
+
+    /// The Inbox of the mockups on a store in memory (`-seedInbox`), without a notification prompt for Later.
+    private func launchSeededInbox() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO",
+                                "-emptyStore", "YES", "-seedInbox", "YES", "-quietNotifications", "YES"]
+        app.launch()
+        app.openTab("Inbox")
+        return app
+    }
+
+    private func screenshot(_ name: String, _ app: XCUIApplication) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// A row names its suggested bowl ("✦ Reading"); a swipe to the right files it there (with Undo), a swipe to the
+    /// left offers Later with the times at once.
+    func testSwipesFileIntoTheSuggestionAndPutAwayForLater() throws {
+        let app = launchSeededInbox()
+        let link = app.staticTexts["The Case for Slow Software"]
+        XCTAssertTrue(link.waitForExistence(timeout: 10), "seeded Inbox missing")
+        XCTAssertTrue(app.buttons["File into Reading"].firstMatch.exists, "the row does not name its suggested bowl")
+        XCTAssertFalse(app.buttons["Drop Suggestion"].exists, "the old suggestion pills are still there")
+        screenshot("inbox-suggestion-word", app)
+
+        link.swipeRight()
+        let file = app.buttons["File into Reading"].firstMatch
+        XCTAssertTrue(app.buttons["Bowl…"].waitForExistence(timeout: 5), "no Bowl… in the swipe")
+        screenshot("inbox-swipe-file", app)
+        file.tap()
+        XCTAssertTrue(link.waitForNonExistence(timeout: 5), "the swipe did not file the entry")
+        let undo = app.buttons["Undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5), "filing offers no Undo")
+        undo.tap()
+        XCTAssertTrue(link.waitForExistence(timeout: 5), "Undo did not bring the entry back")
+
+        let gift = app.staticTexts["Gift ideas for Mum"]
+        XCTAssertTrue(app.reveal(gift))
+        gift.swipeLeft()
+        let later = app.buttons["Later"].firstMatch
+        XCTAssertTrue(later.waitForExistence(timeout: 5), "no Later in the swipe")
+        screenshot("inbox-swipe-later", app)
+        later.tap()
+        XCTAssertTrue(app.navigationBars["Later"].waitForExistence(timeout: 5), "Later did not open its times")
+        XCTAssertTrue(app.buttons["Pick Date & Time…"].exists, "no Pick Date & Time… in the Later sheet")
+        screenshot("inbox-later-sheet", app)
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'Later-'")).firstMatch.tap()
+        XCTAssertTrue(gift.waitForNonExistence(timeout: 5), "the entry did not go away for later")
+        XCTAssertTrue(app.buttons["Undo"].waitForExistence(timeout: 5), "Later offers no Undo")
+    }
+
+    /// Triage goes through the Inbox one entry at a time: File into the suggestion, then Skip; the counter follows.
+    func testTriageTwoEntries() throws {
+        let app = launchSeededInbox()
+        let triage = app.buttons["InboxTriage"]
+        XCTAssertTrue(triage.waitForExistence(timeout: 10), "no Triage in the Inbox bar")
+        triage.tap()
+        let counter = app.staticTexts["TriageCounter"]
+        XCTAssertTrue(counter.waitForExistence(timeout: 5), "Triage did not open")
+        XCTAssertTrue(counter.label.hasPrefix("Entry 1 of 10"), counter.label)
+        XCTAssertFalse(app.tabBars.firstMatch.isHittable, "the tab bar shows in Triage")
+        XCTAssertTrue(app.staticTexts["Suggested bowl: Reading"].exists, "the suggestion is not named")
+        screenshot("triage-first", app)
+        app.buttons["TriageFile"].tap()
+        expectation(for: NSPredicate(format: "label BEGINSWITH 'Entry 2 of 10'"), evaluatedWith: counter)
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(app.buttons["Undo"].waitForExistence(timeout: 5), "filing in Triage offers no Undo")
+        app.buttons["TriageSkip"].tap()
+        expectation(for: NSPredicate(format: "label BEGINSWITH 'Entry 3 of 10'"), evaluatedWith: counter)
+        waitForExpectations(timeout: 5)
+        screenshot("triage-third", app)
+        app.buttons["TriageEnd"].tap()
+        XCTAssertTrue(app.staticTexts["Invoice INV-2026-1142"].waitForExistence(timeout: 5), "the skipped entry is not in the Inbox")
+        XCTAssertFalse(app.staticTexts["The Case for Slow Software"].exists, "the filed entry is still in the Inbox")
+    }
+
+    /// Choosing three entries: "3 Selected" is the first row, the selection bar takes the tab bar's place, and More
+    /// marks the invoices among them as paid.
+    func testSelectThreeAndMarkAsPaid() throws {
+        let app = launchSeededInbox()
+        let select = app.buttons["Select"]
+        XCTAssertTrue(select.waitForExistence(timeout: 10))
+        select.tap()
+        for title in ["Invoice INV-2026-1142", "Invoice INV-2026-1098", "Receipt, hardware store"] {
+            let row = app.staticTexts[title]
+            XCTAssertTrue(app.reveal(row), "\(title) missing")
+            row.tap()
+        }
+        XCTAssertEqual(app.staticTexts["SelectionCount"].label, "3 Selected")
+        XCTAssertTrue(app.buttons["SelectionMove"].exists, "no selection bar")
+        XCTAssertFalse(app.tabBars.firstMatch.isHittable, "the tab bar still shows while selecting")
+        screenshot("inbox-selection-bar", app)
+        app.buttons["SelectionMore"].tap()
+        let paid = app.buttons["Mark as Paid"]
+        XCTAssertTrue(paid.waitForExistence(timeout: 5), "no Mark as Paid in More")
+        XCTAssertTrue(app.buttons["Delete 3 Entries"].exists, "no Delete 3 Entries in More")
+        screenshot("inbox-selection-more", app)
+        paid.tap()
+        XCTAssertTrue(app.staticTexts["Marked as paid"].waitForExistence(timeout: 5), "marking as paid offers no Undo toast")
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5) && app.tabBars.firstMatch.isHittable, "the tab bar did not come back")
+    }
 }

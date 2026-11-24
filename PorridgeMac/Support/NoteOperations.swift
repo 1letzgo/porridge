@@ -73,6 +73,13 @@ enum NoteOperations {
                 menu.add("Back to Inbox Now", symbol: "tray.and.arrow.down") { InboxSnooze.unsnooze(snoozed, in: context) }
             }
         }
+        // The suggested bowl of an Inbox entry ("✦ Bowl" in its row): file there, or drop the suggestion.
+        if notes.count == 1, let note = notes.first, let bowl = EntryMeta.suggestion(for: note, bowls: library.activeProjects) {
+            menu.add("File into “\(bowl.name)”", symbol: "sparkles") {
+                Undoable.move([note], toBowl: Projects.key(bowl), named: bowl.name, in: context)
+            }
+            menu.add("Drop Suggestion", symbol: "xmark") { Inbox.dismissSuggestions(note, in: context) }
+        }
         // Into one bowl (in place of the one they are in) or back to the inbox, all selected at once.
         let buckets = NSMenuItem(title: notes.count == 1 ? "Bowl" : "Bowl of \(notes.count)", action: nil, keyEquivalent: "")
         buckets.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)

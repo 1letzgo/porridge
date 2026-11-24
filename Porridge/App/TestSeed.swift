@@ -11,6 +11,8 @@ enum TestSeed {
     static func run(_ container: ModelContainer) {
         seedTodos(container)
         if UserDefaults.standard.bool(forKey: "seedEntryKinds") { seedEntryKinds(container.mainContext) }
+        // Only on the store in memory: added on every launch, it would pile up in a real one.
+        if UserDefaults.standard.bool(forKey: "seedInbox"), UserDefaults.standard.bool(forKey: "emptyStore") { seedInbox(container.mainContext) }
         guard let title = UserDefaults.standard.string(forKey: "seedMeetingWithTasks"), !title.isEmpty else { return }
         let context = container.mainContext
         let bucket = NoteFolder(name: title)
@@ -172,6 +174,78 @@ enum TestSeed {
             note.attachments = [Attachment(fileName: "seed-whiteboard.jpg", name: "IMG_0042.jpg", kindRaw: Attachment.Kind.image.rawValue)]
             note.pageText = "Roadmap Q1: Login, Payments, Export"
             note.statusRaw = ProcessingStatus.ready.rawValue
+        }
+        try? context.save()
+    }
+
+    /// The Inbox of the design's mockups (`-seedInbox YES` with `-emptyStore YES`; the Mac debug driver's `seed-inbox`
+    /// on test data): bowls Reading, House & Bills and Berlin Trip; in the Inbox a link with "Reading" suggested, two
+    /// Telekom invoices (one with "House & Bills" suggested), a receipt, four Berlin entries sharing the tag "berlin"
+    /// (three without a suggestion make the bundle card; the flight has "Berlin Trip" suggested), a note and a to-do
+    /// without a due day.
+    @MainActor
+    static func seedInbox(_ context: ModelContext) {
+        var keys: [String: String] = [:]
+        let existing = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
+        for name in ["Reading", "House & Bills", "Berlin Trip"] {
+            if let found = existing.first(where: { $0.name == name }) {
+                keys[name] = Projects.key(found)
+            } else {
+                let bowl = NoteFolder(name: name)
+                context.insert(bowl)
+                keys[name] = Projects.key(bowl)
+            }
+        }
+        let now = Date()
+        var minutes = 0
+        func add(_ title: String, text: String = "", suggested: String? = nil, tags: [String] = [], configure: (Note) -> Void = { _ in }) {
+            let note = Note()
+            note.title = title
+            note.titleIsCustom = true
+            note.text = text
+            note.source = .note
+            // The first one is the newest.
+            note.createdAt = now.addingTimeInterval(TimeInterval(-60 * minutes))
+            note.updatedAt = note.createdAt
+            minutes += 37
+            note.suggestedProjectIDs = suggested.flatMap { keys[$0] }.map { [$0] } ?? []
+            note.labels = tags
+            note.statusRaw = ProcessingStatus.ready.rawValue
+            configure(note)
+            context.insert(note)
+        }
+        func invoice(_ number: String, days: Int) -> (Note) -> Void {
+            { note in
+                note.source = .share
+                var info = DocumentInfo(kind: .invoice, correspondent: "Telekom")
+                info.amount = "119.00 EUR"
+                info.day = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: -days, to: now) ?? now)
+                info.dueDay = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: 8 - days, to: now) ?? now)
+                note.attachments = [Attachment(fileName: "seed-\(number).pdf", name: "Invoice \(number).pdf", kindRaw: Attachment.Kind.pdf.rawValue, document: info)]
+                note.pageText = "Telekom bills 119,00 € for the mobile plan."
+            }
+        }
+        add("The Case for Slow Software", suggested: "Reading") { note in
+            note.source = .link
+            note.url = "https://example.com/slow-software"
+            note.pageText = "Fast software is not always the goal. Slow, considered tools can be better."
+            note.summary = "An essay on why considered, slower tools can serve people better than fast ones."
+        }
+        add("Invoice INV-2026-1142", suggested: "House & Bills", configure: invoice("INV-2026-1142", days: 1))
+        add("Your flight LH 2041 is confirmed", text: "Lufthansa · Friday 07:15 Munich – Berlin", suggested: "Berlin Trip", tags: ["berlin"])
+        add("Hotel near Hackescher Markt", text: "Two nights, breakfast included.", tags: ["berlin"])
+        add("Museum tickets", text: "Pergamon, Saturday 10:00", tags: ["berlin"])
+        add("Restaurants to try", text: "Lode & Stijn, Cookies Cream", tags: ["berlin"])
+        add("Invoice INV-2026-1098", configure: invoice("INV-2026-1098", days: 30))
+        add("Receipt, hardware store") { note in
+            note.source = .share
+            var info = DocumentInfo(kind: .receipt, correspondent: "Bauhaus")
+            info.amount = "46.80 EUR"
+            note.attachments = [Attachment(fileName: "seed-receipt.jpg", name: "Receipt.jpg", kindRaw: Attachment.Kind.image.rawValue, document: info)]
+        }
+        add("Gift ideas for Mum", text: "A good teapot, the new Donna Leon, tulip bulbs")
+        add("Call the insurance about the window") { note in
+            note.todoState = .open
         }
         try? context.save()
     }

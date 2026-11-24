@@ -82,7 +82,7 @@ enum SearchAsk {
     /// Somewhere to go: a place or fixed view, a smart filter or a bowl.
     struct Target: Hashable, Identifiable, Sendable {
         enum Destination: Hashable, Sendable {
-            case today, inbox, bowls, openTodos, weeklyReview, archive, trash, settings, allChats
+            case today, inbox, bowls, openTodos, weeklyReview, triage, archive, trash, settings, allChats
             case smartFilter(UUID)
             case bowl(UUID)
         }
@@ -114,7 +114,7 @@ enum SearchAsk {
     }
 
     /// The places and fixed views (iPhone: Go To rows; the Mac has them as commands): Today, Inbox, Bowls, Open
-    /// To-dos, Weekly Review, Archive, Recently Deleted, Settings, All Chats.
+    /// To-dos, Weekly Review, Triage Inbox (a command), Archive, Recently Deleted, Settings, All Chats.
     static func places() -> [Target] {
         let place = String(localized: "Place"), view = String(localized: "View")
         return [
@@ -123,6 +123,7 @@ enum SearchAsk {
             Target(destination: .bowls, title: String(localized: "Bowls"), subtitle: place, symbol: "folder.fill", keywords: "all"),
             Target(destination: .openTodos, title: String(localized: "Open To-dos"), subtitle: view, symbol: "checklist", keywords: "tasks todo"),
             Target(destination: .weeklyReview, title: String(localized: "Weekly Review"), subtitle: view, symbol: "calendar.badge.checkmark", keywords: "week summary"),
+            Target(destination: .triage, title: String(localized: "Triage Inbox"), subtitle: String(localized: "Command"), symbol: "bolt.fill", keywords: "file sort one by one"),
             Target(destination: .archive, title: String(localized: "Archive"), subtitle: view, symbol: "archivebox.fill", keywords: "archived bowls"),
             Target(destination: .trash, title: String(localized: "Recently Deleted"), subtitle: view, symbol: "trash.fill", keywords: "trash bin"),
             Target(destination: .settings, title: String(localized: "Settings"), subtitle: String(localized: "General · Recording · AI"), symbol: "gearshape.fill", keywords: "preferences options models name sync"),

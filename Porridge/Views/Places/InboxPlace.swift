@@ -2,7 +2,9 @@ import SwiftData
 import SwiftUI
 
 /// The Inbox, the second place: what is new or in no bowl, and what was put away for later, as the two halves of
-/// one segment (New / Later) in the first row of the content. New shows the bundle suggestion above its entries.
+/// one segment (New / Later) in the first row of the content. New shows the bundle suggestion (one line) above its
+/// entries; each entry names its suggested bowl ("✦ Bowl") and swipes to file or put away. While choosing several,
+/// "N Selected · Select All" is the first row and the selection bar takes the tab bar's place.
 struct InboxPlace: View {
     let notes: [Note]
     let projects: [NoteFolder]
@@ -14,17 +16,15 @@ struct InboxPlace: View {
     var onRemove: (Note) -> Void
     /// "Add" of the empty Inbox: the Add sheet.
     var onAdd: () -> Void
-    var onEndSelecting: () -> Void
 
     var body: some View {
         // Read so that an entry coming back from later shows up.
         _ = InboxSnoozeScheduler.shared.tick
         let waiting = Inbox.notes(notes)
         let later = InboxSnooze.snoozed(notes)
-        let buckets = projects.filter { !$0.isArchived }
         return VStack(spacing: 0) {
             if isSelecting {
-                NoteSelectionBar(notes: waiting, chosen: $chosen, offersLater: true, showsDone: false, onDone: onEndSelecting)
+                NoteSelectionHeader(notes: waiting, chosen: $chosen)
             } else {
                 Picker("Inbox", selection: $showsLater.animation(.snappy)) {
                     Text("New \(waiting.count)").tag(false)
@@ -38,8 +38,6 @@ struct InboxPlace: View {
                 if !showsLater {
                     // Entries that belong together: one suggestion for a new bowl at a time (`InboxBundler`).
                     InboxBundleCard(notes: notes, projects: projects)
-                        .padding(.horizontal)
-                        .padding(.top, 4)
                 }
             }
             Group {
@@ -51,10 +49,10 @@ struct InboxPlace: View {
                         }
                     }
                 } else if isSelecting {
-                    List(selection: $chosen) { newRows(waiting, buckets: buckets) }
+                    List(selection: $chosen) { newRows(waiting) }
                         .environment(\.editMode, .constant(.active))
                 } else {
-                    List(selection: $selection) { newRows(waiting, buckets: buckets) }
+                    List(selection: $selection) { newRows(waiting) }
                 }
             }
             .cardList()
@@ -66,24 +64,19 @@ struct InboxPlace: View {
                 }
             }
         }
-        .onChange(of: showsLater) {
-            if showsLater, isSelecting { onEndSelecting() }
+        // The selection bar in the tab bar's place (`NotesView` hides the tab bar while choosing).
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if isSelecting {
+                NoteSelectionBar(notes: waiting, chosen: $chosen, offersLater: true)
+            }
         }
     }
 
-    @ViewBuilder
-    private func newRows(_ waiting: [Note], buckets: [NoteFolder]) -> some View {
+    private func newRows(_ waiting: [Note]) -> some View {
         ForEach(waiting) { note in
-            let isLast = note.id == waiting.last?.id
-            // While choosing, the suggestions give way to the selection.
-            if isSelecting || FilingBar.suggested(for: note, among: buckets).isEmpty {
-                NoteListRow(note: note, inInbox: true) { onRemove(note) }
-                    .lastInSection(isLast)
-            } else {
-                NoteListRow(note: note, inInbox: true) { onRemove(note) }
-                FilingBar(note: note, projects: buckets)
-                    .lastInSection(isLast)
-            }
+            // While choosing, the suggestion gives way to the selection.
+            NoteListRow(note: note, inInbox: true, suggestion: isSelecting ? nil : EntryMeta.suggestion(for: note, bowls: projects)) { onRemove(note) }
+                .lastInSection(note.id == waiting.last?.id)
         }
     }
 

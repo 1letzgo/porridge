@@ -109,7 +109,8 @@ final class WindowState {
         todayDay = TodayDay.isToday(next) ? nil : next
     }
 
-    /// The Inbox in triage: J/K go through it, L puts the entry away for later, F files it, D ticks a to-do.
+    /// The Inbox in triage: J/K go through it, F files the entry (into its suggested bowl, else the bowl menu), L puts it
+    /// away for later, D ticks a to-do, ⌫ deletes it.
     var isTriaging = false
     /// The Inbox shows the Later half of its segment (New / Later): what was put away for later.
     var showsLater = false

@@ -63,7 +63,10 @@ final class SearchAskTests: XCTestCase {
     func testEqualMatchesPutPlacesBeforeSmartFiltersBeforeBowlsAndArchivedLast() {
         let filter = SmartFilter(name: "Inbox", criteria: SmartFilterCriteria())
         let targets = SearchAsk.targets(bowls: [bowl("Inbox", archived: true), bowl("Inbox")], filters: [filter], notes: [])
-        let found = SearchAsk.goTo("inbox", in: targets)
+        let all = SearchAsk.goTo("inbox", in: targets)
+        // "Triage Inbox" (a command since stage 6) matches only at its second word: after every name that starts so.
+        XCTAssertEqual(all.last?.destination, .triage)
+        let found = all.filter { $0.destination != .triage }
         XCTAssertEqual(found.map(\.kind), [.place, .smartFilter, .bowl, .bowl])
         XCTAssertEqual(found.last?.isArchived, true, "an archived bowl comes after the others")
     }

@@ -1,7 +1,8 @@
 import AppKit
 
 /// A note in the middle column: the icon of its kind, title, a preview of two lines and a footer with the date,
-/// the site, the length and its state. An entry in the inbox shows its suggested bowls under it.
+/// the site, the length and its state. An entry in the inbox names its suggested bowl at the end of the footer
+/// ("✦ Reading"); a click files it there.
 /// The cell follows its note: a title typed in the detail shows here at once.
 final class NoteCellView: NSTableCellView {
     private var leading: NSLayoutConstraint!
@@ -16,7 +17,9 @@ final class NoteCellView: NSTableCellView {
     private let footerLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor)
     private let badge = StateBadge()
     private let thumbnail = NSImageView()
-    private let suggestions = NSStackView()
+    /// "✦ Bowl": the suggested bowl of an Inbox entry, a click files it (with the one undo toast and ⌘Z).
+    private let suggestion = NSButton()
+    private var suggestionKey: String?
     private var observing: Observing?
     private(set) var noteID: UUID?
     private var namesBuckets = false
@@ -47,19 +50,24 @@ final class NoteCellView: NSTableCellView {
         todoBox.target = self
         todoBox.action = #selector(toggleDone)
 
-        let footer = NSStackView.horizontal([footerLabel, NSView(), badge], spacing: 6)
+        suggestion.isBordered = false
+        suggestion.target = self
+        suggestion.action = #selector(fileSuggested)
+        suggestion.imagePosition = .imageLeading
+        suggestion.setButtonType(.momentaryChange)
+        suggestion.lineBreakMode = .byTruncatingTail
+        suggestion.isHidden = true
+        suggestion.setAccessibilityIdentifier("SuggestedBowl")
+        // In the narrow list (260 pt) a long name is cut off rather than pushing the badge past the edge.
+        suggestion.setContentCompressionResistancePriority(.init(260), for: .horizontal)
+        suggestion.widthAnchor.constraint(lessThanOrEqualToConstant: 150).isActive = true
+        let footer = NSStackView.horizontal([footerLabel, NSView(), badge, suggestion], spacing: 6)
         footer.setHuggingPriority(.defaultLow, for: .horizontal)
-        suggestions.orientation = .horizontal
-        suggestions.spacing = 6
-        suggestions.translatesAutoresizingMaskIntoConstraints = false
-        // In the narrow list (260 pt) a long suggestion is cut off rather than widening the row past its edge.
-        suggestions.setClippingResistancePriority(.defaultLow, for: .horizontal)
-        let text = NSStackView.vertical([titleLabel, documentLabel, previewLabel, footer, suggestions], spacing: 3)
+        let text = NSStackView.vertical([titleLabel, documentLabel, previewLabel, footer], spacing: 3)
         // The text takes the width of the row; the box and the picture keep theirs at the end.
         text.setHuggingPriority(.init(1), for: .horizontal)
         text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         text.setCustomSpacing(5, after: previewLabel)
-        text.setCustomSpacing(8, after: footer)
         // A to-do keeps the icon of its kind; the box that ticks it stands apart, at the end of the row.
         todoBox.translatesAutoresizingMaskIntoConstraints = false
         let row = NSStackView.horizontal([icon, text, thumbnail, todoBox], spacing: 12, alignment: .top)
@@ -77,7 +85,6 @@ final class NoteCellView: NSTableCellView {
             titleLabel.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
             previewLabel.widthAnchor.constraint(equalTo: text.widthAnchor),
             documentLabel.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
-            suggestions.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
             thumbnail.widthAnchor.constraint(equalToConstant: 44),
             thumbnail.heightAnchor.constraint(equalToConstant: 44),
         ])
@@ -101,6 +108,7 @@ final class NoteCellView: NSTableCellView {
         didSet { leading.constant = isIndented ? 34 : 10 }
     }
 
+    /// `showsSuggestions`: the Inbox's list (how long it waits, "✦ Bowl").
     func show(_ note: Note, buckets: [NoteFolder], showsSuggestions: Bool, namesBuckets: Bool = false) {
         self.namesBuckets = namesBuckets
         noteID = note.id
@@ -191,24 +199,19 @@ final class NoteCellView: NSTableCellView {
             thumbnailFile = nil
         }
 
-        // The bowls suggested for an inbox entry: a click files it there, the cross drops the suggestion.
-        suggestions.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let suggested = showsSuggestions && note.isInInbox
-            ? note.suggestedProjectIDs.compactMap { id in buckets.first { Projects.key($0) == id && !BowlSharing.shared.isReadOnly($0.id) } } : []
-        suggestions.isHidden = suggested.isEmpty
-        for project in suggested {
-            let pill = PillButton(title: project.name, symbol: "sparkles", tint: .brandProject, target: self, action: #selector(fileSuggested(_:)))
-            pill.isFilled = true
-            pill.identifier = .init(Projects.key(project))
-            pill.setAccessibilityLabel("File into \(project.name)")
-            suggestions.addArrangedSubview(pill)
-        }
-        if !suggested.isEmpty {
-            let dismiss = NSButton(image: .symbol("xmark", size: 10, weight: .bold, label: "Drop Suggestion"), target: self, action: #selector(dismissSuggestions))
-            dismiss.isBordered = false
-            dismiss.contentTintColor = .secondaryLabelColor
-            dismiss.toolTip = "Drop Suggestion"
-            suggestions.addArrangedSubview(dismiss)
+        // The bowl suggested for an inbox entry, as one violet word at the end of the footer.
+        let suggested = showsSuggestions ? EntryMeta.suggestion(for: note, bowls: buckets) : nil
+        suggestionKey = suggested.map(Projects.key)
+        suggestion.isHidden = suggested == nil
+        if let suggested {
+            let color = NSColor.brandProject.readable
+            let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+            suggestion.image = .symbol("sparkles", size: font.pointSize, weight: .semibold).tinted(color)
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineBreakMode = .byTruncatingTail
+            suggestion.attributedTitle = NSAttributedString(string: suggested.name, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraph])
+            suggestion.toolTip = String(localized: "File into “\(suggested.name)”")
+            suggestion.setAccessibilityLabel(String(localized: "File into \(suggested.name)"))
         }
 
         setAccessibilityLabel([isTodo ? (done ? "Done To-do" : "To-do") : NoteKindStyle.name(for: note), note.displayTitle, preview, TodoBridge.dueAccessibility(of: note), footerLabel.stringValue].filter { !$0.isEmpty }.joined(separator: ", "))
@@ -285,14 +288,9 @@ final class NoteCellView: NSTableCellView {
         return note.projectIDs.compactMap { Library.shared.project(key: $0)?.name }
     }
 
-    @objc private func fileSuggested(_ sender: NSButton) {
-        guard let id = noteID, let note = Library.shared.note(id), let key = sender.identifier?.rawValue else { return }
+    @objc private func fileSuggested() {
+        guard let id = noteID, let note = Library.shared.note(id), let key = suggestionKey else { return }
         Undoable.move([note], toBowl: key, named: Library.shared.project(key: key)?.name, in: Library.shared.context)
-    }
-
-    @objc private func dismissSuggestions() {
-        guard let id = noteID, let note = Library.shared.note(id) else { return }
-        Inbox.dismissSuggestions(note, in: Library.shared.context)
     }
 
     @objc private func toggleDone() {

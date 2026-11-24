@@ -202,13 +202,8 @@ struct ProjectPage: View {
         VStack(spacing: 0) {
             BowlShareLine(project: project)
             if isSelecting {
-                // Choosing: what can be done with the chosen entries takes the place of the kinds.
-                NoteSelectionBar(notes: list, chosen: $chosen, showsDone: false) {
-                    withAnimation(.snappy) {
-                        isSelecting = false
-                        chosen = []
-                    }
-                }
+                // Choosing: "N Selected · Select All" takes the place of the kinds, the bar the tab bar's.
+                NoteSelectionHeader(notes: list, chosen: $chosen)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -241,6 +236,11 @@ struct ProjectPage: View {
                         systemImage: "folder"
                     )
                 }
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if isSelecting {
+                NoteSelectionBar(notes: list, chosen: $chosen)
             }
         }
     }

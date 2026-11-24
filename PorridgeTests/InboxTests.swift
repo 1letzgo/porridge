@@ -97,4 +97,89 @@ final class InboxTests: XCTestCase {
         Inbox.file(note, into: Projects.key(active), in: context)
         XCTAssertTrue(Inbox.candidates(for: note).isEmpty)
     }
+
+    // MARK: Triage and filing (stage 6)
+
+    func testTriageGoesThroughWhatIsNewInTheInboxesOrder() throws {
+        let context = try TestStore.context()
+        let bowl = NoteFolder(name: "Reading")
+        context.insert(bowl)
+        let first = Note(), second = Note(), third = Note(), filed = Note(), later = Note()
+        for (index, note) in [third, second, first, later].enumerated() {
+            note.createdAt = Date(timeIntervalSince1970: Double(1_000_000 * (index + 1)))
+        }
+        filed.projectIDs = [Projects.key(bowl)]
+        later.snoozedUntil = Date().addingTimeInterval(3600)
+        let all = [first, second, third, filed, later]
+        all.forEach(context.insert)
+
+        // Newest first, only what waits (not what is filed or put away for later).
+        var triage = InboxTriage(notes: all)
+        XCTAssertEqual(triage.total, 3)
+        XCTAssertEqual(triage.current(in: all)?.note.id, first.id)
+        XCTAssertEqual(triage.number(in: all), 1)
+        XCTAssertEqual(triage.upcoming(in: all).map(\.id), [second.id, third.id])
+
+        // Skip moves on; the skipped one still waits in the Inbox.
+        triage.advance(in: all)
+        XCTAssertEqual(triage.current(in: all)?.note.id, second.id)
+        XCTAssertEqual(triage.number(in: all), 2)
+        XCTAssertTrue(first.isWaitingInInbox())
+
+        // An entry that left the Inbox (filed here or on another device) is passed over without a step.
+        Inbox.file(second, into: Projects.key(bowl), in: context)
+        XCTAssertEqual(triage.current(in: all)?.note.id, third.id)
+        XCTAssertEqual(triage.number(in: all), 3, "counted by its place at the start")
+        // Brought back (Undo), it is in front again.
+        second.projectIDs = []
+        XCTAssertEqual(triage.current(in: all)?.note.id, second.id)
+
+        triage.advance(in: all)
+        triage.advance(in: all)
+        XCTAssertTrue(triage.isFinished(in: all))
+        XCTAssertNil(triage.current(in: all))
+        XCTAssertTrue(triage.upcoming(in: all).isEmpty)
+    }
+
+    func testFileIntoTheSuggestionWithUndo() throws {
+        let context = try TestStore.context()
+        let toast = UndoToast.shared
+        let reading = NoteFolder(name: "Reading"), old = NoteFolder(name: "Old")
+        old.archivedAt = Date()
+        [reading, old].forEach(context.insert)
+        let link = Note(), other = Note()
+        link.title = "The Case for Slow Software"
+        // An archived bowl is passed over: the first suggestion that can take the entry wins.
+        link.suggestedProjectIDs = [Projects.key(old), Projects.key(reading)]
+        [link, other].forEach(context.insert)
+        try context.save()
+        let bowls = [reading, old]
+
+        XCTAssertEqual(EntryMeta.suggestion(for: link, bowls: bowls)?.id, reading.id)
+        XCTAssertNil(EntryMeta.suggestion(for: other, bowls: bowls), "nothing suggested, no ✦ word")
+        XCTAssertFalse(InboxTriage.file(other, bowls: bowls, in: context), "without a suggestion the bowl list opens")
+        XCTAssertTrue(other.isInInbox)
+
+        XCTAssertTrue(InboxTriage.file(link, bowls: bowls, in: context))
+        XCTAssertEqual(link.projectIDs, [Projects.key(reading)])
+        XCTAssertTrue(link.suggestedProjectIDs.isEmpty)
+        XCTAssertNil(EntryMeta.suggestion(for: link, bowls: bowls), "filed, it has no suggestion any more")
+        XCTAssertEqual(toast.current?.message, "Moved to “Reading”")
+        toast.undo()
+        XCTAssertTrue(link.isInInbox)
+        XCTAssertEqual(link.suggestedProjectIDs, [Projects.key(old), Projects.key(reading)], "Undo brings the suggestion back")
+        XCTAssertEqual(EntryMeta.suggestion(for: link, bowls: bowls)?.id, reading.id)
+    }
+
+    func testTheBundleCardIsOneLine() {
+        let ids = [UUID(), UUID(), UUID()]
+        XCTAssertEqual(InboxBundle(noteIDs: ids, name: "Berlin Trip").line, "New bowl “Berlin Trip” for 3 entries?")
+        XCTAssertEqual(InboxBundle(noteIDs: ids, name: "Reading", isExistingBowl: true).line, "3 entries for “Reading”?")
+    }
+
+    func testTriageIsAGoToCommand() {
+        let found = SearchAsk.goTo("triage", in: SearchAsk.places())
+        XCTAssertEqual(found.first?.destination, .triage)
+        XCTAssertEqual(found.first?.title, "Triage Inbox")
+    }
 }

@@ -276,7 +276,12 @@ final class InboxSnoozeScheduler {
     /// Off in unit tests: no permission is asked and no notification planned.
     @ObservationIgnored var usesNotifications = true
 
-    private init() {}
+    private init() {
+        #if DEBUG
+        // UI tests that put entries away (`-quietNotifications YES`): no permission prompt in the way.
+        if UserDefaults.standard.bool(forKey: "quietNotifications") { usesNotifications = false }
+        #endif
+    }
 
     /// Plans the notifications and the next tick from the notes. Cheap when nothing changed.
     func refresh(_ notes: [Note], now: Date = Date()) {

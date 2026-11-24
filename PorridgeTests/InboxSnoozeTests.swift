@@ -224,4 +224,25 @@ final class InboxSnoozeTests: XCTestCase {
         XCTAssertEqual(InboxSnooze.waitingLabel(since: date(2026, 11, 1, 10), now: now, calendar: calendar), "3 weeks")
         XCTAssertEqual(InboxSnooze.waitingLabel(since: date(2026, 7, 1, 10), now: now, calendar: calendar), "4 months")
     }
+
+    func testLaterFromASwipeOrTriageLeavesTheInboxWithUndo() throws {
+        let context = try TestStore.context()
+        let note = Note()
+        note.title = "Invoice"
+        context.insert(note)
+        try context.save()
+        var triage = InboxTriage(notes: [note])
+        XCTAssertEqual(triage.current(in: [note])?.note.id, note.id)
+
+        let back = Date().addingTimeInterval(3 * 3600)
+        InboxSnooze.snooze([note], until: back, in: context)
+        XCTAssertFalse(note.isWaitingInInbox())
+        XCTAssertTrue(triage.isFinished(in: [note]), "put away, triage passes it")
+        XCTAssertTrue(UndoToast.shared.current?.message.hasPrefix("Later: back") == true)
+        UndoToast.shared.undo()
+        XCTAssertTrue(note.isWaitingInInbox())
+        XCTAssertEqual(triage.current(in: [note])?.note.id, note.id, "back from Undo, it is in front again")
+        triage.advance(in: [note])
+        XCTAssertTrue(triage.isFinished(in: [note]))
+    }
 }

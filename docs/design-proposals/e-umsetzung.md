@@ -565,6 +565,53 @@ Tests: `InboxTests` / `InboxSnoozeTests` for the triage order and the "file into
 Verify on screen: swipes with VoiceOver actions (every swipe action also in the row's accessibility actions and LP menu),
 triage on a to-do (Done), undo after each step; Mac multi-select with mixed kinds.
 
+**As built (stage 6):**
+
+- Shared: `Porridge/Services/InboxTriage.swift` (the queue taken at the start in the Inbox's order; `current(in:)`
+  passes over entries that left the Inbox, so an entry brought back by Undo is in front again; `advance` for Skip and
+  Done; `file(_:bowls:in:)` = into the suggestion with `Undoable.move`, false without one), `EntryMeta.suggestion(for:bowls:)`
+  (the "✦ Bowl" of a row: first suggestion that is active and writable, only in the Inbox), `InboxBundle.line`,
+  `Undoable.done([Note])` (Today, triage, the selection bar; "Done: “…”" / "N to-dos done"), `SearchAsk` Go-To row
+  "Triage Inbox" (`.triage`, subtitle "Command"; the Mac keeps its own command).
+- iOS rows: `NoteListRow(inInbox: true, suggestion:)` swipes right "File" (labelled with the bowl's name and ✦, full
+  swipe files; without a suggestion only "Bowl…") + "Bowl…" (`BowlPickerSheet`: Suggested, then the bowls), left
+  "Delete" + "Later" (`LaterSheet`: the times at once with "“…” leaves the Inbox and comes back with a notification.",
+  Pick Date & Time… pushes `LaterDatePage`). Each also an accessibility action; the long press gained File into "…" and
+  Drop Suggestion. `NoteRow` shows `SuggestionWord` ("✦ Reading", violet, tap files) after the status. The Later rows
+  (segment Later) keep their swipes; their Later opens the same sheet.
+- **Deviation – Later sheet:** the plan said "opens `LaterPickerSheet` directly"; the mockup (HTML 2.4) shows a sheet
+  with the times, so `LaterSheet` is that sheet and the graphical picker is its last row. The confirmation dialog
+  (`LaterDialog` / `.laterDialog`) is gone.
+- Bundle card: one line, "New bowl “Berlin” for 3 entries?" / "3 entries for “Reading”?" (the mockup's "3 entries look
+  like a new bowl “…”" did not fit one line beside Review… on a 390 pt iPhone), the titles are the VoiceOver hint
+  (Mac: tooltip). **Fixed:** the card's search for a bundle hung on an empty `Group`, whose `.task` never ran, so the
+  card never appeared on iOS; it is a `VStack` now.
+- Triage (iPhone): `Views/Places/TriageView.swift`, a full-screen cover from the bolt pill (Inbox bar: Triage · Select ·
+  "+", both dimmed in an empty Inbox / in Later) and from Search & Ask. ChromeBar "Triage" · Done; first row "Entry 2
+  of 12 · New"; the card (icon, title, `EntryMeta.facts`, summary or preview, document line with Paid/Unpaid, due
+  day), "✦ Suggested bowl: …" or "No bowl suggested" · Other…; tiles File · Later · Skip · Delete (+ Done for an open
+  to-do); "Next" with the following two; at the end "Inbox Triaged". File without a suggestion opens the bowl list.
+  Its own undo toast (the root's is under the cover).
+- Selection (iPhone, Inbox and bowl pages): `NoteSelectionHeader` ("N Selected" · Select All / Select None) as the first
+  row, `NoteSelectionBar` as a glass capsule in `.safeAreaInset(.bottom)` while `NotesView` hides the tab bar
+  (`.toolbar(.hidden, for: .tabBar)`): Move (menu: Inbox, bowls) · Later (menu with the times; dimmed outside the
+  Inbox) · Done (open to-dos among the chosen; VoiceOver "Mark as Done") · More (Document Kind ▸, Set Sender…, Mark as
+  Paid / Unpaid, Merge N PDFs…, Delete N Entries; `.menuOrder(.fixed)`). Not applicable = dimmed, never hidden. The
+  old scrolling 8-control bar and `FilingBar` / `SuggestionPill` are removed.
+- Mac: `NoteCellView` shows "✦ Bowl" (a borderless button after the status, click files with the toast and ⌘Z)
+  instead of the pill row with its cross; the list's context menu has File into "…" and Drop Suggestion. The bundle
+  banner is one line (stopped spinner no longer takes room in `PanelView`). Triage: F files into the suggestion at
+  once (else the bowl menu as before), ⌫ deletes with Undo and moves on, the hint row lists J/K · F · L · D · ⌫ · Esc.
+  Multi-select inspector unchanged (it already had Bowl, Later, Due, Kind, Set Sender of N…, Mark N as Paid, Merge N
+  PDFs…, Delete N). **Fixed:** the fixed rows (Open To-dos "N open · M overdue", smart filters) kept their old counts
+  after a change; they are reloaded with the list now.
+- Tests: `InboxTests` (triage order, passing over and coming back, file into the suggestion + Undo, bundle line, Go-To
+  "Triage Inbox"), `InboxSnoozeTests` (Later from a swipe/triage + Undo); UI `IntakeFlowTests`
+  (`testSwipesFileIntoTheSuggestionAndPutAwayForLater`, `testTriageTwoEntries`, `testSelectThreeAndMarkAsPaid`),
+  `InboxShotsTests` → /tmp/porridge-s6-shots (`TEST_RUNNER_SHOTS_SUFFIX=-dark` for dark). Seeds: `-seedInbox YES`
+  (with `-emptyStore YES`; Mac driver `seed-inbox`, test data only), `-quietNotifications YES` (no notification prompt
+  when putting away). Mac driver: `triage`, `triage-key f|l|d|j|k|delete|escape`, `tick <title>`.
+
 ---
 
 ## Stage 7 · Editor bar, Settings, visual polish, onboarding

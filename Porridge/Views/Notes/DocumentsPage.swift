@@ -1,17 +1,42 @@
 import SwiftData
 import SwiftUI
 
-/// Changes several entries of the Inbox or a bowl at once, while the list is in its selection mode: into a bowl or
-/// back to the Inbox, and for documents their kind and sender (as set by hand), paid or not, or merging their PDFs into one.
+/// The first row of a list while choosing several entries (Inbox, a bowl): "3 Selected" and Select All / None.
+struct NoteSelectionHeader: View {
+    /// The entries of the list, in its order.
+    let notes: [Note]
+    @Binding var chosen: Set<UUID>
+
+    var body: some View {
+        let all = !notes.isEmpty && chosen.count == notes.count
+        HStack {
+            Text(chosen.isEmpty ? String(localized: "Select Entries") : String(localized: "\(chosen.count) Selected"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(chosen.isEmpty ? .secondary : .primary)
+                .accessibilityIdentifier("SelectionCount")
+            Spacer(minLength: 8)
+            Button(all ? "Select None" : "Select All") {
+                withAnimation(.snappy) { chosen = all ? [] : Set(notes.map(\.id)) }
+            }
+            .font(.subheadline.weight(.semibold))
+            .disabled(notes.isEmpty)
+            .accessibilityIdentifier("SelectAll")
+        }
+        .padding(.horizontal, 20)
+        .frame(minHeight: 32)
+        .padding(.bottom, Look.headerGap)
+    }
+}
+
+/// Changes several entries of the Inbox or a bowl at once: the bar that takes the tab bar's place while choosing. Four
+/// fixed buttons, nothing scrolls: Move (into a bowl or back to the Inbox), Later (Inbox only), Done (to-dos) and More
+/// (Document Kind, Set Sender…, Mark as Paid, Merge PDFs…, Delete). What does not apply to the chosen entries is dimmed.
 struct NoteSelectionBar: View {
     /// The entries of the list, in its order.
     let notes: [Note]
     @Binding var chosen: Set<UUID>
     /// The Inbox: the chosen entries can be put away for later.
     var offersLater = false
-    /// Its own "Done" at the end; off where the bar of the page has it (the places' one-row bar).
-    var showsDone = true
-    var onDone: () -> Void
 
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
     @Environment(\.modelContext) private var context
@@ -38,69 +63,83 @@ struct NoteSelectionBar: View {
     var body: some View {
         // Not into a bowl shared with me to view only.
         let active = projects.filter { !$0.isArchived && !BowlSharing.shared.isReadOnly($0.id) }
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Button(chosen.count == notes.count ? "Select None" : "Select All") {
-                    chosen = chosen.count == notes.count ? [] : Set(notes.map(\.id))
+        let picked = chosenNotes
+        let openTodos = picked.filter { $0.isTodo && !$0.isDone && !BowlSharing.shared.isReadOnly($0) }
+        let canMerge = allDocuments && DocumentFiles.mergeable(picked).count >= 2
+        HStack(spacing: 0) {
+            Menu {
+                Button { change(.move(toBowl: nil)) } label: { Label("Inbox", systemImage: "tray") }
+                Divider()
+                ForEach(active) { bowl in
+                    Button { change(.move(toBowl: Projects.key(bowl))) } label: { Label(bowl.name, systemImage: "folder") }
                 }
-                .font(.subheadline.weight(.semibold))
-                Menu {
-                    Button { change(.move(toBowl: nil)) } label: { Label("Inbox", systemImage: "tray") }
-                    Divider()
-                    ForEach(active) { bowl in
-                        Button { change(.move(toBowl: Projects.key(bowl))) } label: { Label(bowl.name, systemImage: "folder") }
-                    }
-                } label: {
-                    actionLabel("Move", systemImage: "folder", isOn: !chosen.isEmpty)
-                }
-                .disabled(chosen.isEmpty)
-                if offersLater {
-                    Menu {
-                        LaterMenuItems(notes: chosenNotes) { pickingLater = true }
-                    } label: {
-                        actionLabel("Later", systemImage: "clock", isOn: !chosen.isEmpty)
-                    }
-                    .disabled(chosen.isEmpty)
-                }
+            } label: {
+                item("Move", systemImage: "folder")
+            }
+            .disabled(picked.isEmpty)
+            .accessibilityIdentifier("SelectionMove")
+            Menu {
+                LaterMenuItems(notes: picked) { pickingLater = true }
+            } label: {
+                item("Later", systemImage: "clock")
+            }
+            .disabled(!offersLater || picked.isEmpty)
+            .accessibilityIdentifier("SelectionLater")
+            Button {
+                withAnimation(.snappy) { Undoable.done(openTodos, in: context) }
+            } label: {
+                item("Done", systemImage: "checkmark.square")
+            }
+            .disabled(openTodos.isEmpty)
+            .accessibilityLabel("Mark as Done")
+            .accessibilityIdentifier("SelectionDone")
+            Menu {
                 Menu {
                     Button("Not Set") { change(.kind(nil)) }
                     ForEach(DocumentKind.allCases) { kind in
                         Button { change(.kind(kind)) } label: { Label(kind.title, systemImage: kind.symbol) }
                     }
                 } label: {
-                    actionLabel("Kind", systemImage: "tag", isOn: allDocuments)
+                    Label("Document Kind", systemImage: "tag")
                 }
                 .disabled(!allDocuments)
                 Button {
                     senderText = ""
                     askingSender = true
                 } label: {
-                    actionLabel("Sender", systemImage: "person.crop.square", isOn: allDocuments)
+                    Label("Set Sender…", systemImage: "person.crop.square")
                 }
                 .disabled(!allDocuments)
                 // Bills of the selection marked as paid at once (other papers are left alone).
-                let canPay = !Documents.payable(chosenNotes).isEmpty
-                Menu {
-                    Button { change(.paid(true)) } label: { Label("Mark as Paid", systemImage: "checkmark.circle") }
-                    Button { change(.paid(false)) } label: { Label("Mark as Unpaid", systemImage: "creditcard") }
-                } label: {
-                    actionLabel("Paid", systemImage: "checkmark.circle", isOn: canPay)
-                }
-                .disabled(!canPay)
-                let canMerge = allDocuments && DocumentFiles.mergeable(chosenNotes).count >= 2
+                PaidButton(notes: picked)
                 Button { choosingMergeTarget = true } label: {
-                    actionLabel("Merge", systemImage: "arrow.triangle.merge", isOn: canMerge)
+                    Label(canMerge ? "Merge \(DocumentFiles.mergeable(picked).count) PDFs…" : "Merge PDFs…", systemImage: "arrow.triangle.merge")
                 }
                 .disabled(!canMerge)
-                if showsDone {
-                    Button("Done", action: onDone)
-                        .font(.subheadline.weight(.bold))
+                Divider()
+                Button(role: .destructive) {
+                    withAnimation(.snappy) { Undoable.trash(picked, in: context) }
+                } label: {
+                    Label(picked.count == 1 ? "Delete 1 Entry" : "Delete \(picked.count) Entries", systemImage: "trash")
                 }
+                .disabled(picked.isEmpty)
+            } label: {
+                item("More", systemImage: "ellipsis.circle")
             }
-            .padding(.horizontal, 20)
+            // In the order of the design (Delete last), also when the menu opens upwards from the bar.
+            .menuOrder(.fixed)
+            .disabled(picked.isEmpty)
+            .accessibilityIdentifier("SelectionMore")
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .frame(height: 54)
+        .modifier(BarBackground())
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 4)
         .disabled(isWorking)
-        .padding(.bottom, Look.headerGap)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
         // Only what the list shows can be chosen: an entry moved out of it (or deleted) leaves the selection.
         .onChange(of: notes.map(\.id), initial: true) { _, ids in
             let visible = chosen.intersection(ids)
@@ -142,13 +181,9 @@ struct NoteSelectionBar: View {
         }
     }
 
-    private func actionLabel(_ title: LocalizedStringKey, systemImage: String, isOn: Bool) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(isOn ? Color.brandOnNavy : Color.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(isOn ? Color.brandNavy : Color.brandNavy.opacity(0.1), in: Capsule())
+    /// One of the four buttons: symbol over word, navy; dimmed while it does not apply.
+    private func item(_ title: LocalizedStringKey, systemImage: String) -> some View {
+        SelectionBarItem(title: title, systemImage: systemImage)
     }
 
     private func change(_ change: Documents.BulkChange) {
@@ -169,6 +204,27 @@ struct NoteSelectionBar: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+}
+
+/// A button of the selection bar: symbol over a small word, like a tab.
+private struct SelectionBarItem: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .medium))
+                .frame(height: 24)
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(isEnabled ? Color.brandNavy.readable : Color.secondary.opacity(0.6))
+        .frame(maxWidth: .infinity, minHeight: 48)
+        .contentShape(Rectangle())
     }
 }
 

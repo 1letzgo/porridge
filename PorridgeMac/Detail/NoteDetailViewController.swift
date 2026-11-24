@@ -1324,6 +1324,8 @@ final class PanelView: NSView {
         if let symbol { icon.image = .symbol(symbol, size: 14, weight: .semibold) }
         icon.contentTintColor = tint.readable
         if spinning { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        // A stopped spinner takes no room (the Inbox's one-line bundle card needs it).
+        spinner.isHidden = !spinning
         label.stringValue = text
         label.textColor = tint == .systemRed ? .brandDangerText : .labelColor
         self.detail.stringValue = detail ?? ""

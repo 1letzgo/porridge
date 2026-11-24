@@ -7,7 +7,7 @@ extension MainWindowController {
         focusSearch(sender)
     }
 
-    /// View › Triage Inbox and the Inbox's "Triage": the Inbox with the keyboard (J/K, L, F, D).
+    /// View › Triage Inbox and the Inbox's "Triage": the Inbox with the keyboard (J/K, F, L, D, ⌫).
     @objc func triageInbox(_ sender: Any?) {
         state.page = .inbox
         split.content.notes.toggleTriage()

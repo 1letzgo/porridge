@@ -451,6 +451,27 @@ enum DebugDriver {
             guard DataLocation.testFolder != nil else { log("seed-kinds: test data only"); return }
             TestSeed.seedEntryKinds(library.context)
             library.setNeedsReload()
+        case "tick":
+            // `tick <title>`: the box of that to-do's row, as a click on it does (in Today it leaves with Undo).
+            guard let note = library.notes.first(where: { $0.title == argument }) else { log("tick: none"); return }
+            Todos.tick(note, leavesList: state.page == .today, in: library.context)
+        case "seed-inbox":
+            // The Inbox of the mockups (`TestSeed.seedInbox`); only on test data.
+            guard DataLocation.testFolder != nil else { log("seed-inbox: test data only"); return }
+            TestSeed.seedInbox(library.context)
+            library.setNeedsReload()
+        case "triage":
+            // Triage on or off (the Inbox's "Triage"); `triage-key f|l|d|j|k|delete|escape` presses a key.
+            controller.split.content.notes.toggleTriage()
+        case "triage-key":
+            let codes: [String: (UInt16, String)] = [
+                "f": (3, "f"), "l": (37, "l"), "d": (2, "d"), "j": (38, "j"), "k": (40, "k"), "delete": (51, "\u{7f}"), "escape": (53, "\u{1b}"),
+            ]
+            guard let (code, chars) = codes[argument],
+                  let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: controller.window?.windowNumber ?? 0,
+                                               context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) else { log("triage-key: ?"); return }
+            controller.split.content.notes.table.keyDown(with: event)
+            DispatchQueue.main.async { log("triage-key: selection=\(state.selection.compactMap { library.note($0)?.title })") }
         case "open-kind":
             // `open-kind meeting|todo|pdf|link|note|image`: opens that entry of `seed-kinds`.
             guard let id = TestSeed.KindID.named(argument), let note = library.note(id) else { log("open-kind: none"); return }

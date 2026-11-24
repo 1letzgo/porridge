@@ -48,7 +48,7 @@ final class ListHeaderView: NSView {
         trailing.orientation = .horizontal
         trailing.spacing = 6
         let titleRow = NSStackView.horizontal([iconBox, title, NSView(), trailing], spacing: 8)
-        triageKeys.stringValue = String(localized: "J / K  Next, Previous   ·   L  Later   ·   F  File into Bowl   ·   D  Done (To-dos)   ·   Esc  End")
+        triageKeys.stringValue = String(localized: "J / K  Next, Previous   ·   F  File   ·   L  Later   ·   D  Done   ·   ⌫  Delete   ·   Esc  End")
         triageKeys.lineBreakMode = .byTruncatingTail
         triageKeys.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         triageKeys.isHidden = true

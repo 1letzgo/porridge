@@ -1,6 +1,6 @@
 import AppKit
 
-/// On top of the Inbox: one suggestion to put entries that belong together into a new bowl (`InboxBundler`). Once
+/// On top of the Inbox: one suggestion, in one line, to put entries that belong together into a new bowl (`InboxBundler`). Once
 /// that is done, the way back is the one undo toast (and ⌘Z).
 @MainActor
 final class InboxBundleBanner: NSView {
@@ -80,11 +80,10 @@ final class InboxBundleBanner: NSView {
     private func render() {
         if let bundle {
             setShown(true)
-            let text = bundle.isExistingBowl
-                ? "These \(bundle.noteIDs.count) entries belong together. Into bowl “\(bundle.name)”?"
-                : "These \(bundle.noteIDs.count) entries belong together. New bowl “\(bundle.name)”?"
+            // One line ("New bowl “Berlin Trip” for 3 entries?"); the titles are its tooltip and in Review….
             let titles = bundle.noteIDs.compactMap { Library.shared.note($0)?.displayTitle }.joined(separator: " · ")
-            panel.show(symbol: "sparkles", text: text, detail: titles, tint: .brandProject, action: ("Review…", { [weak self] in self?.openReview() }))
+            panel.show(symbol: "sparkles", text: bundle.line, tint: .brandProject, action: ("Review…", { [weak self] in self?.openReview() }))
+            panel.toolTip = titles
         } else {
             setShown(false)
         }
