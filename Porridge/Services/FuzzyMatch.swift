@@ -19,6 +19,49 @@ enum FuzzyMatch {
         return total * 4 - min(target.count, 120) / 8
     }
 
+    /// A strict score for going somewhere or running something (Search & Ask): every word of the query is found at
+    /// the start of a word of the text ("bow" → "Bowls", "q4" → "Q4 Planning"), inside a word only when it has four
+    /// letters or more ("view" → "Review"), or as the first letters of words in order ("rm" → "Record Meeting").
+    /// Letters scattered through the text never match ("cha" does not find "Kitchen Renovation"). Nil when it does not
+    /// match.
+    /// `wordStartsOnly`: only at the start of a word (for the extra words a target is found by).
+    static func strictScore(_ query: String, in text: String, wordStartsOnly: Bool = false) -> Int? {
+        let words = fold(query).split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return 0 }
+        let target = Array(fold(text))
+        guard !target.isEmpty else { return nil }
+        var total = 0
+        for word in words {
+            guard let part = strictWord(Array(word), in: target, wordStartsOnly: wordStartsOnly) else { return nil }
+            total += part
+        }
+        return total * 4 - min(target.count, 120) / 8
+    }
+
+    private static func strictWord(_ word: [Character], in target: [Character], wordStartsOnly: Bool) -> Int? {
+        if let start = substringStart(word, in: target) {
+            let atWord = start == 0 || !target[start - 1].isLetterOrDigit
+            if atWord || (word.count >= 4 && !wordStartsOnly) {
+                let end = start + word.count
+                let wholeWord = atWord && (end == target.count || !target[end].isLetterOrDigit)
+                return 100 + word.count * 10 + (atWord ? 40 : 0) + (wholeWord ? 25 : 0) + (start == 0 ? 10 : 0) - min(start, 30)
+            }
+        }
+        // The first letters of words, in order ("rm" → "Record Meeting").
+        guard word.count >= 2, !wordStartsOnly else { return nil }
+        var position = 0
+        for char in word {
+            var found: Int?
+            for index in position..<target.count where target[index] == char && (index == 0 || !target[index - 1].isLetterOrDigit) {
+                found = index
+                break
+            }
+            guard let found else { return nil }
+            position = found + 1
+        }
+        return 60 + word.count * 8
+    }
+
     /// The best score of the query in any of the texts (a title, a bowl's name and its other names).
     static func score(_ query: String, in texts: [String]) -> Int? {
         texts.compactMap { score(query, in: $0) }.max()

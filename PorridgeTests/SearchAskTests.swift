@@ -86,6 +86,61 @@ final class SearchAskTests: XCTestCase {
         XCTAssertEqual(SearchAsk.goTo("trip", in: targets, limit: 5).count, 5)
     }
 
+    func testGoToNeedsWordStartsNotScatteredLetters() {
+        let targets = SearchAsk.targets(
+            bowls: [bowl("Kitchen Renovation"), bowl("Q4 Planning"), bowl("Chk")], filters: [], notes: [], places: false
+        )
+        XCTAssertTrue(SearchAsk.goTo("cha", in: targets).isEmpty, "c…h…a scattered through Kitchen Renovation is no match")
+        XCTAssertEqual(SearchAsk.goTo("q4", in: targets).map(\.title), ["Q4 Planning"])
+        XCTAssertEqual(SearchAsk.goTo("chk", in: targets).map(\.title), ["Chk"])
+        XCTAssertEqual(SearchAsk.goTo("reno", in: targets).map(\.title), ["Kitchen Renovation"], "the start of a later word")
+        XCTAssertEqual(SearchAsk.goTo("vation", in: targets).map(\.title), ["Kitchen Renovation"], "a longer run inside a word")
+        XCTAssertTrue(SearchAsk.goTo("vat", in: targets).isEmpty, "three letters inside a word are not enough")
+    }
+
+    /// The Mac's commands are matched by `SearchAsk.score` (title and extra words) — the findings that made "design"
+    /// preselect Record Meeting and "Chk" New Chat.
+    func testCommandsMatchByNameAndWordStartsOnly() throws {
+        XCTAssertNil(SearchAsk.score("design", title: "Record Meeting", keywords: "start recording calendar appointment"))
+        XCTAssertNil(SearchAsk.score("chk", title: "New Chat", keywords: "ask question chat"))
+        XCTAssertNil(SearchAsk.score("bow", title: "Export Everything…", keywords: "backup markdown"))
+        XCTAssertNil(SearchAsk.score("bow", title: "Go to Archive", keywords: "show archived"))
+        XCTAssertNil(SearchAsk.score("cha", title: "Kitchen Renovation"))
+        XCTAssertNotNil(SearchAsk.score("bow", title: "Go to Bowls", keywords: "show all bowls"))
+        XCTAssertNotNil(SearchAsk.score("rm", title: "Record Meeting"), "first letters of the words")
+        XCTAssertNotNil(SearchAsk.score("chat", title: "New Chat"))
+        XCTAssertNotNil(SearchAsk.score("preferences", title: "Settings", keywords: "open preferences options"), "an extra word")
+        XCTAssertNil(SearchAsk.score("pr", title: "Settings", keywords: "open preferences options"), "extra words only from three letters")
+        let byName = try XCTUnwrap(SearchAsk.score("settings", title: "Settings", keywords: "preferences"))
+        let byWord = try XCTUnwrap(SearchAsk.score("preferences", title: "Settings", keywords: "preferences"))
+        XCTAssertGreaterThan(byName, byWord, "the name beats an extra word")
+    }
+
+    func testFitOfANameToWhatWasTyped() {
+        XCTAssertEqual(SearchAsk.fit("chk", name: "Chk"), .exact)
+        XCTAssertEqual(SearchAsk.fit(" Design ", name: "Design Review"), .start)
+        XCTAssertEqual(SearchAsk.fit("review", name: "Design Review"), .words)
+        XCTAssertEqual(SearchAsk.fit("q4", name: "Q4 Planning"), .start)
+        XCTAssertEqual(SearchAsk.fit("view", name: "Design Review"), .loose)
+        XCTAssertEqual(SearchAsk.fit("rm", name: "Record Meeting"), .loose)
+    }
+
+    func testReturnNeverRunsAnActionOverAnEntryOrBowlThatFitsAsWell() {
+        // "design": Record Meeting (found loosely) and the entry "Design Review".
+        XCTAssertEqual(SearchAsk.best([(.loose, .action), (.start, .entry)]), 1)
+        // "Chk": the bowl, its entries, New Chat (loosely).
+        XCTAssertEqual(SearchAsk.best([(.loose, .action), (.exact, .bowl), (.start, .entry)]), 1)
+        // "new note" typed: the command fits exactly, an entry only by its text.
+        XCTAssertEqual(SearchAsk.best([(.exact, .action), (.loose, .entry)]), 0)
+        // An entry named exactly like the command wins the tie.
+        XCTAssertEqual(SearchAsk.best([(.exact, .action), (.exact, .entry)]), 1)
+        // "bow": Go to Bowls (a place) over a loosely found entry.
+        XCTAssertEqual(SearchAsk.best([(.start, .place), (.loose, .entry)]), 0)
+        // Only an action found loosely: nothing is chosen (Show All Results is).
+        XCTAssertNil(SearchAsk.best([(.loose, .action)]))
+        XCTAssertEqual(SearchAsk.best([(.loose, .action), (.loose, .entry)]), 1)
+    }
+
     // MARK: Entries
 
     func testEntriesFitScopeKindTagsAndText() {

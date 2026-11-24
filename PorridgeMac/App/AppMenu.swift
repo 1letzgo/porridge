@@ -383,7 +383,7 @@ final class BucketsMenu: NSObject, NSMenuDelegate {
         guard let controller = MainWindowController.frontIfAny else { return }
         let notes = controller.selectedNotes.filter { $0.modelContext != nil && !$0.isDeleted }
         guard !notes.isEmpty else {
-            menu.addItem(withTitle: "No Note Selected", action: nil, keyEquivalent: "").isEnabled = false
+            menu.addItem(withTitle: "No Entry Selected", action: nil, keyEquivalent: "").isEnabled = false
             return
         }
         for item in NoteOperations.bucketMenu(for: notes, window: controller.window).items {

@@ -167,11 +167,7 @@ enum SearchAsk {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, limit > 0 else { return [] }
         let scored: [(target: Target, score: Int, order: Int)] = targets.enumerated().compactMap { index, target in
-            let byName = FuzzyMatch.score(query, in: target.title)
-            let byKeyword = target.keywords.isEmpty ? nil : FuzzyMatch.score(query, in: target.title + " " + target.keywords).map { $0 - 60 }
-            guard let score = [byName, byKeyword].compactMap({ $0 }).max() else { return nil }
-            // Letters scattered through a long name are no reason to go there.
-            guard score > 0 else { return nil }
+            guard let score = score(query, title: target.title, keywords: target.keywords) else { return nil }
             return (target, score - (target.isArchived ? 40 : 0), index)
         }
         return scored
@@ -182,6 +178,70 @@ enum SearchAsk {
             }
             .prefix(limit)
             .map(\.target)
+    }
+
+    /// How well a query finds something to go to or run (a place, bowl, smart filter or a Mac command): by its name
+    /// (`FuzzyMatch.strictScore`: word starts, longer runs inside a word, first letters), or 60 less by its extra
+    /// words, there only at word starts and from three letters on. Nil when it does not fit: letters scattered
+    /// through a name are no reason to go there ("cha" is not "Kitchen Renovation").
+    static func score(_ query: String, title: String, keywords: String = "") -> Int? {
+        let byName = FuzzyMatch.strictScore(query, in: title)
+        var byKeyword: Int?
+        if !keywords.isEmpty, query.trimmingCharacters(in: .whitespaces).count >= 3 {
+            byKeyword = FuzzyMatch.strictScore(query, in: title + " " + keywords, wordStartsOnly: true).map { $0 - 60 }
+        }
+        guard let best = [byName, byKeyword].compactMap({ $0 }).max(), best > 0 else { return nil }
+        return best
+    }
+
+    // MARK: The best row
+
+    /// How closely a row's name fits what was typed, for choosing the row Return runs.
+    enum Fit: Int, Comparable, Sendable {
+        /// Found otherwise: inside the text of an entry, by first letters or extra words.
+        case loose
+        /// Every typed word starts a word of the name ("review" → "Design Review").
+        case words
+        /// The name starts with what was typed ("design" → "Design Review").
+        case start
+        /// The name is what was typed.
+        case exact
+
+        static func < (a: Fit, b: Fit) -> Bool { a.rawValue < b.rawValue }
+    }
+
+    static func fit(_ query: String, name: String) -> Fit {
+        let typed = FuzzyMatch.fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
+        let folded = FuzzyMatch.fold(name.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !typed.isEmpty else { return .loose }
+        if folded == typed { return .exact }
+        if folded.hasPrefix(typed) { return .start }
+        let nameWords = folded.split { !$0.isLetter && !$0.isNumber }
+        let typedWords = typed.split { !$0.isLetter && !$0.isNumber }
+        if !typedWords.isEmpty, typedWords.allSatisfy({ word in nameWords.contains { $0.hasPrefix(word) } }) { return .words }
+        return .loose
+    }
+
+    /// What a row is, for choosing the row Return runs: going somewhere (a bowl or smart filter, an entry, a place)
+    /// changes nothing; an action (New Note, Record Meeting, Export…) does something.
+    enum Pick: Int, Comparable, Sendable {
+        case bowl, entry, place, action
+        static func < (a: Pick, b: Pick) -> Bool { a.rawValue < b.rawValue }
+    }
+
+    /// The row Return runs among the candidates (in the order shown): the closest fit, among equals a bowl or smart
+    /// filter before an entry before a place before an action. An action is never chosen by a loose fit, and never
+    /// over a bowl or entry that fits as well (so "design" opens "Design Review", never Record Meeting). Nil when
+    /// nothing qualifies (then "Show All Results" is the safe choice).
+    static func best(_ candidates: [(fit: Fit, pick: Pick)]) -> Int? {
+        candidates.indices
+            .filter { candidates[$0].pick != .action || candidates[$0].fit > .loose }
+            .min { a, b in
+                let x = candidates[a], y = candidates[b]
+                if x.fit != y.fit { return x.fit > y.fit }
+                if x.pick != y.pick { return x.pick < y.pick }
+                return a < b
+            }
     }
 
     // MARK: Entries

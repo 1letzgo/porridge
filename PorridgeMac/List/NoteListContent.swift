@@ -137,9 +137,24 @@ enum NoteListContent {
         case .search:
             let found = search(notes, state: state)
             let query = state.searchText.isEmpty ? state.searchTags.map { "#" + $0 }.joined(separator: " ") : state.searchText
+            // The bowls and smart filters whose names fit come first (as in the results under the field), so "Q4"
+            // finds the bowl "Q4 Planning" even when no entry says it.
+            var places: [ListItem] = []
+            if state.kindFilter == nil, state.searchTags.isEmpty, let text = SearchAsk.question(state.searchText) {
+                let targets = SearchAsk.targets(bowls: library.projects, filters: SmartFilterStore.shared.filters, notes: notes, places: false)
+                places = SearchAsk.goTo(text, in: targets, limit: 5).compactMap { target in
+                    switch target.destination {
+                    case .bowl(let id): .project(id)
+                    case .smartFilter(let id): .link(.smartFilter(id))
+                    default: nil
+                    }
+                }
+            }
+            let entries: [(ListSection, [ListItem])] = !state.hasSearch ? [] : state.kindFilter == .todos ? dueSections(found) : dateSections(found)
+            let placeSection: [(ListSection, [ListItem])] = places.isEmpty ? [] : [(ListSection(id: "search-bowls", title: String(localized: "Bowls & Smart Filters"), tint: .project), places)]
             return Built(
                 // The open to-dos by when they are due; everything else by when it changed.
-                sections: !state.hasSearch ? [] : state.kindFilter == .todos ? dueSections(found) : dateSections(found),
+                sections: placeSection + entries,
                 emptyTitle: state.hasSearch ? "No Results for “\(query)”" : "Search",
                 emptyMessage: state.hasSearch ? "Check the spelling or try a new search." : "Type a word to search your notes, meetings and links, or pick a tag.",
                 emptySymbol: "magnifyingglass"

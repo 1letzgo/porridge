@@ -30,6 +30,8 @@ struct CommandItem {
     var keywords: String = ""
     /// Shown with an empty field.
     var isSuggested = false
+    /// A command that only goes somewhere (Go to Today, Settings, Weekly Review): Return may run it like a bowl.
+    var onlyGoes = false
     var run: @MainActor () -> Void
 }
 
@@ -69,9 +71,13 @@ enum CommandBarItems {
             return sections
         }
         var sections = [CommandSection(title: nil, items: [askItem(question, controller: controller)])]
-        let matching = FuzzyMatch.rank(commands, query: question) { $0.title + " " + $0.keywords }
-            .filter { FuzzyMatch.score(question, in: [$0.title, $0.title + " " + $0.keywords]) ?? 0 > 0 }
-            .prefix(commandLimit)
+        // Only what fits by name or at the start of its words: letters scattered through a command are no match.
+        var scored: [(order: Int, item: CommandItem, score: Int)] = []
+        for (index, item) in commands.enumerated() {
+            if let score = SearchAsk.score(question, title: item.title, keywords: item.keywords) { scored.append((index, item, score)) }
+        }
+        scored.sort { $0.score != $1.score ? $0.score > $1.score : $0.order < $1.order }
+        let matching = scored.prefix(commandLimit).map(\.item)
         if !matching.isEmpty { sections.append(CommandSection(title: String(localized: "Commands"), items: Array(matching))) }
         let targets = SearchAsk.goTo(
             question, in: SearchAsk.targets(bowls: library.projects, filters: SmartFilterStore.shared.filters, notes: library.notes, places: false),
@@ -140,7 +146,7 @@ enum CommandBarItems {
 
     private static func commands(for controller: MainWindowController) -> [CommandItem] {
         func go(_ title: String, _ symbol: String, _ tint: NSColor, _ keywords: String, suggested: Bool = false, _ page: SidebarPage) -> CommandItem {
-            CommandItem(kind: .command, title: title, symbol: symbol, tint: tint, keywords: keywords, isSuggested: suggested) { [weak controller] in
+            CommandItem(kind: .command, title: title, symbol: symbol, tint: tint, keywords: keywords, isSuggested: suggested, onlyGoes: true) { [weak controller] in
                 controller?.state.page = page
             }
         }
@@ -181,13 +187,13 @@ enum CommandBarItems {
             CommandItem(kind: .command, title: String(localized: "Export Everything…"), symbol: "square.and.arrow.up", tint: .brandNavy, keywords: "backup markdown") { [weak controller] in
                 controller?.exportEverything(nil)
             },
-            CommandItem(kind: .command, title: String(localized: "Weekly Review"), symbol: "calendar.badge.checkmark", tint: .brandNavy, keywords: "week summary", isSuggested: true) { [weak controller] in
+            CommandItem(kind: .command, title: String(localized: "Weekly Review"), symbol: "calendar.badge.checkmark", tint: .brandNavy, keywords: "week summary", isSuggested: true, onlyGoes: true) { [weak controller] in
                 controller?.showWeeklyReview(nil)
             },
-            CommandItem(kind: .command, title: String(localized: "Triage Inbox"), symbol: "keyboard", tint: .brandSky, keywords: "inbox file sort") { [weak controller] in
+            CommandItem(kind: .command, title: String(localized: "Triage Inbox"), symbol: "keyboard", tint: .brandSky, keywords: "inbox file sort", onlyGoes: true) { [weak controller] in
                 controller?.triageInbox(nil)
             },
-            CommandItem(kind: .command, title: String(localized: "Settings"), symbol: "gearshape", tint: .systemGray, keywords: "open preferences options models", isSuggested: true) {
+            CommandItem(kind: .command, title: String(localized: "Settings"), symbol: "gearshape", tint: .systemGray, keywords: "open preferences options models", isSuggested: true, onlyGoes: true) {
                 NSApp.activate()
                 SettingsWindowController.shared.show(tab: nil)
             },
@@ -196,7 +202,7 @@ enum CommandBarItems {
             go(String(localized: "Go to Bowls"), "folder.fill", .brandProject, "show all bowls", .bowls),
             go(String(localized: "Go to Chat"), "bubble.left.and.bubble.right.fill", .brandNavy, "show chats all chats ask", .chat),
             go(String(localized: "Open To-dos"), "checklist", .brandTask, "show tasks go to", .todos),
-            go(String(localized: "Go to Archive"), "archivebox.fill", .brandNavy, "show archived bowls", .archive),
+            go(String(localized: "Go to Archive"), "archivebox.fill", .brandNavy, "show archived", .archive),
             go(String(localized: "Go to Recently Deleted"), "trash.fill", .systemRed, "show trash bin", .trash),
         ]
         if Library.shared.plaudSignedIn {
@@ -475,16 +481,46 @@ final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewData
         if heightConstraint?.constant != height { heightConstraint?.constant = height }
     }
 
-    /// The best row: the first one after "Ask Porridge" (asking is ⌘↩), else the first.
+    /// The best row (`SearchAsk.best`): the closest fit by name, a bowl or an entry before a command that does
+    /// something, which is never chosen over an entry or bowl that fits as well; "Show All Results" when nothing
+    /// fits well enough. Asking is ⌘↩, never Return. With an empty field: the first row.
     private func selectBest() {
         let selectable = rows.indices.filter { if case .item = rows[$0] { true } else { false } }
         guard let first = selectable.first else { return }
-        let best = selectable.first { index in
-            if case .item(let item) = rows[index] { return item.kind != .ask && item.kind != .showAll }
-            return false
-        } ?? first
+        let text = SearchAsk.question(isAnchored ? query : field.stringValue)
+        var best = first
+        if let text {
+            let candidates: [(row: Int, fit: SearchAsk.Fit, pick: SearchAsk.Pick)] = selectable.compactMap { index in
+                guard case .item(let item) = rows[index] else { return nil }
+                let pick: SearchAsk.Pick
+                switch item.kind {
+                case .bowl, .smartFilter: pick = .bowl
+                case .entry: pick = .entry
+                case .command: pick = item.onlyGoes ? .place : .action
+                case .ask, .showAll, .chat, .recentSearch: return nil
+                }
+                // A command is named by its title without "Go to" ("Inbox" fits "Go to Inbox" exactly).
+                let name = item.kind == .command ? Self.name(of: item.title) : item.title
+                return (index, SearchAsk.fit(text, name: name), pick)
+            }
+            if let chosen = SearchAsk.best(candidates.map { ($0.fit, $0.pick) }) {
+                best = candidates[chosen].row
+            } else if let all = selectable.first(where: { if case .item(let item) = rows[$0] { item.kind == .showAll } else { false } }) {
+                best = all
+            }
+        } else {
+            best = selectable.first { index in
+                if case .item(let item) = rows[index] { return item.kind != .ask && item.kind != .showAll }
+                return false
+            } ?? first
+        }
         table.selectRowIndexes([best], byExtendingSelection: false)
         table.scrollRowToVisible(0)
+    }
+
+    private static func name(of title: String) -> String {
+        let prefix = String(localized: "Go to ")
+        return title.hasPrefix(prefix) ? String(title.dropFirst(prefix.count)) : title
     }
 
     private func height(of row: Row) -> CGFloat {

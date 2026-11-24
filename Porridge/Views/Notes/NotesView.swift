@@ -114,7 +114,7 @@ struct NotesView: View {
             if let note = selectedNote {
                 noteView(note, onBack: nil)
             } else {
-                EmptyStateView(title: "No Note Selected", message: "Pick a note from the list.", systemImage: "note.text")
+                EmptyStateView(title: "No Entry Selected", message: "Pick an entry from the list.", systemImage: "note.text")
             }
         }
     }

@@ -62,8 +62,8 @@ final class DetailViewController: NSViewController {
         guard let id = state.openNoteID, let note = note(id) else {
             show(key: nil, nil)
             empty.show(
-                title: state.selection.count > 1 ? "\(state.selection.count) Notes Selected" : "No Note Selected",
-                message: state.selection.count > 1 ? "Drag them onto a bowl, or use the context menu." : "Pick a note from the list.",
+                title: state.selection.count > 1 ? "\(state.selection.count) Entries Selected" : "No Entry Selected",
+                message: state.selection.count > 1 ? "Drag them onto a bowl, or use the context menu." : "Pick an entry from the list.",
                 symbol: "note.text"
             )
             return
