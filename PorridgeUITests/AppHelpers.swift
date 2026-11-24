@@ -4,9 +4,15 @@ extension XCTestCase {
     /// The app without onboarding and without sync, so a run stays on this simulator.
     func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO"]
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO"]
         app.launch()
         return app
+    }
+
+    /// Where the screenshot tests write their pictures: `SHOTS_DIR` (set as `TEST_RUNNER_SHOTS_DIR=<folder>` for
+    /// `xcodebuild`), else the stage's default folder. Pictures are written only when the folder exists.
+    func shotsFolder(default path: String) -> URL {
+        URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHOTS_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? path)
     }
 
     /// A title no earlier run left behind.
@@ -31,6 +37,13 @@ extension XCUIApplication {
             if alert.waitForNonExistence(timeout: 3) { return }
         }
         XCTAssertFalse(alert.exists, "alert did not close")
+    }
+
+    /// New (0) or Later (1) of the Inbox: a segmented control, or capsules with the largest text sizes.
+    func inboxSegment(_ index: Int) -> XCUIElement {
+        let control = segmentedControls["InboxSegment"]
+        if control.exists { return control.buttons.element(boundBy: index) }
+        return buttons.matching(NSPredicate(format: "label BEGINSWITH %@", index == 0 ? "New " : "Later ")).firstMatch
     }
 
     /// The "+" pill of the place in front (the last pill of its bar).

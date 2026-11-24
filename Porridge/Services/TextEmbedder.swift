@@ -10,9 +10,16 @@ actor TextEmbedder {
     private var embedding: NLContextualEmbedding?
     /// The model could not be loaded (no assets, old OS): everything falls back to word search.
     private var unavailable = false
+    /// The model's assets are being downloaded (a fresh install): nil until the system answers.
+    private var assetsRequested = false
+    private var assetsResult: Bool?
 
     /// Length of the vectors, when the model is there.
     private(set) var dimension = 0
+
+    /// How long a question waits for the model's assets on a fresh install. The download goes on after that; until
+    /// it is there, answers and the index use words only (a first question never hangs on "Searching your notes…").
+    static let assetWait: Duration = .seconds(4)
 
     private func prepare() async -> NLContextualEmbedding? {
         if let embedding { return embedding }
@@ -22,10 +29,20 @@ actor TextEmbedder {
             return nil
         }
         if !model.hasAvailableAssets {
-            let result: NLContextualEmbedding.AssetsResult = await withCheckedContinuation { continuation in
-                model.requestAssets { result, _ in continuation.resume(returning: result) }
+            if !assetsRequested {
+                assetsRequested = true
+                model.requestAssets { result, _ in
+                    Task { await TextEmbedder.shared.assetsArrived(result == .available) }
+                }
             }
-            guard result == .available else {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: Self.assetWait)
+            while assetsResult == nil, clock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            if embedding != nil { return embedding }
+            guard let arrived = assetsResult else { return nil }
+            guard arrived else {
                 unavailable = true
                 return nil
             }
@@ -39,6 +56,10 @@ actor TextEmbedder {
         embedding = model
         dimension = model.dimension
         return model
+    }
+
+    private func assetsArrived(_ available: Bool) {
+        assetsResult = available
     }
 
     /// Whether vectors can be made at all (loads the model on first use).

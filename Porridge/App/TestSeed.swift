@@ -15,6 +15,10 @@ enum TestSeed {
         if UserDefaults.standard.bool(forKey: "seedInbox"), UserDefaults.standard.bool(forKey: "emptyStore") { seedInbox(container.mainContext) }
         guard let title = UserDefaults.standard.string(forKey: "seedMeetingWithTasks"), !title.isEmpty else { return }
         let context = container.mainContext
+        // Made again on every launch (the launch argument stays set): what an earlier launch left goes first.
+        let earlier = notes(in: context) { $0.title == title && $0.source == .meeting }
+        let earlierIDs = Set(earlier.map(\.id.uuidString))
+        removeSeeded(earlier + notes(in: context) { $0.todoSourceID.map(earlierIDs.contains) ?? false }, bowlsNamed: [title], in: context)
         let bucket = NoteFolder(name: title)
         context.insert(bucket)
         let meeting = Note()
@@ -46,6 +50,9 @@ enum TestSeed {
     private static func seedTodos(_ container: ModelContainer) {
         guard let prefix = UserDefaults.standard.string(forKey: "seedTodos"), !prefix.isEmpty else { return }
         let context = container.mainContext
+        // Made again on every launch (a ticked one is open again), never twice: what an earlier launch left goes first.
+        let names = ["long overdue", "today", "upcoming", "no date"].map { "\(prefix) \($0)" }
+        removeSeeded(notes(in: context) { names.contains($0.title) }, bowlsNamed: [prefix], in: context)
         let bucket = NoteFolder(name: prefix)
         context.insert(bucket)
         let today = Date()
@@ -62,6 +69,24 @@ enum TestSeed {
                 todo.filedAt = today
             }
             context.insert(todo)
+        }
+        try? context.save()
+    }
+
+    @MainActor
+    private static func notes(in context: ModelContext, where wanted: (Note) -> Bool) -> [Note] {
+        ((try? context.fetch(FetchDescriptor<Note>())) ?? []).filter(wanted)
+    }
+
+    /// Takes away what an earlier launch seeded: the notes, and the bowls of these names once nothing else is in them.
+    @MainActor
+    private static func removeSeeded(_ old: [Note], bowlsNamed names: [String], in context: ModelContext) {
+        old.forEach(context.delete)
+        let gone = Set(old.map(\.id))
+        let rest = ((try? context.fetch(FetchDescriptor<Note>())) ?? []).filter { !gone.contains($0.id) }
+        for bowl in (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? [] where names.contains(bowl.name) {
+            let key = Projects.key(bowl)
+            if !rest.contains(where: { $0.projectIDs.contains(key) }) { context.delete(bowl) }
         }
         try? context.save()
     }

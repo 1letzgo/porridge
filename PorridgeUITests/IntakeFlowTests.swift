@@ -96,7 +96,7 @@ final class IntakeFlowTests: XCTestCase {
     /// The Inbox of the mockups on a store in memory (`-seedInbox`), without a notification prompt for Later.
     private func launchSeededInbox() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO",
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO",
                                 "-emptyStore", "YES", "-seedInbox", "YES", "-quietNotifications", "YES"]
         app.launch()
         app.openTab("Inbox")

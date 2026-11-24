@@ -2,10 +2,10 @@ import XCTest
 
 /// Pictures of the three places to look at (design stage 4): filled and empty, a bowl's ⋯, the Add sheet, Settings
 /// from the gear, Today on another day (dark mode is switched from outside: `xcrun simctl ui … appearance dark`, the
-/// device's appearance from the test does not reach the app on this simulator). They go to /tmp/porridge-s4-shots when that folder exists
+/// device's appearance from the test does not reach the app on this simulator). They go to /tmp/porridge-s4-shots (or `SHOTS_DIR`, `TEST_RUNNER_SHOTS_DIR` for xcodebuild) when that folder exists
 /// (simulator only); without it the test only walks the screens.
 final class PlacesShotsTests: XCTestCase {
-    private let folder = URL(fileURLWithPath: "/tmp/porridge-s4-shots")
+    private lazy var folder = shotsFolder(default: "/tmp/porridge-s4-shots")
 
     override func setUp() {
         continueAfterFailure = true
@@ -19,7 +19,7 @@ final class PlacesShotsTests: XCTestCase {
 
     private func launch(_ extra: [String]) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO"] + extra
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO"] + extra
         app.launch()
         return app
     }
@@ -34,9 +34,9 @@ final class PlacesShotsTests: XCTestCase {
             shoot("today-end\(suffix)")
             app.openTab("Inbox")
             shoot("inbox\(suffix)")
-            app.segmentedControls["InboxSegment"].buttons.element(boundBy: 1).tap()
+            app.inboxSegment(1).tap()
             shoot("inbox-later\(suffix)")
-            app.segmentedControls["InboxSegment"].buttons.element(boundBy: 0).tap()
+            app.inboxSegment(0).tap()
             app.openTab("Bowls")
             shoot("bowls\(suffix)")
             app.swipeUp()

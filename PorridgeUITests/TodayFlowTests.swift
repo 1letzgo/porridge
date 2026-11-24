@@ -16,7 +16,7 @@ final class TodayFlowTests: XCTestCase {
     func testTodayCardOpensTheDayAndAnEntryOffersAnAppointment() throws {
         let prefix = unique("Today")
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
         app.launch()
 
         // Today is the first tab.
@@ -46,7 +46,7 @@ final class TodayFlowTests: XCTestCase {
     func testTickedTodoLeavesToday() throws {
         let prefix = unique("Tick")
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-emptyStore", "YES", "-seedTodos", prefix]
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-emptyStore", "YES", "-seedTodos", prefix]
         app.launch()
         app.openTab("Today")
 

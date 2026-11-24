@@ -2,10 +2,10 @@ import XCTest
 
 /// Pictures of stage 6 to look at: Today with a to-do being ticked and on another day, the Inbox with "✦ Bowl" and
 /// the one-line bundle card, both swipes, the Later sheet, Triage (also on a to-do) and the selection bar. They go to
-/// /tmp/porridge-s6-shots when that folder exists (simulator only); dark mode is switched from outside
+/// /tmp/porridge-s6-shots (or `SHOTS_DIR`, `TEST_RUNNER_SHOTS_DIR` for xcodebuild) when that folder exists (simulator only); dark mode is switched from outside
 /// (`xcrun simctl ui … appearance dark`) and named by `TEST_RUNNER_SHOTS_SUFFIX=-dark`.
 final class InboxShotsTests: XCTestCase {
-    private let folder = URL(fileURLWithPath: "/tmp/porridge-s6-shots")
+    private lazy var folder = shotsFolder(default: "/tmp/porridge-s6-shots")
     private let suffix = ProcessInfo.processInfo.environment["SHOTS_SUFFIX"] ?? ""
 
     override func setUp() {
@@ -20,7 +20,7 @@ final class InboxShotsTests: XCTestCase {
 
     private func launch(_ extra: [String]) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-emptyStore", "YES", "-quietNotifications", "YES"] + extra
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-emptyStore", "YES", "-quietNotifications", "YES"] + extra
         app.launch()
         return app
     }
@@ -28,9 +28,14 @@ final class InboxShotsTests: XCTestCase {
     func testToday() throws {
         let app = launch(["-seedTodos", "Garden"])
         app.openTab("Today")
-        XCTAssertTrue(app.staticTexts["Garden today"].waitForExistence(timeout: 10))
+        // With the largest text sizes the to-do is further down: the list is scrolled to it.
+        let todo = app.staticTexts["Garden today"]
+        for _ in 0..<5 where !(todo.waitForExistence(timeout: 3) && todo.isHittable) { app.swipeUp() }
+        XCTAssertTrue(todo.exists)
         shoot("today")
-        app.switches.matching(NSPredicate(format: "label == 'To-do' AND value == 'Not Done'")).firstMatch.tap()
+        let box = app.switches.matching(NSPredicate(format: "label == 'To-do' AND value == 'Not Done'")).firstMatch
+        for _ in 0..<3 where !box.isHittable { app.swipeUp() }
+        box.tap()
         shoot("today-ticked")
         app.buttons["TodayNextDay"].tap()
         shoot("today-next-day")

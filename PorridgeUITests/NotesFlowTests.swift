@@ -98,7 +98,7 @@ final class NotesFlowTests: XCTestCase {
     /// The largest text size: a picture of the list to look at, and the buttons still there.
     func testLargestTextKeepsTheBottomButtons() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         XCTAssertTrue(app.addButton.waitForExistence(timeout: 30))
         XCTAssertTrue(app.addButton.isHittable, "the bar's + is cut off")
@@ -238,7 +238,7 @@ final class NotesFlowTests: XCTestCase {
     /// A `porridge://entry/<id>` link opens the entry at once, on the tab in front, without another tap.
     func testEntryLinkOpensAtOnce() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES"]
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES"]
         app.launch()
         app.openTab("Bowls")
         XCTAssertTrue(app.addButton.waitForExistence(timeout: 30))
@@ -258,7 +258,7 @@ final class NotesFlowTests: XCTestCase {
     /// An entry's head opens Details at the section of a value; the bowl is changed there.
     func testMeetingDetailsFromMetaValueChangesBowl() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES"]
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES"]
         app.launch()
         app.search(for: "Design Review")
         let row = try XCTUnwrap(app.searchResult("Design Review"), "seeded meeting missing")
@@ -310,10 +310,10 @@ final class NotesFlowTests: XCTestCase {
     }
 
     /// ✦ AI · Share · ⋯ More of every kind show the items of `EntryMenus` (design table 3.1); screenshots of each
-    /// open menu go to /tmp/porridge-s3-shots when that folder exists (simulator only).
+    /// open menu go to /tmp/porridge-s3-shots (or `SHOTS_DIR`) when that folder exists (simulator only).
     func testEntryPillsPerKind() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES"]
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES"]
         app.launch()
         let kinds: [(name: String, title: String, ai: [String], notAI: [String], more: [String], notMore: [String])] = [
             ("note", "Packing list & plan", ["Enhance with AI…", "Rewrite Selection…", "Split into Bowl…", "Ask About This Bowl"], ["Suggest To-dos"],
@@ -328,7 +328,7 @@ final class NotesFlowTests: XCTestCase {
             ("pdf", "Invoice INV-2026-1142", [], ["Suggest To-dos", "Ask About This Bowl"],
              ["Pin", "Mark as Paid", "Edit Pages…", "Later", "Delete"], ["Save as Template…"]),
         ]
-        let shots = URL(fileURLWithPath: "/tmp/porridge-s3-shots")
+        let shots = shotsFolder(default: "/tmp/porridge-s3-shots")
         func shoot(_ name: String) {
             guard FileManager.default.fileExists(atPath: shots.path) else { return }
             try? XCUIScreen.main.screenshot().pngRepresentation.write(to: shots.appendingPathComponent("ios-\(name).png"))

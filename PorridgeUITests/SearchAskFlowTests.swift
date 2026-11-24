@@ -11,7 +11,7 @@ final class SearchAskFlowTests: XCTestCase {
 
     private func launch(_ extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES", "-chatStub", "YES"] + extra
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES", "-chatStub", "YES"] + extra
         app.launch()
         return app
     }

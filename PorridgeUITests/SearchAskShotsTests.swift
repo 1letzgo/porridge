@@ -2,11 +2,11 @@ import XCTest
 
 /// Pictures of Search & Ask and the Chat tab to look at (design stage 5): the empty Chat tab, the empty search with
 /// recent searches, a typed query with "Ask Porridge" first, the hand-over with an answer and its sources, a card of
-/// changes to confirm, Ask About This Bowl, All Chats. They go to /tmp/porridge-s5-shots when that folder exists
+/// changes to confirm, Ask About This Bowl, All Chats. They go to /tmp/porridge-s5-shots (or `SHOTS_DIR`, `TEST_RUNNER_SHOTS_DIR` for xcodebuild) when that folder exists
 /// (simulator only); `TEST_RUNNER_SHOT_SUFFIX=-dark` names a second run after the simulator was switched to dark.
 /// The model is the Debug stand-in (`-chatStub YES`).
 final class SearchAskShotsTests: XCTestCase {
-    private let folder = URL(fileURLWithPath: "/tmp/porridge-s5-shots")
+    private lazy var folder = shotsFolder(default: "/tmp/porridge-s5-shots")
     private var suffix: String { ProcessInfo.processInfo.environment["SHOT_SUFFIX"] ?? "" }
 
     override func setUp() {
@@ -21,7 +21,7 @@ final class SearchAskShotsTests: XCTestCase {
 
     func testSearchAndChat() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES", "-chatStub", "YES"]
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES", "-chatStub", "YES"]
         app.launch()
 
         app.openTab("Chat")

@@ -86,7 +86,7 @@ final class TodoFlowTests: XCTestCase {
     func testSuggestedTodosFromAMeetingAreTakenOn() throws {
         let title = unique("Launch")
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO",
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO",
                                 "-myName", "Me", "-seedMeetingWithTasks", title]
         app.launch()
 
@@ -128,7 +128,7 @@ final class TodoFlowTests: XCTestCase {
     func testTodosFolderListsOpenTodosByDueDay() throws {
         let prefix = unique("Folder")
         let app = XCUIApplication()
-        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
+        app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
         app.launch()
 
         // Open To-dos is a fixed row at the end of Today.
