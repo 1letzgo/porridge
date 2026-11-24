@@ -1475,7 +1475,8 @@ struct NoteRow: View {
             ThingsRowIcon(systemImage: note.kindSymbol, tint: tint, isPinned: note.isPinned)
                 .accessibilityLabel(note.kindName)
                 .padding(.top, 1)
-            let thumbnail = note.attachmentsData == nil ? nil : note.attachments.first(where: { $0.kind != .file })
+            // No picture with the largest text sizes: the text needs the width.
+            let thumbnail = note.attachmentsData == nil || typeSize.isAccessibilitySize ? nil : note.attachments.first(where: { $0.kind != .file })
             VStack(alignment: .leading, spacing: 3) {
               VStack(alignment: .leading, spacing: 3) {
                 Text(note.displayTitle)
@@ -1501,13 +1502,21 @@ struct NoteRow: View {
               // The footer must start below the picture, which is beside the text above it.
               .frame(minHeight: thumbnail == nil ? 0 : 52, alignment: .top)
                 // The full line when there is room (narrow sidebar on the Mac); otherwise without domain and speakers.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) { footer(compact: false) }
-                    HStack(spacing: 8) { footer(compact: true) }
+                // With the largest text sizes the parts wrap onto as many lines as they need: one line would push the
+                // row wider than the screen (and cut off its start).
+                Group {
+                    if typeSize.isAccessibilitySize {
+                        WrapLayout(spacing: 8, lineSpacing: 2) { footer(compact: false, wraps: true) }
+                    } else {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) { footer(compact: false) }
+                            HStack(spacing: 8) { footer(compact: true) }
+                        }
+                        .lineLimit(1)
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
                 .padding(.top, 2)
                 // Under a picture the line runs on to its trailing edge (the picture, the gap before it and the
                 // spacing around the spacer), so the status ends where it does in rows without one.
@@ -1538,8 +1547,10 @@ struct NoteRow: View {
         note.isTodo ? .brandTask : note.isLink ? .brandLink : (note.isRecording || note.isStored ? .brandNavy : .brandSky)
     }
 
+    /// The parts of the footer. `wraps`: laid out by a `WrapLayout` (largest text sizes), so no part keeps a width
+    /// wider than the row and there is no spacer.
     @ViewBuilder
-    private func footer(compact: Bool) -> some View {
+    private func footer(compact: Bool, wraps: Bool = false) -> some View {
         if let deletedAt = note.deletedAt {
             Text(daysLeft(deletedAt))
                 .foregroundStyle(Color.brandDangerText)
@@ -1548,20 +1559,20 @@ struct NoteRow: View {
             // its bowls (the to-dos folder) its due day says more, and the date makes room for them.
             if buckets.isEmpty || !note.isTodo {
                 Text(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
-                    .fixedSize()
+                    .keepsWidth(!wraps)
             }
             // Put away for later, back from it, or, in the Inbox, how long it has been waiting there.
             if note.isSnoozed(), let until = note.snoozedUntil {
                 Label("Later: back \(InboxSnooze.timeLabel(until))", systemImage: "clock")
                     .labelStyle(.titleAndIcon)
                     .foregroundStyle(Color.brandNavy)
-                    .fixedSize()
+                    .keepsWidth(!wraps)
             } else if note.isBackFromLater() {
                 Label("Back from Later", systemImage: "clock.arrow.circlepath")
                     .labelStyle(.titleAndIcon)
                     .fontWeight(.semibold)
                     .foregroundStyle(Color.brandSkyText)
-                    .fixedSize()
+                    .keepsWidth(!wraps)
             } else if showsInboxAge, !compact, note.isInInbox, let waiting = InboxSnooze.waitingLabel(since: note.createdAt) {
                 Label(waiting, systemImage: "hourglass")
                     .labelStyle(.titleAndIcon)
@@ -1585,13 +1596,13 @@ struct NoteRow: View {
         }
         if note.isRecording, note.duration > 0 {
             Text(note.duration.durationText)
-                .fixedSize()
+                .keepsWidth(!wraps)
             if note.speakers.count > 1, !compact {
                 Label("\(note.speakers.count)", systemImage: "person.2.fill")
-                    .fixedSize()
+                    .keepsWidth(!wraps)
             }
         }
-        Spacer(minLength: 8)
+        if !wraps { Spacer(minLength: 8) }
         // The state keeps its width; the domain gives way first.
         Group {
             if let stage {
@@ -1607,7 +1618,7 @@ struct NoteRow: View {
                 StatusBadge(text: "Summarized", color: .accentColor)
             }
         }
-        .fixedSize()
+        .keepsWidth(!wraps)
         // The suggested bowl as one violet word: a tap files the entry there (with Undo).
         if let suggestion {
             SuggestionWord(name: suggestion.name, onFile: onFile)
@@ -1619,6 +1630,14 @@ struct NoteRow: View {
         let passed = Calendar.current.dateComponents([.day], from: deletedAt, to: Date()).day ?? 0
         let left = max(0, NoteStore.trashDays - passed)
         return left <= 1 ? String(localized: "Deleted tomorrow") : String(localized: "\(left) days left")
+    }
+}
+
+extension View {
+    /// Keeps the ideal width (`fixedSize`) when `keep`, else only the height, so the text may wrap.
+    @ViewBuilder
+    func keepsWidth(_ keep: Bool) -> some View {
+        if keep { fixedSize() } else { fixedSize(horizontal: false, vertical: true) }
     }
 }
 

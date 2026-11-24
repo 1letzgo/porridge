@@ -26,12 +26,10 @@ struct InboxPlace: View {
             if isSelecting {
                 NoteSelectionHeader(notes: waiting, chosen: $chosen)
             } else {
-                Picker("Inbox", selection: $showsLater.animation(.snappy)) {
-                    Text("New \(waiting.count)").tag(false)
-                    Text("Later \(later.count)").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                TabSwitcher(selection: $showsLater, options: [
+                    (value: false, title: String(localized: "New \(waiting.count)")),
+                    (value: true, title: String(localized: "Later \(later.count)")),
+                ])
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
                 .accessibilityIdentifier("InboxSegment")

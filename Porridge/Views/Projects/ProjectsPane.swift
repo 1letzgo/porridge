@@ -15,6 +15,7 @@ struct ProjectRow: View {
     var onSelect: (() -> Void)?
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         Button(action: onOpen) {
@@ -25,13 +26,13 @@ struct ProjectRow: View {
                     HStack(spacing: 5) {
                         Text(project.name)
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
+                            .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                         BowlSharedMark(bowlID: project.id)
                     }
                     Text(content.summary)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                 }
                 Spacer(minLength: 0)
                 let count = content.count(.all)

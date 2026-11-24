@@ -36,6 +36,18 @@ enum SearchKind: CaseIterable {
         }
     }
 
+    /// The title as a string (VoiceOver's value of the kind menu).
+    var name: String {
+        switch self {
+        case .todos: String(localized: "Open To-dos")
+        case .meetings: String(localized: "Meetings")
+        case .notes: String(localized: "Notes")
+        case .links: String(localized: "Links")
+        case .images: String(localized: "Images")
+        case .files: String(localized: "Files")
+        }
+    }
+
     func matches(_ note: Note) -> Bool {
         switch self {
         case .todos: note.isTodo && !note.isDone
@@ -70,6 +82,7 @@ struct SearchPane<Results: View>: View {
     @ViewBuilder var results: Results
 
     @FocusState private var focused: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var openTags: [(key: String, name: String, count: Int)] {
         let taken = Set(tokens.map(\.id))
@@ -88,12 +101,21 @@ struct SearchPane<Results: View>: View {
             field
                 .padding(.horizontal)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+            if typeSize.isAccessibilitySize {
+                // The largest text sizes: two chips that wrap (the kinds in one menu), nothing cut off at the edge.
+                FlowLayout(spacing: 8) {
                     scopeChip
-                    ForEach(SearchKind.allCases, id: \.self) { option in kindChip(option) }
+                    kindMenuChip
                 }
                 .padding(.horizontal)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        scopeChip
+                        ForEach(SearchKind.allCases, id: \.self) { option in kindChip(option) }
+                    }
+                    .padding(.horizontal)
+                }
             }
 
             if !matchingTags.isEmpty {
@@ -176,7 +198,7 @@ struct SearchPane<Results: View>: View {
         } label: {
             let isOn = scope != .everywhere
             HStack(spacing: 4) {
-                Text(SearchAsk.searchName(scope, bowls: allBowls)).lineLimit(1)
+                Text(SearchAsk.searchName(scope, bowls: allBowls)).lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                 Image(systemName: "chevron.down").font(.caption2.weight(.bold))
             }
             .font(.subheadline.weight(.semibold))
@@ -189,6 +211,33 @@ struct SearchPane<Results: View>: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Search In")
         .accessibilityValue(SearchAsk.searchName(scope, bowls: allBowls))
+    }
+
+    /// The kinds as one menu chip ("All Kinds ⌄", or the chosen kind filled), for the largest text sizes.
+    private var kindMenuChip: some View {
+        Menu {
+            Picker("Kind", selection: $kind.animation(.snappy)) {
+                Text("All Kinds").tag(SearchKind?.none)
+                ForEach(SearchKind.allCases, id: \.self) { option in Text(option.title).tag(Optional(option)) }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            let isOn = kind != nil
+            HStack(spacing: 4) {
+                Text(kind?.name ?? String(localized: "All Kinds")).lineLimit(2)
+                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(isOn ? Color.brandOnNavy : Color.brandNavy)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(isOn ? Color.brandNavy : Color.brandSky.opacity(0.18), in: Capsule())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Kind")
+        .accessibilityValue(kind?.name ?? String(localized: "All Kinds"))
     }
 
     private func kindChip(_ option: SearchKind) -> some View {
@@ -263,7 +312,9 @@ struct SearchPane<Results: View>: View {
             }
         }
         .padding(.horizontal, 14)
-        .frame(height: 44)
+        .padding(.vertical, typeSize.isAccessibilitySize ? 6 : 0)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        .frame(minHeight: 44)
         .background(Color.appBackground, in: Capsule())
         .overlay(Capsule().strokeBorder(Color.brandNavy.opacity(0.25), lineWidth: 1))
     }
@@ -275,6 +326,7 @@ struct SearchAskRow: View {
     let subtitle: String
     let systemImage: String
     let tint: Color
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         HStack(spacing: 12) {
@@ -282,11 +334,11 @@ struct SearchAskRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
+                    .lineLimit(typeSize.isAccessibilitySize ? 4 : 2)
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")

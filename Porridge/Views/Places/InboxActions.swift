@@ -12,6 +12,7 @@ struct LaterSheet: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         NavigationStack {
@@ -19,10 +20,11 @@ struct LaterSheet: View {
                 Section {
                     ForEach(InboxSnooze.choices(), id: \.choice) { item in
                         Button { put(until: item.date) } label: {
-                            HStack(spacing: 12) {
+                            // The time under the choice with the largest text sizes.
+                            (typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 12))) {
                                 Label(item.choice.title, systemImage: item.choice.systemImage)
                                     .foregroundStyle(.primary)
-                                Spacer(minLength: 8)
+                                if !typeSize.isAccessibilitySize { Spacer(minLength: 8) }
                                 Text(InboxSnooze.timeLabel(item.date))
                                     .foregroundStyle(.secondary)
                             }
@@ -53,7 +55,8 @@ struct LaterSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
         }
-        .presentationDetents([.medium, .large])
+        // The largest text sizes need the whole height for the times.
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
         .tint(.brandNavy)
     }
 

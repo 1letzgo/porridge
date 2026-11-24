@@ -7,7 +7,13 @@ struct ChatActionCards: View {
     let entryID: UUID
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dynamicTypeSize) private var typeSize
     private var service: ChatService { ChatService.shared }
+
+    /// Buttons side by side; one under the other with the largest text sizes.
+    private var buttonLayout: AnyLayout {
+        typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .trailing, spacing: 8)) : AnyLayout(HStackLayout(spacing: 10))
+    }
 
     var body: some View {
         let actions = service.actions(for: entryID)
@@ -18,7 +24,7 @@ struct ChatActionCards: View {
                 }
                 let pending = actions.filter { $0.status == .pending }
                 if pending.count > 1 {
-                    HStack(spacing: 10) {
+                    buttonLayout {
                         Button("Cancel All") { withAnimation(.snappy) { service.cancel(in: entryID) } }
                             .buttonStyle(.bordered)
                         Button("Confirm All (\(pending.count))") { withAnimation(.snappy) { service.confirm(in: entryID, context: context) } }
@@ -55,8 +61,8 @@ struct ChatActionCards: View {
             }
             switch action.status {
             case .pending:
-                HStack(spacing: 10) {
-                    Spacer(minLength: 0)
+                buttonLayout {
+                    if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
                     Button("Cancel") { withAnimation(.snappy) { service.cancel([action.id], in: entryID) } }
                         .buttonStyle(.bordered)
                     Button("Confirm") { withAnimation(.snappy) { service.confirm([action.id], in: entryID, context: context) } }
@@ -64,6 +70,7 @@ struct ChatActionCards: View {
                         .tint(.brandNavy)
                 }
                 .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, alignment: .trailing)
             default:
                 Label(Self.statusText(action), systemImage: Self.statusSymbol(action.status))
                     .font(.footnote.weight(.semibold))

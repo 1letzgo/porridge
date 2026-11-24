@@ -6,15 +6,17 @@ struct NoteSelectionHeader: View {
     /// The entries of the list, in its order.
     let notes: [Note]
     @Binding var chosen: Set<UUID>
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let all = !notes.isEmpty && chosen.count == notes.count
-        HStack {
+        let large = typeSize.isAccessibilitySize
+        (large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout())) {
             Text(chosen.isEmpty ? String(localized: "Select Entries") : String(localized: "\(chosen.count) Selected"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(chosen.isEmpty ? .secondary : .primary)
                 .accessibilityIdentifier("SelectionCount")
-            Spacer(minLength: 8)
+            if !large { Spacer(minLength: 8) }
             Button(all ? "Select None" : "Select All") {
                 withAnimation(.snappy) { chosen = all ? [] : Set(notes.map(\.id)) }
             }
@@ -23,7 +25,7 @@ struct NoteSelectionHeader: View {
             .accessibilityIdentifier("SelectAll")
         }
         .padding(.horizontal, 20)
-        .frame(minHeight: 32)
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
         .padding(.bottom, Look.headerGap)
     }
 }
@@ -221,10 +223,17 @@ private struct SelectionBarItem: View {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
+        // Like the tab bar it replaces: the words stop growing at the largest text sizes, and a long press shows
+        // the button big (the large content viewer).
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .foregroundStyle(isEnabled ? Color.brandNavy.readable : Color.secondary.opacity(0.6))
         .frame(maxWidth: .infinity, minHeight: 48)
         .contentShape(Rectangle())
+        .accessibilityShowsLargeContentViewer {
+            Label(title, systemImage: systemImage)
+        }
     }
 }
 

@@ -178,6 +178,7 @@ struct ChatView: View {
     var onCreate: (ChatThread) -> Void
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Query(sort: \ChatEntry.createdAt) private var allEntries: [ChatEntry]
     @State private var input = ""
     @FocusState private var focused: Bool
@@ -252,7 +253,10 @@ struct ChatView: View {
     /// What the chat is about: changeable at any time; in a chat that runs it holds from the next question on.
     private var scopeRow: some View {
         let current = thread?.projectID ?? scope
-        return HStack(spacing: 8) {
+        // The largest text sizes: the two pills one under the other, so neither is cut to "A… ⌄".
+        let large = typeSize.isAccessibilitySize
+        let layout = large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
             Menu {
                 Picker("About", selection: Binding(get: { current }, set: { choose($0) })) {
                     Label("All Bowls", systemImage: "tray.full").tag(String?.none)
@@ -270,9 +274,10 @@ struct ChatView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Chat About")
             .accessibilityValue(Self.scopeName(current, projects: projects))
-            Spacer(minLength: 0)
+            if !large { Spacer(minLength: 0) }
             modelMenu
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Another scope: a new chat starts with it, a running one asks the next question about it.
@@ -286,11 +291,12 @@ struct ChatView: View {
     /// The latest chats, to take up again, and the way to all of them.
     private var recentChats: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            let large = typeSize.isAccessibilitySize
+            (large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout())) {
                 Text("Recent Chats")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
-                Spacer()
+                if !large { Spacer() }
                 Button("All Chats", action: onAllChats)
                     .font(.subheadline.weight(.semibold))
                     .accessibilityIdentifier("RecentAllChats")
@@ -303,11 +309,11 @@ struct ChatView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(chat.title.isEmpty ? String(localized: "New Chat") : chat.title)
                                 .foregroundStyle(.primary)
-                                .lineLimit(1)
+                                .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                             Text(Self.scopeName(chat.projectID, projects: projects) + " · " + chat.updatedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute()))
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                         }
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
@@ -343,7 +349,7 @@ struct ChatView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: SummaryModel.chat.isLocal ? "cpu" : "cloud").font(.caption.weight(.bold))
-                    Text(SummaryModel.chat.name).lineLimit(1)
+                    Text(SummaryModel.chat.name).lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                     Image(systemName: "chevron.down").font(.caption2.weight(.bold))
                 }
                 .font(.caption.weight(.semibold))
@@ -363,7 +369,7 @@ struct ChatView: View {
     private func scopePill(_ name: String, chooses: Bool) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "folder.fill").font(.caption.weight(.bold))
-            Text(name).lineLimit(1)
+            Text(name).lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
             if chooses { Image(systemName: "chevron.down").font(.caption2.weight(.bold)) }
         }
         .font(.caption.weight(.semibold))
@@ -434,14 +440,16 @@ struct ChatView: View {
                 }
                 let sources = entry.sources
                 if !sources.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
+                    // In a row that scrolls; with the largest text sizes one under the other, each whole.
+                    let large = typeSize.isAccessibilitySize
+                    ScrollView(large ? [] : .horizontal, showsIndicators: false) {
+                        (large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))) {
                             ForEach(sources) { source in
                                 Button { onOpen(source.noteID) } label: {
                                     HStack(spacing: 6) {
                                         // The kind of the note it comes from (`checklist` for a to-do), or a page when it is gone.
                                         Image(systemName: notes.first { $0.id == source.noteID }?.kindSymbol ?? "doc.text").font(.caption.weight(.bold))
-                                        Text(source.title).lineLimit(1)
+                                        Text(source.title).lineLimit(large ? 3 : 1)
                                     }
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(Color.brandNavy)

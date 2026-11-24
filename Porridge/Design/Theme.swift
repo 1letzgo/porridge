@@ -177,25 +177,25 @@ extension View {
 }
 
 /// Rounded square in front of a list row (the place of the checkbox in Things): its color says what the entry is.
+/// The design's token (stage 7): 30 pt, corner 8, a 15 % wash of the kind's color without a border, the symbol in
+/// the readable value of the color; it grows a little with the text size.
 struct ThingsRowIcon: View {
-    /// Where the separator starts: row padding + icon + spacing.
-    static let inset: CGFloat = 44 + 12
+    /// Where the separator starts: icon + spacing.
+    static let inset: CGFloat = 30 + 12
 
     let systemImage: String
     var tint: Color = .brandSky
     /// A pinned entry wears a pin on the icon's border, top right.
     var isPinned = false
-    /// As high as the two lines of a row: title and what is under it.
-    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 44
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 30
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.body.weight(.semibold))
+            .font(.subheadline.weight(.semibold))
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .foregroundStyle(tint.readable)
-            .frame(width: min(size, 56), height: min(size, 56))
-            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(tint.opacity(0.55), lineWidth: 1.5))
+            .frame(width: min(size, 42), height: min(size, 42))
+            .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(alignment: .topTrailing) {
                 if isPinned {
                     Image(systemName: "pin.fill")
@@ -227,10 +227,12 @@ struct ListHeader: View {
     var isFirst = false
     /// A quiet word after the title ("by Last Change").
     var detail: String?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+            // The largest text sizes: the quiet word goes under the title instead of squeezing it.
+            (typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 6))) {
                 Text(title)
                 if let count {
                     Text("\(count)").foregroundStyle(.secondary)
@@ -311,57 +313,84 @@ struct ChromeBar<Actions: View>: View {
 
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 30
     @ScaledMetric(relativeTo: .body) private var squareSize: CGFloat = 34
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// The pills take the screen's color too; the sky screens keep the accent color for contrast.
     private var buttonTint: Color? { tint == .brandSky ? nil : tint.readable }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            if let onBack {
-                Button(action: onBack) {
-                    Label("Back", systemImage: "chevron.left")
-                        .labelStyle(.iconOnly)
-                        .font(.body.weight(.semibold))
-                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                        .foregroundStyle(buttonTint ?? .accentColor)
+        Group {
+            if typeSize.isAccessibilitySize {
+                // The largest text sizes: the pills keep their row, the title gets one of its own below them and may
+                // take two lines, so neither is cut to "Meeti…" or shrinks the pills.
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        backButton
+                        Spacer(minLength: 8)
+                        pills
+                    }
+                    titleView(lineLimit: 2)
                 }
-                .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
+            } else {
+                HStack(alignment: .center, spacing: 10) {
+                    backButton
+                    titleView(lineLimit: 1)
+                    Spacer(minLength: 8)
+                    pills
+                }
             }
-            HStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.body.weight(.bold))
-                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                    .foregroundStyle(tint.onFill)
-                    .frame(width: min(squareSize, 44), height: min(squareSize, 44))
-                    .background(tint, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                Text(title)
-                    .font(.system(size: titleSize, weight: .bold))
-                    .tracking(-0.5)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(onTitleTap == nil ? .isHeader : [.isHeader, .isButton])
-            .accessibilityHint(onTitleTap == nil ? "" : titleHint)
-            .contentShape(Rectangle())
-            .onTapGesture { onTitleTap?() }
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 8) {
-                actions
-            }
-            .labelStyle(.iconOnly)
-            .font(.body.weight(.medium))
-            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            .foregroundStyle(buttonTint ?? .accentColor)
-            .tint(buttonTint ?? .accentColor)
-            .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
-            .menuStyle(.button)
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
+    }
+
+    @ViewBuilder
+    private var backButton: some View {
+        if let onBack {
+            Button(action: onBack) {
+                Label("Back", systemImage: "chevron.left")
+                    .labelStyle(.iconOnly)
+                    .font(.body.weight(.semibold))
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                    .foregroundStyle(buttonTint ?? .accentColor)
+            }
+            .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
+        }
+    }
+
+    private func titleView(lineLimit: Int) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.bold))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .foregroundStyle(tint.onFill)
+                .frame(width: min(squareSize, 44), height: min(squareSize, 44))
+                .background(tint, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            Text(title)
+                .font(.system(size: min(titleSize, 52), weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(.primary)
+                .lineLimit(lineLimit)
+                .minimumScaleFactor(0.7)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(onTitleTap == nil ? .isHeader : [.isHeader, .isButton])
+        .accessibilityHint(onTitleTap == nil ? "" : titleHint)
+        .contentShape(Rectangle())
+        .onTapGesture { onTitleTap?() }
+    }
+
+    private var pills: some View {
+        HStack(spacing: 8) {
+            actions
+        }
+        .labelStyle(.iconOnly)
+        .font(.body.weight(.medium))
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        .foregroundStyle(buttonTint ?? .accentColor)
+        .tint(buttonTint ?? .accentColor)
+        .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
+        .menuStyle(.button)
     }
 }
 
@@ -388,11 +417,13 @@ private struct ChromePill: View {
     let fill: Color?
     let tint: Color?
     @Environment(\.isEnabled) private var isEnabled
+    /// 44 × 36; 56 × 46 with the largest text sizes (the symbol grows up to accessibility 1).
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         configuration.label
             .foregroundStyle(fill.map { AnyShapeStyle($0.onFill) } ?? AnyShapeStyle(tint ?? .accentColor))
-            .frame(minWidth: 44, minHeight: 36)
+            .frame(minWidth: typeSize.isAccessibilitySize ? 56 : 44, minHeight: typeSize.isAccessibilitySize ? 46 : 36)
             .background(
                 fill.map { $0.opacity(configuration.isPressed ? 0.8 : 1) } ?? (tint ?? .brandSky).opacity(configuration.isPressed ? 0.26 : 0.14),
                 in: Capsule()
@@ -403,20 +434,43 @@ private struct ChromePill: View {
     }
 }
 
-/// Options sharing the full width: the system's segmented control.
+/// Options sharing the full width: the system's segmented control. Its text does not grow with the largest text
+/// sizes, so there the options are capsules that grow and wrap onto more lines.
 struct TabSwitcher<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        Picker("View", selection: $selection.animation(.snappy)) {
-            ForEach(options, id: \.value) { option in
-                Text(option.title).tag(option.value)
+        if typeSize.isAccessibilitySize {
+            WrapLayout(spacing: 8, lineSpacing: 8) {
+                ForEach(options, id: \.value) { option in
+                    let chosen = option.value == selection
+                    Button {
+                        withAnimation(.snappy) { selection = option.value }
+                    } label: {
+                        Text(option.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(chosen ? Color.brandOnNavy : .primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(chosen ? AnyShapeStyle(Color.brandNavy) : AnyShapeStyle(.quaternary), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(chosen ? [.isSelected] : [])
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Picker("View", selection: $selection.animation(.snappy)) {
+                ForEach(options, id: \.value) { option in
+                    Text(option.title).tag(option.value)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(maxWidth: .infinity)
     }
 }
 

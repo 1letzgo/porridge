@@ -184,7 +184,8 @@ struct TriageView: View {
         return LazyVGrid(columns: columns, spacing: 8) {
             tile("File", systemImage: "tray.and.arrow.down.fill", tint: .brandProject, id: "TriageFile") { file(note) }
                 .disabled(readOnly)
-            tile("Later", systemImage: "clock.fill", tint: .brandNavy, id: "TriageLater") { laterNote = note }
+            // A light sky wash with the outlined clock: navy here weighed more than the other tiles.
+            tile("Later", systemImage: "clock", tint: .brandSky, id: "TriageLater") { laterNote = note }
                 .disabled(readOnly)
             tile("Skip", systemImage: "arrow.right", tint: .secondary, id: "TriageSkip") { skip() }
             tile("Delete", systemImage: "trash.fill", tint: .red, id: "TriageDelete") {

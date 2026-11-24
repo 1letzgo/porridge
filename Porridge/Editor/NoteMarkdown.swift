@@ -32,7 +32,15 @@ enum NoteMarkdown {
     /// Width of the marker column of a list (marker text, then the tab to the text).
     static let markerWidth: CGFloat = 24
     static let checkboxGap: CGFloat = 8
-    static let checkboxSize: CGFloat = 18
+    /// The circle of a checklist line: 18 pt at the standard text size; on iOS it grows with the body text (up to
+    /// 40 pt) like the text beside it.
+    static var checkboxSize: CGFloat {
+        #if os(macOS)
+        18
+        #else
+        min(UIFontMetrics(forTextStyle: .body).scaledValue(for: 18), 40)
+        #endif
+    }
 
     // MARK: - Markdown → attributed
 
@@ -500,7 +508,7 @@ enum NoteMarkdown {
         attachment.image = checkboxImage(checked: checked)
         // Sits on the baseline of the body text, a touch below so it centers on the x-height.
         // The image has the gap after the box built in: a kern on an attachment is ignored by TextKit 2.
-        attachment.bounds = CGRect(x: 0, y: -3, width: checkboxSize + checkboxGap, height: checkboxSize)
+        attachment.bounds = CGRect(x: 0, y: -3 * checkboxSize / 18, width: checkboxSize + checkboxGap, height: checkboxSize)
         let result = NSMutableAttributedString(attachment: attachment)
         result.addAttributes([
             .noteChecked: checked,
