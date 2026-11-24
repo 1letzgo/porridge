@@ -54,7 +54,7 @@ final class AppointmentCellView: NSTableCellView {
         if let bowl = AppointmentLinks.shared.bowl(for: appointment), let project = Library.shared.project(key: bowl) {
             parts.append(project.name)
         }
-        let linked = AppointmentLinks.shared.notes(for: appointment, among: notes).count
+        let linked = TodayTodos.shown(AppointmentLinks.shared.notes(for: appointment, among: notes)).count
         if linked > 0 { parts.append(linked == 1 ? String(localized: "1 linked entry") : String(localized: "\(linked) linked entries")) }
         summary.stringValue = parts.joined(separator: " · ")
         setAccessibilityLabel("\(appointment.title), \(summary.stringValue)")

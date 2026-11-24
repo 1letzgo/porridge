@@ -1,7 +1,7 @@
 import XCTest
 @testable import Porridge
 
-/// Paging through days on the Today page: stepping, the title, and which to-dos belong to a day.
+/// Paging through days on the Today page: stepping, the title, and which to-dos belong to a day (only open ones).
 @MainActor
 final class TodayDayTests: XCTestCase {
     private var berlin: Calendar {
@@ -117,18 +117,57 @@ final class TodayDayTests: XCTestCase {
         XCTAssertTrue(TodayTodos.open(all, on: TodayDay.step(now, by: 5, calendar: calendar), now: now, calendar: calendar).isEmpty)
     }
 
-    func testDoneTodosBelongToTheDayTheyWereTicked() {
+    func testTodayShowsOnlyWhatIsOpen() throws {
+        // Owner decision 2026-11-24: done to-dos are hidden from Today on every day, also those ticked that day.
         let calendar = berlin
         let now = date(2026, 11, 23, 10, calendar: calendar)
         let yesterday = TodayDay.step(now, by: -1, calendar: calendar)
-        let early = Note(), late = Note(), today = Note()
-        for note in [early, late, today] { note.todoState = .done }
-        early.todoDoneAt = date(2026, 11, 22, 8, calendar: calendar)
-        late.todoDoneAt = date(2026, 11, 22, 23, calendar: calendar)
-        today.todoDoneAt = date(2026, 11, 23, 0, calendar: calendar)
-        let all = [early, late, today]
-        XCTAssertEqual(TodayTodos.done(all, on: yesterday, calendar: calendar).map(\.id), [late.id, early.id])
-        XCTAssertEqual(TodayTodos.doneToday(all, now: now, calendar: calendar).map(\.id), [today.id])
-        XCTAssertTrue(TodayTodos.done(all, on: TodayDay.step(now, by: 1, calendar: calendar), calendar: calendar).isEmpty)
+        let doneToday = Note(), doneYesterday = Note(), open = Note()
+        for note in [doneToday, doneYesterday, open] {
+            note.todoState = .open
+            note.todoDueDay = key(note === doneYesterday ? yesterday : now, calendar: calendar)
+        }
+        doneToday.todoState = .done
+        doneToday.todoDoneAt = date(2026, 11, 23, 9, calendar: calendar)
+        doneYesterday.todoState = .done
+        doneYesterday.todoDoneAt = date(2026, 11, 22, 20, calendar: calendar)
+        let all = [doneToday, doneYesterday, open]
+        XCTAssertEqual(TodayTodos.open(all, now: now, calendar: calendar).map(\.id), [open.id])
+        XCTAssertTrue(TodayTodos.open(all, on: yesterday, now: now, calendar: calendar).isEmpty)
+        XCTAssertTrue(TodayTodos.upcoming(all, now: yesterday, calendar: calendar).allSatisfy { !$0.isDone })
+
+        // Under an appointment too: a done to-do leaves, other entries stay.
+        let meeting = Note()
+        XCTAssertEqual(TodayTodos.shown([doneToday, meeting, open]).map(\.id), [meeting.id, open.id])
+    }
+
+    func testTickingInTodayOffersUndo() throws {
+        let context = try TestStore.context()
+        let toast = UndoToast()
+        let todo = Note()
+        todo.title = "Call Anna"
+        todo.text = "- [ ] Number\n- [ ] Time"
+        todo.todoState = .open
+        todo.todoDueDay = Todos.dueKey(Date())
+        context.insert(todo)
+        try context.save()
+
+        Undoable.done([todo], in: context, toast: toast)
+        XCTAssertTrue(todo.isDone)
+        XCTAssertTrue(TodayTodos.open([todo]).isEmpty, "it leaves Today")
+        XCTAssertEqual(toast.current?.message, "Done: “Call Anna”")
+        toast.undo()
+        XCTAssertFalse(todo.isDone)
+        XCTAssertNil(todo.todoDoneAt)
+        XCTAssertEqual(todo.text, "- [ ] Number\n- [ ] Time", "the subtasks come back unticked")
+        XCTAssertEqual(TodayTodos.open([todo]).map(\.id), [todo.id])
+
+        // A box ticked outside Today (`leavesList: false`) stays a plain tick.
+        Todos.tick(todo, leavesList: false, in: context)
+        XCTAssertTrue(todo.isDone)
+        // Done already: nothing to offer.
+        let other = UndoToast()
+        Undoable.done([todo], in: context, toast: other)
+        XCTAssertNil(other.current)
     }
 }

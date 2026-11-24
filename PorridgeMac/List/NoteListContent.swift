@@ -149,8 +149,8 @@ enum NoteListContent {
         }
     }
 
-    /// Today (or the day paged to): each appointment with the entries linked to it, then the to-dos due (on today
-    /// those due before too) and those done that day (those under an appointment not twice).
+    /// Today (or the day paged to): each appointment with the entries linked to it, then the open to-dos due (on today
+    /// those due before too; those under an appointment not twice). Done to-dos never show in Today.
     static func today(_ notes: [Note], day: Date) -> Built {
         let calendar = TodayCalendar.shared
         let links = AppointmentLinks.shared
@@ -162,7 +162,7 @@ enum NoteListContent {
             var items: [ListItem] = []
             for appointment in appointments {
                 items.append(.appointment(appointment.key))
-                for note in links.notes(for: appointment, among: notes) where !shown.contains(note.id) {
+                for note in TodayTodos.shown(links.notes(for: appointment, among: notes)) where !shown.contains(note.id) {
                     shown.insert(note.id)
                     items.append(.note(note.id))
                 }
@@ -172,14 +172,14 @@ enum NoteListContent {
             sections.append((ListSection(id: "today-appointments", title: String(localized: "Appointments"), tint: .navy,
                                          footnote: String(localized: "Allow Porridge in System Settings under Privacy & Security, Calendars, to see your appointments here.")), []))
         }
-        let todos = (TodayTodos.open(notes, on: day) + TodayTodos.done(notes, on: day)).filter { !shown.contains($0.id) }
-        if !todos.isEmpty {
-            let open = todos.filter { !$0.isDone }
+        // Only what is open: done to-dos never show in Today.
+        let open = TodayTodos.open(notes, on: day).filter { !shown.contains($0.id) }
+        if !open.isEmpty {
             let overdue = open.filter { $0.todoDue.flatMap { Todos.dueStatus($0) } == .overdue }.count
             sections.append((ListSection(
                 id: "today-todos", title: overdue > 0 ? String(localized: "Due · \(overdue) overdue") : String(localized: "Due"),
                 tint: overdue > 0 ? .red : .task, count: open.count
-            ), todos.map { .note($0.id) }))
+            ), open.map { .note($0.id) }))
         }
         if isToday {
             // The next seven days, a few rows; then the fixed rows, so Today looks the same every day.

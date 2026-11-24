@@ -13,6 +13,7 @@ struct NoteListRow: View {
     var onRemove: () -> Void
 
     @Environment(\.modelContext) private var context
+    @Environment(\.ticksLeaveList) private var ticksLeaveList
     @Environment(ProcessingService.self) private var processing
     @State private var pickingDue = false
     @State private var choosingLater = false
@@ -108,7 +109,7 @@ struct NoteListRow: View {
 
     private var doneButton: some View {
         Button {
-            withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) }
+            withAnimation(.snappy) { Todos.tick(note, leavesList: ticksLeaveList, in: context) }
         } label: {
             Label(note.isDone ? "Mark as Not Done" : "Mark as Done", systemImage: note.isDone ? "square" : "checkmark.square")
         }

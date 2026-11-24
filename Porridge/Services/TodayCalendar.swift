@@ -119,8 +119,10 @@ enum TodayDay {
     }
 }
 
-/// What the Today card and page show of the to-dos: on today the open ones due today or before (the late ones
-/// come along) and those done today; on another day the open ones due on exactly that day and those done that day.
+/// What the Today page shows of the to-dos: only what is open. On today the open ones due today or before (the late
+/// ones come along), on another day the open ones due on exactly that day. Done to-dos never show in Today (owner
+/// decision, 2026-11-24): a to-do ticked there leaves the list (with the undo toast); it stays in its bowl or the
+/// Inbox and in Open To-dos' "Done Today".
 enum TodayTodos {
     static func open(_ notes: [Note], now: Date = Date(), calendar: Calendar = .current) -> [Note] {
         open(notes, on: now, now: now, calendar: calendar)
@@ -146,13 +148,8 @@ enum TodayTodos {
         })
     }
 
-    static func doneToday(_ notes: [Note], now: Date = Date(), calendar: Calendar = .current) -> [Note] {
-        done(notes, on: now, calendar: calendar)
-    }
-
-    /// To-dos ticked on the day, the latest first.
-    static func done(_ notes: [Note], on day: Date, calendar: Calendar = .current) -> [Note] {
-        notes.filter { $0.isTodo && $0.isDone && !$0.isDeleted && $0.todoDoneAt.map { calendar.isDate($0, inSameDayAs: day) } == true }
-            .sorted { ($0.todoDoneAt ?? .distantPast) > ($1.todoDoneAt ?? .distantPast) }
+    /// The entries linked to an appointment as Today lists them under it: done to-dos left out like everywhere in Today.
+    static func shown(_ linked: [Note]) -> [Note] {
+        linked.filter { !($0.isTodo && $0.isDone) }
     }
 }

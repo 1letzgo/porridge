@@ -1447,6 +1447,7 @@ struct NoteRow: View {
 
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.modelContext) private var context
+    @Environment(\.ticksLeaveList) private var ticksLeaveList
 
     var body: some View {
         // Plain notes are sky blue, recorded meetings navy, saved links orange, to-dos green.
@@ -1505,7 +1506,7 @@ struct NoteRow: View {
             if note.isTodo {
                 Spacer(minLength: 0)
                 TodoCheckbox(isDone: note.isDone, size: 26) {
-                    withAnimation(.snappy) { Todos.setDone(!note.isDone, note, in: context) }
+                    withAnimation(.snappy) { Todos.tick(note, leavesList: ticksLeaveList, in: context) }
                 }
                 .disabled(note.isDeleted || BowlSharing.shared.isReadOnly(note))
                 .frame(maxHeight: .infinity)
@@ -1684,6 +1685,8 @@ extension EnvironmentValues {
     @Entry var askAboutBowl: (String) -> Void = { _ in }
     /// Every note of the list, for views that look up others (the to-dos made from a summary).
     @Entry var allNotes: [Note] = []
+    /// The list shows only open to-dos (Today): a to-do ticked done leaves it, so the tick offers Undo.
+    @Entry var ticksLeaveList = false
 }
 
 /// Opens the entry of a `porridge://entry/<UUID>` link (`EntryLinkRouter`), now or once the list is on screen.

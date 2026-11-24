@@ -1,5 +1,9 @@
 # Porridge redesign E ("Three Places + Details"): implementation plan
 
+> **Revision 4 (2026-11-24): Today shows only what is open.** Owner decision: done to-dos are hidden from Today
+> completely, on iPhone and Mac, on every day (chosen over a folded "Done" section or a counter); a to-do ticked there
+> leaves with the undo toast. Bowls, the Inbox and Open To-dos are unchanged. Details: stage 4's As-built note.
+
 > **Revision 3 (2026-11-24): Chat has its own tab / sidebar place.** Owner: "Wir haben Platz für 5 icons in der
 > Tabbar. Gebe Chat seinen eigenen Platz." The chat is not folded into the search. iPhone tabs: Today · Inbox · Bowls ·
 > Chat · Search; Mac sidebar: Today ⌘1 · Inbox ⌘2 · Bowls ⌘3 · Chat ⌘4, Archive ⌘5, Recently Deleted ⌘6. Search & Ask
@@ -450,6 +454,12 @@ paging (‹ › and ← → T).
   Recently Deleted are the last rows of the outline, not a pinned footer; Up Next on the Mac does not fold. A view-only
   bowl's ⋯ also has Ask About This Bowl and Leave Bowl… (the table listed Pin, Copy Link, Export only). The Mac only
   asks for the calendars on Today when it does not run on test data (`PORRIDGE_TEST_DATA`).
+- **Owner decision (2026-11-24, after stage 5): Today shows only what is open.** Done to-dos are hidden from Today
+  completely ("Ganz ausblenden", not a folded "Done" section or a counter), on iPhone and Mac, on today and every
+  other day, also under an appointment (`TodayTodos.shown`). A to-do ticked in Today leaves the list with the one
+  undo toast ("Done: “…”", `Undoable.done`; Undo also unticks the subtasks it ticked): `Todos.tick(_:leavesList:)`,
+  the environment flag `ticksLeaveList` on iOS, the Today page's `onToggleDone` on the Mac. Done to-dos stay in their
+  bowl / the Inbox and in Open To-dos' "Done Today" as before. `TodayTodos.done` / `doneToday` are gone.
 - Tests: `PlacesTests` (badges, Up Next, new this week, links, page → place, entry link waits), `TodosTests` bowl
   order without limit and by entries; UI: `NotesFlowTests` updated to tabs / gear / Add sheet plus
   `testThreePlacesAsTabs`, `testAddSheetAndBowlMenu`, `testEntryLinkOpensAtOnce`; `PlacesShotsTests` writes

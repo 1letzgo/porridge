@@ -3,10 +3,10 @@ import SwiftUI
 
 // MARK: - The Today page
 
-/// Today: the hint of the day, the day's appointments, each with what is linked to it, then the to-dos due today or
-/// before and those done today, Up Next (the next seven days, at most five rows, foldable) and the fixed rows Open
-/// To-dos and Weekly Review. Paged a day at a time (`TodayDay`): another day shows its appointments and the to-dos
-/// due on it, nothing else.
+/// Today: the hint of the day, the day's appointments, each with what is linked to it, then the open to-dos due today
+/// or before, Up Next (the next seven days, at most five rows, foldable) and the fixed rows Open To-dos and Weekly
+/// Review. Paged a day at a time (`TodayDay`): another day shows its appointments and the open to-dos due on it,
+/// nothing else. Only what is open: done to-dos never show, one ticked here leaves with the undo toast.
 struct TodayPage: View {
     let notes: [Note]
     /// The day shown; nil is today.
@@ -60,9 +60,8 @@ struct TodayPage: View {
         let links = AppointmentLinks.shared
         let appointments = calendar.appointments(on: shown)
         // A to-do under one of the appointments is not listed twice.
-        let underAppointments = calendar.status == .granted ? Set(appointments.flatMap { links.notes(for: $0, among: notes).map(\.id) }) : []
+        let underAppointments = calendar.status == .granted ? Set(appointments.flatMap { TodayTodos.shown(links.notes(for: $0, among: notes)).map(\.id) }) : []
         let open = TodayTodos.open(notes, on: shown).filter { !underAppointments.contains($0.id) }
-        let done = TodayTodos.done(notes, on: shown).filter { !underAppointments.contains($0.id) }
         let overdue = open.filter { $0.todoDue.flatMap { Todos.dueStatus($0) } == .overdue }.count
         let upcoming = isToday ? Array(TodayTodos.upcoming(notes).prefix(Self.upNextLimit)) : []
         let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
@@ -78,7 +77,7 @@ struct TodayPage: View {
                             .lastInSection(true)
                     }
                     ForEach(appointments) { appointment in
-                        let linked = links.notes(for: appointment, among: notes)
+                        let linked = TodayTodos.shown(links.notes(for: appointment, among: notes))
                         AppointmentRow(
                             appointment: appointment, bowlName: links.bowl(for: appointment).flatMap { names[$0] }, linked: linked.count,
                             projects: projects,
@@ -116,15 +115,15 @@ struct TodayPage: View {
                 ListHeader(title: String(localized: "Appointments"), count: calendar.status == .granted ? appointments.count : nil, tint: .brandNavy, isFirst: true)
             }
             Section {
-                if open.isEmpty, done.isEmpty {
+                if open.isEmpty {
                     Text(isToday ? String(localized: "Nothing due today") : String(localized: "Nothing due on this day"))
                         .foregroundStyle(.secondary)
                         .cardListRow()
                         .lastInSection(true)
                 }
-                ForEach(open + done) { note in
+                ForEach(open) { note in
                     NoteListRow(note: note, buckets: buckets(note)) { onRemove(note) }
-                        .lastInSection(note.id == (open + done).last?.id)
+                        .lastInSection(note.id == open.last?.id)
                 }
             } header: {
                 ListHeader(
@@ -173,6 +172,8 @@ struct TodayPage: View {
             }
         }
         .cardList()
+        // A to-do ticked done leaves Today: the tick offers Undo.
+        .environment(\.ticksLeaveList, true)
         .refreshable { calendar.refresh() }
     }
 }

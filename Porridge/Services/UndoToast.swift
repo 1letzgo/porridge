@@ -125,6 +125,8 @@ struct NoteSnapshot: Equatable {
     var todoDueDay: String?
     /// Holds the repeat rule of a to-do (`Note.todoRepeat`).
     var todoSuggestionsRaw: String?
+    /// The text: ticking a to-do done ticks its subtasks too.
+    var text: String
 
     init(_ note: Note) {
         projectIDs = note.projectIDs
@@ -138,6 +140,7 @@ struct NoteSnapshot: Equatable {
         todoDoneAt = note.todoDoneAt
         todoDueDay = note.todoDueDay
         todoSuggestionsRaw = note.todoSuggestionsRaw
+        text = note.text
     }
 
     /// Writes back the fields that differ between `before` (self) and `after` onto the note. Returns whether
@@ -161,7 +164,25 @@ struct NoteSnapshot: Equatable {
         put(\.todoDoneAt, todoDoneAt, after.todoDoneAt)
         put(\.todoDueDay, todoDueDay, after.todoDueDay)
         put(\.todoSuggestionsRaw, todoSuggestionsRaw, after.todoSuggestionsRaw)
+        // The text only while nobody wrote in it since: typing is never taken back.
+        if text != after.text, note.text == after.text {
+            note.text = text
+            changed = true
+        }
         return changed
+    }
+}
+
+@MainActor
+extension Todos {
+    /// The box of a list row: ticks or unticks the to-do. Where the list shows only open to-dos (Today) a to-do ticked
+    /// done leaves the list, so it comes with the undo toast (`Undoable.done`).
+    static func tick(_ note: Note, leavesList: Bool, in context: ModelContext) {
+        if leavesList, !note.isDone {
+            Undoable.done([note], in: context)
+        } else {
+            setDone(!note.isDone, note, in: context)
+        }
     }
 }
 
@@ -190,6 +211,17 @@ enum Undoable {
                 }
             }
             if any { try? context.save() }
+        }
+    }
+
+    /// Ticks to-dos done where they then leave the list (Today, triage, the selection bar): "Done: “…”" with Undo. A
+    /// repeating one moves on to its next round, and Undo brings it back to this one (subtasks unticked again).
+    static func done(_ notes: [Note], in context: ModelContext, toast: UndoToast = .shared) {
+        let todos = notes.filter { $0.isTodo && !$0.isDone && !$0.isDeleted && !BowlSharing.shared.isReadOnly($0) }
+        guard !todos.isEmpty else { return }
+        let message = todos.count == 1 ? String(localized: "Done: “\(todos[0].displayTitle)”") : String(localized: "\(todos.count) to-dos done")
+        run(message, systemImage: "checkmark.square", notes: todos, in: context, toast: toast) {
+            todos.forEach { Todos.setDone(true, $0, in: context) }
         }
     }
 

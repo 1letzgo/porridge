@@ -208,7 +208,9 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             let cell = table.makeView(withIdentifier: NoteCellView.identifier, owner: nil) as? NoteCellView ?? NoteCellView()
             if let note = library.note(id) {
                 cell.show(note, buckets: library.activeProjects, showsSuggestions: state.page == .inbox, namesBuckets: state.page == .todos || state.page.smartFilterID != nil)
-                cell.onToggleDone = { note in TodoBridge.setDone(!TodoBridge.isDone(note), note) }
+                // Today shows only what is open: a to-do ticked there leaves the list, so it comes with Undo.
+                let isToday = state.page == .today
+                cell.onToggleDone = { [library] note in Todos.tick(note, leavesList: isToday, in: library.context) }
             }
             cell.isIndented = dataSource.snapshot().sectionIdentifier(containingItem: item)?.id == "today-appointments"
             return cell
@@ -429,9 +431,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     /// D: a to-do done (it stays in the Inbox, ticked), then on to the next. Other entries have nothing to be done.
     private func triageDone() {
         guard let note = triageNote, note.isTodo, !note.isDone, !BowlSharing.shared.isReadOnly(note) else { return NSSound.beep() }
-        Undoable.run(String(localized: "Done: “\(note.displayTitle)”"), systemImage: "checkmark.square", notes: [note], in: library.context) {
-            TodoBridge.setDone(true, note)
-        }
+        Undoable.done([note], in: library.context)
         step(1)
     }
 
