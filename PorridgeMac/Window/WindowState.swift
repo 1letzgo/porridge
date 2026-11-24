@@ -153,7 +153,12 @@ final class WindowState {
 
     /// Opening the chat from a bowl or the inbox: the last chat about it is taken up again, otherwise a new one starts.
     func openChat(threads: [ChatThread]) {
-        let project = projectForNew
+        openChat(about: projectForNew, threads: threads)
+    }
+
+    /// The chat about a bowl (`Projects.key`; nil: all bowls): the last one about it, else a new one (AI › Ask About
+    /// This Bowl).
+    func openChat(about project: String?, threads: [ChatThread]) {
         chatScope = project
         chatID = threads.first { $0.projectID == project }?.id
         page = .chat

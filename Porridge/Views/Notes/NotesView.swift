@@ -92,6 +92,7 @@ struct NotesView: View {
                 NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id)
                     .id(note.id)
                     .environment(\.openNote, { openNote($0) })
+                    .environment(\.askAboutBowl, { askAbout($0) })
                     .environment(\.allNotes, notes)
             } else {
                 EmptyStateView(title: "No Note Selected", message: "Pick a note from the list.", systemImage: "note.text")
@@ -114,6 +115,7 @@ struct NotesView: View {
                             NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id, onBack: { selection = nil })
                                 .id(note.id)
                                 .environment(\.openNote, { openNote($0) })
+                                .environment(\.askAboutBowl, { askAbout($0) })
                                 .environment(\.allNotes, notes)
                         }
                     }
@@ -468,6 +470,13 @@ struct NotesView: View {
         ) {
             searchResults
         }
+    }
+
+    /// ✦ AI › Ask About This Bowl on an entry: the entry closes, the chat about its bowl opens.
+    private func askAbout(_ bowl: String) {
+        selection = nil
+        chatNavigation.open(from: bowl, threads: chatThreads)
+        page = .chat
     }
 
     /// Opens the chat page. From a bowl the chat is about that bowl; the last chat about it is taken up again.
@@ -1593,6 +1602,8 @@ extension EnvironmentValues {
     @Entry var openListPage: (ListPage) -> Void = { _ in }
     /// Opens a note by its id; for the way from a to-do back to the note it was made from.
     @Entry var openNote: (UUID) -> Void = { _ in }
+    /// ✦ AI › Ask About This Bowl: the chat about a bowl (`Projects.key`), the last one about it taken up again.
+    @Entry var askAboutBowl: (String) -> Void = { _ in }
     /// Every note of the list, for views that look up others (the to-dos made from a summary).
     @Entry var allNotes: [Note] = []
 }

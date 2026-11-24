@@ -194,4 +194,75 @@ final class NotesFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["Only This Line"].waitForExistence(timeout: 5), "speaker menu did not open")
         XCTAssertTrue(app.buttons["Other Name…"].exists)
     }
+
+    /// ✦ AI · Share · ⋯ More of every kind show the items of `EntryMenus` (design table 3.1); screenshots of each
+    /// open menu go to /tmp/porridge-s3-shots when that folder exists (simulator only).
+    func testEntryPillsPerKind() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES"]
+        app.launch()
+        let kinds: [(name: String, title: String, ai: [String], notAI: [String], more: [String], notMore: [String])] = [
+            ("note", "Packing list & plan", ["Enhance with AI…", "Rewrite Selection…", "Split into Bowl…", "Ask About This Bowl"], ["Suggest To-dos"],
+             ["Pin", "Convert to To-do", "Save as Template…", "Delete"], ["Later"]),
+            ("todo", "Choose worktop colour", ["Enhance with AI…", "Rewrite Selection…", "Split into Bowl…"], ["Suggest To-dos", "Summarize…"],
+             ["Pin", "Mark as Done", "Convert to Note", "Save as Template…", "Delete"], []),
+            ("meeting", "Design Review", ["Suggest To-dos", "Split into Bowl…", "Ask About This Bowl"], ["Enhance with AI…"],
+             ["Pin", "Continue Recording", "Transcribe Again", "Merge with…", "Copy Transcript", "Delete Recording…", "Save as Template…", "Delete"], ["Convert to To-do"]),
+            ("link", "The Case for Slow Software", ["Ask About This Bowl"], ["Suggest To-dos", "Enhance with AI…"],
+             ["Pin", "Open in Browser", "Copy Link", "Load Page Again", "Delete"], ["Convert to To-do", "Save as Template…"]),
+            ("image", "Whiteboard", ["Ask About This Bowl"], ["Suggest To-dos"], ["Pin", "Delete"], ["Save as Template…"]),
+            ("pdf", "Invoice INV-2026-1142", [], ["Suggest To-dos", "Ask About This Bowl"],
+             ["Pin", "Mark as Paid", "Edit Pages…", "Later", "Delete"], ["Save as Template…"]),
+        ]
+        let shots = URL(fileURLWithPath: "/tmp/porridge-s3-shots")
+        func shoot(_ name: String) {
+            guard FileManager.default.fileExists(atPath: shots.path) else { return }
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: shots.appendingPathComponent("ios-\(name).png"))
+        }
+        func dismissMenu() {
+            // The left margin of the page: nothing there reacts to a tap.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.6)).tap()
+        }
+        var searched = false
+        for kind in kinds {
+            if searched { app.searchAgain(for: kind.title) } else { app.search(for: kind.title) }
+            searched = true
+            let row = try XCTUnwrap(app.searchResult(kind.title), "seeded \(kind.name) missing")
+            row.tap()
+            let ai = app.buttons["entry.ai"]
+            XCTAssertTrue(ai.waitForExistence(timeout: 10), "\(kind.name): ✦ AI pill missing")
+            XCTAssertTrue(app.buttons["entry.share"].exists, "\(kind.name): Share pill missing")
+            shoot("\(kind.name)-bar")
+            ai.tap()
+            for title in kind.ai {
+                XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 3), "\(kind.name): AI lacks \(title)")
+            }
+            for title in kind.notAI { XCTAssertFalse(app.buttons[title].exists, "\(kind.name): AI has \(title)") }
+            shoot("\(kind.name)-ai")
+            dismissMenu()
+            let more = app.buttons["entry.more"]
+            XCTAssertTrue(more.waitForExistence(timeout: 5))
+            more.tap()
+            for title in kind.more {
+                XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 3), "\(kind.name): More lacks \(title)")
+            }
+            for title in kind.notMore { XCTAssertFalse(app.buttons[title].exists, "\(kind.name): More has \(title)") }
+            shoot("\(kind.name)-more")
+            dismissMenu()
+            let back = app.buttons["Back"].firstMatch
+            if !back.waitForHittable(timeout: 5) { shoot("\(kind.name)-stuck") }
+            back.tap()
+        }
+    }
+}
+
+private extension XCUIElement {
+    func waitForHittable(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if exists, isHittable { return true }
+            usleep(200_000)
+        }
+        return false
+    }
 }

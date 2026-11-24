@@ -11,7 +11,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var observers: [Observing] = []
     private var libraryToken: UUID?
     private weak var searchField: NSSearchField?
-    private var shareItem: NSSharingServicePickerToolbarItem?
+    private var shareItem: NSToolbarItem?
+    private let shareButton = NSButton()
     /// The red counter of a running recording (hidden otherwise).
     private var recordingItem: NSToolbarItem?
     private let recordingButton = NSButton()
@@ -82,6 +83,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let index = toolbar.items.firstIndex { $0.itemIdentifier == Item.share } ?? toolbar.items.count
             toolbar.insertItem(withItemIdentifier: Item.recording, at: index)
         }
+        // One saved before the ✦ AI menu lacks it: it goes before Share.
+        if !toolbar.items.contains(where: { $0.itemIdentifier == Item.ai }) {
+            let index = toolbar.items.firstIndex { $0.itemIdentifier == Item.share } ?? toolbar.items.count
+            toolbar.insertItem(withItemIdentifier: Item.ai, at: index)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(recordingChanged), name: MeetingRecorder.didChange, object: nil)
         recordingChanged()
 
@@ -121,6 +127,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let kept = state.selection.filter { id in state.draft?.id == id || library.note(id) != nil }
         if kept != state.selection { state.selection = kept }
         window?.title = windowTitle
+        updateShareItem()
         window?.toolbar?.validateVisibleItems()
     }
 
@@ -209,6 +216,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         static let listSeparator = NSToolbarItem.Identifier("listSeparator")
         static let share = NSToolbarItem.Identifier("share")
         static let noteMenu = NSToolbarItem.Identifier("noteMenu")
+        static let ai = NSToolbarItem.Identifier("ai")
         static let chat = NSToolbarItem.Identifier("chat")
         static let search = NSToolbarItem.Identifier("search")
         static let settings = NSToolbarItem.Identifier("settings")
@@ -217,7 +225,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Item.new, Item.importMenu, Item.listSeparator,
-         Item.recording, .flexibleSpace, Item.share, Item.noteMenu, Item.chat, Item.search,
+         Item.recording, .flexibleSpace, Item.ai, Item.share, Item.noteMenu, Item.chat, Item.search,
          // The inspector (Details | Record) keeps the part of the toolbar above it to itself: while it is open the
          // items before this separator, the search included, stay over the columns to its left.
          .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector]
@@ -251,21 +259,38 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return item
         case Item.listSeparator:
             return NSTrackingSeparatorToolbarItem(identifier: identifier, splitView: split.splitView, dividerIndex: 1)
+        case Item.ai:
+            // ✦ AI: what a model does to the open entry (`EntryMenus.ai`), filled when it opens.
+            let item = NSMenuToolbarItem(itemIdentifier: identifier)
+            item.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "AI")
+            item.label = "AI"
+            item.toolTip = "AI"
+            item.showsIndicator = true
+            item.menu = EntryToolbarMenu.make(.ai)
+            return item
         case Item.share:
-            let item = NSSharingServicePickerToolbarItem(itemIdentifier: identifier)
+            // Share hands over what the entry is (`EntryMenus.share`): the text, the link, the picture or the file;
+            // a meeting opens its export sheet.
+            let item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Share"
             item.toolTip = "Share"
-            item.delegate = self
+            shareButton.bezelStyle = .toolbar
+            shareButton.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "Share")
+            shareButton.target = self
+            shareButton.action = #selector(shareEntry(_:))
+            shareButton.setAccessibilityLabel("Share")
+            item.view = shareButton
             shareItem = item
             updateShareItem()
             return item
         case Item.noteMenu:
+            // ⋯ More: only the short More of the entry's kind (`EntryMenus.more`); the whole list is the Entry menu.
             let item = NSMenuToolbarItem(itemIdentifier: identifier)
             item.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "More")
             item.label = "More"
             item.toolTip = "More"
             item.showsIndicator = false
-            item.menu = AppMenu.noteMenu(title: "More")
+            item.menu = EntryToolbarMenu.make(.more)
             return item
         case Item.chat:
             let item = NSToolbarItem(itemIdentifier: identifier)
@@ -372,15 +397,45 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     private func updateShareItem() {
-        shareItem?.isEnabled = openNote != nil
+        let enabled = openNote.map { EntryMenus.share(for: $0) != nil } ?? false
+        shareItem?.isEnabled = enabled
+        shareButton.isEnabled = enabled
     }
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
         switch item.itemIdentifier {
         case Item.new, Item.importMenu: state.page.allowsCreating
-        case Item.share, Item.noteMenu: openNote != nil
+        case Item.noteMenu: openNote != nil
+        case Item.ai: openNote.map { !EntryMenus.ai(for: $0, context: entryContext(for: $0)).isEmpty } ?? false
+        case Item.share: openNote.map { EntryMenus.share(for: $0) != nil } ?? false
         default: true
         }
+    }
+
+    /// What the menus of the toolbar read for an entry.
+    func entryContext(for note: Note) -> EntryContext {
+        EntryContext.live(for: note, bowls: library.projects, processing: library.processing)
+    }
+
+    /// The toolbar's Share: per kind (`EntryMenus.share`).
+    @objc func shareEntry(_ sender: Any?) {
+        guard let note = openNote, let share = EntryMenus.share(for: note) else { return }
+        split.detail.noteDetail?.flushEditing()
+        let items: [Any]
+        switch share {
+        case .exportSheet:
+            split.detail.noteDetail?.perform(.export)
+            return
+        case .url:
+            items = [note.linkURL.map { $0 as Any } ?? note.exportText]
+        case .image, .file:
+            items = [EntryMenus.shareFile(for: note).map { $0 as Any } ?? note.exportText]
+        case .markdown, .todoText:
+            items = [note.exportText]
+        }
+        let picker = NSSharingServicePicker(items: items)
+        let anchor = (sender as? NSView) ?? shareButton
+        picker.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     }
 
     // MARK: Search
@@ -432,6 +487,41 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if state.page == .chat { return }
         state.openChat(threads: library.threads)
     }
+
+    /// AI › Ask About This Bowl: the chat about the open entry's bowl, else the bowl that is open.
+    @objc func askAboutBowl(_ sender: Any?) {
+        guard let bowl = bowlToAsk else { return }
+        state.openChat(about: bowl, threads: library.threads)
+    }
+
+    /// The bowl Ask About This Bowl and Export Bowl… act on: the open entry's, else the open page's.
+    private var bowlToAsk: String? {
+        if let note = openNote, note.modelContext != nil, !note.isDeleted { return note.projectIDs.first }
+        return state.page.projectID?.uuidString
+    }
+
+    /// File › Export Bowl…: the bowl that is open, else the open entry's.
+    @objc func exportBowl(_ sender: Any?) {
+        let key = state.page.projectID?.uuidString ?? openNote?.projectIDs.first
+        guard let key, let project = library.projects.first(where: { Projects.key($0) == key }) else { return }
+        ExportSheetController.export(.bowl(project.id), title: String(localized: "Export “\(project.name)”"), in: window)
+    }
+
+    /// File › Export Everything…
+    @objc func exportEverything(_ sender: Any?) {
+        ExportSheetController.export(.everything, title: String(localized: "Export Everything"), in: window)
+    }
+
+    /// Entry › Pages › Merge PDFs…: the selected PDFs into one.
+    @objc func mergePDFs(_ sender: Any?) {
+        let mergeable = DocumentFiles.mergeable(selectedNotes.filter { $0.isStored && !$0.isDeleted })
+        guard mergeable.count >= 2 else { return }
+        NoteOperations.merge(mergeable, in: window)
+    }
+
+    /// The rows of the Entry and AI menus that open a submenu: never run, only validated (dimmed when nothing in
+    /// the submenu applies).
+    @objc func entrySubmenu(_ sender: Any?) {}
 
     @objc func newChat(_ sender: Any?) {
         state.page = .chat
@@ -607,6 +697,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        // The rows of the toolbar's ✦ AI and ⋯ keep the words of `EntryMenus`.
+        if EntryToolbarMenu.isToolbarRow(item) {
+            let title = item.title
+            defer { item.title = title }
+            return validateEntryItem(item)
+        }
+        return validateEntryItem(item)
+    }
+
+    private func validateEntryItem(_ item: NSMenuItem) -> Bool {
         let notes = selectedNotes
         let note = openNote
         switch item.action {
@@ -623,10 +723,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.title = !saved.isEmpty && saved.allSatisfy(\.isPinned) ? "Unpin" : "Pin"
             return !saved.isEmpty
         case #selector(deleteNote(_:)):
-            item.title = !notes.isEmpty && notes.allSatisfy(\.isDeleted) ? "Delete Now…" : "Delete"
-            return !notes.isEmpty
-        case #selector(recoverNote(_:)):
-            return notes.contains(where: \.isDeleted)
+            let deleted = !notes.isEmpty && notes.allSatisfy(\.isDeleted)
+            item.title = deleted ? "Delete Now…" : "Delete"
+            // Entries in a bowl shared with me to view only stay where they are.
+            return deleted || notes.contains { !BowlSharing.shared.isReadOnly($0) }
         case #selector(copyNote(_:)):
             return !notes.isEmpty
         case #selector(openNoteInNewWindow(_:)):
@@ -645,6 +745,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return !todos.isEmpty
         case #selector(showArchive(_:)):
             return true
+        case #selector(recoverNote(_:)):
+            item.isHidden = !notes.contains(where: \.isDeleted)
+            return notes.contains(where: \.isDeleted)
+        case #selector(askAboutBowl(_:)):
+            return bowlToAsk != nil
+        case #selector(exportBowl(_:)):
+            return (state.page.projectID?.uuidString ?? openNote?.projectIDs.first) != nil
+        case #selector(mergePDFs(_:)):
+            let mergeable = DocumentFiles.mergeable(notes.filter { $0.isStored && !$0.isDeleted })
+            item.title = mergeable.count >= 2 ? "Merge \(mergeable.count) PDFs…" : "Merge PDFs…"
+            return mergeable.count >= 2 && !DocumentFiles.isBusy
+        case #selector(entrySubmenu(_:)):
+            return validateSubmenu(item, notes: notes, note: note)
         case #selector(showDetailsInspector(_:)):
             item.state = split.isInspectorOpen && split.inspector.mode == .details ? .on : .off
             return true
@@ -659,10 +772,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 }
 
-extension MainWindowController: NSSharingServicePickerToolbarItemDelegate {
-    func items(for pickerToolbarItem: NSSharingServicePickerToolbarItem) -> [Any] {
-        guard let note = openNote else { return [] }
-        return [note.exportText]
+
+extension MainWindowController {
+    /// Whether a submenu row of the Entry or AI menu has anything for the selection.
+    fileprivate func validateSubmenu(_ item: NSMenuItem, notes: [Note], note: Note?) -> Bool {
+        let live = notes.filter { $0.modelContext != nil && !$0.isDeleted && !BowlSharing.shared.isReadOnly($0) }
+        let todos = live.filter(\.isTodo)
+        let one = live.count == 1 ? live.first : nil
+        switch EntrySubmenu(rawValue: item.tag) {
+        case .bowl: return !live.isEmpty
+        case .due, .repeatRule: return !todos.isEmpty && todos.count == live.count
+        case .later: return !live.isEmpty && live.allSatisfy(\.isInInbox)
+        case .appointment, .linkAppointment: return one != nil
+        case .documentKind, .document: return live.contains { $0.isStored && !$0.attachments.isEmpty }
+        case .recording:
+            // Copy Transcript works in a view-only bowl too.
+            return note.map { $0.isRecording && !$0.isLink && !$0.isDeleted } ?? false
+        case .addPages: return one.map { DocumentFiles.pdf(of: $0) != nil } ?? false
+        case .pages: return live.contains { DocumentFiles.pdf(of: $0) != nil }
+        case .summary: return note?.summary != nil && note?.isDeleted == false
+        case nil: return false
+        }
     }
 }
 

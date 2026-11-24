@@ -116,10 +116,24 @@ final class BowlSharing {
     func isSharedWithMe(_ bowlID: UUID?) -> Bool { info(for: bowlID)?.role == .participant }
 
     /// Shared with me to see only ("Can view"): its entries are shown and cannot be changed here.
-    func isReadOnly(_ bowlID: UUID?) -> Bool { info(for: bowlID)?.isReadOnly ?? false }
+    func isReadOnly(_ bowlID: UUID?) -> Bool {
+        #if DEBUG
+        if let debugReadOnly, bowlID?.uuidString == debugReadOnly { return true }
+        #endif
+        return info(for: bowlID)?.isReadOnly ?? false
+    }
+
+    #if DEBUG
+    /// Debug builds: one bowl (`Projects.key`) treated as shared with me to view only, in memory (the Mac debug
+    /// driver's `view-only`), to look at the view-only menus without a second account.
+    var debugReadOnly: String?
+    #endif
 
     /// The note is in a bowl I may only see.
     func isReadOnly(_ note: Note) -> Bool {
+        #if DEBUG
+        if let debugReadOnly, note.projectIDs.contains(debugReadOnly) { return true }
+        #endif
         guard !bowls.isEmpty else { return false }
         return note.projectIDs.contains { isReadOnly(UUID(uuidString: $0)) }
     }

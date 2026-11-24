@@ -11,7 +11,8 @@ enum AppMenu {
         main.addItem(submenu(editMenu()))
         main.addItem(submenu(formatMenu()))
         main.addItem(submenu(viewMenu()))
-        main.addItem(submenu(noteMenu(title: "Note")))
+        main.addItem(submenu(entryMenu()))
+        main.addItem(submenu(aiMenu()))
         let window = windowMenu()
         main.addItem(submenu(window))
         NSApp.windowsMenu = window
@@ -65,7 +66,6 @@ enum AppMenu {
         item(menu, "Record Meeting", #selector(MainWindowController.recordMeeting(_:)), "r")
         item(menu, "Add Link…", #selector(MainWindowController.addLink(_:)), "l")
         item(menu, "New Bowl…", #selector(MainWindowController.newBucket(_:)), "n", [.command, .control])
-        item(menu, "New Chat", #selector(MainWindowController.newChat(_:)), "k", [.command, .shift])
         menu.addItem(.separator())
         item(menu, "Import Audio…", #selector(MainWindowController.importAudio(_:)))
         item(menu, "Import Plaud…", #selector(MainWindowController.importPlaud(_:)))
@@ -76,10 +76,12 @@ enum AppMenu {
         menu.addItem(device)
         menu.addItem(.separator())
         item(menu, "New Window", #selector(MainWindowController.newWindow(_:)), "n", [.command, .option])
-        item(menu, "Open Note in New Window", #selector(MainWindowController.openNoteInNewWindow(_:)), "o")
+        item(menu, "Open in New Window", #selector(MainWindowController.openNoteInNewWindow(_:)), "o")
         item(menu, "Close", #selector(NSWindow.performClose(_:)), "w")
         menu.addItem(.separator())
         item(menu, "Export…", #selector(MainWindowController.noteCommand(_:)), "e", [.command, .shift], tag: NoteCommand.export.rawValue)
+        item(menu, "Export Bowl…", #selector(MainWindowController.exportBowl(_:)))
+        item(menu, "Export Everything…", #selector(MainWindowController.exportEverything(_:)))
         return menu
     }
 
@@ -141,8 +143,6 @@ enum AppMenu {
         menu.addItem(.separator())
         item(menu, "Move Line Up", #selector(NoteEditorView.moveLineUp(_:)), String(UnicodeScalar(NSUpArrowFunctionKey)!), [.command, .option])
         item(menu, "Move Line Down", #selector(NoteEditorView.moveLineDown(_:)), String(UnicodeScalar(NSDownArrowFunctionKey)!), [.command, .option])
-        menu.addItem(.separator())
-        item(menu, "Rewrite with AI…", #selector(NoteEditorView.rewriteWithAI(_:)), "j", symbol: "wand.and.stars")
         return menu
     }
 
@@ -174,47 +174,131 @@ enum AppMenu {
         return menu
     }
 
-    /// The Note menu: also the toolbar's More menu. Grouped by a line: the note and its summary, the recording,
-    /// what deletes.
-    static func noteMenu(title: String) -> NSMenu {
-        let menu = NSMenu(title: title)
+    /// The Entry menu (was "Note"): what is done to the selected entries, by verb. What does not apply is dimmed; the
+    /// toolbar's ⋯ shows only the short More of the entry's kind (`EntryMenus.more`).
+    static func entryMenu() -> NSMenu {
+        let menu = NSMenu(title: "Entry")
         let command = #selector(MainWindowController.noteCommand(_:))
         item(menu, "Pin", #selector(MainWindowController.togglePin(_:)), "p", [.command, .shift], symbol: "pin")
         item(menu, "Mark as Done", command, "d", [.command, .shift], symbol: "checkmark.square", tag: NoteCommand.toggleTodo.rawValue)
-        item(menu, "Make To-do", command, "", symbol: "checklist", tag: NoteCommand.convertTodo.rawValue)
-        // The due day of the selected to-dos.
+        item(menu, "Convert to To-do", command, "", symbol: "checklist", tag: NoteCommand.convertTodo.rawValue)
+        menu.addItem(.separator())
+        // Into one bowl or back to the Inbox.
+        let bowl = item(menu, "Bowl", #selector(MainWindowController.entrySubmenu(_:)), symbol: "folder", tag: EntrySubmenu.bowl.rawValue)
+        bowl.submenu = BucketsMenu.make()
+        // The due day of the selected to-dos, and how they repeat.
         let due = NSMenu(title: "Due Date")
         let dueAction = #selector(MainWindowController.setDueDate(_:))
         item(due, "Today", dueAction, "t", [.command, .control], symbol: "star", tag: 0)
         item(due, "Tomorrow", dueAction, "m", [.command, .control], symbol: "sunrise", tag: 1)
         item(due, "Next Week", dueAction, "w", [.command, .control], symbol: "calendar.badge.clock", tag: 2)
         item(due, "Pick Date…", dueAction, "p", [.command, .control], symbol: "calendar", tag: 3)
+        let repeatItem = item(due, "Repeat", #selector(MainWindowController.entrySubmenu(_:)), symbol: "repeat", tag: EntrySubmenu.repeatRule.rawValue)
+        repeatItem.submenu = DynamicMenu.make("Repeat") { menu, controller in
+            let todos = controller.selectedNotes.filter { $0.isTodo && $0.modelContext != nil && !$0.isDeleted }
+            guard let sub = DueDateMenu.repeatItem(for: todos, window: controller.window).submenu else { return }
+            DynamicMenu.move(sub, into: menu)
+        }
         due.addItem(.separator())
         item(due, "Clear Due Date", dueAction, "\u{8}", [.command, .control], symbol: "calendar.badge.minus", tag: 4)
-        item(menu, "Due Date", nil, symbol: "calendar").submenu = due
+        item(menu, "Due Date", #selector(MainWindowController.entrySubmenu(_:)), symbol: "calendar", tag: EntrySubmenu.due.rawValue).submenu = due
+        // Inbox entries: away until later, or back now.
+        let later = item(menu, "Later", #selector(MainWindowController.entrySubmenu(_:)), symbol: "clock", tag: EntrySubmenu.later.rawValue)
+        later.submenu = DynamicMenu.make("Later") { menu, controller in
+            let notes = controller.selectedNotes.filter { $0.modelContext != nil && !$0.isDeleted && $0.isInInbox }
+            guard !notes.isEmpty else { return }
+            DynamicMenu.move(NoteOperations.laterMenu(for: notes, window: controller.window), into: menu)
+            let snoozed = notes.filter { $0.isSnoozed() }
+            if !snoozed.isEmpty {
+                menu.addItem(.separator())
+                menu.add("Back to Inbox Now", symbol: "tray.and.arrow.down") { InboxSnooze.unsnooze(snoozed, in: Library.shared.context) }
+            }
+        }
         item(menu, "Add Tag…", command, "t", [.command, .shift], symbol: "number", tag: NoteCommand.addTag.rawValue)
-        let buckets = item(menu, "Bowls", nil, symbol: "folder")
-        buckets.submenu = BucketsMenu.make()
         menu.addItem(.separator())
-        item(menu, "Summarize with AI…", command, "s", [.command, .shift], symbol: "sparkles", tag: NoteCommand.summarize.rawValue)
-        item(menu, "Enhance with AI…", command, "", symbol: "wand.and.stars", tag: NoteCommand.enhance.rawValue)
-        item(menu, "Undo Enhance", command, "", symbol: "arrow.uturn.backward", tag: NoteCommand.undoEnhance.rawValue)
-        item(menu, "Edit Summary", command, "", symbol: "pencil", tag: NoteCommand.editSummary.rawValue)
-        item(menu, "Insert Summary into Note", command, "", symbol: "text.insert", tag: NoteCommand.insertSummary.rawValue)
-        item(menu, "Suggest To-dos", command, "", symbol: "checklist", tag: NoteCommand.suggestTodos.rawValue)
-        item(menu, "Split into Bowl…", command, "", symbol: "square.split.2x2", tag: NoteCommand.splitIntoBowl.rawValue)
+        // The appointment the entry belongs to.
+        let appointment = NSMenu(title: "Appointment")
+        let link = item(appointment, "Link Appointment", #selector(MainWindowController.entrySubmenu(_:)), symbol: "calendar.badge.plus", tag: EntrySubmenu.linkAppointment.rawValue)
+        link.submenu = DynamicMenu.make("Link Appointment") { menu, controller in
+            guard let note = controller.openNote, note.modelContext != nil, !note.isDeleted else { return }
+            let links = AppointmentActions.linkMenu(for: note)
+            // "Remove Appointment" has its own row beside.
+            if let remove = links.items.last(where: { $0.title == String(localized: "Remove Appointment") }) {
+                links.removeItem(remove)
+                if links.items.last?.isSeparatorItem == true { links.removeItem(at: links.items.count - 1) }
+            }
+            DynamicMenu.move(links, into: menu)
+        }
+        item(appointment, "Remove Appointment", command, symbol: "calendar.badge.minus", tag: NoteCommand.removeAppointment.rawValue)
+        item(menu, "Appointment", #selector(MainWindowController.entrySubmenu(_:)), symbol: "calendar", tag: EntrySubmenu.appointment.rawValue).submenu = appointment
+        // A stored document: its kind, sender, payment and the rest of its details.
+        let document = NSMenu(title: "Document")
+        let kind = item(document, "Kind", #selector(MainWindowController.entrySubmenu(_:)), symbol: "tag", tag: EntrySubmenu.documentKind.rawValue)
+        kind.submenu = DynamicMenu.make("Kind") { menu, controller in
+            let documents = controller.selectedNotes.filter { $0.isStored && !$0.attachments.isEmpty && !$0.isDeleted && $0.modelContext != nil }
+            guard !documents.isEmpty else { return }
+            let context = Library.shared.context
+            let none = menu.add("Not Set") { Undoable.apply(.kind(nil), to: documents, in: context) }
+            none.state = documents.allSatisfy { $0.documentInfo?.kind == nil } ? .on : .off
+            menu.addItem(.separator())
+            for kind in DocumentKind.allCases {
+                let item = menu.add(kind.title, symbol: kind.symbol) { Undoable.apply(.kind(kind), to: documents, in: context) }
+                item.state = documents.allSatisfy { $0.documentInfo?.kind == kind } ? .on : .off
+            }
+        }
+        item(document, "Set Sender…", command, symbol: "person.crop.square", tag: NoteCommand.setSender.rawValue)
+        item(document, "Mark as Paid", command, symbol: "checkmark.circle", tag: NoteCommand.markPaid.rawValue)
+        item(document, "Edit Details…", command, symbol: "doc.text", tag: NoteCommand.editDocument.rawValue)
+        item(menu, "Document", #selector(MainWindowController.entrySubmenu(_:)), symbol: "doc.text", tag: EntrySubmenu.document.rawValue).submenu = document
+        // A meeting's recording.
+        let recording = NSMenu(title: "Recording")
+        item(recording, "Continue Recording", command, "", symbol: "mic.badge.plus", tag: NoteCommand.continueRecording.rawValue)
+        item(recording, "Transcribe Again", #selector(MainWindowController.transcribeAgain(_:)), "", symbol: "waveform")
+        item(recording, "Merge with…", command, "", symbol: "arrow.triangle.merge", tag: NoteCommand.merge.rawValue)
+        item(recording, "Copy Transcript", #selector(MainWindowController.copyTranscript(_:)), "c", [.command, .shift], symbol: "doc.on.doc")
+        recording.addItem(.separator())
+        item(recording, "Delete Recording…", command, "", symbol: "waveform.slash", tag: NoteCommand.deleteRecording.rawValue)
+        item(menu, "Recording", #selector(MainWindowController.entrySubmenu(_:)), symbol: "waveform", tag: EntrySubmenu.recording.rawValue).submenu = recording
+        // A PDF's pages.
+        let pages = NSMenu(title: "Pages")
+        item(pages, "Edit Pages…", command, symbol: "doc.on.doc", tag: NoteCommand.editPages.rawValue)
+        let addPages = NSMenu(title: "Add Pages")
+        item(addPages, "From a File…", command, symbol: "doc.badge.plus", tag: NoteCommand.addPagesFromFile.rawValue)
+        item(pages, "Add Pages", #selector(MainWindowController.entrySubmenu(_:)), symbol: "plus.rectangle.on.rectangle", tag: EntrySubmenu.addPages.rawValue).submenu = addPages
+        item(pages, "Merge PDFs…", #selector(MainWindowController.mergePDFs(_:)), symbol: "arrow.triangle.merge")
+        item(menu, "Pages", #selector(MainWindowController.entrySubmenu(_:)), symbol: "doc.on.doc", tag: EntrySubmenu.pages.rawValue).submenu = pages
+        item(menu, "Load Page Again", command, "", symbol: "arrow.clockwise", tag: NoteCommand.loadPageAgain.rawValue)
         menu.addItem(.separator())
         item(menu, "Dictate", command, "d", [.command, .option], symbol: "mic", tag: NoteCommand.dictate.rawValue)
-        item(menu, "Continue Recording", command, "", symbol: "mic.badge.plus", tag: NoteCommand.continueRecording.rawValue)
-        item(menu, "Transcribe Again", #selector(MainWindowController.transcribeAgain(_:)), "", symbol: "waveform")
-        item(menu, "Load Page Again", command, "", symbol: "arrow.clockwise", tag: NoteCommand.loadPageAgain.rawValue)
-        item(menu, "Copy Transcript", #selector(MainWindowController.copyTranscript(_:)), "c", [.command, .shift], symbol: "doc.on.doc")
-        item(menu, "Merge with…", command, "", symbol: "arrow.triangle.merge", tag: NoteCommand.merge.rawValue)
-        item(menu, "Export…", command, "", symbol: "arrow.up.doc", tag: NoteCommand.export.rawValue)
+        item(menu, "Save as Template…", command, "", symbol: "doc.badge.plus", tag: NoteCommand.saveAsTemplate.rawValue)
         menu.addItem(.separator())
+        // Only for entries in Recently Deleted (hidden otherwise); Delete then reads "Delete Now…".
         item(menu, "Recover", #selector(MainWindowController.recoverNote(_:)), "", symbol: "arrow.uturn.backward")
-        item(menu, "Delete Recording…", command, "", symbol: "waveform.slash", tag: NoteCommand.deleteRecording.rawValue)
         item(menu, "Delete", #selector(MainWindowController.deleteNote(_:)), "\u{8}", .command, symbol: "trash")
+        return menu
+    }
+
+    /// The AI menu: chats, and what a model does to the open entry.
+    static func aiMenu() -> NSMenu {
+        let menu = NSMenu(title: "AI")
+        let command = #selector(MainWindowController.noteCommand(_:))
+        item(menu, "New Chat", #selector(MainWindowController.newChat(_:)), "k", [.command, .shift], symbol: "bubble.left.and.bubble.right")
+        item(menu, "Ask About This Bowl", #selector(MainWindowController.askAboutBowl(_:)), symbol: "bubble.left.and.text.bubble.right")
+        menu.addItem(.separator())
+        item(menu, "Summarize with AI…", command, "s", [.command, .shift], symbol: "sparkles", tag: NoteCommand.summarize.rawValue)
+        item(menu, "Suggest To-dos", command, "", symbol: "checklist", tag: NoteCommand.suggestTodos.rawValue)
+        item(menu, "Enhance with AI…", command, "", symbol: "wand.and.stars", tag: NoteCommand.enhance.rawValue)
+        item(menu, "Undo Enhance", command, "", symbol: "arrow.uturn.backward", tag: NoteCommand.undoEnhance.rawValue)
+        item(menu, "Split into Bowl…", command, "", symbol: "square.split.2x2", tag: NoteCommand.splitIntoBowl.rawValue)
+        item(menu, "Rewrite with AI…", #selector(NoteEditorView.rewriteWithAI(_:)), "j", symbol: "pencil.line")
+        menu.addItem(.separator())
+        let summary = NSMenu(title: "Summary")
+        item(summary, "Edit Summary", command, "", symbol: "pencil", tag: NoteCommand.editSummary.rawValue)
+        item(summary, "Insert into Note", command, "", symbol: "text.insert", tag: NoteCommand.insertSummary.rawValue)
+        item(summary, "Copy Summary", command, "", symbol: "doc.on.doc", tag: NoteCommand.copySummary.rawValue)
+        summary.addItem(.separator())
+        item(summary, "Delete Summary…", command, "", symbol: "trash", tag: NoteCommand.deleteSummary.rawValue)
+        item(menu, "Summary", #selector(MainWindowController.entrySubmenu(_:)), symbol: "text.alignleft", tag: EntrySubmenu.summary.rawValue).submenu = summary
         return menu
     }
 
@@ -230,12 +314,55 @@ enum AppMenu {
     }
 }
 
-/// The bowls as a menu for the open note (Note › Bowls): ticked where it is in, a click puts it in or takes it out.
+/// The submenus of the Entry and AI menus: their row is dimmed when nothing in them applies to the selection.
+enum EntrySubmenu: Int {
+    case bowl = 1, due, repeatRule, later, linkAppointment, appointment, documentKind, document, recording, addPages, pages, summary
+}
+
+/// A submenu filled when it opens, for the entries selected in the window in front (Entry › Later, Repeat, …).
+@MainActor
+final class DynamicMenu: NSObject, NSMenuDelegate {
+    /// Every menu keeps its own delegate; they stay alive here.
+    private static var all: [DynamicMenu] = []
+    let menu: NSMenu
+    private let fill: (NSMenu, MainWindowController) -> Void
+
+    private init(_ title: String, fill: @escaping (NSMenu, MainWindowController) -> Void) {
+        menu = NSMenu(title: title)
+        self.fill = fill
+        super.init()
+        menu.delegate = self
+    }
+
+    static func make(_ title: String, fill: @escaping (NSMenu, MainWindowController) -> Void) -> NSMenu {
+        let dynamic = DynamicMenu(title, fill: fill)
+        all.append(dynamic)
+        return dynamic.menu
+    }
+
+    /// The items of one menu moved into another (an item belongs to one menu at a time).
+    static func move(_ source: NSMenu, into menu: NSMenu) {
+        for item in source.items {
+            source.removeItem(item)
+            menu.addItem(item)
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        if let controller = MainWindowController.frontIfAny { fill(menu, controller) }
+        if menu.items.isEmpty {
+            menu.addItem(withTitle: String(localized: "Nothing Here"), action: nil, keyEquivalent: "").isEnabled = false
+        }
+    }
+}
+
+/// The bowls as a menu for the open note (Entry › Bowl): ticked where it is in, a click puts it in or takes it out.
 @MainActor
 final class BucketsMenu: NSObject, NSMenuDelegate {
     /// Every menu keeps its own (a menu can be the submenu of one item only); the delegates stay alive here.
     private static var all: [BucketsMenu] = []
-    let menu = NSMenu(title: "Bowls")
+    let menu = NSMenu(title: "Bowl")
 
     static func make() -> NSMenu {
         let buckets = BucketsMenu()

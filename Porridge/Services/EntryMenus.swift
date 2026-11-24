@@ -40,6 +40,19 @@ enum EntryMenus {
             case .askAboutBowl: String(localized: "Ask About This Bowl")
             }
         }
+
+        /// The symbol of the item, the same on the iPhone and the Mac.
+        var systemImage: String {
+            switch self {
+            case .enhance: "wand.and.stars"
+            case .undoEnhance: "arrow.uturn.backward"
+            case .summarize: "sparkles"
+            case .suggestTodos: "checklist"
+            case .rewriteSelection: "pencil.line"
+            case .splitIntoBowl: "square.split.2x2"
+            case .askAboutBowl: "bubble.left.and.bubble.right"
+            }
+        }
     }
 
     /// What Share hands over, one per kind.
@@ -116,6 +129,39 @@ enum EntryMenus {
             case .deleteNow: String(localized: "Delete Now…")
             }
         }
+
+        /// The symbol for this note's state, the same on the iPhone and the Mac.
+        func systemImage(for note: Note) -> String {
+            switch self {
+            case .pin: note.isPinned ? "pin.slash" : "pin"
+            case .markDone: note.isDone ? "square" : "checkmark.square"
+            case .convertToTodo: "checklist"
+            case .convertToNote: "text.alignleft"
+            case .later: "clock"
+            case .markPaid: note.documentInfo?.paid == true ? "creditcard" : "checkmark.circle"
+            case .editPages: "doc.on.doc"
+            case .scanMorePages: "doc.viewfinder"
+            case .openInBrowser: "safari"
+            case .copyLink: "link"
+            case .loadPageAgain: "arrow.clockwise"
+            case .continueRecording: "mic.badge.plus"
+            case .transcribeAgain: "waveform"
+            case .mergeWith: "arrow.triangle.merge"
+            case .copyTranscript: "doc.on.doc"
+            case .deleteRecording: "waveform.slash"
+            case .saveAsTemplate: "doc.badge.plus"
+            case .copy: "doc.on.doc"
+            case .openInNewWindow: "macwindow"
+            case .delete: "trash"
+            case .recover: "arrow.uturn.backward"
+            case .deleteNow: "trash"
+            }
+        }
+
+        /// Deletes or takes something away: drawn red.
+        var isDestructive: Bool {
+            self == .delete || self == .deleteNow || self == .deleteRecording
+        }
     }
 
     // MARK: ✦ AI
@@ -130,7 +176,10 @@ enum EntryMenus {
         case .note:
             main = [.enhance]
             if context.canUndoEnhance { main.append(.undoEnhance) }
-            if note.summary != nil { main.append(.summarize(again: true)) }
+            if note.summary != nil {
+                // A note summarized earlier keeps its way to the summary's tasks (the old menus had it too).
+                main += [.summarize(again: true), .suggestTodos]
+            }
             main += [.rewriteSelection, .splitIntoBowl]
         case .todo:
             main = [.enhance]
@@ -204,6 +253,30 @@ enum EntryMenus {
         if platform == .mac { groups.append([.openInNewWindow]) }
         groups.append([.delete])
         return groups
+    }
+
+    // MARK: What Share and Copy hand over
+
+    /// The file Share hands over for an image or a document, when it is on this device; nil otherwise (then the
+    /// text goes).
+    static func shareFile(for note: Note) -> URL? {
+        let kind = EntryKind(note)
+        guard kind == .image || kind == .document else { return nil }
+        let attachments = note.attachments
+        let file = kind == .image
+            ? attachments.first { $0.kind == .image }
+            : DocumentFiles.pdf(of: note) ?? attachments.first { $0.kind != .image } ?? attachments.first
+        guard let file, AttachmentStore.exists(file) else { return nil }
+        return AttachmentStore.url(for: file)
+    }
+
+    /// What "Copy" of a view-only entry puts on the clipboard: its text, else its summary, else its transcript.
+    static func copyText(for note: Note) -> String {
+        let text = note.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty { return note.exportText }
+        if let summary = note.summary, !summary.isEmpty { return summary }
+        if !note.segments.isEmpty { return note.transcriptText() }
+        return note.exportText
     }
 
     // MARK: Helpers

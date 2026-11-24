@@ -6,6 +6,8 @@ import SwiftUI
 /// of their own. Works on a copy; "Save" writes it back (`DocumentFiles.save`), and its text is read again.
 struct PDFPageEditor: View {
     let note: Note
+    /// More › Scan More Pages: the scanner opens once the pages are loaded.
+    var startsScanning = false
 
     @Environment(\.modelContext) private var context
     @Environment(ProcessingService.self) private var processing
@@ -109,7 +111,10 @@ struct PDFPageEditor: View {
                 .ignoresSafeArea()
             }
         }
-        .task { await load() }
+        .task {
+            await load()
+            if startsScanning, loadedFrom != nil, DocumentScanner.isAvailable { showScanner = true }
+        }
         .interactiveDismissDisabled(changed)
     }
 

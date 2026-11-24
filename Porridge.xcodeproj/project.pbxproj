@@ -93,6 +93,7 @@
 		26F71D7964D4E41BDFBD2A3C /* ShareInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79ECCCF65F69B116998795F1 /* ShareInbox.swift */; };
 		2737A83D67990960238CD9A2 /* AIRewriteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86B6057826BB6DD3262D7937 /* AIRewriteView.swift */; };
 		27D5D1AEFB9768FB080A333A /* VoiceProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C965C4F93692B80D211F105 /* VoiceProfile.swift */; };
+		29FD8B8BEEFC2CBA5AA5A592 /* EntryToolbarMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCA3EC277DCF0E3430AF722 /* EntryToolbarMenu.swift */; };
 		2D34B31C045A32C957D87681 /* OpusOggDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10494DA6CC2C9A9E3562C2C8 /* OpusOggDecoder.swift */; };
 		2D5F45D3485A448FD0995C7E /* EntryActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FBCD6EB5B1876CD602EB565 /* EntryActions.swift */; };
 		2D913B9D69F7737E952EFA1B /* PlaudLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A969612AE20E4060E62676 /* PlaudLog.swift */; };
@@ -675,6 +676,7 @@
 		58F5A36E4957C3F1BE0DF20A /* NoteSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteSplitter.swift; sourceTree = "<group>"; };
 		590D2B61DE8B70B60D07AF75 /* EditorBlocksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorBlocksTests.swift; sourceTree = "<group>"; };
 		5BC5ADD20923571634D3BECA /* ChatActionCardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatActionCardsView.swift; sourceTree = "<group>"; };
+		5DCA3EC277DCF0E3430AF722 /* EntryToolbarMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntryToolbarMenu.swift; sourceTree = "<group>"; };
 		5EFA3D813FB2B49041B87A57 /* IntakeFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntakeFlowTests.swift; sourceTree = "<group>"; };
 		5F0BC0DBAFDF678CBDCAC098 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5F165597B4025A92862665A9 /* Acknowledgements.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Acknowledgements.json; sourceTree = "<group>"; };
@@ -1205,6 +1207,7 @@
 				72F8AE2C57A9A29D0C4EB358 /* DocumentInfoSheet.swift */,
 				9D6B2367455E40FE33850B71 /* DueDateMenu.swift */,
 				FE0BA523E839BCC3CEFB71E1 /* EntryLinkViews.swift */,
+				5DCA3EC277DCF0E3430AF722 /* EntryToolbarMenu.swift */,
 				AFE957A75B04FE561EB3D69C /* MetaLineView.swift */,
 				74C1E402B8027F34C87067F4 /* NoteCommand.swift */,
 				95ECCF408E170696A24132B0 /* NoteDetailViewController.swift */,
@@ -2096,6 +2099,7 @@
 				06477653D5DF8C789A352532 /* EntryLinks.swift in Sources */,
 				EBFF986EF48E445E580CB94E /* EntryMenus.swift in Sources */,
 				8B953F80AA6F9A236BB19D43 /* EntryMeta.swift in Sources */,
+				29FD8B8BEEFC2CBA5AA5A592 /* EntryToolbarMenu.swift in Sources */,
 				E8505945E262BB1620D55A7F /* ExportSheetController.swift in Sources */,
 				C9A4F55E1D83CA58D649AC1C /* FileLocations.swift in Sources */,
 				5A8F2671AA290930D46AF5A5 /* ForegroundWork.swift in Sources */,

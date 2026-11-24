@@ -27,10 +27,14 @@ final class PDFPageEditorController: NSViewController, NSTableViewDataSource, NS
 
     private var library: Library { .shared }
 
-    /// Opens the editor as a sheet on the window.
-    static func open(_ note: Note, in window: NSWindow?) {
+    /// Pages › Add Pages › From a File…: the file panel opens once the pages are loaded.
+    private var addsFromFileOnLoad = false
+
+    /// Opens the editor as a sheet on the window; `addingFromFile` asks for the file of pages to add right away.
+    static func open(_ note: Note, in window: NSWindow?, addingFromFile: Bool = false) {
         guard DocumentFiles.pdf(of: note) != nil, let window else { return }
         let controller = PDFPageEditorController(note: note)
+        controller.addsFromFileOnLoad = addingFromFile
         let sheet = NSWindow(contentViewController: controller)
         sheet.title = "Pages"
         window.beginSheet(sheet)
@@ -122,6 +126,10 @@ final class PDFPageEditorController: NSViewController, NSTableViewDataSource, NS
                 loadedFrom = file.fileName
                 table.reloadData()
                 updateButtons()
+                if addsFromFileOnLoad {
+                    addsFromFileOnLoad = false
+                    addFromFile()
+                }
             } catch {
                 // Nothing to edit: the sheet closes after saying why.
                 status.stringValue = error.localizedDescription

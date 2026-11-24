@@ -1141,6 +1141,39 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         case .showNote: show(.note)
         case .showTranscript: show(.transcript)
         case .showArticle: show(.article)
+        case .backToInbox:
+            InboxSnooze.unsnooze([note], in: library.context)
+        case .removeAppointment:
+            AppointmentLinks.shared.link(note, to: nil, in: nil)
+        case .setSender:
+            Alerts.ask(
+                "Sender", message: "Leave it empty to remove the sender.", placeholder: "Company, office or person",
+                value: note.documentInfo?.correspondent ?? "", action: "Set", validate: { _ in true }, in: view.window
+            ) { [weak self] sender in
+                guard let self else { return }
+                Undoable.apply(.sender(sender), to: [self.note], in: self.library.context)
+            }
+        case .markPaid:
+            Undoable.apply(.paid(note.documentInfo?.paid != true), to: [note], in: library.context)
+        case .editDocument:
+            DocumentInfoSheet.edit(note, in: view.window)
+        case .editPages:
+            PDFPageEditorController.open(note, in: view.window)
+        case .addPagesFromFile:
+            PDFPageEditorController.open(note, in: view.window, addingFromFile: true)
+        case .openInBrowser:
+            openLink()
+        case .copyLink:
+            guard let url = note.linkURL else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        case .saveAsTemplate:
+            editor.flush()
+            NoteTemplateActions.saveAsTemplate(note, in: view.window)
+        case .copyText:
+            editor.flush()
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(EntryMenus.copyText(for: note), forType: .string)
         }
     }
 
@@ -1183,7 +1216,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             return !deleted
         case .toggleTodo:
             item.title = TodoBridge.isDone(note) ? "Mark as Not Done" : "Mark as Done"
-            item.isHidden = !TodoBridge.isTodo(note)
             return !deleted && TodoBridge.isTodo(note)
         case .convertTodo:
             item.title = TodoBridge.isTodo(note) ? "Convert to Note" : "Convert to To-do"
@@ -1195,6 +1227,23 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         case .showNote: return computeTabs().contains { $0.0 == .note }
         case .showTranscript: return computeTabs().contains { $0.0 == .transcript }
         case .showArticle: return computeTabs().contains { $0.0 == .article }
+        case .backToInbox:
+            return !deleted && note.isInInbox && note.isSnoozed()
+        case .removeAppointment:
+            return !deleted && AppointmentLinks.shared.appointment(for: note.id) != nil
+        case .setSender, .editDocument:
+            return !deleted && note.isStored && !note.attachments.isEmpty
+        case .markPaid:
+            item.title = note.documentInfo?.paid == true ? "Mark as Unpaid" : "Mark as Paid"
+            return !deleted && note.isDocument && note.documentInfo?.offersPaid == true
+        case .editPages, .addPagesFromFile:
+            return !deleted && stage == nil && DocumentFiles.pdf(of: note) != nil
+        case .openInBrowser, .copyLink:
+            return note.linkURL != nil && !note.isDeleted
+        case .saveAsTemplate:
+            return !note.isDeleted && !note.isLink && !note.isStored
+        case .copyText:
+            return !note.isDeleted
         }
     }
 

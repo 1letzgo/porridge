@@ -390,6 +390,48 @@ enum DebugDriver {
                 return nil
             }
             state.selection = Array(ids.prefix(Int(argument) ?? 2))
+        case "menu-dump":
+            // `menu-dump Entry|AI|File|Format`: the menu bar menu as titles, validated for the open entry (dimmed
+            // rows marked "(off)", hidden ones left out), submenus indented.
+            guard let menu = NSApp.mainMenu?.items.first(where: { $0.title == argument })?.submenu else { log("menu-dump: none"); return }
+            log("== \(argument) ==")
+            dumpMenu(menu, controller: controller, indent: "")
+            log("--")
+        case "toolbar-menu":
+            // `toolbar-menu ai|more`: the toolbar's ✦ AI or ⋯ for the open entry, as titles.
+            guard let note = controller.openNote else { log("toolbar-menu: no entry"); return }
+            let menu = NSMenu()
+            EntryToolbarMenu.items(argument == "ai" ? .ai : .more, for: note, in: controller).forEach(menu.addItem)
+            log("== toolbar \(argument) · \(EntryKind(note)) \(note.isDeleted ? "deleted" : "") ==")
+            dumpMenu(menu, controller: controller, indent: "")
+            log("share: \(EntryMenus.share(for: note).map { "\($0)" } ?? "none")")
+            log("--")
+        case "toolbar-run":
+            // `toolbar-run ai|more <title>`: runs a row of the toolbar's ✦ AI or ⋯ as a click on it does.
+            let bits = argument.split(separator: " ", maxSplits: 1).map(String.init)
+            guard bits.count == 2, let note = controller.openNote else { log("toolbar-run: kind and title needed"); return }
+            let rows = EntryToolbarMenu.items(bits[0] == "ai" ? .ai : .more, for: note, in: controller)
+            guard let row = rows.first(where: { $0.title == bits[1] }), let action = row.action else { log("toolbar-run: no row \(bits[1])"); return }
+            let enabled = isEnabled(row, controller: controller)
+            log("toolbar-run \(bits[1]) enabled=\(enabled)")
+            guard enabled else { return }
+            if !NSApp.sendAction(action, to: nil, from: row) { _ = controller.tryToPerform(action, with: row) }
+            DispatchQueue.main.async {
+                log("after: page=\(state.page) open=\(controller.openNote?.title ?? "none") pinned=\(controller.openNote?.isPinned ?? false)")
+            }
+        case "view-only":
+            // `view-only on|off`: the open entry's bowl is treated as shared with me to view only (in memory).
+            BowlSharing.shared.debugReadOnly = argument == "on" ? controller.openNote?.projectIDs.first : nil
+        case "trash-open":
+            // Moves the open entry to Recently Deleted and keeps it open there (test data only).
+            guard DataLocation.testFolder != nil, let note = controller.openNote else { log("trash-open: test data only"); return }
+            NoteStore.trash(note, in: library.context)
+            state.page = .trash
+            state.selection = [note.id]
+        case "recover-open":
+            guard let note = controller.openNote else { return }
+            NoteStore.restore(note, in: library.context)
+            state.reveal(note)
         case "hover-end":
             for view in [controller.split.content.view, controller.split.detail.view] {
                 (view as? NSDraggingDestination)?.draggingExited?(nil)
@@ -397,6 +439,46 @@ enum DebugDriver {
         default:
             log("unknown command \(command)")
         }
+    }
+
+    /// Writes a menu's rows: dimmed ones "(off)", hidden ones left out, ticks "✓", key equivalents in brackets.
+    private static func dumpMenu(_ menu: NSMenu, controller: MainWindowController, indent: String) {
+        menu.delegate?.menuNeedsUpdate?(menu)
+        for item in menu.items {
+            if item.isSeparatorItem { log(indent + "———"); continue }
+            let enabled = isEnabled(item, controller: controller)
+            if item.isHidden { continue }
+            var key = ""
+            if !item.keyEquivalent.isEmpty {
+                let mods = item.keyEquivalentModifierMask
+                key = (mods.contains(.control) ? "⌃" : "") + (mods.contains(.option) ? "⌥" : "") + (mods.contains(.shift) ? "⇧" : "") + (mods.contains(.command) ? "⌘" : "")
+                key += item.keyEquivalent == "\u{8}" ? "⌫" : item.keyEquivalent.uppercased()
+                key = " [\(key)]"
+            }
+            log(indent + item.title + key + (item.state == .on ? " ✓" : "") + (enabled ? "" : " (off)") + (item.submenu != nil ? " ▸" : ""))
+            if let sub = item.submenu, enabled { dumpMenu(sub, controller: controller, indent: indent + "    ") }
+        }
+    }
+
+    /// Whether a row is enabled as the menu bar would show it: its own target, else the first responder of the window
+    /// that answers its action.
+    private static func isEnabled(_ item: NSMenuItem, controller: MainWindowController) -> Bool {
+        guard let action = item.action else { return item.submenu != nil || item.isEnabled }
+        if let target = item.target as AnyObject? {
+            if let validating = target as? NSMenuItemValidation { return validating.validateMenuItem(item) }
+            return item.isEnabled
+        }
+        var responder: NSResponder? = controller.window?.firstResponder
+        while let current = responder {
+            if current.responds(to: action) {
+                if let validating = current as? NSMenuItemValidation { return validating.validateMenuItem(item) }
+                return true
+            }
+            responder = current.nextResponder
+        }
+        if controller.responds(to: action) { return controller.validateMenuItem(item) }
+        if NSApp.delegate?.responds(to: action) == true { return true }
+        return false
     }
 
     private static var nextSequence = 1000

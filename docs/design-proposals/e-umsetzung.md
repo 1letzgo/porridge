@@ -251,6 +251,75 @@ an image, a PDF, a trash entry, a view-only entry.
 Verify on screen: per kind, the three buttons show exactly table 3.1; ⌘J, ⇧⌘S, ⇧⌘K, ⌃⌘T/M/W/P/⌫ still work; Repeat
 reachable from Entry › Due Date.
 
+**As built (stage 3):**
+
+- One contract, two views: iOS `NoteDetailView` (`aiMenu`, `shareAction`, `moreMenu`, `run(_: AIItem)`,
+  `run(_: MoreItem)`: exhaustive switches = every item has a handler) and Mac `Detail/EntryToolbarMenu.swift`
+  (`aiRow` / `moreRow`, exhaustive; each row sends the same action as its Entry/AI menu row, so it is validated the same
+  way; rows keep `EntryMenus`' words, e.g. "Summarize Again…"). `EntryMenus` gained `systemImage`, `isDestructive`,
+  `shareFile(for:)` (the local image/PDF for Share, else the text) and `copyText(for:)` (view-only Copy: text, else
+  summary, else transcript).
+- **Deviation – Suggest To-dos for notes:** a plain note that already has a summary keeps Summarize Again… *and* Suggest
+  To-dos in ✦ (both were in the old menus; table 3.1 only lists it for meetings). Links, images, documents and to-dos
+  never get it. Convert to To-do follows `Note.canBeTodo` (owner decision): meetings, links, images and documents have none.
+- iOS bar: ✦ AI · Share · ⋯ in the `ChromeBar` (and the system toolbar on iPad). ✦ is disabled in Recently Deleted,
+  Share there is a disabled pill. Share: meeting → `MeetingExportSheet`, link → its URL, image/document → the file when
+  it is on the device. Rewrite Selection… begins `AIRewriteView` for the editor's selection; without one an alert says
+  to select text first. Later ▸ is `LaterMenuItems` (+ Back to Inbox Now when snoozed). Scan More Pages opens
+  `PDFPageEditor(startsScanning: true)`. Ask About This Bowl closes the entry and opens the chat about its bowl
+  (`\.askAboutBowl` environment from `NotesView`). Delete Now… (trash) asks first.
+- Mac menu bar: Porridge · File · Edit · Format · View · **Entry** · **AI** · Window · Help.
+  Entry: Pin ⇧⌘P · Mark as Done ⇧⌘D (now dimmed, not hidden, for non-to-dos) · Convert to To-do | Bowl ▸ · Due Date ▸
+  (Today ⌃⌘T, Tomorrow ⌃⌘M, Next Week ⌃⌘W, Pick Date… ⌃⌘P, **Repeat ▸**, Clear Due Date ⌃⌘⌫) · Later ▸ (choices + Back
+  to Inbox Now when snoozed) · Add Tag… ⇧⌘T | Appointment ▸ (Link Appointment ▸ = the appointment list of
+  `AppointmentActions.linkMenu`, Remove Appointment) · Document ▸ (Kind ▸, Set Sender…, Mark as Paid/Unpaid, Edit
+  Details…) · Recording ▸ (Continue Recording, Transcribe Again, Merge with…, Copy Transcript ⇧⌘C, Delete Recording…) ·
+  Pages ▸ (Edit Pages…, Add Pages ▸ From a File…, Merge N PDFs…) · Load Page Again | Dictate ⌥⌘D · Save as Template… |
+  Recover (shown only for entries in Recently Deleted) · Delete ⌘⌫ / Delete Now…. Submenu rows are dimmed when nothing
+  in them applies (`MainWindowController.entrySubmenu(_:)` + `EntrySubmenu` tags); their contents are filled when they
+  open (`DynamicMenu`).
+  AI: New Chat ⇧⌘K (moved from File) · Ask About This Bowl | Summarize with AI… ⇧⌘S · Suggest To-dos · Enhance with AI…
+  · Undo Enhance · Split into Bowl… · Rewrite with AI… ⌘J (moved from Format) | Summary ▸ (Edit Summary, Insert into
+  Note, Copy Summary, Delete Summary…).
+  File: Export… ⇧⌘E stays, **Export Bowl…** (open bowl, else the open entry's) and **Export Everything…** added; "Open
+  Note in New Window" is now "Open in New Window" ⌘O.
+- **Deviations (Mac):** "Link Appointment…" is a submenu with the appointments (no dialog); Add Pages ▸ has only "From a
+  File…" (the editor's own Add Pages keeps "From iPhone or iPad", Continuity Camera needs the editor as requestor);
+  Recover stays in the Entry menu (hidden unless the selection is in Recently Deleted) since the table had no place for
+  it; Mark as Paid / Set Sender / Edit Details / pages commands act on the open entry (multi-select keeps them in the
+  inspector and the context menu). Entry › Delete is dimmed for view-only entries (it did nothing before).
+- Mac toolbar: new `ai` item (✦ pull-down, inserted before Share into saved configurations), Share is now a plain
+  toolbar button (not `NSSharingServicePickerToolbarItem`): it opens `NSSharingServicePicker` with the URL / file /
+  text, or the export sheet for a meeting – a picker item cannot open a sheet. ⋯ (`noteMenu` id kept) shows only
+  `EntryMenus.more(…, platform: .mac)`. Import and Chat stay in the toolbar until stage 4.
+- Where the old menus went:
+
+  | Old item (iPhone More / Mac Note menu) | Now |
+  |---|---|
+  | Pin, Mark as Done, Convert to To-do/Note | ⋯ More; Mac Entry |
+  | Due Date ▸ (Mac) | Entry › Due Date (+ Repeat ▸); Details |
+  | Add Tag… (Mac) | Entry; Details |
+  | Bowls ▸ (Mac) | Entry › Bowl; Details |
+  | Summarize (Again) with AI… | ✦ AI; Mac AI ⇧⌘S |
+  | Enhance with AI…, Undo Enhance, Split into Bowl…, Suggest To-dos | ✦ AI; Mac AI |
+  | Edit Summary, Insert Summary into Note | summary "…"; Mac AI › Summary |
+  | Dictate (Mac) | Entry ⌥⌘D |
+  | Continue Recording, Transcribe Again, Merge with…, Copy Transcript, Delete Recording | ⋯ More (meetings); Mac Entry › Recording |
+  | Load Page Again | ⋯ More (links); Mac Entry |
+  | Edit Pages… | ⋯ More (PDFs); Mac Entry › Pages |
+  | Save as Template… | ⋯ More; Mac Entry |
+  | Export… / Export (iPhone pill) | Share (meeting → export sheet); Mac File › Export… ⇧⌘E |
+  | Copy Summary / Copy Transcript (view-only, iPhone) | ⋯ More › Copy (text, else summary, else transcript); Copy Transcript in Mac Entry › Recording |
+  | Recover | ⋯ More (trash); Mac Entry (trash only) |
+  | Delete | ⋯ More; Mac Entry ⌘⌫ |
+  | Rewrite with AI… (Mac Format) | Mac AI ⌘J; ✦ AI › Rewrite Selection… |
+  | New Chat ⇧⌘K (Mac File) | Mac AI |
+
+- Debug driver: `menu-dump <Top>`, `toolbar-menu ai|more`, `toolbar-run ai|more <title>`, `view-only on|off`
+  (`BowlSharing.debugReadOnly`, Debug builds only, in memory), `trash-open`, `recover-open`.
+- Tests: `EntryMenusTests` (note with summary, to-do never suggests, every kind on the Mac, Share/Copy helpers, symbols);
+  UI test `NotesFlowTests.testEntryPillsPerKind` opens ✦ and ⋯ for note, to-do, meeting, link, image and PDF.
+
 ---
 
 ## Stage 4 · Three places (navigation)

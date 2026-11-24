@@ -22,7 +22,8 @@ final class EntryMenusTests: XCTestCase {
         var enhanced = EntryContext()
         enhanced.canUndoEnhance = true
         note.summary = "Earlier summary"
-        XCTAssertEqual(ai(note, enhanced), [[.enhance, .undoEnhance, .summarize(again: true), .rewriteSelection, .splitIntoBowl]])
+        // A note summarized earlier keeps Summarize Again and Suggest To-dos (both were in the old More menus).
+        XCTAssertEqual(ai(note, enhanced), [[.enhance, .undoEnhance, .summarize(again: true), .suggestTodos, .rewriteSelection, .splitIntoBowl]])
         XCTAssertEqual(EntryMenus.share(for: note), .markdown)
         XCTAssertEqual(more(note), [[.pin, .convertToTodo, .later], [.saveAsTemplate], [.delete]])
 
@@ -40,6 +41,9 @@ final class EntryMenusTests: XCTestCase {
         XCTAssertEqual(EntryMenus.share(for: todo), .todoText)
         XCTAssertEqual(more(todo), [[.pin, .markDone, .convertToNote, .later], [.saveAsTemplate], [.delete]])
         XCTAssertEqual(EntryMenus.MoreItem.markDone.title(for: todo), "Mark as Done")
+        // A to-do never offers the tasks of a summary as to-dos.
+        todo.summary = "Old summary"
+        XCTAssertFalse(ai(todo).joined().contains(.suggestTodos))
         todo.todoState = .done
         XCTAssertEqual(EntryMenus.MoreItem.markDone.title(for: todo), "Mark as Not Done")
     }
@@ -133,8 +137,46 @@ final class EntryMenusTests: XCTestCase {
             .loadPageAgain, .continueRecording, .transcribeAgain, .mergeWith, .copyTranscript, .deleteRecording, .saveAsTemplate, .copy,
             .openInNewWindow, .delete, .recover, .deleteNow,
         ]
-        XCTAssertTrue(items.allSatisfy { !$0.title(for: note).isEmpty })
+        XCTAssertTrue(items.allSatisfy { !$0.title(for: note).isEmpty && !$0.systemImage(for: note).isEmpty })
+        XCTAssertEqual(items.filter(\.isDestructive), [.deleteRecording, .delete, .deleteNow])
+        let aiItems: [EntryMenus.AIItem] = [
+            .enhance, .undoEnhance, .summarize(again: false), .summarize(again: true), .suggestTodos, .rewriteSelection, .splitIntoBowl, .askAboutBowl,
+        ]
+        XCTAssertTrue(aiItems.allSatisfy { !$0.title.isEmpty && !$0.systemImage.isEmpty })
         XCTAssertEqual(EntryMenus.AIItem.summarize(again: false).title, "Summarize…")
         XCTAssertEqual(EntryMenus.AIItem.summarize(again: true).title, "Summarize Again…")
+    }
+
+    /// Every kind's menus, as the iPhone pills and the Mac toolbar show them: the old menus' functions are all there
+    /// (pin, done, convert, recording, pages, links, templates, delete), and nothing a kind cannot do.
+    func testEveryKindOnTheMac() throws {
+        let context = try TestStore.context()
+        let kinds: [(Note, [[EntryMenus.MoreItem]])] = [
+            (F.note(text: "Text", in: context), [[.pin, .convertToTodo, .later], [.saveAsTemplate], [.openInNewWindow], [.delete]]),
+            (F.todo(text: "- [ ] One", in: context), [[.pin, .markDone, .convertToNote, .later], [.saveAsTemplate], [.openInNewWindow], [.delete]]),
+            (F.link(in: context), [[.pin, .openInBrowser, .copyLink, .loadPageAgain, .later], [.openInNewWindow], [.delete]]),
+            (F.image(in: context), [[.pin, .later], [.openInNewWindow], [.delete]]),
+        ]
+        for (note, expected) in kinds {
+            XCTAssertEqual(more(note, on: .mac), expected, "\(EntryKind(note))")
+            XCTAssertFalse(more(note, on: .mac).joined().contains(.scanMorePages), "the scanner is the iPhone's")
+        }
+    }
+
+    /// Share and Copy hand over what the entry is.
+    func testShareAndCopy() throws {
+        let context = try TestStore.context()
+        let note = F.note(text: "Body text", in: context)
+        XCTAssertNil(EntryMenus.shareFile(for: note), "a note shares its text")
+        XCTAssertTrue(EntryMenus.copyText(for: note).contains("Body text"))
+        let meeting = F.meeting(in: context)
+        meeting.text = ""
+        meeting.segments = [TranscriptSegment(start: 0, end: 5, text: "Let's wrap up.")]
+        meeting.summary = "Decisions"
+        XCTAssertEqual(EntryMenus.copyText(for: meeting), "Decisions", "no text: the summary")
+        meeting.summary = nil
+        XCTAssertEqual(EntryMenus.copyText(for: meeting), meeting.transcriptText(), "no summary: the transcript")
+        // A picture whose file is not on this device: its text goes instead.
+        XCTAssertNil(EntryMenus.shareFile(for: F.image(in: context)))
     }
 }

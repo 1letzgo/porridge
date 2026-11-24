@@ -26,6 +26,8 @@ struct NoteDetailView: View {
     @Environment(ModelManager.self) private var models
     @Environment(\.allNotes) private var allNotes
     @Environment(\.openNote) private var openNote
+    @Environment(\.askAboutBowl) private var askAboutBowl
+    @Environment(\.openURL) private var openURL
     @State private var dictation = InlineDictation()
     @State private var didStartRecording = false
     @State private var showExport = false
@@ -59,6 +61,14 @@ struct NoteDetailView: View {
     @State private var showVoices = false
     /// Pages of the document's PDF, once counted (for the meta line).
     @State private var pageCount: Int?
+    /// "Pick Date & Time…" of Later.
+    @State private var pickingLater = false
+    /// The page editor opens with the scanner (More › Scan More Pages).
+    @State private var scansPages = false
+    /// Rewrite Selection… was chosen with nothing selected.
+    @State private var rewriteNeedsSelection = false
+    /// Delete Now… in Recently Deleted asks first.
+    @State private var confirmDeleteNow = false
     /// "Split into Bowl…" is open; after it, what it made, while it can be taken back.
     @State private var showSplit = false
     /// The screen was shown before: coming back (from Quick Look, a sheet) keeps the open tab.
@@ -168,6 +178,7 @@ struct NoteDetailView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             if let onBack {
                 ChromeBar(title: barTitle, systemImage: barIcon, tint: barTint, onBack: onBack) {
+                    aiMenu
                     shareAction
                     moreMenu
                 }
@@ -281,7 +292,22 @@ struct NoteDetailView: View {
             // Cleaned up from the sheet itself, once its editor has handed over the last typing.
             SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 }), onFinish: finishEditingSummary)
         }
-        .sheet(isPresented: $showPages) { PDFPageEditor(note: note) }
+        .sheet(isPresented: $showPages) { PDFPageEditor(note: note, startsScanning: scansPages) }
+        .sheet(isPresented: $pickingLater) { LaterPickerSheet(notes: [note], onDone: onClose) }
+        .alert("Select Text to Rewrite", isPresented: $rewriteNeedsSelection) {
+            Button("OK") {}
+        } message: {
+            Text("Select the words in the note that AI should rewrite, then choose Rewrite Selection… again.")
+        }
+        .alert("Delete Now?", isPresented: $confirmDeleteNow) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete Now", role: .destructive) {
+                NoteStore.deletePermanently(note, in: context)
+                onClose()
+            }
+        } message: {
+            Text("This cannot be undone.")
+        }
         .sheet(item: $templateDraft) { draft in NoteTemplateEditor(draft: draft) }
         .sheet(isPresented: $showSplit) {
             SplitNoteSheet(note: note) { change in
@@ -526,178 +552,229 @@ struct NoteDetailView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        BrandToolbarItem(placement: .primaryAction) { aiMenu.buttonStyle(.plain) }
         BrandToolbarItem(placement: .primaryAction) { shareAction }
         BrandToolbarItem(placement: .primaryAction) { moreMenu.buttonStyle(.plain) }
     }
 
+    // MARK: ✦ AI · Share · ⋯ More (`EntryMenus`)
+
+    /// ✦ AI: what a model does to this entry, then Ask About This Bowl. Locked in Recently Deleted.
+    private var aiMenu: some View {
+        let groups = EntryMenus.ai(for: note, context: entryContext)
+        return Menu {
+            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                if index > 0 { Divider() }
+                ForEach(Array(group.enumerated()), id: \.offset) { _, item in
+                    Button { run(item) } label: { Label(item.title, systemImage: item.systemImage) }
+                        .disabled(!isEnabled(item))
+                }
+            }
+        } label: {
+            BrandMenuLabel(title: "AI", systemImage: "sparkles")
+        }
+        .disabled(groups.isEmpty)
+        .accessibilityLabel("AI")
+        .accessibilityIdentifier("entry.ai")
+        .help("AI")
+    }
+
+    /// Share hands over what the entry is: its text, a meeting's export sheet, the link, the picture or the file.
     @ViewBuilder
     private var shareAction: some View {
-        if note.isRecording, !note.isLink {
-            Button { showExport = true } label: {
-                Label("Export", systemImage: "arrow.up.doc")
-            }
-            .brandToolbarButton()
-            .accessibilityLabel("Export")
-            .help("Export")
-        } else {
-            ShareLink(item: shareText) {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-            .brandToolbarButton()
-            .accessibilityLabel("Share")
-            .help("Share")
+        switch EntryMenus.share(for: note) {
+        case .exportSheet:
+            Button { showExport = true } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                .brandToolbarButton()
+                .accessibilityLabel("Share")
+                .accessibilityIdentifier("entry.share")
+                .help("Share")
+        case .url:
+            if let address = note.linkURL { shareLink(address) } else { shareLink(shareText) }
+        case .image, .file:
+            if let file = EntryMenus.shareFile(for: note) { shareLink(file) } else { shareLink(shareText) }
+        case .markdown, .todoText:
+            shareLink(shareText)
+        case nil:
+            // Recently Deleted: nothing leaves from there.
+            Button {} label: { Label("Share", systemImage: "square.and.arrow.up") }
+                .disabled(true)
+                .accessibilityLabel("Share")
+                .accessibilityIdentifier("entry.share")
         }
     }
 
+    private func shareLink(_ text: String) -> some View {
+        shareStyle(ShareLink(item: text) { Label("Share", systemImage: "square.and.arrow.up") })
+    }
+
+    private func shareLink(_ url: URL) -> some View {
+        shareStyle(ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") })
+    }
+
+    private func shareStyle(_ link: some View) -> some View {
+        link
+        .brandToolbarButton()
+        .accessibilityLabel("Share")
+        .accessibilityIdentifier("entry.share")
+        .help("Share")
+    }
+
+    /// ⋯ More: organize, (meetings) Recording, Save as Template, Delete; in Recently Deleted Recover and Delete Now.
     private var moreMenu: some View {
-        Menu {
-            if note.isDeleted {
-                Button { restore() } label: { Label("Recover", systemImage: "arrow.uturn.backward") }
-            } else if isReadOnly {
-                // A bowl I may only see: the pin is my own; nothing of the entry changes.
-                Button { note.isPinned.toggle(); try? context.save() } label: {
-                    Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
-                }
-                if note.summary != nil {
-                    Button { copySummary() } label: { Label("Copy Summary", systemImage: "doc.on.doc") }
-                }
-                if !note.segments.isEmpty {
-                    Button { Clipboard.copy(note.transcriptText()) } label: {
-                        Label("Copy Transcript", systemImage: "doc.on.doc")
-                    }
-                }
-                saveAsTemplateButton
-            } else {
-                Button { note.isPinned.toggle(); try? context.save() } label: {
-                    Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin")
-                }
-                if note.isTodo {
-                    Button {
-                        // What the box showed when it was tapped, before the typing that is handed over now moves it.
-                        let done = !note.isDone
-                        commitTyping()
-                        withAnimation(.snappy) { Todos.setDone(done, note, in: context) }
-                    } label: {
-                        Label(note.isDone ? "Mark as Not Done" : "Mark as Done", systemImage: note.isDone ? "square" : "checkmark.square")
-                    }
-                }
-                if note.canBeTodo {
-                    Button { withAnimation(.snappy) { Todos.setTodo(!note.isTodo, note, in: context) } } label: {
-                        Label(note.isTodo ? "Convert to Note" : "Convert to To-do", systemImage: note.isTodo ? "text.alignleft" : "checklist")
-                    }
-                }
-                if opensOnSummary {
-                    Button {
-                        requestSummary()
-                    } label: {
-                        Label(note.summary == nil ? "Summarize with AI…" : "Summarize Again with AI…", systemImage: "sparkles")
-                    }
-                    .disabled(isSummarizing || !canSummarize)
-                } else {
-                    Button { showEnhanceOptions = true } label: {
-                        Label("Enhance with AI…", systemImage: "wand.and.stars")
-                    }
-                    .disabled(!canEnhance)
-                    if processing.canUndoEnhance(note) {
-                        Button {
-                            commitTyping()
-                            processing.undoEnhance(note)
-                        } label: {
-                            Label("Undo Enhance", systemImage: "arrow.uturn.backward")
-                        }
-                    }
-                }
-                if !isLocked, NoteSplitter.canSplit(note) {
-                    Button {
-                        commitTyping()
-                        showSplit = true
-                    } label: {
-                        Label("Split into Bowl…", systemImage: "square.split.2x2")
-                    }
-                    .disabled(isEnhancing || isSummarizing)
-                }
-                if note.summary != nil {
-                    Button { startEditingSummary() } label: { Label("Edit Summary", systemImage: "pencil") }
-                        .disabled(isSummarizing)
-                    // The tasks of the summary as to-dos again, dismissed ones included.
-                    if !note.isSaved, !note.isTodo {
-                        Button {
-                            withAnimation(.snappy) { TodoSuggestions.suggestAgain(note, in: context) }
-                            tab = .summary
-                        } label: {
-                            Label("Suggest To-dos", systemImage: "checklist")
-                        }
-                        .disabled(isSummarizing)
-                    }
-                }
-                Divider()
-                if note.hasAudio {
-                    Button { processing.enqueue(.transcript(note.id)) } label: {
-                        Label("Transcribe Again", systemImage: "waveform")
-                    }
-                    .disabled(processing.stages[note.id] != nil)
-                }
-                if note.isLink {
-                    Button {
-                        note.status = .recorded
-                        processing.enqueue(.link(note.id, summarize: false))
-                    } label: {
-                        Label("Load Page Again", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(processing.stages[note.id] != nil)
-                }
-                if note.isRecording, !note.isLink {
-                    Button {
-                        if note.summary == nil { showContinueRecording = true } else { confirmContinueRecording = true }
-                    } label: {
-                        Label("Continue Recording", systemImage: "mic.badge.plus")
-                    }
-                    .disabled(!canContinueRecording)
-                }
-                // A document's PDF: its pages turned, moved, deleted, added to or split off.
-                if note.isStored, DocumentFiles.pdf(of: note) != nil {
-                    Button { showPages = true } label: {
-                        Label("Edit Pages…", systemImage: "doc.on.doc")
-                    }
-                    .disabled(processing.stages[note.id] != nil)
-                }
-                if !note.segments.isEmpty {
-                    Button { Clipboard.copy(note.transcriptText()) } label: {
-                        Label("Copy Transcript", systemImage: "doc.on.doc")
-                    }
-                    Button { showMerge = true } label: {
-                        Label("Merge with…", systemImage: "arrow.triangle.merge")
-                    }
-                    .disabled(processing.stages[note.id] != nil || note.status != .ready)
-                }
-                saveAsTemplateButton
-                Divider()
-                if note.hasAudio {
-                    Button(role: .destructive) { confirmDeleteAudio = true } label: {
-                        Label("Delete Recording", systemImage: "waveform.slash")
-                    }
-                }
-                Button(role: .destructive) { Undoable.trash([note], in: context); onClose() } label: {
-                    Label("Delete", systemImage: "trash")
+        let groups = EntryMenus.more(for: note, context: entryContext)
+        return Menu {
+            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                if index > 0 { Divider() }
+                ForEach(Array(group.enumerated()), id: \.offset) { _, item in
+                    moreItem(item)
                 }
             }
         } label: {
             BrandMenuLabel(title: "More", systemImage: "ellipsis")
         }
         .accessibilityLabel("More")
+        .accessibilityIdentifier("entry.more")
         .help("More")
     }
 
-    /// A note or to-do kept as a template (not a link or a file): the editor opens with it, Save keeps it.
     @ViewBuilder
-    private var saveAsTemplateButton: some View {
-        if !note.isLink, !note.isStored {
-            Button {
-                commitTyping()
-                templateDraft = .new(NoteTemplates.draft(from: note))
+    private func moreItem(_ item: EntryMenus.MoreItem) -> some View {
+        if item == .later {
+            Menu {
+                LaterMenuItems(notes: [note], onPick: { pickingLater = true }, onDone: onClose)
+                if note.isSnoozed() {
+                    Divider()
+                    Button { withAnimation(.snappy) { InboxSnooze.unsnooze([note], in: context) } } label: {
+                        Label("Back to Inbox Now", systemImage: "tray.and.arrow.down")
+                    }
+                }
             } label: {
-                Label("Save as Template…", systemImage: "doc.badge.plus")
+                Label(item.title(for: note), systemImage: item.systemImage(for: note))
             }
+        } else {
+            Button(role: item.isDestructive ? .destructive : nil) { run(item) } label: {
+                Label(item.title(for: note), systemImage: item.systemImage(for: note))
+            }
+            .disabled(!isEnabled(item))
+        }
+    }
+
+    /// Whether an AI item can be used right now (a model, no job running, a selection for Rewrite).
+    private func isEnabled(_ item: EntryMenus.AIItem) -> Bool {
+        switch item {
+        case .enhance: canEnhance
+        case .undoEnhance: true
+        case .summarize: !isSummarizing && canSummarize
+        case .suggestTodos: !isSummarizing && note.summary != nil
+        case .rewriteSelection: tab == .note && !isEnhancing
+        case .splitIntoBowl: !isEnhancing && !isSummarizing && NoteSplitter.canSplit(note)
+        case .askAboutBowl: true
+        }
+    }
+
+    /// Whether a More item can be used right now (no job running on the entry).
+    private func isEnabled(_ item: EntryMenus.MoreItem) -> Bool {
+        let idle = processing.stages[note.id] == nil
+        switch item {
+        case .transcribeAgain: return idle && note.hasAudio
+        case .loadPageAgain, .editPages, .scanMorePages: return idle
+        case .continueRecording: return canContinueRecording
+        case .mergeWith: return idle && note.status == .ready && !note.segments.isEmpty
+        case .copyTranscript: return !note.segments.isEmpty
+        case .deleteRecording: return note.hasAudio
+        case .openInBrowser, .copyLink: return note.linkURL != nil
+        case .pin, .markDone, .convertToTodo, .convertToNote, .later, .markPaid, .saveAsTemplate, .copy, .openInNewWindow,
+             .delete, .recover, .deleteNow:
+            return true
+        }
+    }
+
+    /// Every item of ✦ AI has its handler here (the switch is the check that none is left out).
+    private func run(_ item: EntryMenus.AIItem) {
+        switch item {
+        case .enhance:
+            commitTyping()
+            showEnhanceOptions = true
+        case .undoEnhance:
+            commitTyping()
+            processing.undoEnhance(note)
+        case .summarize:
+            requestSummary()
+        case .suggestTodos:
+            // The tasks of the summary as to-dos again, dismissed ones included.
+            withAnimation(.snappy) { TodoSuggestions.suggestAgain(note, in: context) }
+            tab = .summary
+        case .rewriteSelection:
+            if editor.canRewrite { editor.beginRewrite() } else { rewriteNeedsSelection = true }
+        case .splitIntoBowl:
+            commitTyping()
+            showSplit = true
+        case .askAboutBowl:
+            commitTyping()
+            if let bowl = note.projectIDs.first { askAboutBowl(bowl) }
+        }
+    }
+
+    /// Every item of ⋯ More has its handler here (the switch is the check that none is left out).
+    private func run(_ item: EntryMenus.MoreItem) {
+        switch item {
+        case .pin:
+            note.isPinned.toggle()
+            note.updatedAt = Date()
+            try? context.save()
+        case .markDone:
+            // What the box showed when it was tapped, before the typing that is handed over now moves it.
+            let done = !note.isDone
+            commitTyping()
+            withAnimation(.snappy) { Todos.setDone(done, note, in: context) }
+        case .convertToTodo, .convertToNote:
+            commitTyping()
+            withAnimation(.snappy) { Todos.setTodo(item == .convertToTodo, note, in: context) }
+        case .later:
+            pickingLater = true
+        case .markPaid:
+            Undoable.apply(.paid(note.documentInfo?.paid != true), to: [note], in: context)
+        case .editPages:
+            scansPages = false
+            showPages = true
+        case .scanMorePages:
+            scansPages = true
+            showPages = true
+        case .openInBrowser:
+            if let address = note.linkURL { openURL(address) }
+        case .copyLink:
+            if let address = note.linkURL { Clipboard.copy(address.absoluteString) }
+        case .loadPageAgain:
+            note.status = .recorded
+            processing.enqueue(.link(note.id, summarize: false))
+        case .continueRecording:
+            if note.summary == nil { showContinueRecording = true } else { confirmContinueRecording = true }
+        case .transcribeAgain:
+            processing.enqueue(.transcript(note.id))
+        case .mergeWith:
+            showMerge = true
+        case .copyTranscript:
+            Clipboard.copy(note.transcriptText())
+        case .deleteRecording:
+            confirmDeleteAudio = true
+        case .saveAsTemplate:
+            commitTyping()
+            templateDraft = .new(NoteTemplates.draft(from: note))
+        case .copy:
+            commitTyping()
+            Clipboard.copy(EntryMenus.copyText(for: note))
+        case .openInNewWindow:
+            // The Mac's; the iPhone shows one entry at a time.
+            break
+        case .delete:
+            commitTyping()
+            Undoable.trash([note], in: context)
+            onClose()
+        case .recover:
+            restore()
+        case .deleteNow:
+            confirmDeleteNow = true
         }
     }
 
