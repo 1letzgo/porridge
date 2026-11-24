@@ -78,6 +78,62 @@ enum SummaryTasks {
         return indent + "- " + (done ? "[x] " : "[ ] ") + rest.dropFirst(mark.count)
     }
 
+    /// The summary with the given lines left empty, for the page: the line numbers stay, so ticking a box still finds
+    /// its line in the stored summary. A tasks heading ("## Action Items", "### Aufgaben", "**Next Steps:**") goes too
+    /// when nothing of its section is left but a "No further tasks." line. The stored summary is never changed by this.
+    static func hiding(_ hidden: Set<Int>, in summary: String) -> String {
+        guard !hidden.isEmpty else { return summary }
+        var lines = summary.components(separatedBy: "\n")
+        var label: Int?
+        var noneLines: [Int] = []
+        var hiddenUnder = false
+        var visibleUnder = false
+        func close() {
+            if let label, hiddenUnder, !visibleUnder {
+                for index in [label] + noneLines { lines[index] = "" }
+            }
+            label = nil
+            noneLines = []
+            hiddenUnder = false
+            visibleUnder = false
+        }
+        for index in lines.indices {
+            let line = lines[index].trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { continue }
+            if line.hasPrefix("#") {
+                close()
+                let marks = line.prefix(while: { $0 == "#" })
+                // "## Aufgaben" opens a tasks section; "#budget #q3" is a line of tags and only ends one.
+                if marks.count <= 6, line.dropFirst(marks.count).first?.isWhitespace == true,
+                   classify(line.dropFirst(marks.count).trimmingCharacters(in: .whitespaces)) == .tasks {
+                    label = index
+                }
+                continue
+            }
+            if hidden.contains(index) {
+                lines[index] = ""
+                hiddenUnder = true
+            } else if bullet(of: line) == nil, isTaskLabel(line) {
+                close()
+                label = index
+            } else if label != nil, saysNone(bullet(of: line).map { String(line.dropFirst($0.count)) } ?? line) {
+                noneLines.append(index)
+            } else {
+                visibleUnder = true
+            }
+        }
+        close()
+        return lines.joined(separator: "\n")
+    }
+
+    /// "**Action Items:**" or "Nächste Schritte:" on a line of its own: a heading written as a paragraph.
+    private static func isTaskLabel(_ line: String) -> Bool {
+        guard line.count <= 40, line.hasSuffix(":") || line.hasPrefix("**") || line.hasPrefix("__") else { return false }
+        let name = line.trimmingCharacters(in: CharacterSet(charactersIn: "*_: "))
+        guard !name.isEmpty, !name.contains(where: { ":*_".contains($0) }), name.split(separator: " ").count <= 4 else { return false }
+        return classify(name) == .tasks
+    }
+
     /// "Keine Aufgaben genannt." / "No action items." is not a task.
     private static func saysNone(_ body: String) -> Bool {
         let text = body.lowercased()

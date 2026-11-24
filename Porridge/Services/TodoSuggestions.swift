@@ -234,6 +234,31 @@ enum TodoSuggestions {
         }
     }
 
+    /// The task lines of a summary that the page already shows elsewhere: in the card of suggested to-dos (`offered`,
+    /// what the card shows right now) or as a to-do made from the note (by its title, or by a subtask of the one
+    /// to-do with subtasks; a task taken under an edited title counts while any to-do made from the note is there).
+    /// The page leaves them out of the summary so each task is shown once.
+    static func linesShownElsewhere(in summary: String, offered: [TaskSuggestion], states: [String: String], madeTitles: [String], madeSubtasks: [String] = []) -> Set<Int> {
+        let offeredKeys = offered.map(\.key)
+        let madeKeys = (madeTitles + madeSubtasks.map(withoutOwner)).map(key).filter { !$0.isEmpty }
+        var lines = Set<Int>()
+        for task in SummaryTasks.parse(summary) {
+            let taskKey = key(split(task.text, meetingDate: Date()).title)
+            guard !taskKey.isEmpty else { continue }
+            if (!task.done && offeredKeys.contains { isSame($0, taskKey) })
+                || madeKeys.contains(where: { isSame($0, taskKey) })
+                || (!madeTitles.isEmpty && state(of: taskKey, in: states) == taken) {
+                lines.insert(task.line)
+            }
+        }
+        return lines
+    }
+
+    /// "Send the offer (Anna)": a subtask of "Add as One To-do with Subtasks" without the owner it was given.
+    private static func withoutOwner(_ subtask: String) -> String {
+        subtask.replacingOccurrences(of: #"\s*\([^()]*\)\s*$"#, with: "", options: .regularExpression)
+    }
+
     /// Whether a task of the summary has become a to-do (for the mark on its line).
     static func isTaken(_ taskText: String, states: [String: String], madeTitles: [String]) -> Bool {
         let key = key(split(taskText, meetingDate: Date()).title)
@@ -250,6 +275,23 @@ extension Note {
         guard let raw = todoSuggestionsRaw else { return false }
         // Only a "Later" in it (`InboxSnooze.unofferedKey`): nothing was offered.
         return !raw.contains(InboxSnooze.unofferedKey) && !isSaved && !isTodo && summary != nil && !isDeleted
+    }
+
+    /// The summary as its page shows it, given the suggestions the page's card shows (`offered`, empty when it shows
+    /// none) and the to-dos made from the note listed below it: the tasks shown there are left out, and so is the
+    /// tasks heading when nothing is left under it. Each task is on the page once. Only for display: the stored
+    /// summary (copied, exported, in the chat) keeps all its tasks, and ticking a box still finds its line.
+    func summaryShown(offered: [TaskSuggestion], made: [Note]) -> String? {
+        guard let summary else { return nil }
+        guard !isSaved, !isTodo else { return summary }
+        let lines = TodoSuggestions.linesShownElsewhere(
+            in: summary,
+            offered: offered,
+            states: TodoSuggestions.states(todoSuggestionsRaw),
+            madeTitles: made.map(\.title),
+            madeSubtasks: made.flatMap { Todos.subtasks(in: $0.text).map(\.text) }
+        )
+        return SummaryTasks.hiding(lines, in: summary)
     }
 
     /// The suggestions waiting on this note, given the to-dos made from it.

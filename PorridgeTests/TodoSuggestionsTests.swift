@@ -196,5 +196,132 @@ final class TodoSuggestionsTests: XCTestCase {
         // Due today, said so: the meeting's day stays.
         XCTAssertEqual(split("Angebot heute an den Kunden schicken – Daniel – 2026-11-20").2, "2026-11-20")
     }
-}
 
+    // MARK: Each task once on the page
+
+    private func meeting(_ summary: String, offered: Bool = true) -> Note {
+        let note = Note()
+        note.title = "Launch"
+        note.summary = summary
+        note.createdAt = meetingDate
+        if offered { TodoSuggestions.offer(note) }
+        return note
+    }
+
+    /// The lines that are left on the page, empty ones dropped.
+    private func visible(_ text: String?) -> [String] {
+        (text ?? "").components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    private let english = """
+    ## Summary
+    We planned the launch.
+
+    ## Key Points
+    - The date holds
+
+    ## Decisions
+    - Variant B
+
+    ## Action Items
+    - [ ] Send the offer to the customer – Daniel – 2026-11-27
+    - [ ] Book the room – Anna
+
+    #launch #q4
+    """
+
+    func testOfferedTasksLeaveTheSummaryWithTheirHeading() {
+        let note = meeting(english)
+        let offered = note.pendingTodoSuggestions(made: [])
+        XCTAssertEqual(offered.count, 2)
+        let shown = note.summaryShown(offered: offered, made: [])
+        XCTAssertEqual(visible(shown), ["## Summary", "We planned the launch.", "## Key Points", "- The date holds", "## Decisions", "- Variant B", "#launch #q4"])
+        // Line numbers stay, so a box still finds its line in the stored summary; the stored summary is untouched.
+        XCTAssertEqual(shown?.components(separatedBy: "\n").count, english.components(separatedBy: "\n").count)
+        XCTAssertEqual(note.summary, english)
+    }
+
+    func testWithoutTheCardTheTasksStayInTheSummary() {
+        // A locked or read-only page shows no card: then the summary is the only place for the tasks.
+        let note = meeting(english)
+        XCTAssertEqual(note.summaryShown(offered: [], made: []), english)
+        // Summarized before suggestions existed (nothing offered, nothing made): as it was.
+        XCTAssertEqual(meeting(english, offered: false).summaryShown(offered: [], made: []), english)
+    }
+
+    func testTakenTasksAreShownAsTodosAndTheDismissedOnesStay() throws {
+        let context = try TestStore.context()
+        let note = meeting(summary)
+        context.insert(note)
+        let all = note.pendingTodoSuggestions(made: [])
+        let chosen = all.filter { $0.title.hasPrefix("Angebot") || $0.title.hasPrefix("Raum") }
+        let made = TodoSuggestions.take(chosen, dismissing: all.filter { !chosen.contains($0) }, from: note, asOne: false, in: context)
+        let shown = visible(note.summaryShown(offered: note.pendingTodoSuggestions(made: made), made: made))
+        XCTAssertFalse(shown.contains { $0.contains("Angebot") || $0.contains("Raum buchen") })
+        // Dismissed tasks are shown nowhere else, so they stay, and with them the heading; so does the ticked one.
+        XCTAssertTrue(shown.contains("## Aufgaben"))
+        XCTAssertTrue(shown.contains("- [ ] Budget prüfen – Anna und Daniel – nächste Woche"))
+        XCTAssertTrue(shown.contains("- [x] Protokoll verschicken – Ben"))
+    }
+
+    func testTasksOfTheOneTodoWithSubtasksLeaveTheSummary() throws {
+        let context = try TestStore.context()
+        let note = meeting(english)
+        context.insert(note)
+        let made = TodoSuggestions.take(note.pendingTodoSuggestions(made: []), dismissing: [], from: note, asOne: true, in: context)
+        XCTAssertEqual(made.count, 1)
+        XCTAssertFalse(visible(note.summaryShown(offered: [], made: made)).contains { $0.contains("Action Items") || $0.hasPrefix("- [") })
+    }
+
+    func testATaskTakenUnderAnEditedTitleCountsAsShown() throws {
+        let context = try TestStore.context()
+        let note = meeting(english)
+        context.insert(note)
+        var offer = note.pendingTodoSuggestions(made: [])
+        offer[1].title = "Reserve a meeting space for Friday"
+        let made = TodoSuggestions.take(offer, dismissing: [], from: note, asOne: false, in: context)
+        XCTAssertFalse(visible(note.summaryShown(offered: [], made: made)).contains { $0.contains("Book the room") })
+        // The to-dos deleted: the summary is where the tasks are again.
+        XCTAssertEqual(note.summaryShown(offered: [], made: []), english)
+    }
+
+    func testHeadingVariants() {
+        let variants = [
+            "## Action Items", "### Aufgaben", "## Nächste Schritte", "## Next Steps", "## To-dos", "## Tasks",
+            "# Offene Punkte", "**Action Items:**", "**Aufgaben**", "Next steps:", "__To-dos:__",
+        ]
+        for heading in variants {
+            let text = "## Zusammenfassung\nKurz.\n\n\(heading)\n- [ ] Angebot schicken – Daniel\n- Raum buchen – Anna\n- Keine weiteren Aufgaben.\n\n#tag"
+            let note = meeting(text)
+            let offered = note.pendingTodoSuggestions(made: [])
+            // Under a paragraph heading only the checkbox is a task; the plain bullet is text and stays.
+            let rest = heading.hasPrefix("#") ? [] : ["- Raum buchen – Anna", "- Keine weiteren Aufgaben."]
+            XCTAssertEqual(offered.count, heading.hasPrefix("#") ? 2 : 1, heading)
+            XCTAssertEqual(visible(note.summaryShown(offered: offered, made: [])), ["## Zusammenfassung", "Kurz."] + (rest.isEmpty ? [] : [heading]) + rest + ["#tag"], heading)
+        }
+        // A paragraph heading over checkboxes only goes with them.
+        let checkboxes = "**Next Steps:**\n- [ ] Send the offer – Daniel\n- [ ] Book the room – Anna"
+        let note = meeting(checkboxes)
+        XCTAssertEqual(visible(note.summaryShown(offered: note.pendingTodoSuggestions(made: []), made: [])), [])
+    }
+
+    func testOtherTextUnderTheTasksHeadingKeepsIt() {
+        let text = "## Action Items\nEveryone agreed on these.\n- [ ] Send the offer – Daniel"
+        let note = meeting(text)
+        XCTAssertEqual(visible(note.summaryShown(offered: note.pendingTodoSuggestions(made: []), made: [])), ["## Action Items", "Everyone agreed on these."])
+    }
+
+    func testSummariesWithoutTasksAndOtherKindsAreUnchanged() {
+        let plain = "## Summary\nNothing to do.\n\n## Action Items\n- No action items.\n\n## Decisions\n- None"
+        let note = meeting(plain)
+        XCTAssertEqual(note.summaryShown(offered: note.pendingTodoSuggestions(made: []), made: []), plain)
+        // A saved page and a to-do show their summary as written.
+        let link = meeting(english)
+        link.url = "https://example.com"
+        XCTAssertEqual(link.summaryShown(offered: TodoSuggestions.parse(english, meetingDate: meetingDate), made: []), english)
+        let todo = meeting(english)
+        todo.todoState = .open
+        XCTAssertEqual(todo.summaryShown(offered: TodoSuggestions.parse(english, meetingDate: meetingDate), made: []), english)
+        XCTAssertNil(Note().summaryShown(offered: [], made: []))
+    }
+}

@@ -808,7 +808,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             if !pending.isEmpty { suggestedTodos.show(pending, of: note) }
             madeTodos.isHidden = made.isEmpty
             if !made.isEmpty { madeTodos.show(made) }
-            summaryText.show(summary)
+            // The tasks the card above or the to-dos below show are left out of the summary: each once.
+            summaryText.show(note.summaryShown(offered: pending, made: made) ?? summary)
             summaryMenuButton.isHidden = isLocked
             summaryModelLabel.stringValue = note.summaryModel.map { "Created with \($0)" } ?? ""
         } else {

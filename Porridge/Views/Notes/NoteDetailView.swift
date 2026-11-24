@@ -1050,6 +1050,8 @@ struct NoteDetailView: View {
             } else if let summary = note.summary {
                 let made = Todos.madeFrom(note, among: allNotes)
                 let suggestions = note.pendingTodoSuggestions(made: made)
+                // The tasks the card above or the to-dos below show are left out of the summary: each once.
+                let shown = note.summaryShown(offered: isReadOnly ? [] : suggestions, made: made) ?? summary
                 VStack(spacing: 16) {
                     // The tasks of the summary offered as to-dos, first thing on the page; never from a saved page.
                     if !suggestions.isEmpty, !isReadOnly {
@@ -1058,7 +1060,7 @@ struct NoteDetailView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
                             MarkdownText(
-                                markdown: summary,
+                                markdown: shown,
                                 onToggleTask: isLocked || note.isSaved ? nil : { toggleSummaryTask(line: $0) },
                                 isTakenTask: note.isSaved ? nil : { text in
                                     TodoSuggestions.isTaken(text, states: TodoSuggestions.states(note.todoSuggestionsRaw), madeTitles: made.map(\.title))
