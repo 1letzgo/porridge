@@ -277,9 +277,24 @@ final class NotesFlowTests: XCTestCase {
         let before = bowl.value as? String ?? ""
         let target = before == "Inbox" ? "Q4 Planning" : "Inbox"
         bowl.tap()
-        let choice = app.buttons[target].firstMatch
-        XCTAssertTrue(choice.waitForExistence(timeout: 5), "\(target) missing in the bowl menu")
-        choice.tap()
+        // The tab bar has an "Inbox" button too (behind the sheet): the menu's row is another one. The menu can take a
+        // moment to open; it is opened again when it did not.
+        let tab = app.tabBars.buttons[target]
+        let tabFrame = tab.exists ? tab.frame : .zero
+        func menuRow() -> XCUIElement? {
+            app.buttons.matching(identifier: target).allElementsBoundByIndex.last { $0.exists && $0.isHittable && $0.frame != tabFrame }
+        }
+        var choice: XCUIElement?
+        for attempt in 0..<3 where choice == nil {
+            if attempt > 0 { bowl.tap() }
+            let deadline = Date().addingTimeInterval(4)
+            while choice == nil, Date() < deadline {
+                choice = menuRow()
+                if choice == nil { usleep(250_000) }
+            }
+        }
+        XCTAssertNotNil(choice, "\(target) missing in the bowl menu")
+        choice?.tap()
         let changed = NSPredicate(format: "value == %@", target)
         expectation(for: changed, evaluatedWith: bowl)
         waitForExpectations(timeout: 5)

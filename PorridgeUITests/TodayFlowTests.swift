@@ -27,12 +27,15 @@ final class TodayFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["\(prefix) long overdue"].waitForExistence(timeout: 5), "an overdue to-do is missing")
         screenshot("today-page", app)
 
-        // A note offers its appointment in the row of its bowl and tags.
+        // A note is linked to an appointment from the Appointment section of Details ("Link…").
         app.newNote(title: unique("Appointment note"))
-        let chip = app.buttons["Link to Appointment"]
-        XCTAssertTrue(chip.waitForExistence(timeout: 5), "no appointment button beside the tags")
         app.titleField.typeText("\n")
-        chip.tap()
+        app.openDetails()
+        let link = app.buttons["Link…"].firstMatch
+        let form = app.collectionViews.firstMatch
+        for _ in 0..<4 where !(link.exists && link.isHittable) { form.swipeUp() }
+        XCTAssertTrue(link.waitForExistence(timeout: 5), "no Link… in the Appointment section of Details")
+        link.tap()
         XCTAssertTrue(app.navigationBars["Appointment"].waitForExistence(timeout: 5), "the appointment picker did not open")
         screenshot("appointment-picker", app)
         app.buttons["Cancel"].tap()

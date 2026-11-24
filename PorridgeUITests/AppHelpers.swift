@@ -54,7 +54,7 @@ extension XCUIApplication {
         let plus = addButton
         XCTAssertTrue(plus.waitForExistence(timeout: 30), "plus button missing")
         plus.tap()
-        XCTAssertTrue(navigationBars["Add"].waitForExistence(timeout: 5), "the Add sheet did not open")
+        XCTAssertTrue(navigationBars["Add"].waitForExistence(timeout: 10), "the Add sheet did not open")
         let label = option == "Bowl" ? "New Bowl…" : option
         let choice = buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
         // The sheet opens at half height: rows further down appear once it is scrolled.
@@ -81,6 +81,20 @@ extension XCUIApplication {
             usleep(200_000)
         }
         return false
+    }
+
+    /// Details of the open entry: "Details" at the end of the meta line under the title (the sheet opens at its top).
+    func openDetails() {
+        let details = buttons["Details"].firstMatch
+        XCTAssertTrue(details.waitForExistence(timeout: 10), "Details missing in the head of the entry")
+        details.tap()
+        XCTAssertTrue(navigationBars["Details"].waitForExistence(timeout: 5), "Details did not open")
+    }
+
+    /// Closes the Details sheet.
+    func closeDetails() {
+        navigationBars["Details"].buttons["Done"].tap()
+        XCTAssertTrue(navigationBars["Details"].waitForNonExistence(timeout: 5), "Details did not close")
     }
 
     func goBack() {

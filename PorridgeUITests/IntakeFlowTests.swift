@@ -42,7 +42,7 @@ final class IntakeFlowTests: XCTestCase {
         XCTAssertTrue(row.waitForNonExistence(timeout: 10), "filed note still in the inbox")
     }
 
-    /// The chat is a page of its own, opened from its button bottom left; a chat about a bowl is kept and taken up again.
+    /// The chat about a bowl opens from the bowl's ⋯ (Ask About This Bowl); it is kept and taken up again.
     func testAChatAboutABucketIsKeptAndTakenUpAgain() throws {
         let app = launchApp()
         let bucket = unique("Chat")
@@ -52,28 +52,36 @@ final class IntakeFlowTests: XCTestCase {
         name.typeText(bucket)
         app.confirmAlert("Create")
 
-        // In the new bowl the chat is about it. It is empty, so the answer needs no model.
-        let chat = app.buttons["Chat"]
-        XCTAssertTrue(chat.waitForExistence(timeout: 10), "chat button missing")
-        chat.tap()
+        // The new bowl opens; its ⋯ asks about it. It is empty, so the answer needs no model.
+        func askAboutTheBowl() {
+            let menu = app.buttons["BowlMenu"]
+            XCTAssertTrue(menu.waitForExistence(timeout: 10), "bowl menu missing")
+            menu.tap()
+            let ask = app.buttons["Ask About This Bowl"]
+            XCTAssertTrue(ask.waitForExistence(timeout: 5), "Ask About This Bowl missing in the bowl menu")
+            ask.tap()
+        }
+        askAboutTheBowl()
         XCTAssertTrue(app.buttons["Chat About"].waitForExistence(timeout: 5), "the chat does not say what it is about")
         let field = app.textFields["ChatField"].exists ? app.textFields["ChatField"] : app.textViews["ChatField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), "chat field missing")
+        // The page may still be sliding in: typing starts once the field can take it.
+        for _ in 0..<12 where !field.isHittable { usleep(250_000) }
         field.tap()
         let question = unique("What is in here")
         field.typeText(question)
         app.buttons["ChatSend"].tap()
-        XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 10), "question missing in the chat")
+        XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 20), "question missing in the chat")
         // The index is brought up to date first: on the first launch after an update that cuts the entries again
         // (documents got their payment state), that takes a while on a simulator full of earlier test entries.
         XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 90), "answer missing")
 
-        // Kept: it is in the list of chats, and opening the chat again shows it.
+        // Kept: it is in the list of chats, and asking about the bowl again shows it.
         app.buttons["All Chats"].tap()
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 5), "chat missing in the list of chats")
         app.buttons["Back"].firstMatch.tap()
-        XCTAssertTrue(chat.waitForExistence(timeout: 5))
-        chat.tap()
+        app.openTab("Bowls")
+        askAboutTheBowl()
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 10), "the chat was not taken up again")
         XCTAssertTrue(app.buttons["New Chat"].exists, "no way to start another chat")
     }

@@ -394,8 +394,15 @@ struct NoteDetailView: View {
                 }
                 TextField(note.isTodo ? "To-do" : "Title", text: Binding(
                     get: { note.title },
-                    set: {
-                        note.title = $0
+                    set: { typed in
+                        // The field wraps long titles, but Return ends the title: no line break is kept in it
+                        // (it showed as an empty second line in every list).
+                        if typed.contains(where: \.isNewline) {
+                            note.title = typed.filter { !$0.isNewline }
+                            focused = false
+                        } else {
+                            note.title = typed
+                        }
                         note.titleIsCustom = true
                     }
                 ), axis: .vertical)

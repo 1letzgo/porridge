@@ -88,10 +88,10 @@ final class NotesFeaturesTests: XCTestCase {
         delete.tap()
         XCTAssertFalse(app.staticTexts[name].waitForExistence(timeout: 3), "note still in the inbox")
 
-        // Recently Deleted opens from the bar of the home list.
-        app.goBack()
-        let trash = app.buttons["Recently Deleted"].firstMatch
-        XCTAssertTrue(trash.waitForExistence(timeout: 10), "Recently Deleted missing")
+        // Recently Deleted is a fixed row at the end of the Bowls place.
+        app.openTab("Bowls")
+        let trash = app.buttons["BowlsRecentlyDeleted"]
+        XCTAssertTrue(app.reveal(trash), "Recently Deleted missing")
         trash.tap()
         XCTAssertTrue(app.reveal(app.staticTexts[name]), "note not in the trash")
     }
@@ -101,13 +101,17 @@ final class NotesFeaturesTests: XCTestCase {
         let title = unique("Tagged")
         let tag = "field\(UUID().uuidString.prefix(6).lowercased())"
         app.newNote(title: title)
+        app.titleField.typeText("\n")
+        // Tags are a row of Details.
+        app.openDetails()
         XCTAssertTrue(app.buttons["Add Tag"].waitForExistence(timeout: 5))
         app.buttons["Add Tag"].tap()
         let input = app.textFields["Tag"]
         XCTAssertTrue(input.waitForExistence(timeout: 5))
         input.typeText(tag)
         app.alerts.buttons["Add"].tap()
-        XCTAssertTrue(app.staticTexts["#\(tag)"].waitForExistence(timeout: 5), "tag chip missing")
+        XCTAssertTrue(app.staticTexts["#\(tag)"].waitForExistence(timeout: 5), "tag missing in Details")
+        app.closeDetails()
         app.goBack()
 
         // The search offers the tags as chips; picking one filters the notes.
@@ -161,9 +165,10 @@ final class NotesFeaturesTests: XCTestCase {
         XCTAssertTrue(app.buttons["Unpin"].waitForExistence(timeout: 5), "project was not pinned")
 
         // Clean up, so runs do not pile projects up.
-        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 5))
-        app.buttons["Delete"].tap()
-        let confirm = app.buttons["Delete Bowl"]
-        if confirm.waitForExistence(timeout: 5) { confirm.tap() }
+        let delete = app.buttons["Delete Bowl…"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 5), "Delete Bowl… missing in the bowl's menu")
+        delete.tap()
+        app.confirmAlert("Delete Bowl")
+        XCTAssertTrue(app.staticTexts[name].waitForNonExistence(timeout: 5), "deleted bowl still listed")
     }
 }

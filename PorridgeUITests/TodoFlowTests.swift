@@ -43,18 +43,24 @@ final class TodoFlowTests: XCTestCase {
         // The first circle, at the start of the first line of the body.
         let editor = app.bodyEditor
         editor.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 12, dy: 14)).tap()
-        let progress = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '1 of 2 done'")).firstMatch
+        // The meta line under the title counts them ("To-do · 24 Nov · 1 of 2 subtasks").
+        let progress = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS '1 of 2 subtasks'")).firstMatch
         XCTAssertTrue(progress.waitForExistence(timeout: 5), "ticking a subtask did not count")
         app.buttons["Done"].firstMatch.tap()
 
-        // Due today, from the chip in the row of bowls and tags.
-        let due = app.buttons["Add Due Date"]
-        XCTAssertTrue(due.waitForExistence(timeout: 5), "due date chip missing")
+        // Due today, from the Due row of Details.
+        app.openDetails()
+        let due = app.buttons["Due Date"].firstMatch
+        XCTAssertTrue(due.waitForExistence(timeout: 5), "Due row missing in Details")
         due.tap()
         let today = app.buttons["Today"].firstMatch
         XCTAssertTrue(today.waitForExistence(timeout: 5), "due date menu missing")
         today.tap()
-        XCTAssertTrue(app.buttons["Due Today"].waitForExistence(timeout: 5), "due date not set")
+        screenshot("todo-details-due", app)
+        app.closeDetails()
+        // The head's meta line now names the day.
+        let meta = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Today'")).firstMatch
+        XCTAssertTrue(meta.waitForExistence(timeout: 5), "due date not set")
         screenshot("todo-detail", app)
 
         app.goBack()
@@ -84,6 +90,8 @@ final class TodoFlowTests: XCTestCase {
                                 "-myName", "Me", "-seedMeetingWithTasks", title]
         app.launch()
 
+        // The meeting's bowl is in the Bowls place.
+        app.openTab("Bowls")
         let bucket = app.staticTexts[title].firstMatch
         XCTAssertTrue(app.reveal(bucket), "bowl of the meeting missing")
         bucket.tap()
@@ -102,7 +110,9 @@ final class TodoFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Suggested To-dos"].waitForNonExistence(timeout: 5), "suggestions stay after taking them on")
         XCTAssertTrue(app.buttons["Send the offer to the customer"].waitForExistence(timeout: 5)
                       || app.staticTexts["Send the offer to the customer"].exists, "made to-do missing on the meeting's page")
-        XCTAssertEqual(app.images.matching(identifier: "Taken over as a to-do").count, 2, "taken tasks are not marked in the summary")
+        // Each task is on the page once: the made to-dos list them, the summary leaves them out.
+        XCTAssertEqual(app.staticTexts.matching(identifier: "Send the offer to the customer").count, 1, "a taken task shows twice")
+        XCTAssertEqual(app.staticTexts.matching(identifier: "Update the roadmap").count, 1, "a taken task shows twice")
         screenshot("meeting-suggested-todos-taken", app)
 
         app.buttons["Back"].firstMatch.tap()
