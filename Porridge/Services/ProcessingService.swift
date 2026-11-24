@@ -111,6 +111,22 @@ final class ProcessingService {
         enhanceUndo[note.id]?.enhanced == note.text
     }
 
+    /// Asked of the note's page before an enhance is undone, so typing still on its way to the note is handed over
+    /// first (the undo then rightly does nothing). The object is the note's id.
+    static let willUndoEnhance = Notification.Name("ProcessingService.willUndoEnhance")
+
+    /// The note's text is the enhanced one now: the original is kept, and the one undo toast offers it back (on the
+    /// Mac ⌘Z too), from wherever the user is by then.
+    func enhanced(_ note: Note, original: String, toast: UndoToast = .shared) {
+        enhanceUndo[note.id] = EnhanceUndo(original: original, enhanced: note.text)
+        let title = note.displayTitle
+        toast.offer(String(localized: "Enhanced “\(title)”"), systemImage: "wand.and.stars") { [weak self, weak note] in
+            guard let self, let note else { return }
+            NotificationCenter.default.post(name: Self.willUndoEnhance, object: note.id)
+            self.undoEnhance(note)
+        }
+    }
+
     /// Puts back the text from before the last enhance.
     func undoEnhance(_ note: Note) {
         guard let undo = enhanceUndo[note.id], undo.enhanced == note.text else { return }
@@ -609,7 +625,7 @@ final class ProcessingService {
             let original = try await SummaryService.enhance(note, model: model) { [weak self] status in
                 self?.stages[id] = status
             }
-            enhanceUndo[id] = EnhanceUndo(original: original, enhanced: note.text)
+            enhanced(note, original: original)
             save()
         } catch is CancellationError {
             // The note is gone; nobody is left to tell.

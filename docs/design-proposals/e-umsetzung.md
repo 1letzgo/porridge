@@ -133,6 +133,26 @@ exactly one `UndoToast.Offer` whose undo restores the state (`ChatActionsTests`,
 Verify on screen: bundle a group, split a note, enhance a note, confirm chat actions, delete a chat on the Mac – each
 time the same navy toast, Undo works, ⌘Z works on the Mac.
 
+**As built (stage 1):**
+
+- Shared entry points: `BowlMaking.offerUndo(_:in:toast:)` (bundle and split, iOS and Mac),
+  `ProcessingService.enhanced(_:original:toast:)` (called when an enhance job finishes, so the toast comes wherever the
+  user is by then), `ChatService.confirm(…, toast:)` (one offer for all changes confirmed together, "N changes made"),
+  `ChatDeletion.delete(_:in:toast:)` (thread and entries come back with their ids, so the chat's action states stay).
+- Typing still on its way is handed over before the toast undoes an enhance: the toast posts
+  `ProcessingService.willUndoEnhance`; `NoteDetailView` (`commitTyping`) and `NoteDetailViewController` (`editor.flush`)
+  listen. The "Undo Enhance" menu items stay until stage 3 moves them to ✦ AI.
+- Removed: `BowlChangeBanner`, the iOS `enhancedBanner`, `ChatUndoToastView`, `ChatService.toast` / `undoToast` /
+  `ChatUndoToast` (its message is now `ChatUndoMessage.text`), the Mac `ChatUndoToastBar`, the detail's
+  `enhancedBanner` / `splitBanner`, the bundle banner's undo state, `BowlMaking.undoLifetime` (the way back is now the
+  toast's 8 s plus ⌘Z on the Mac).
+- Look: iOS `UndoToastView` and the Mac `MacUndoToast` are the navy `ToastFill` capsule (white text, "Undo" white on
+  16 % white); the Mac keeps its close cross; the Mac panel is 440 × 60 so the shadow is not cut, the capsule sits
+  16 pt above the window's bottom edge.
+- Delete Chat asks first and offers undo on the Mac only (as planned); the iPhone's chat list still deletes without
+  either (shared `ChatDeletion` is ready for stage 5).
+- Debug driver (Debug builds only): `toast`, `toast-state`, `shot-toast`, `chat-thread`, `chat-delete`, `chat-count`.
+
 ---
 
 ## Stage 2 · Entry page: quiet head + Details

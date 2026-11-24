@@ -271,6 +271,33 @@ enum DebugDriver {
                 log("drop refused")
             }
             destination.draggingEnded?(info)
+        case "chat-thread":
+            // A chat with a question and an answer (only on test data), for `chat-delete`.
+            guard DataLocation.testFolder != nil else { log("chat-thread: test data only"); return }
+            let thread = ChatThread()
+            thread.title = argument.isEmpty ? "Open invoices" : argument
+            library.context.insert(thread)
+            library.context.insert(ChatEntry(threadID: thread.id, role: .user, text: "Which invoices are open?"))
+            library.context.insert(ChatEntry(threadID: thread.id, role: .assistant, text: "Two, both from Telekom."))
+            library.save()
+        case "chat-delete":
+            // "Delete Chat" on a row of the chat list (0 = first), with its question.
+            state.page = .chat
+            controller.split.content.chats.debugDelete(row: Int(argument) ?? 0)
+        case "chat-count":
+            log("chats: \(((try? library.context.fetch(FetchDescriptor<ChatThread>())) ?? []).map(\.title))")
+        case "toast":
+            // The undo toast with a message of its own, as any action offers it.
+            UndoToast.shared.offer(argument.isEmpty ? "Moved to “Kitchen Renovation”" : argument, systemImage: "folder") { log("toast: undone") }
+        case "toast-state":
+            log("toast: \(UndoToast.shared.current?.message ?? "none")")
+        case "shot-toast":
+            // The undo toast's own window (a child of the main window, outside `shot`).
+            guard let panel = UndoToastPanel.shared.debugWindow, let content = panel.contentView,
+                  let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { log("shot-toast: no toast"); return }
+            content.cacheDisplay(in: content.bounds, to: bitmap)
+            try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
+            log("shot-toast: \(argument)")
         case "seed-chat":
             // The chat test entries (`TestSeed.seedChat`); only on test data.
             TestSeed.seedChat(library.context)

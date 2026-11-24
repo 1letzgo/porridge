@@ -117,9 +117,6 @@ final class ChatService {
     /// chats (`ChatActionStore`).
     private(set) var actions: [UUID: [ChatAction]] = ChatActionStore.load()
 
-    /// The changes just made, with the way back; shown for `ChatUndoToast.duration` seconds.
-    private(set) var toast: ChatUndoToast?
-
     /// How the model proposes changes: with native tools (cloud), with ACTION lines (on the device), or not at all.
     enum ActionMode: Equatable {
         case none, tools, inline
@@ -258,8 +255,9 @@ final class ChatService {
         ChatActionStore.save(actions)
     }
 
-    /// Makes the confirmed changes of an answer (all pending ones when `ids` is nil) and offers the way back.
-    func confirm(_ ids: Set<UUID>? = nil, in entryID: UUID, context: ModelContext) {
+    /// Makes the confirmed changes of an answer (all pending ones when `ids` is nil) and offers the way back for all
+    /// of them at once on the one undo toast (on the Mac ⌘Z too).
+    func confirm(_ ids: Set<UUID>? = nil, in entryID: UUID, context: ModelContext, toast: UndoToast = .shared) {
         let list = actions(for: entryID)
         let chosen = list.filter { $0.status == .pending && (ids?.contains($0.id) ?? true) }
         guard !chosen.isEmpty else { return }
@@ -271,7 +269,11 @@ final class ChatService {
         setActions(updated, for: entryID)
         let done = run.actions.filter { $0.status == .done }
         guard !done.isEmpty, !run.undo.isEmpty else { return }
-        showToast(ChatUndoToast(entryID: entryID, actionIDs: done.map(\.id), message: ChatUndoToast.message(for: done), undo: run.undo))
+        let actionIDs = Set(done.map(\.id))
+        let undo = run.undo
+        toast.offer(ChatUndoMessage.text(for: done), systemImage: "checkmark.circle") { [weak self] in
+            self?.undo(undo, actions: actionIDs, in: entryID, context: context)
+        }
     }
 
     func cancel(_ ids: Set<UUID>? = nil, in entryID: UUID) {
@@ -282,25 +284,12 @@ final class ChatService {
         setActions(list, for: entryID)
     }
 
-    /// Takes back what the toast offers.
-    func undoToast(context: ModelContext) {
-        guard let toast else { return }
-        EntryActions.undo(toast.undo, in: context)
-        var list = actions(for: toast.entryID)
-        for index in list.indices where toast.actionIDs.contains(list[index].id) { list[index].status = .undone }
-        setActions(list, for: toast.entryID)
-        self.toast = nil
-    }
-
-    func dismissToast() { toast = nil }
-
-    private func showToast(_ toast: ChatUndoToast) {
-        self.toast = toast
-        let id = toast.id
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(ChatUndoToast.duration))
-            if self?.toast?.id == id { self?.toast = nil }
-        }
+    /// Takes confirmed changes back (from the toast): the entries as they were, the actions marked as undone.
+    func undo(_ undo: EntryActions.Undo, actions ids: Set<UUID>, in entryID: UUID, context: ModelContext) {
+        EntryActions.undo(undo, in: context)
+        var list = actions(for: entryID)
+        for index in list.indices where ids.contains(list[index].id) { list[index].status = .undone }
+        setActions(list, for: entryID)
     }
 
     /// The items of a context by the numbers the prompt gives them (`prompt`): the listed entries (when there is a
@@ -457,6 +446,49 @@ final class ChatService {
             let inline: ActionMode = actions == .none ? .none : .inline
             let prompt = prompt(question: question, history: history, context: context, earlier: earlier, bucket: bucket, limit: limit, actions: inline)
             return (try await CloudLLM.complete(provider: provider, apiKey: key, model: id, system: prompt.system, user: prompt.user), [])
+        }
+    }
+}
+
+/// Deleting a chat (kept on this device only): its questions and answers go with it, and the one undo toast brings
+/// all of it back as it was (on the Mac ⌘Z too).
+@MainActor
+enum ChatDeletion {
+    private struct SavedEntry {
+        let id: UUID
+        let role: ChatEntry.Role
+        let text: String
+        let createdAt: Date
+        let isError: Bool
+        let sourcesData: Data?
+    }
+
+    static func delete(_ thread: ChatThread, in context: ModelContext, toast: UndoToast = .shared) {
+        let id = thread.id
+        let entries = (try? context.fetch(FetchDescriptor<ChatEntry>(predicate: #Predicate { $0.threadID == id }))) ?? []
+        let saved = entries.map {
+            SavedEntry(id: $0.id, role: $0.role, text: $0.text, createdAt: $0.createdAt, isError: $0.isError, sourcesData: $0.sourcesData)
+        }
+        let (title, createdAt, updatedAt, projectID) = (thread.title, thread.createdAt, thread.updatedAt, thread.projectID)
+        entries.forEach(context.delete)
+        context.delete(thread)
+        try? context.save()
+        let name = title.isEmpty ? String(localized: "Chat") : title
+        toast.offer(String(localized: "Deleted “\(name)”"), systemImage: "trash") {
+            let back = ChatThread(projectID: projectID)
+            back.id = id
+            back.title = title
+            back.createdAt = createdAt
+            back.updatedAt = updatedAt
+            context.insert(back)
+            for entry in saved {
+                let restored = ChatEntry(threadID: id, role: entry.role, text: entry.text, isError: entry.isError)
+                restored.id = entry.id
+                restored.createdAt = entry.createdAt
+                restored.sourcesData = entry.sourcesData
+                context.insert(restored)
+            }
+            try? context.save()
         }
     }
 }

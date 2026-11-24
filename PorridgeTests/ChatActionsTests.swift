@@ -293,23 +293,82 @@ final class ChatActionsTests: XCTestCase {
         let entry = note("Plan", in: context)
         try context.save()
         let service = ChatService.shared
+        let toast = UndoToast()
         let answerID = UUID()
         let move = ChatAction(operation: .move(note: entry.id, bowl: .new("Projekt X")), title: "Move to new Bowl “Projekt X”", subject: "Plan", symbol: "")
         let tag = ChatAction(operation: .tags(note: entry.id, add: ["q4"], remove: []), title: "Add #q4", subject: "Plan", symbol: "")
         service.setActions([move, tag], for: answerID)
 
         service.cancel([tag.id], in: answerID)
-        service.confirm(in: answerID, context: context)
+        service.confirm(in: answerID, context: context, toast: toast)
         XCTAssertEqual(service.actions(for: answerID).map(\.status), [.done, .cancelled])
-        XCTAssertEqual(service.toast?.message, "«Plan»: Move to new Bowl “Projekt X”")
+        XCTAssertEqual(toast.current?.message, "«Plan»: Move to new Bowl “Projekt X”", "the one undo toast offers the way back")
         XCTAssertFalse(entry.projectIDs.isEmpty)
         XCTAssertTrue(entry.labels.isEmpty)
 
-        service.undoToast(context: context)
-        XCTAssertNil(service.toast)
+        toast.undo()
+        XCTAssertNil(toast.current)
         XCTAssertTrue(entry.projectIDs.isEmpty)
         XCTAssertEqual(service.actions(for: answerID).map(\.status), [.undone, .cancelled])
         service.setActions([], for: answerID)
+    }
+
+    func testConfirmAllOffersOneUndoForEveryChange() throws {
+        let context = try TestStore.context()
+        let a = note("Invoice", in: context)
+        let b = note("Receipt", in: context)
+        try context.save()
+        let service = ChatService.shared
+        let toast = UndoToast()
+        let answerID = UUID()
+        service.setActions([
+            ChatAction(operation: .tags(note: a.id, add: ["tax"], remove: []), title: "Add #tax", subject: "Invoice", symbol: ""),
+            ChatAction(operation: .tags(note: b.id, add: ["tax"], remove: []), title: "Add #tax", subject: "Receipt", symbol: ""),
+            ChatAction(operation: .move(note: b.id, bowl: .new("Taxes")), title: "Move to new Bowl “Taxes”", subject: "Receipt", symbol: ""),
+        ], for: answerID)
+
+        service.confirm(in: answerID, context: context, toast: toast)
+        XCTAssertEqual(toast.current?.message, "3 changes made")
+        XCTAssertEqual(a.labels, ["tax"])
+        XCTAssertFalse(b.projectIDs.isEmpty)
+
+        // One undo takes all three back.
+        toast.undo()
+        XCTAssertTrue(a.labels.isEmpty)
+        XCTAssertTrue(b.labels.isEmpty)
+        XCTAssertTrue(b.projectIDs.isEmpty)
+        XCTAssertTrue(EntryActions.bowls(named: "Taxes", in: context).isEmpty)
+        XCTAssertEqual(service.actions(for: answerID).map(\.status), [.undone, .undone, .undone])
+        service.setActions([], for: answerID)
+    }
+
+    func testDeletingAChatCanBeUndone() throws {
+        let context = try TestStore.context()
+        let toast = UndoToast()
+        let thread = ChatThread(projectID: "bowl")
+        thread.title = "Open invoices"
+        context.insert(thread)
+        let question = ChatEntry(threadID: thread.id, role: .user, text: "Which invoices are open?")
+        let answer = ChatEntry(threadID: thread.id, role: .assistant, text: "Two.")
+        answer.sources = [ChatSource(noteID: UUID(), title: "Invoice", date: Date())]
+        [question, answer].forEach(context.insert)
+        try context.save()
+        let (threadID, answerID, sources) = (thread.id, answer.id, answer.sourcesData)
+
+        ChatDeletion.delete(thread, in: context, toast: toast)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<ChatThread>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<ChatEntry>()).isEmpty)
+        XCTAssertEqual(toast.current?.message, "Deleted “Open invoices”")
+
+        toast.undo()
+        let back = try XCTUnwrap(try context.fetch(FetchDescriptor<ChatThread>()).first)
+        XCTAssertEqual(back.id, threadID)
+        XCTAssertEqual(back.title, "Open invoices")
+        XCTAssertEqual(back.projectID, "bowl")
+        let entries = try context.fetch(FetchDescriptor<ChatEntry>(sortBy: [SortDescriptor(\.createdAt)]))
+        XCTAssertEqual(entries.map(\.text), ["Which invoices are open?", "Two."])
+        XCTAssertTrue(entries.allSatisfy { $0.threadID == threadID })
+        XCTAssertEqual(entries.first { $0.id == answerID }?.sourcesData, sources, "the answer keeps its sources")
     }
 
     func testUndoKeepsWhatWasChangedSince() throws {

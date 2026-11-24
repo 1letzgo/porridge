@@ -125,14 +125,26 @@ final class ChatListViewController: NSViewController, NSTableViewDataSource, NST
         menu.add("Delete Chat", symbol: "trash", isDestructive: true) { [weak self] in self?.delete(thread) }
     }
 
+    #if DEBUG
+    /// `DebugDriver`: "Delete Chat" on the row, as the context menu does.
+    func debugDelete(row: Int) {
+        guard threads.indices.contains(row) else { DebugDriver.log("chat-delete: \(threads.count) chats"); return }
+        delete(threads[row])
+    }
+    #endif
+
+    /// Asks first; once deleted, the undo toast (and ⌘Z) brings the chat back.
     private func delete(_ thread: ChatThread) {
-        let id = thread.id
-        let context = library.context
-        let entries = (try? context.fetch(FetchDescriptor<ChatEntry>(predicate: #Predicate { $0.threadID == id }))) ?? []
-        entries.forEach(context.delete)
-        context.delete(thread)
-        try? context.save()
-        if state.chatID == id { state.chatID = nil }
+        let name = thread.title.isEmpty ? "This Chat" : "“\(thread.title)”"
+        Alerts.confirm(
+            "Delete \(name)?", message: "Its questions and answers are deleted from this Mac. You can undo this right after.",
+            action: "Delete Chat", in: view.window
+        ) { [weak self] in
+            guard let self else { return }
+            let id = thread.id
+            ChatDeletion.delete(thread, in: self.library.context)
+            if self.state.chatID == id { self.state.chatID = nil }
+        }
     }
 }
 

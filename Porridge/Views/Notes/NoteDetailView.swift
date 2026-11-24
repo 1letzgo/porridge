@@ -59,7 +59,6 @@ struct NoteDetailView: View {
     @State private var pickingAppointment = false
     /// "Split into Bowl…" is open; after it, what it made, while it can be taken back.
     @State private var showSplit = false
-    @State private var lastSplit: BowlChange?
     /// The screen was shown before: coming back (from Quick Look, a sheet) keeps the open tab.
     @State private var didAppear = false
     /// What someone else did to the note in a shared bowl, as it was when the note was opened ("Changed by Ben").
@@ -102,17 +101,6 @@ struct NoteDetailView: View {
 
             statusView
 
-            if let lastSplit {
-                BowlChangeBanner(text: lastSplit.summary) {
-                    withAnimation(.snappy) {
-                        BowlMaking.undo(lastSplit, in: context)
-                        self.lastSplit = nil
-                    }
-                } onClose: {
-                    withAnimation(.snappy) { self.lastSplit = nil }
-                }
-            }
-
             if !note.speakers.isEmpty { speakerChips }
 
             if tabs.count > 1 {
@@ -131,7 +119,6 @@ struct NoteDetailView: View {
                     DictationStatus(dictation: dictation)
                     dictationPreview
                 } else {
-                    if processing.canUndoEnhance(note) { enhancedBanner }
                     NoteBodyEditor(
                         text: $note.text, isEditable: !isLocked && !isEnhancing, controller: editor,
                         placeholder: note.isTodo ? "Notes and subtasks…" : "Start typing or dictate…", growsWithText: true
@@ -303,17 +290,15 @@ struct NoteDetailView: View {
         }
         .sheet(isPresented: $showPages) { PDFPageEditor(note: note) }
         .sheet(item: $templateDraft) { draft in NoteTemplateEditor(draft: draft) }
-        .task(id: lastSplit?.madeAt) {
-            // The way back is offered for a while only.
-            guard let made = lastSplit?.madeAt else { return }
-            try? await Task.sleep(for: BowlMaking.undoLifetime)
-            guard !Task.isCancelled, lastSplit?.madeAt == made else { return }
-            withAnimation(.snappy) { lastSplit = nil }
-        }
         .sheet(isPresented: $showSplit) {
             SplitNoteSheet(note: note) { change in
-                withAnimation(.snappy) { lastSplit = change }
+                BowlMaking.offerUndo(change, in: context)
             }
+        }
+        // The undo toast takes an enhance back: typing still on its way is handed over first, so the undo rightly
+        // does nothing when the text was changed since.
+        .onReceive(NotificationCenter.default.publisher(for: ProcessingService.willUndoEnhance)) { notification in
+            if notification.object as? UUID == note.id { commitTyping() }
         }
         .sheet(isPresented: $showMerge) {
             MergeNotesSheet(base: note) {
@@ -897,21 +882,6 @@ struct NoteDetailView: View {
         processing.stages[note.id] == nil && !note.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Shown above the text after an enhance, while the original can still come back.
-    private var enhancedBanner: some View {
-        HStack(spacing: 12) {
-            Label("Enhanced with AI", systemImage: "wand.and.stars")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.brandNavy)
-            Spacer(minLength: 0)
-            Button("Undo") {
-                commitTyping()
-                processing.undoEnhance(note)
-            }
-            .buttonStyle(PillButtonStyle())
-        }
-        .flatPanel()
-    }
     private var summaryError: String? { processing.summaryErrors[note.id] }
 
     private var canSummarize: Bool {

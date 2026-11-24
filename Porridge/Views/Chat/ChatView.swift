@@ -205,15 +205,6 @@ struct ChatView: View {
                 }
             }
         }
-        // What was just changed from the chat, with Undo, above the field.
-        .overlay(alignment: .bottom) {
-            if let toast = service.toast {
-                ChatUndoToastView(toast: toast)
-                    .id(toast.id)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.snappy, value: service.toast?.id)
         .background(Color.appBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) { inputBar }
     }

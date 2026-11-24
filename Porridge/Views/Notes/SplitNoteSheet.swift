@@ -153,28 +153,3 @@ struct SplitNoteSheet: View {
         dismiss()
     }
 }
-
-/// Shown on the note's page after a split, while it can be taken back.
-struct BowlChangeBanner: View {
-    let text: String
-    let onUndo: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Label(text, systemImage: "folder.badge.plus")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.brandNavy)
-                .lineLimit(2)
-            Spacer(minLength: 0)
-            Button("Undo", action: onUndo)
-                .buttonStyle(PillButtonStyle())
-            Button(action: onClose) {
-                Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close")
-        }
-        .flatPanel()
-    }
-}

@@ -763,20 +763,12 @@ extension ChatAction.Operation {
     }
 }
 
-// MARK: - The way back, offered for a moment
+// MARK: - The way back
 
-/// What was just made from the chat, with its undo: shown as a toast for `duration` seconds.
-struct ChatUndoToast: Identifiable {
-    static let duration: Double = 8
-
-    let id = UUID()
-    let entryID: UUID
-    let actionIDs: [UUID]
-    let message: String
-    let undo: EntryActions.Undo
-
+/// What the one undo toast says after changes were made from the chat.
+enum ChatUndoMessage {
     /// "«Invoice»: Move to Bowl “Taxes”" for one change, "3 changes made" for several.
-    static func message(for done: [ChatAction]) -> String {
+    static func text(for done: [ChatAction]) -> String {
         guard done.count == 1, let action = done.first else { return "\(done.count) changes made" }
         let subject = action.subject.map { "«\($0)»: " } ?? ""
         return subject + action.title

@@ -23,6 +23,11 @@ final class UndoToastPanel {
         }
     }
 
+    #if DEBUG
+    /// `DebugDriver`'s `shot-toast`.
+    var debugWindow: NSWindow? { panel?.isVisible == true ? panel : nil }
+    #endif
+
     private func update() {
         guard UndoToast.shared.current != nil, let window = MainWindowController.frontIfAny?.window, window.isVisible else {
             hide()
@@ -50,7 +55,7 @@ final class UndoToastPanel {
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 48),
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 60),
             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true
         )
         panel.isFloatingPanel = false
@@ -66,47 +71,61 @@ final class UndoToastPanel {
     }
 
     private func place(_ panel: NSPanel, in window: NSWindow) {
-        let size = NSSize(width: 428, height: 48)
+        // Room around the capsule for its shadow; the capsule sits 16 pt above the window's bottom edge.
+        let size = NSSize(width: 440, height: 60)
         let frame = window.frame
-        panel.setFrame(NSRect(x: frame.midX - size.width / 2, y: frame.minY + 20, width: size.width, height: size.height), display: true)
+        panel.setFrame(NSRect(x: frame.midX - size.width / 2, y: frame.minY + 4, width: size.width, height: size.height), display: true)
     }
 }
 
-/// The toast itself: what happened, then "Undo".
+/// The toast itself, the same navy capsule as on the iPhone: what happened, then "Undo".
 private struct MacUndoToast: View {
     var toast = UndoToast.shared
 
     var body: some View {
-        if let offer = toast.current {
-            HStack(spacing: 10) {
-                Image(systemName: offer.systemImage)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                Text(offer.message)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 8)
-                Button("Undo") { toast.undo() }
-                    .buttonStyle(.borderless)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Color(nsColor: .brandSkyText))
+        ZStack {
+            if let offer = toast.current {
+                HStack(spacing: 10) {
+                    Image(systemName: offer.systemImage)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .accessibilityHidden(true)
+                    Text(offer.message)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Button {
+                        toast.undo()
+                    } label: {
+                        Text("Undo")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(.white.opacity(0.16), in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                     .help("Undo (⌘Z)")
-                Button {
-                    toast.dismiss()
-                } label: {
-                    Image(systemName: "xmark").font(.caption.weight(.semibold))
+                    Button {
+                        toast.dismiss()
+                    } label: {
+                        Image(systemName: "xmark").font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close")
                 }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Close")
+                .font(.system(size: 12.5))
+                .padding(.leading, 14)
+                .padding(.trailing, 10)
+                .frame(height: 36)
+                .background(Color(nsColor: .toastFill), in: Capsule())
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                .frame(maxWidth: 420)
+                .onHover { toast.hold($0) }
             }
-            .padding(.horizontal, 14)
-            .frame(height: 40)
-            .frame(width: 420)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
-            .padding(4)
-            .onHover { toast.hold($0) }
         }
+        .frame(width: 440, height: 60)
     }
 }

@@ -96,33 +96,3 @@ struct ChatActionCards: View {
         }
     }
 }
-
-/// What was just changed from the chat, with Undo, for a few seconds.
-struct ChatUndoToastView: View {
-    let toast: ChatUndoToast
-
-    @Environment(\.modelContext) private var context
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOnNavy)
-            Text(toast.message)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.brandOnNavy)
-                .lineLimit(2)
-            Spacer(minLength: 0)
-            Button("Undo") { withAnimation(.snappy) { ChatService.shared.undoToast(context: context) } }
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(Color.brandSky)
-                .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.brandNavy, in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-        .padding(.horizontal)
-        .padding(.bottom, 8)
-        .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Undo") { ChatService.shared.undoToast(context: context) }
-    }
-}

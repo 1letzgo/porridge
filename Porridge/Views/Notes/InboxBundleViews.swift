@@ -1,8 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// On top of the Inbox: one suggestion to put entries that belong together into a new bowl (`InboxBundler`), or,
-/// right after that was done, the way to take it back.
+/// On top of the Inbox: one suggestion to put entries that belong together into a new bowl (`InboxBundler`). Once
+/// that is done, the way back is the one undo toast.
 struct InboxBundleCard: View {
     let notes: [Note]
     let projects: [NoteFolder]
@@ -10,7 +10,6 @@ struct InboxBundleCard: View {
     @Environment(\.modelContext) private var context
     @State private var bundle: InboxBundle?
     @State private var reviewing: InboxBundle?
-    @State private var lastChange: BowlChange?
 
     /// What the suggestion depends on: the inbox's entries, their suggestions and tags, and the index's vectors.
     private var signature: String {
@@ -20,25 +19,9 @@ struct InboxBundleCard: View {
 
     var body: some View {
         Group {
-            if let lastChange {
-                BowlChangeBanner(text: lastChange.summary) {
-                    withAnimation(.snappy) {
-                        BowlMaking.undo(lastChange, in: context)
-                        self.lastChange = nil
-                    }
-                } onClose: {
-                    withAnimation(.snappy) { self.lastChange = nil }
-                }
-            } else if let bundle {
+            if let bundle {
                 suggestion(bundle)
             }
-        }
-        .task(id: lastChange?.madeAt) {
-            // The way back is offered for a while only.
-            guard let made = lastChange?.madeAt else { return }
-            try? await Task.sleep(for: BowlMaking.undoLifetime)
-            guard !Task.isCancelled, lastChange?.madeAt == made else { return }
-            withAnimation(.snappy) { lastChange = nil }
         }
         .task(id: signature) {
             // The inbox changes in bursts (a sync, a share); it is looked at once things rest.
@@ -49,10 +32,8 @@ struct InboxBundleCard: View {
         }
         .sheet(item: Binding(get: { reviewing.map(ReviewItem.init) }, set: { reviewing = $0?.bundle })) { item in
             InboxBundleSheet(bundle: item.bundle, notes: notes) { change in
-                withAnimation(.snappy) {
-                    lastChange = change
-                    bundle = nil
-                }
+                withAnimation(.snappy) { bundle = nil }
+                BowlMaking.offerUndo(change, in: context)
             }
         }
     }

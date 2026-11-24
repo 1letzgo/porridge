@@ -60,8 +60,12 @@ enum BowlMaking {
         return before
     }
 
-    /// How long the way back is offered after the change (like the undo toast, a little longer: it is in the note).
-    static let undoLifetime: Duration = .seconds(30)
+    /// Offers the way back on the one undo toast (on the Mac ⌘Z too): "Bowl “Garden” made with 4 entries · Undo".
+    static func offerUndo(_ change: BowlChange, in context: ModelContext, toast: UndoToast = .shared) {
+        toast.offer(change.summary, systemImage: "folder.badge.plus") {
+            undo(change, in: context)
+        }
+    }
 
     /// Takes the change back: the entries it made are deleted (to Recently Deleted when they were changed since),
     /// the moved ones go back, and a bowl it made is deleted when nothing else is in it now.

@@ -282,4 +282,80 @@ final class UXFeaturesTests: XCTestCase {
         toast.undo()
         XCTAssertEqual(undone, 2, "runs once")
     }
+
+    // MARK: One undo
+
+    /// Splitting a note into a bowl leaves exactly one offer on the toast; its undo takes the bowl and the new
+    /// entries back.
+    func testSplitOffersOneUndo() throws {
+        let context = try TestStore.context()
+        let toast = UndoToast()
+        let note = Note()
+        note.title = "Team Sync"
+        note.text = "## Decisions\n\nShip it.\n\n## Tasks\n\n- [ ] Book the room\n- [ ] Send the mockups"
+        context.insert(note)
+        try context.save()
+        let proposal = NoteSplitter.structural(title: note.title, text: note.text)
+        let change = try XCTUnwrap(NoteSplitter.apply(proposal, from: note, moveSource: true, in: context))
+        BowlMaking.offerUndo(change, in: context, toast: toast)
+        XCTAssertEqual(toast.current?.message, change.summary)
+        XCTAssertGreaterThan(try context.fetch(FetchDescriptor<Note>()).count, 1)
+
+        toast.undo()
+        XCTAssertNil(toast.current)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<Note>()).map(\.id), [note.id])
+        XCTAssertTrue(try context.fetch(FetchDescriptor<NoteFolder>()).isEmpty)
+        XCTAssertTrue(note.isInInbox)
+    }
+
+    /// Bundling Inbox entries into a new bowl: one offer, and its undo puts them back in the Inbox.
+    func testBundleOffersOneUndo() throws {
+        let context = try TestStore.context()
+        let toast = UndoToast()
+        let notes = ["Roses", "Lawn"].map { title -> Note in
+            let note = Note()
+            note.title = title
+            context.insert(note)
+            return note
+        }
+        try context.save()
+        let change = try XCTUnwrap(InboxBundler.apply(name: "Garden", noteIDs: notes.map(\.id), notes: notes, in: context))
+        BowlMaking.offerUndo(change, in: context, toast: toast)
+        XCTAssertEqual(toast.current?.message, "Bowl “Garden” made: 2 entries")
+        XCTAssertFalse(notes.contains(where: \.isInInbox))
+
+        toast.undo()
+        XCTAssertTrue(notes.allSatisfy(\.isInInbox))
+        XCTAssertTrue(try context.fetch(FetchDescriptor<NoteFolder>()).isEmpty)
+    }
+
+    /// An enhance offers its undo on the toast, which tells the note's page first so it can hand over its typing.
+    func testEnhanceOffersOneUndo() throws {
+        let context = try TestStore.context()
+        let toast = UndoToast()
+        let processing = ProcessingService(container: context.container)
+        let note = Note()
+        note.title = "Ideas"
+        note.text = "rough words"
+        context.insert(note)
+        try context.save()
+
+        note.text = "Polished words."
+        processing.enhanced(note, original: "rough words", toast: toast)
+        XCTAssertTrue(processing.canUndoEnhance(note))
+        XCTAssertEqual(toast.current?.message, "Enhanced “Ideas”")
+
+        let told = expectation(forNotification: ProcessingService.willUndoEnhance, object: nil) { ($0.object as? UUID) == note.id }
+        toast.undo()
+        wait(for: [told], timeout: 1)
+        XCTAssertEqual(note.text, "rough words")
+        XCTAssertFalse(processing.canUndoEnhance(note))
+
+        // Changed since: the undo leaves the new text alone.
+        note.text = "Polished words."
+        processing.enhanced(note, original: "rough words", toast: toast)
+        note.text = "Polished words, and more."
+        toast.undo()
+        XCTAssertEqual(note.text, "Polished words, and more.")
+    }
 }

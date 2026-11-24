@@ -48,10 +48,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private let attachments = AttachmentStripView()
     private let statusPanel = PanelView()
     private let speakers = FlowView()
-    private let enhancedBanner = PanelView()
-    /// After "Split into Bowl…": what it made, while it can be taken back.
-    private let splitBanner = PanelView()
-    private var lastSplit: BowlChange?
     private let tabs = NSSegmentedControl()
     private var tabOrder: [NoteTab] = []
 
@@ -166,13 +162,11 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         tabs.setAccessibilityLabel("Show")
 
         let head = NSStackView.vertical(
-            [titleRow, sourcePill, linkButton, meta, activityLabel, deletedBanner, readOnlyBanner, chips, attachments, statusPanel, speakers, enhancedBanner, splitBanner, tabs],
+            [titleRow, sourcePill, linkButton, meta, activityLabel, deletedBanner, readOnlyBanner, chips, attachments, statusPanel, speakers, tabs],
             spacing: 10
         )
         head.setCustomSpacing(4, after: titleRow)
         head.setCustomSpacing(4, after: linkButton)
-        head.setCustomSpacing(14, after: enhancedBanner)
-        head.setCustomSpacing(14, after: splitBanner)
         head.setCustomSpacing(14, after: speakers)
 
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -221,8 +215,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             attachments.widthAnchor.constraint(equalTo: head.widthAnchor),
             statusPanel.widthAnchor.constraint(equalTo: head.widthAnchor),
             speakers.widthAnchor.constraint(equalTo: head.widthAnchor),
-            enhancedBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
-            splitBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
             deletedBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
             readOnlyBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
             meta.widthAnchor.constraint(lessThanOrEqualTo: head.widthAnchor),
@@ -469,6 +461,15 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             self.fetchRecordingIfNeeded()
         })
         NotificationCenter.default.addObserver(self, selector: #selector(stopRecordingRequested), name: .porridgeStopRecording, object: nil)
+        // The undo toast (or ⌘Z) takes an enhance back: typing still on its way would otherwise be written over the
+        // original text afterwards. With it handed over the text is no longer the enhanced one, and the undo rightly
+        // does nothing.
+        NotificationCenter.default.addObserver(self, selector: #selector(willUndoEnhance(_:)), name: ProcessingService.willUndoEnhance, object: nil)
+    }
+
+    @objc private func willUndoEnhance(_ notification: Notification) {
+        guard notification.object as? UUID == note.id else { return }
+        editor?.flush()
     }
 
     override func viewDidAppear() {
@@ -597,25 +598,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         if !listed.isEmpty { attachments.show(listed, canRemove: !isLocked) }
         renderStatus()
         renderSpeakers()
-        let canUndo = processing.canUndoEnhance(note)
-        enhancedBanner.isHidden = !(tab == .note && canUndo && dictation.phase == .idle)
-        if canUndo {
-            enhancedBanner.show(symbol: "wand.and.stars", text: "Enhanced with AI", tint: .brandSky, action: ("Undo", { [weak self] in
-                self?.perform(.undoEnhance)
-            }))
-        }
-
-        splitBanner.isHidden = lastSplit == nil
-        if let lastSplit {
-            splitBanner.show(symbol: "folder.badge.plus", text: lastSplit.summary, tint: .brandProject, action: ("Undo", { [weak self] in
-                guard let self, let change = self.lastSplit else { return }
-                self.lastSplit = nil
-                BowlMaking.undo(change, in: self.library.context)
-                self.library.setNeedsReload()
-                self.render()
-            }))
-        }
-
         // Tabs
         let list = computeTabs()
         if !list.contains(where: { $0.0 == tab }), let first = list.first { tab = first.0 }
@@ -1209,16 +1191,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             editor.flush()
             presentAsSheet(SplitNoteViewController(note: note) { [weak self] change in
                 guard let self else { return }
-                self.lastSplit = change
                 self.library.setNeedsReload()
                 self.render()
-                // The way back is offered for a while only.
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(for: BowlMaking.undoLifetime)
-                    guard let self, self.lastSplit?.madeAt == change.madeAt else { return }
-                    self.lastSplit = nil
-                    self.render()
-                }
+                BowlMaking.offerUndo(change, in: self.library.context)
             })
         case .merge:
             NoteSheets.merge(note, in: self)

@@ -1,13 +1,12 @@
 import AppKit
 
-/// On top of the Inbox: one suggestion to put entries that belong together into a new bowl (`InboxBundler`), or,
-/// right after that was done, the way to take it back.
+/// On top of the Inbox: one suggestion to put entries that belong together into a new bowl (`InboxBundler`). Once
+/// that is done, the way back is the one undo toast (and ⌘Z).
 @MainActor
 final class InboxBundleBanner: NSView {
     private let panel = PanelView()
     private let close = NSButton()
     private var bundle: InboxBundle?
-    private var lastChange: BowlChange?
     private var pending: Task<Void, Never>?
     private var lastSignature = ""
     weak var host: NSViewController?
@@ -58,7 +57,6 @@ final class InboxBundleBanner: NSView {
         guard isInbox else {
             pending?.cancel()
             bundle = nil
-            lastChange = nil
             render()
             return
         }
@@ -80,10 +78,7 @@ final class InboxBundleBanner: NSView {
     }
 
     private func render() {
-        if let lastChange {
-            setShown(true)
-            panel.show(symbol: "folder.badge.plus", text: lastChange.summary, tint: .brandProject, action: ("Undo", { [weak self] in self?.undo() }))
-        } else if let bundle {
+        if let bundle {
             setShown(true)
             let text = bundle.isExistingBowl
                 ? "These \(bundle.noteIDs.count) entries belong together. Into bowl “\(bundle.name)”?"
@@ -96,9 +91,7 @@ final class InboxBundleBanner: NSView {
     }
 
     @objc private func closeTapped() {
-        if lastChange != nil {
-            lastChange = nil
-        } else if let bundle {
+        if let bundle {
             InboxBundler.dismiss(bundle)
             self.bundle = nil
         }
@@ -109,26 +102,11 @@ final class InboxBundleBanner: NSView {
         guard let bundle, let host else { return }
         host.presentAsSheet(InboxBundleViewController(bundle: bundle) { [weak self] change in
             guard let self else { return }
-            self.lastChange = change
             self.bundle = nil
             Library.shared.setNeedsReload()
             self.render()
-            // The way back is offered for a while only.
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: BowlMaking.undoLifetime)
-                guard let self, self.lastChange?.madeAt == change.madeAt else { return }
-                self.lastChange = nil
-                self.render()
-            }
+            BowlMaking.offerUndo(change, in: Library.shared.context)
         })
-    }
-
-    private func undo() {
-        guard let change = lastChange else { return }
-        lastChange = nil
-        BowlMaking.undo(change, in: Library.shared.context)
-        Library.shared.setNeedsReload()
-        render()
     }
 }
 

@@ -24,8 +24,6 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
     private var shownThinking = false
     private var shownActions: [UUID: [ChatAction]] = [:]
     private var hasRendered = false
-    /// What was just changed from the chat, with Undo.
-    private let toastBar = ChatUndoToastBar()
 
     private let examples = [
         "What did we decide in the last meetings?",
@@ -85,17 +83,7 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         root.addSubview(modelPopUp)
         root.addSubview(scroll)
         root.addSubview(inputRow)
-        toastBar.isHidden = true
-        toastBar.onUndo = { [weak self] in
-            guard let self else { return }
-            self.service.undoToast(context: self.library.context)
-        }
-        root.addSubview(toastBar)
         NSLayoutConstraint.activate([
-            toastBar.bottomAnchor.constraint(equalTo: scroll.bottomAnchor, constant: -8),
-            toastBar.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            toastBar.widthAnchor.constraint(lessThanOrEqualTo: root.widthAnchor, constant: -48),
-            toastBar.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
             scopeRow.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: 12),
             scopeRow.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
             modelPopUp.centerYAnchor.constraint(equalTo: scopeRow.centerYAnchor),
@@ -126,15 +114,6 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
             guard let self else { return }
             _ = (self.state.chatID, self.state.chatScope, self.service.thinking, self.service.status, self.service.actions)
             self.render()
-        })
-        observers.append(Observing { [weak self] in
-            guard let self else { return }
-            if let toast = self.service.toast {
-                self.toastBar.show(toast.message)
-                self.toastBar.isHidden = false
-            } else {
-                self.toastBar.isHidden = true
-            }
         })
     }
 
