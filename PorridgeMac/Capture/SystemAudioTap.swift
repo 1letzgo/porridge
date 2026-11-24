@@ -27,7 +27,9 @@ enum SystemAudioError: LocalizedError {
 /// The sound every app on the Mac plays (the other side of a Zoom, Meet or Teams call, with headphones too),
 /// through a Core Audio process tap: a private global tap without Porridge's own sound, read through a private
 /// aggregate device. It needs the "System Audio Recording" permission (NSAudioCaptureUsageDescription), not
-/// screen recording. When the output device changes (headphones plugged in), the tap is built again.
+/// screen recording. When the output device changes (headphones plugged in) or its rate does (AirPods switch to
+/// 24 or 16 kHz when a call takes their microphone), the tap is built again. The tap's format is not trusted for
+/// the rate: the aggregate device delivers at its own rate, measured by `DeliveredRate`.
 final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
     private(set) var fifo = SampleFIFO(sampleRate: 48_000)
 
@@ -46,10 +48,21 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
     private var tapFormat: AVAudioFormat?
     private var monoFormat: AVAudioFormat?
     private var outputListener: AudioObjectPropertyListenerBlock?
+    /// Watches the aggregate device's rate. Called on `rateQueue`, which only hands over to `controlQueue`:
+    /// removing the listener (from `controlQueue` too) waits for a running call and must not wait for itself.
+    private var rateListener: AudioObjectPropertyListenerBlock?
+    private let rateQueue = DispatchQueue(label: "de.letzgo.porridge.system-audio.rate")
+    /// Under `formatLock`: the rate the buffers really arrive at.
+    private var delivered = DeliveredRate(rate: 48_000)
     private var running = false
 
     private static var defaultOutputAddress = AudioObjectPropertyAddress(
         mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain
+    )
+    private static var nominalRateAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyNominalSampleRate,
         mScope: kAudioObjectPropertyScopeGlobal,
         mElement: kAudioObjectPropertyElementMain
     )
@@ -108,7 +121,8 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
         AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.defaultOutputAddress, controlQueue, listener)
     }
 
-    /// The aggregate device follows the output device; a new one (headphones, AirPods) needs a new tap.
+    /// The aggregate device follows the output device; a new one (headphones, AirPods) or a new rate of the same one
+    /// needs a new tap: a tap kept through a change of rate may deliver silence.
     private func outputChanged() {
         lock.lock()
         defer { lock.unlock() }
@@ -144,16 +158,6 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
 
         var asbd = AudioStreamBasicDescription()
         try check(Self.read(tap, kAudioTapPropertyFormat, into: &asbd), "tap format")
-        guard let tapFormat = AVAudioFormat(streamDescription: &asbd),
-              let monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false),
-              let converter = AVAudioConverter(from: tapFormat, to: monoFormat)
-        else { throw SystemAudioError.format }
-        converter.downmix = true
-        formatLock.lock()
-        self.tapFormat = tapFormat
-        self.monoFormat = monoFormat
-        self.converter = converter
-        formatLock.unlock()
 
         let outputUID = try Self.defaultOutputUID()
         let aggregate: [String: Any] = [
@@ -173,9 +177,38 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
         try check(AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &device), "aggregate device")
         aggregateID = device
 
+        // The aggregate device runs at the output device's rate, which the tap's format does not always say (48 kHz
+        // in it with the output at 44.1 kHz). Its rate is the first guess; the measured one wins (see `receive`).
+        var deviceRate: Float64 = 0
+        if Self.read(device, kAudioDevicePropertyNominalSampleRate, into: &deviceRate) == noErr, deviceRate > 0 {
+            asbd.mSampleRate = deviceRate
+        }
+        guard let tapFormat = AVAudioFormat(streamDescription: &asbd),
+              let monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false),
+              let converter = Self.converter(from: tapFormat, to: monoFormat)
+        else { throw SystemAudioError.format }
+        formatLock.lock()
+        self.tapFormat = tapFormat
+        self.monoFormat = monoFormat
+        self.converter = converter
+        delivered = DeliveredRate(rate: tapFormat.sampleRate)
+        formatLock.unlock()
+
+        // Only a real change counts: the device may report its rate again once it settled.
+        let builtRate = deviceRate, deviceID = device
+        let rateListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            var rate: Float64 = 0
+            guard Self.read(deviceID, kAudioDevicePropertyNominalSampleRate, into: &rate) == noErr, rate != builtRate else { return }
+            self?.controlQueue.async { self?.outputChanged() }
+        }
+        if AudioObjectAddPropertyListenerBlock(device, &Self.nominalRateAddress, rateQueue, rateListener) == noErr {
+            self.rateListener = rateListener
+        }
+
         var proc: AudioDeviceIOProcID?
-        try check(AudioDeviceCreateIOProcIDWithBlock(&proc, device, ioQueue) { [weak self] _, input, _, _, _ in
-            self?.receive(input)
+        try check(AudioDeviceCreateIOProcIDWithBlock(&proc, device, ioQueue) { [weak self] now, input, inputTime, _, _ in
+            let stamp = inputTime.pointee.mFlags.contains(.hostTimeValid) ? inputTime.pointee.mHostTime : now.pointee.mHostTime
+            self?.receive(input, hostTime: stamp)
         }, "audio callback")
         procID = proc
         // The first start asks for the permission; until it is given the tap delivers silence.
@@ -184,6 +217,9 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
 
     private func tearDownTap() {
         if aggregateID != kAudioObjectUnknown {
+            if let rateListener {
+                AudioObjectRemovePropertyListenerBlock(aggregateID, &Self.nominalRateAddress, rateQueue, rateListener)
+            }
             if let procID {
                 AudioDeviceStop(aggregateID, procID)
                 AudioDeviceDestroyIOProcID(aggregateID, procID)
@@ -191,6 +227,7 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
             AudioHardwareDestroyAggregateDevice(aggregateID)
         }
         procID = nil
+        rateListener = nil
         aggregateID = AudioObjectID(kAudioObjectUnknown)
         if tapID != kAudioObjectUnknown {
             AudioHardwareDestroyProcessTap(tapID)
@@ -203,27 +240,52 @@ final class SystemAudioTap: SecondChannelSource, @unchecked Sendable {
 
     // MARK: Sound
 
+    private static func converter(from tapFormat: AVAudioFormat, to monoFormat: AVAudioFormat) -> AVAudioConverter? {
+        let converter = AVAudioConverter(from: tapFormat, to: monoFormat)
+        converter?.downmix = true
+        return converter
+    }
+
     /// On `ioQueue`: the tap's stereo mixed to mono at the microphone's rate, into the queue the recorder reads.
-    private func receive(_ input: UnsafePointer<AudioBufferList>) {
+    private func receive(_ input: UnsafePointer<AudioBufferList>, hostTime: UInt64) {
         formatLock.lock()
         let converter = self.converter, tapFormat = self.tapFormat, monoFormat = self.monoFormat
         formatLock.unlock()
-        guard let converter, let tapFormat, let monoFormat else { return }
+        guard var current = converter, var format = tapFormat, let monoFormat else { return }
         // The aggregate device lists the input streams of its sub-device first (a headset such as AirPods has a
         // microphone) and the tap's last: only the tap's buffers are read, so the other side never gets the mic.
         let all = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
-        let needed = tapFormat.isInterleaved ? 1 : Int(tapFormat.channelCount)
+        let needed = format.isInterleaved ? 1 : Int(format.channelCount)
         guard needed > 0, all.count >= needed else { return }
         let tapBuffers = AudioBufferList.allocate(maximumBuffers: needed)
         defer { free(tapBuffers.unsafeMutablePointer) }
         for index in 0..<needed { tapBuffers[index] = all[all.count - needed + index] }
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: tapFormat, bufferListNoCopy: tapBuffers.unsafePointer, deallocator: nil),
+        let bytesPerFrame = Int(format.streamDescription.pointee.mBytesPerFrame)
+        let frames = bytesPerFrame > 0 ? Int(tapBuffers[0].mDataByteSize) / bytesPerFrame : 0
+        guard frames > 0 else { return }
+        // The rate the frames really arrive at; a new one gets a new converter and starts the queue over.
+        let seconds = Double(AudioConvertHostTimeToNanos(hostTime)) / 1_000_000_000
+        formatLock.lock()
+        let measured = self.converter === current ? delivered.add(frames: frames, at: seconds) : nil
+        if let measured {
+            var asbd = format.streamDescription.pointee
+            asbd.mSampleRate = measured
+            if let newFormat = AVAudioFormat(streamDescription: &asbd), let newConverter = Self.converter(from: newFormat, to: monoFormat) {
+                self.tapFormat = newFormat
+                self.converter = newConverter
+                format = newFormat
+                current = newConverter
+            }
+        }
+        formatLock.unlock()
+        if measured != nil { fifo.reset() }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: tapBuffers.unsafePointer, deallocator: nil),
               buffer.frameLength > 0 else { return }
-        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * monoFormat.sampleRate / tapFormat.sampleRate) + 64
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * monoFormat.sampleRate / format.sampleRate) + 64
         guard let out = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: capacity) else { return }
         var provided = false
         var error: NSError?
-        let status = converter.convert(to: out, error: &error) { _, inputStatus in
+        let status = current.convert(to: out, error: &error) { _, inputStatus in
             if provided {
                 inputStatus.pointee = .noDataNow
                 return nil

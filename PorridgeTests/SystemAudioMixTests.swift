@@ -142,4 +142,56 @@ final class SystemAudioMixTests: XCTestCase {
         XCTAssertEqual(split.ids[15], "ch0")
         XCTAssertEqual(split.added, ["ch1.2"])
     }
+
+    // MARK: The rate the Mac's sound really arrives at
+
+    /// Feeds `seconds` of 512-frame buffers arriving at `rate`, starting at `start`; returns the changes reported.
+    private func feed(_ measure: inout DeliveredRate, rate: Double, seconds: Double, from start: Double, buffer: Int = 512) -> [Double] {
+        var changes: [Double] = []
+        let count = Int(seconds * rate) / buffer
+        for index in 0...count {
+            if let new = measure.add(frames: buffer, at: start + Double(index * buffer) / rate) { changes.append(new) }
+        }
+        return changes
+    }
+
+    func testTheRateTheTapClaimsIsKeptWhenItIsRight() {
+        var measure = DeliveredRate(rate: 48_000)
+        XCTAssertEqual(feed(&measure, rate: 48_000, seconds: 5, from: 100), [])
+        XCTAssertEqual(measure.rate, 48_000)
+    }
+
+    /// The output at 44.1 kHz (or AirPods at 24 or 16 kHz in a call) while the tap still says 48 kHz: read at 48 kHz
+    /// the others came out at the wrong speed and full of gaps, and were hardly transcribed.
+    func testAnotherDeliveredRateIsFoundWithinTheWindow() {
+        for real in [44_100.0, 24_000, 16_000] {
+            var measure = DeliveredRate(rate: 48_000)
+            XCTAssertEqual(feed(&measure, rate: real, seconds: 1.2, from: 50), [real], "\(real)")
+            XCTAssertEqual(measure.rate, real)
+        }
+    }
+
+    func testARateChangeInTheMiddleIsFollowed() {
+        var measure = DeliveredRate(rate: 48_000)
+        XCTAssertEqual(feed(&measure, rate: 48_000, seconds: 3, from: 0), [])
+        XCTAssertEqual(feed(&measure, rate: 24_000, seconds: 3, from: 3.01), [24_000])
+        XCTAssertEqual(measure.rate, 24_000)
+    }
+
+    func testAGapIsNoRate() {
+        var measure = DeliveredRate(rate: 48_000)
+        _ = feed(&measure, rate: 48_000, seconds: 0.5, from: 0)
+        // The device stalled for two seconds: half a second of frames over 2.5 s is no standard rate.
+        XCTAssertNil(measure.add(frames: 512, at: 2.5))
+        XCTAssertEqual(measure.rate, 48_000)
+        XCTAssertEqual(feed(&measure, rate: 48_000, seconds: 2, from: 2.51), [])
+    }
+
+    func testSnapping() {
+        XCTAssertEqual(DeliveredRate.snap(47_712), 48_000)
+        XCTAssertEqual(DeliveredRate.snap(44_350), 44_100)
+        XCTAssertEqual(DeliveredRate.snap(24_150), 24_000)
+        XCTAssertNil(DeliveredRate.snap(36_000))
+        XCTAssertNil(DeliveredRate.snap(0))
+    }
 }

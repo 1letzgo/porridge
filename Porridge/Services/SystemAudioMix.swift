@@ -53,6 +53,52 @@ enum SystemAudioMix {
     }
 }
 
+/// The rate at which a stream of audio really arrives, from the frames delivered per second of host time. The Mac's
+/// sound comes through an aggregate device that runs at the output device's rate (44.1 kHz on some headphones, 24 or
+/// 16 kHz on AirPods during a call), while the tap's format may still say 48 kHz: read at the wrong rate the others'
+/// voices come out sped up or slowed down and choppy, and speech recognition hardly finds a word in them.
+struct DeliveredRate {
+    static let standardRates: [Double] = [8_000, 11_025, 12_000, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000, 88_200, 96_000]
+
+    /// The rate in use; it changes only when a whole window clearly measured another one.
+    private(set) var rate: Double
+    /// Seconds of host time measured before a rate is judged.
+    let window: Double
+    private var windowStart: Double?
+    private var frames = 0
+
+    init(rate: Double, window: Double = 1) {
+        self.rate = rate
+        self.window = window
+    }
+
+    /// The standard rate within 4 % of `measured`; nil for anything in between (stalls, a burst after a gap).
+    static func snap(_ measured: Double) -> Double? {
+        guard let nearest = standardRates.min(by: { abs($0 - measured) < abs($1 - measured) }),
+              abs(nearest - measured) <= nearest * 0.04 else { return nil }
+        return nearest
+    }
+
+    /// `frames` arrived at host time `time` (seconds). Returns the new rate when it changed.
+    mutating func add(frames count: Int, at time: Double) -> Double? {
+        guard let start = windowStart, time >= start else {
+            // The first buffer only starts the clock: its frames were captured before `time`.
+            windowStart = time
+            frames = 0
+            return nil
+        }
+        frames += count
+        let elapsed = time - start
+        guard elapsed >= window else { return nil }
+        let measured = Double(frames) / elapsed
+        windowStart = time
+        frames = 0
+        guard let snapped = Self.snap(measured), snapped != rate else { return nil }
+        rate = snapped
+        return snapped
+    }
+}
+
 /// Mono samples handed from one audio clock to another (the Mac's sound to the microphone). The reader takes as
 /// many as the microphone delivered; the two clocks drift apart slowly, so the queue is kept near `target`:
 /// - until that much is there (at the start and after running dry), the reader gets silence,
