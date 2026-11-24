@@ -390,7 +390,11 @@ struct NotesView: View {
 
     private func listColumn(_ shown: ListPage) -> some View {
         VStack(spacing: 0) {
-            ChromeBar(title: listTitle(shown), systemImage: listIcon(shown), tint: listTint(shown), onBack: barBack(shown)) {
+            ChromeBar(
+                title: listTitle(shown), systemImage: listIcon(shown), tint: listTint(shown), onBack: barBack(shown),
+                onTitleTap: shown == .today && todayDay != nil ? { withAnimation(.snappy) { todayDay = nil } } : nil,
+                titleHint: String(localized: "Back to today")
+            ) {
                 listActions(shown)
             }
             .padding(.bottom, Look.headerGap)
@@ -914,15 +918,9 @@ struct NotesView: View {
     /// The actions of the list, shown as plain icons at the right of the custom bar (iOS).
     @ViewBuilder
     private func listActions(_ shown: ListPage) -> some View {
-        // Another day in Today: back to today.
-        if shown == .today, todayDay != nil {
-            Button { withAnimation(.snappy) { todayDay = nil } } label: {
-                Text("Today")
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 6)
-            }
-            .help("Go to Today")
-            .accessibilityIdentifier("TodayBackToToday")
+        // Today pages a day back and on; a tap on the title (another day) goes back to today.
+        if shown == .today {
+            todayPager
         }
         if shown == .trash, notes.contains(where: \.isDeleted) {
             Button(role: .destructive) { confirmEmptyTrash = true } label: {
@@ -1001,6 +999,35 @@ struct NotesView: View {
                 Label("Settings", systemImage: "gearshape")
             }
         }
+    }
+
+    /// The previous and next day of Today as one pill at the right of the bar. The day is view state (nil is today).
+    private var todayPager: some View {
+        let shownDay = todayDay ?? TodayCalendar.shared.today
+        return HStack(spacing: 0) {
+            Button { stepToday(-1) } label: {
+                Label("Previous Day", systemImage: "chevron.left")
+                    .frame(minWidth: 38, minHeight: 36)
+            }
+            .accessibilityValue(TodayDay.fullDate(TodayDay.step(shownDay, by: -1)))
+            .accessibilityIdentifier("TodayPreviousDay")
+            Button { stepToday(1) } label: {
+                Label("Next Day", systemImage: "chevron.right")
+                    .frame(minWidth: 38, minHeight: 36)
+            }
+            .accessibilityValue(TodayDay.fullDate(TodayDay.step(shownDay, by: 1)))
+            .accessibilityIdentifier("TodayNextDay")
+        }
+        .buttonStyle(.plain)
+        .font(.body.weight(.semibold))
+        .foregroundStyle(listTint(.today).readable)
+        .background(listTint(.today).readable.opacity(0.14), in: Capsule())
+    }
+
+    /// A day on or back; today is kept as nil.
+    private func stepToday(_ days: Int) {
+        let next = TodayDay.step(todayDay ?? TodayCalendar.shared.today, by: days)
+        withAnimation(.snappy) { todayDay = TodayDay.isToday(next) ? nil : next }
     }
 
     /// Import: audio, a photo or a file, recordings from Plaud.

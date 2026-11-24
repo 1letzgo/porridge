@@ -54,10 +54,7 @@ struct TodayPage: View {
         let calendar = TodayCalendar.shared
         let shown = day ?? calendar.today
         let isToday = TodayDay.isToday(shown)
-        VStack(spacing: 0) {
-            TodayDayBar(day: shown, isToday: isToday, onStep: step, onToday: { withAnimation(.snappy) { day = nil } })
-            list(shown, isToday: isToday)
-        }
+        list(shown, isToday: isToday)
         .task {
             calendar.refresh()
             AppointmentLinks.shared.linkRecentMeetings(notes, in: context)
@@ -67,12 +64,6 @@ struct TodayPage: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { calendar.refresh() }
         }
-    }
-
-    /// A day on or back; today is kept as nil.
-    private func step(_ days: Int) {
-        let next = TodayDay.step(day ?? TodayCalendar.shared.today, by: days)
-        withAnimation(.snappy) { day = TodayDay.isToday(next) ? nil : next }
     }
 
     private func list(_ shown: Date, isToday: Bool) -> some View {
@@ -151,59 +142,6 @@ struct TodayPage: View {
         .cardList()
         .roomForFloatingButtons()
         .refreshable { calendar.refresh() }
-    }
-}
-
-/// Under the bar of the Today page: the day before and after, and the whole date of the day shown; a tap on the
-/// date or a horizontal swipe across the row pages too.
-struct TodayDayBar: View {
-    let day: Date
-    let isToday: Bool
-    var onStep: (Int) -> Void
-    var onToday: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Button { onStep(-1) } label: {
-                Label("Previous Day", systemImage: "chevron.left")
-            }
-            .accessibilityIdentifier("TodayPreviousDay")
-            Spacer(minLength: 4)
-            Button(action: onToday) {
-                Text(TodayDay.fullDate(day))
-                    .font(.subheadline.weight(isToday ? .regular : .semibold))
-                    .foregroundStyle(isToday ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.brandNavy.readable))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .buttonStyle(.plain)
-            .disabled(isToday)
-            .accessibilityLabel(TodayDay.fullDate(day))
-            .accessibilityHint(isToday ? "" : String(localized: "Back to today"))
-            .accessibilityIdentifier("TodayDate")
-            Spacer(minLength: 4)
-            Button { onStep(1) } label: {
-                Label("Next Day", systemImage: "chevron.right")
-            }
-            .accessibilityIdentifier("TodayNextDay")
-        }
-        .labelStyle(.iconOnly)
-        .font(.body.weight(.semibold))
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .foregroundStyle(Color.brandNavy.readable)
-        .buttonStyle(ChromePillButtonStyle(tint: Color.brandNavy.readable))
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
-        .contentShape(Rectangle())
-        // Only this row takes the swipe: the rows of the list keep their own swipe actions.
-        .gesture(
-            DragGesture(minimumDistance: 24)
-                .onEnded { value in
-                    let width = value.translation.width
-                    guard abs(width) > 50, abs(width) > abs(value.translation.height) * 1.5 else { return }
-                    onStep(width < 0 ? 1 : -1)
-                }
-        )
     }
 }
 

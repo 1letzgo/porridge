@@ -298,6 +298,9 @@ struct ChromeBar<Actions: View>: View {
     var tint: Color = .brandSky
     /// Shows a back pill in front of the title.
     var onBack: (() -> Void)?
+    /// Makes the title a button (Today: back to today from another day), with the hint VoiceOver reads for it.
+    var onTitleTap: (() -> Void)?
+    var titleHint = ""
     @ViewBuilder var actions: Actions
 
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 30
@@ -333,7 +336,10 @@ struct ChromeBar<Actions: View>: View {
                     .minimumScaleFactor(0.7)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
+            .accessibilityAddTraits(onTitleTap == nil ? .isHeader : [.isHeader, .isButton])
+            .accessibilityHint(onTitleTap == nil ? "" : titleHint)
+            .contentShape(Rectangle())
+            .onTapGesture { onTitleTap?() }
 
             Spacer(minLength: 8)
 
