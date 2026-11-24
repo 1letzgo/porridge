@@ -66,6 +66,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = true
         window.toolbar = toolbar
+        // A configuration saved before the Record Meeting column had its own toolbar section lacks the separator.
+        if !toolbar.items.contains(where: { $0.itemIdentifier == .inspectorTrackingSeparator }) {
+            toolbar.insertItem(withItemIdentifier: .inspectorTrackingSeparator, at: toolbar.items.count)
+        }
 
         observers.append(Observing { [weak self] in
             guard let self else { return }
@@ -192,7 +196,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Item.new, Item.importMenu, Item.listSeparator,
-         .flexibleSpace, Item.share, Item.noteMenu, Item.chat, Item.search]
+         .flexibleSpace, Item.share, Item.noteMenu, Item.chat, Item.search,
+         // The Record Meeting column (inspector) keeps the part of the toolbar above it to itself: while it is open
+         // the items before this separator, the search included, stay over the columns to its left.
+         .inspectorTrackingSeparator]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
