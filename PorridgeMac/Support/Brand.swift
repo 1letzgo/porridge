@@ -17,6 +17,10 @@ extension NSColor {
     static let brandLinkText = NSColor(named: "BrandLinkText") ?? .systemOrange
     static let brandTaskText = NSColor(named: "BrandTaskText") ?? .systemGreen
     static let brandDangerText = NSColor(named: "BrandDangerText") ?? .systemRed
+    /// Violet as text: bowl names, "✦ Bowl", who changed what.
+    static let brandProjectText = NSColor(named: "BrandProjectText") ?? .systemPurple
+    /// The fill of the one undo toast (navy, lighter in dark mode); its text is white.
+    static let toastFill = NSColor(named: "ToastFill") ?? .darkGray
 
     /// Symbols and text on a full fill of sky, orange or green.
     static let brandOnFill = NSColor(named: "BrandOnFill") ?? .black

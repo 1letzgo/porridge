@@ -63,6 +63,11 @@ enum VoiceProfiles {
 
     private static let defaultNamePrefix = "Speaker "
 
+    /// Still has the name it was given when detected ("Speaker 2"): nobody named it.
+    static func isUnnamed(_ speaker: Speaker) -> Bool {
+        speaker.profileID == nil && speaker.name.hasPrefix(defaultNamePrefix)
+    }
+
     // MARK: - New meeting
 
     /// Adds a voice print to every speaker and names those that match a known person.

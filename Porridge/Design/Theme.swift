@@ -16,6 +16,10 @@ extension Color {
     static let brandLinkText = Color("BrandLinkText")
     static let brandTaskText = Color("BrandTaskText")
     static let brandDangerText = Color("BrandDangerText")
+    /// Violet as text: bowl names, "✦ Bowl", who changed what.
+    static let brandProjectText = Color("BrandProjectText")
+    /// The fill of the one undo toast (navy, lighter in dark mode); its text is white.
+    static let toastFill = Color("ToastFill")
 
     /// Symbols and text on a full fill of sky, orange or green.
     static let brandOnFill = Color("BrandOnFill")
