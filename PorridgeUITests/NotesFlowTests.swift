@@ -155,4 +155,43 @@ final class NotesFlowTests: XCTestCase {
         }
         return count
     }
+
+    /// An entry's head opens Details at the section of a value; the bowl is changed there.
+    func testMeetingDetailsFromMetaValueChangesBowl() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-onboardingDone", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedEntryKinds", "YES"]
+        app.launch()
+        app.search(for: "Design Review")
+        let row = try XCTUnwrap(app.searchResult("Design Review"), "seeded meeting missing")
+        row.tap()
+        // The speakers value of the meta line opens Details at Speakers.
+        let speakers = app.buttons["4 Speakers · 1 unnamed"]
+        XCTAssertTrue(speakers.waitForExistence(timeout: 10), "meta value missing")
+        speakers.tap()
+        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 5), "Details did not open")
+        XCTAssertTrue(app.buttons["Known Voices…"].waitForExistence(timeout: 5), "Speakers section missing")
+        let bowl = app.buttons["Bowl"].firstMatch
+        // Back up to Organize inside the sheet (a swipe on the app would close the sheet).
+        let form = app.collectionViews.firstMatch
+        app.navigationBars["Details"].swipeUp()
+        for _ in 0..<4 where !bowl.isHittable { form.swipeDown() }
+        XCTAssertTrue(bowl.isHittable, "bowl row missing")
+        let before = bowl.value as? String ?? ""
+        let target = before == "Inbox" ? "Q4 Planning" : "Inbox"
+        bowl.tap()
+        let choice = app.buttons[target].firstMatch
+        XCTAssertTrue(choice.waitForExistence(timeout: 5), "\(target) missing in the bowl menu")
+        choice.tap()
+        let changed = NSPredicate(format: "value == %@", target)
+        expectation(for: changed, evaluatedWith: bowl)
+        waitForExpectations(timeout: 5)
+        app.navigationBars["Details"].buttons["Done"].tap()
+        // A name in the transcript opens the speaker menu, with "Only This Line".
+        app.buttons["Transcript"].firstMatch.tap()
+        let name = app.buttons.matching(NSPredicate(format: "label == 'Speaker Speaker 4'")).firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 5), "speaker name is no button")
+        name.tap()
+        XCTAssertTrue(app.buttons["Only This Line"].waitForExistence(timeout: 5), "speaker menu did not open")
+        XCTAssertTrue(app.buttons["Other Name…"].exists)
+    }
 }

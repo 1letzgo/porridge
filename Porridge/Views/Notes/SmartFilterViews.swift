@@ -350,39 +350,3 @@ struct SmartFilterEditor: View {
         dismiss()
     }
 }
-
-// MARK: - Similar entries
-
-/// "Similar" under an entry: the few entries most like it, from the index on the device. Worked out when the page
-/// shows and when the index changed, not while typing.
-struct SimilarEntriesSection: View {
-    let note: Note
-
-    @Environment(\.allNotes) private var allNotes
-    @State private var similar: [Note] = []
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !similar.isEmpty {
-                Text("Similar")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(Color.brandNavy.readable)
-                RelatedEntryRows(notes: similar)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, similar.isEmpty ? 0 : 12)
-        .task(id: TaskKey(note: note.id, version: NoteIndex.shared.version, count: allNotes.count)) {
-            // A moment later: opening the page comes first.
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-            similar = SimilarEntries.similar(to: note, among: allNotes)
-        }
-    }
-
-    private struct TaskKey: Equatable {
-        let note: UUID
-        let version: Int
-        let count: Int
-    }
-}

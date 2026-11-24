@@ -1,6 +1,6 @@
 import AppKit
 
-/// Where a meeting is recorded: in the right column of the main window it was started from (`MainSplitViewController`),
+/// Where a meeting is recorded: in the inspector's Record mode of the main window it was started from (`MainSplitViewController`),
 /// so the rest of the window stays usable; in a window of its own only when no main window is open (a global
 /// shortcut, the last main window closed while recording). Only one recording at a time.
 @MainActor
@@ -19,6 +19,12 @@ enum MeetingRecorder {
     /// A recording is running somewhere.
     static var isRecording: Bool { current != nil }
 
+    /// Posted when a recording starts or ends (the toolbar's counter follows it).
+    static let didChange = Notification.Name("PorridgeMeetingRecorderDidChange")
+
+    /// How long the running recording is, for the toolbar's counter.
+    static var elapsed: TimeInterval? { current?.elapsed }
+
     /// Ends the running recording as Stop does, so the meeting is kept (before quitting).
     static func stopAll() {
         current?.stop()
@@ -35,13 +41,14 @@ enum MeetingRecorder {
         recording.onClose = { close() }
         current = recording
         host(recording, in: controller ?? MainWindowController.frontIfAny)
+        NotificationCenter.default.post(name: didChange, object: nil)
         Task { @MainActor in await recording.begin() }
     }
 
     /// Shows the running recording.
     static func reveal() {
         if let pane, let window = pane.window {
-            pane.split.showMeetingPane(nil)
+            pane.split.show(.record)
             window.makeKeyAndOrderFront(nil)
         } else {
             window?.showWindow(nil)
@@ -52,7 +59,7 @@ enum MeetingRecorder {
     /// The main window that shows the recording is closing: the recording goes on in a window of its own.
     static func mainWindowWillClose(_ controller: MainWindowController) {
         guard let current, pane === controller else { return }
-        controller.split.hideMeetingPane()
+        controller.split.endRecord()
         pane = nil
         host(current, in: nil)
     }
@@ -60,7 +67,7 @@ enum MeetingRecorder {
     private static func host(_ recording: RecordingViewController, in controller: MainWindowController?) {
         if let controller {
             pane = controller
-            controller.split.showMeetingPane(recording)
+            controller.split.showRecord(recording)
             controller.window?.makeKeyAndOrderFront(nil)
         } else {
             let window = RecordingWindow(recording)
@@ -74,7 +81,8 @@ enum MeetingRecorder {
     private static func close() {
         current?.tearDown()
         current = nil
-        if let pane { pane.split.hideMeetingPane() }
+        NotificationCenter.default.post(name: didChange, object: nil)
+        if let pane { pane.split.endRecord() }
         pane = nil
         let window = self.window
         self.window = nil
@@ -457,6 +465,9 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
     }
 
     /// Ends the clock, the observers and the stop notification (`MeetingRecorder` when the recording ended).
+    /// How long it is recording.
+    var elapsed: TimeInterval { recorder.elapsed }
+
     func tearDown() {
         timer?.invalidate()
         observers.cancelAll()

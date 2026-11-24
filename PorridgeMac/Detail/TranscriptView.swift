@@ -1,10 +1,13 @@
 import AppKit
 
 /// The transcript of a meeting: one row per passage with speaker, time and text. A click plays the recording from
-/// there; the passage being played is marked. The context menu copies a passage or gives it to another speaker.
+/// there; the passage being played is marked. A click on a speaker's name names it (`onSpeaker`); the context menu
+/// copies a passage or gives it to another speaker.
 final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     var onPlay: ((TranscriptSegment) -> Void)?
     var onAssign: ((TranscriptSegment, Speaker) -> Void)?
+    /// The speaker's name of a passage was clicked (the name's button, to show a menu at).
+    var onSpeaker: ((TranscriptSegment, Speaker, NSView) -> Void)?
     var canAssign = true
 
     private let table = NSTableView()
@@ -83,7 +86,12 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: SegmentCell.identifier, owner: nil) as? SegmentCell ?? SegmentCell()
         let segment = segments[row]
-        cell.show(segment, speaker: speakers.first { $0.id == segment.speakerId }, canPlay: canPlay)
+        let speaker = speakers.first { $0.id == segment.speakerId }
+        cell.show(segment, speaker: speaker, canPlay: canPlay)
+        cell.onName = canAssign && speaker != nil ? { [weak self] anchor in
+            guard let self, let speaker else { return }
+            self.onSpeaker?(segment, speaker, anchor)
+        } : nil
         cell.isActive = row == activeRow
         return cell
     }
@@ -122,7 +130,9 @@ private final class SegmentCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("segment")
     private let box = NSView()
     private let dot = NSView()
-    private let name = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), color: .brandNavy)
+    private let name = NSButton()
+    /// A click on the name; nil: the name is plain text.
+    var onName: ((NSView) -> Void)?
     private let me = NSTextField.label(font: .systemFont(ofSize: 10, weight: .bold), color: .brandOnFill)
     private let time = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold), color: .secondaryLabelColor)
     private let text = NSTextField(wrappingLabelWithString: "")
@@ -146,6 +156,10 @@ private final class SegmentCell: NSTableCellView {
         me.layer?.backgroundColor = NSColor.brandTask.cgColor
         me.alignment = .center
         me.setAccessibilityLabel("You")
+        name.isBordered = false
+        name.target = self
+        name.action = #selector(nameClicked)
+        name.setContentHuggingPriority(.required, for: .horizontal)
         text.font = .preferredFont(forTextStyle: .body)
         text.isSelectable = true
         text.translatesAutoresizingMaskIntoConstraints = false
@@ -186,10 +200,23 @@ private final class SegmentCell: NSTableCellView {
         updateLayer()
     }
 
+    @objc private func nameClicked() { onName?(name) }
+
     func show(_ segment: TranscriptSegment, speaker: Speaker?, canPlay: Bool) {
         tint = speaker.map { NSColor.speaker($0.colorIndex) } ?? .systemGray
         dot.isHidden = speaker == nil
-        name.stringValue = speaker?.name ?? ""
+        let title = NSMutableAttributedString(string: speaker?.name ?? "", attributes: [
+            .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: NSColor.brandNavy,
+        ])
+        // An unnamed speaker invites a name.
+        if let speaker, VoiceProfiles.isUnnamed(speaker) {
+            title.append(NSAttributedString(string: "  " + String(localized: "Name…"), attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize), .foregroundColor: NSColor.secondaryLabelColor,
+            ]))
+        }
+        name.attributedTitle = title
+        name.toolTip = speaker.map { String(localized: "Name \($0.name)") }
+        name.setAccessibilityLabel(speaker.map { String(localized: "Speaker \($0.name)") })
         me.isHidden = !(speaker.map(AppSettings.isMe) ?? false)
         time.stringValue = segment.start.clockString
         text.stringValue = segment.text

@@ -52,6 +52,8 @@ final class NoteCellView: NSTableCellView {
         suggestions.orientation = .horizontal
         suggestions.spacing = 6
         suggestions.translatesAutoresizingMaskIntoConstraints = false
+        // In the narrow list (260 pt) a long suggestion is cut off rather than widening the row past its edge.
+        suggestions.setClippingResistancePriority(.defaultLow, for: .horizontal)
         let text = NSStackView.vertical([titleLabel, documentLabel, previewLabel, footer, suggestions], spacing: 3)
         // The text takes the width of the row; the box and the picture keep theirs at the end.
         text.setHuggingPriority(.init(1), for: .horizontal)
@@ -75,6 +77,7 @@ final class NoteCellView: NSTableCellView {
             titleLabel.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
             previewLabel.widthAnchor.constraint(equalTo: text.widthAnchor),
             documentLabel.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
+            suggestions.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
             thumbnail.widthAnchor.constraint(equalToConstant: 44),
             thumbnail.heightAnchor.constraint(equalToConstant: 44),
         ])

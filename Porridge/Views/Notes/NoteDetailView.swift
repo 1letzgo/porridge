@@ -1,4 +1,5 @@
 import AVFoundation
+import PDFKit
 import SwiftData
 import SwiftUI
 import UIKit
@@ -53,10 +54,11 @@ struct NoteDetailView: View {
     /// "Save as Template": the editor with a template made from this entry.
     @State private var templateDraft: NoteTemplateDraft?
     @State private var showSummaryEditor = false
-    @State private var addingTag = false
-    @State private var newTag = ""
-    @State private var pickingDue = false
-    @State private var pickingAppointment = false
+    /// Details is open (at a section).
+    @State private var details: DetailsRequest?
+    @State private var showVoices = false
+    /// Pages of the document's PDF, once counted (for the meta line).
+    @State private var pageCount: Int?
     /// "Split into Bowl…" is open; after it, what it made, while it can be taken back.
     @State private var showSplit = false
     /// The screen was shown before: coming back (from Quick Look, a sheet) keeps the open tab.
@@ -64,6 +66,7 @@ struct NoteDetailView: View {
     /// What someone else did to the note in a shared bowl, as it was when the note was opened ("Changed by Ben").
     @State private var openedActivity: String?
     @FocusState private var focused: Bool
+    @Query(sort: \NoteFolder.name) private var bowls: [NoteFolder]
     /// Height of one line of the title (title2, bold), as the text field lays it out: the box stands centered on it.
     @ScaledMetric(relativeTo: .title2) private var titleLineHeight: CGFloat = 28
 
@@ -93,15 +96,11 @@ struct NoteDetailView: View {
 
             if isReadOnly { readOnlyBanner }
 
-            if !note.isDeleted { tagRow }
-
             if note.attachmentsData != nil, !note.stripAttachments.isEmpty {
                 AttachmentStrip(note: note, onRemove: isLocked ? nil : { removeAttachment($0) })
             }
 
             statusView
-
-            if !note.speakers.isEmpty { speakerChips }
 
             if tabs.count > 1 {
                 TabSwitcher(selection: $tab, options: tabs.map { (value: $0.0, title: $0.1) })
@@ -131,15 +130,6 @@ struct NoteDetailView: View {
                         TaskDetectionBar(note: note, beforeChange: commitTyping)
                     }
                 }
-            }
-
-            // The entries most like this one, at the end of the page; not while typing in it.
-            if !note.isDeleted, !editor.isEditing, !focused, dictation.phase == .idle, note.modelContext != nil {
-                // The entries that link here, and those that name it without a link.
-                EntryLinksSection(note: note)
-                // The other entries of its appointment, next to the similar ones.
-                AppointmentEntriesSection(note: note)
-                SimilarEntriesSection(note: note)
             }
         }
         .padding()
@@ -260,8 +250,11 @@ struct NoteDetailView: View {
             note.updatedAt = Date()
             saveIfFilled()
         }
-        .sheet(isPresented: $pickingDue) { DueDatePickerSheet(note: note) }
-        .sheet(isPresented: $pickingAppointment) { AppointmentPicker(note: note) }
+        .sheet(item: $details) { request in
+            EntryDetailsSheet(note: note, activity: openedActivity, section: request.section) { openNote($0) }
+        }
+        .sheet(isPresented: $showVoices) { KnownVoicesSheet() }
+        .task(id: note.attachments.first { $0.kind == .pdf }?.fileName) { countPages() }
         .sheet(isPresented: $showExport) {
             MeetingExportSheet(note: note)
         }
@@ -344,11 +337,6 @@ struct NoteDetailView: View {
             Button("Cancel", role: .cancel) { renamingSpeaker = nil }
             Button("Save") { commitRename() }
         }
-        .alert("New Tag", isPresented: $addingTag) {
-            TextField("Tag", text: $newTag)
-            Button("Add", action: addTag)
-            Button("Cancel", role: .cancel) {}
-        }
         .alert("Summary Failed", isPresented: .constant(summaryError != nil)) {
             Button("OK") { processing.clearSummaryError(note.id) }
         } message: {
@@ -410,14 +398,44 @@ struct NoteDetailView: View {
                 .accessibilityLabel("Open \(domain)")
             }
 
-            Text(metaLine)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-
-            if let openedActivity, !note.isDeleted {
-                SharedActivityLabel(text: openedActivity)
-            }
+            let state = entryContext
+            let meta = EntryMeta.items(for: note, context: state)
+            EntryMetaLine(
+                facts: meta.facts, values: meta.values, suggestion: EntryMeta.suggestion(for: note, context: state),
+                onOpen: { openDetails(at: $0) },
+                onFile: { bowl in
+                    withAnimation(.snappy) { Undoable.move([note], toBowl: Projects.key(bowl), named: bowl.name, in: context) }
+                },
+                onDropSuggestion: {
+                    withAnimation(.snappy) { Inbox.dismissSuggestions(note, in: context) }
+                }
+            )
+            .padding(.top, 2)
         }
+    }
+
+    /// What the head and Details read: the live state, with the activity as it was when the entry was opened
+    /// (opening it marked it as seen).
+    private var entryContext: EntryContext {
+        var state = EntryContext.live(for: note, bowls: bowls, processing: processing)
+        if !note.isDeleted { state.activityLine = state.activityLine ?? openedActivity }
+        state.pageCount = pageCount
+        return state
+    }
+
+    private func openDetails(at section: EntryDetails.Section.Kind?) {
+        commitTyping()
+        focused = false
+        details = DetailsRequest(section: section)
+    }
+
+    /// The pages of the document's PDF, when its file is here.
+    private func countPages() {
+        guard let pdf = DocumentFiles.pdf(of: note), AttachmentStore.exists(pdf) else {
+            pageCount = nil
+            return
+        }
+        pageCount = PDFDocument(url: AttachmentStore.url(for: pdf))?.pageCount
     }
 
     /// In a bowl shared with me to see only: nothing of the entry can be changed here.
@@ -432,19 +450,6 @@ struct NoteDetailView: View {
             .foregroundStyle(Color.brandNavy)
             .frame(maxWidth: .infinity, alignment: .leading)
             .flatPanel(.gray)
-    }
-
-    /// One text, so a long line wraps as a line and not column by column.
-    private var metaLine: String {
-        var parts = [note.createdAt.formatted(.dateTime.weekday(.wide).day().month().hour().minute())]
-        if let done = note.todoDoneAt, note.isDone {
-            parts.append(String(localized: "Done \(done.formatted(.dateTime.day().month(.abbreviated).hour().minute()))"))
-        }
-        let progress = note.todoProgress
-        if progress.total > 0 { parts.append(String(localized: "\(progress.done) of \(progress.total) done")) }
-        if note.isRecording, note.duration > 0 { parts.append(note.duration.durationText) }
-        if let input = note.inputName { parts.append(input) }
-        return parts.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -499,42 +504,6 @@ struct NoteDetailView: View {
         }
     }
 
-    private var speakerChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(note.speakers) { speaker in
-                    // A meeting recorded for an appointment offers its people as names, one tap each.
-                    let choices = SpeakerNaming.choices(for: speaker.id, in: note)
-                    Group {
-                        if choices.isEmpty {
-                            Button {
-                                askName(for: speaker)
-                            } label: {
-                                speakerChip(speaker)
-                            }
-                        } else {
-                            Menu {
-                                Section("Invited") {
-                                    ForEach(choices, id: \.self) { name in
-                                        Button(name) { rename(speaker, to: name) }
-                                    }
-                                }
-                                Button("Other Name…", systemImage: "pencil") { askName(for: speaker) }
-                            } label: {
-                                speakerChip(speaker)
-                            }
-                            .menuStyle(.button)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isLocked)
-                    .accessibilityLabel("Rename \(speaker.name)")
-                }
-            }
-            .padding(.bottom, 4)
-        }
-    }
-
     /// Takes a file off the note and deletes it, here and in iCloud.
     private func removeAttachment(_ attachment: Attachment) {
         note.removeAttachment(id: attachment.id)
@@ -548,93 +517,10 @@ struct NoteDetailView: View {
         try? context.save()
     }
 
-    private var suggestedProjects: [NoteFolder] {
-        guard note.isInInbox, !note.suggestedProjectIDs.isEmpty else { return [] }
-        let all = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
-        return note.suggestedProjectIDs.compactMap { id in all.first { Projects.key($0) == id && !$0.isArchived && !BowlSharing.shared.isReadOnly($0.id) } }
-    }
-
-    // MARK: - Tags
-
-    private var tagRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                // The bowl suggested for a note in the inbox: a tap files it there.
-                ForEach(suggestedProjects) { project in
-                    SuggestionPill(name: project.name) {
-                        withAnimation(.snappy) { Undoable.move([note], toBowl: Projects.key(project), named: project.name, in: context) }
-                    } onDismiss: {
-                        withAnimation(.snappy) { Inbox.dismissSuggestions(note, in: context) }
-                    }
-                }
-                if note.isTodo, !isLocked {
-                    DueDateChip(note: note, isPicking: $pickingDue)
-                }
-                ProjectPills(
-                    assigned: note.projectIDs,
-                    onChoose: { Undoable.move([note], toBowl: Projects.key($0), named: $0.name, in: context) },
-                    onRemove: { Undoable.remove($0, from: note, in: context) }
-                )
-                .disabled(isReadOnly)
-                // The appointment it belongs to, after its bowl.
-                if !isReadOnly, note.modelContext != nil {
-                    AppointmentChip(note: note, isPicking: $pickingAppointment)
-                }
-                // A stored file: what it is as a document, after its bowls; a tap sets it (and so marks it as one).
-                if note.isStored, !isLocked {
-                    DocumentChip(note: note)
-                }
-                ForEach(note.tags, id: \.self) { tag in
-                    let removable = !isReadOnly && note.labels.contains { $0.lowercased() == tag.lowercased() }
-                    HStack(spacing: 6) {
-                        Text("#\(tag)").font(.subheadline.weight(.semibold))
-                        if removable {
-                            Button { removeTag(tag) } label: {
-                                Image(systemName: "xmark").font(.caption2.weight(.bold))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Remove Tag")
-                        }
-                    }
-                    .foregroundStyle(Color.brandNavy)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .chunkyPill(fill: .brandSky)
-                }
-                if !isReadOnly {
-                    Button {
-                        newTag = ""
-                        addingTag = true
-                    } label: {
-                        Label("Tag", systemImage: "plus")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.brandNavy)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .chunkyPill(fill: .gray)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Add Tag")
-                }
-            }
-            .padding(.bottom, 4)
-        }
-    }
-
-    private func addTag() {
-        let tag = Note.cleanTag(newTag)
-        guard !tag.isEmpty, !note.tags.contains(where: { $0.lowercased() == tag.lowercased() }) else { return }
-        note.labels.append(tag)
-        try? context.save()
-    }
-
-    private func removeTag(_ tag: String) {
-        Undoable.removeTag(tag, from: note, in: context)
-    }
-
     // MARK: - Toolbar
 
-    private var barTitle: String { note.kindName }
+    /// The kind as the head names it ("Meeting", "To-do", "PDF", "Image").
+    private var barTitle: String { EntryMeta.kindWord(for: note) }
     private var barIcon: String { note.kindSymbol }
     private var barTint: Color { note.isTodo ? .brandTask : note.isLink ? .brandLink : note.isRecording || note.isStored ? .brandNavy : .brandSky }
 
@@ -930,20 +816,24 @@ struct NoteDetailView: View {
             } else {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(segments) { segment in
+                        let speaker = speakers.first { $0.id == segment.speakerId }
                         SegmentRow(
                             segment: segment,
-                            speaker: speakers.first { $0.id == segment.speakerId },
-                            isActive: player.isPlaying && player.currentTime >= segment.start && player.currentTime < segment.end
+                            speaker: speaker,
+                            isActive: player.isPlaying && player.currentTime >= segment.start && player.currentTime < segment.end,
+                            speakerMenu: isLocked || speaker == nil ? nil : {
+                                // A tap on the name: who the speaker is, or only this line to another one.
+                                AnyView(SpeakerMenuItems(
+                                    speaker: speaker!, note: note, segment: segment,
+                                    askName: { askName(for: $0) }, showVoices: { showVoices = true }
+                                ))
+                            },
+                            // The passage plays from a tap on its text (the name has its menu).
+                            onPlay: note.hasLocalAudio ? {
+                                player.seek(to: segment.start)
+                                player.play()
+                            } : nil
                         )
-                        .contentShape(Rectangle())
-                        .accessibilityElement(children: .combine)
-                        .accessibilityAddTraits(note.hasLocalAudio ? .isButton : [])
-                        .accessibilityHint(note.hasLocalAudio ? "Plays the recording from here." : "")
-                        .onTapGesture {
-                            guard note.hasLocalAudio else { return }
-                            player.seek(to: segment.start)
-                            player.play()
-                        }
                         .contextMenu {
                             Button {
                                 Clipboard.copy(segment.text)
@@ -962,19 +852,6 @@ struct NoteDetailView: View {
                 }
             }
         }
-    }
-
-    private func speakerChip(_ speaker: Speaker) -> some View {
-        HStack(spacing: 6) {
-            Circle().fill(Color.speaker(speaker.colorIndex)).frame(width: 10, height: 10)
-            Text(speaker.name).font(.subheadline.weight(.semibold))
-            if AppSettings.isMe(speaker) { MeBadge() }
-            Image(systemName: "pencil").font(.caption2.weight(.bold))
-        }
-        .foregroundStyle(Color.brandNavy)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .chunkyPill(fill: Color.speaker(speaker.colorIndex))
     }
 
     private func askName(for speaker: Speaker) {

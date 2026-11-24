@@ -345,6 +345,51 @@ enum DebugDriver {
         case "dismiss":
             // Closes the sheet on the window (a notice) with its first button.
             if let window = controller.window, let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertFirstButtonReturn) }
+        case "seed-kinds":
+            // One entry of every kind (`TestSeed.seedEntryKinds`); only on test data.
+            guard DataLocation.testFolder != nil else { log("seed-kinds: test data only"); return }
+            TestSeed.seedEntryKinds(library.context)
+            library.setNeedsReload()
+        case "open-kind":
+            // `open-kind meeting|todo|pdf|link|note|image`: opens that entry of `seed-kinds`.
+            guard let id = TestSeed.KindID.named(argument), let note = library.note(id) else { log("open-kind: none"); return }
+            state.reveal(note)
+        case "inspector":
+            // `inspector details|record|close|toggle`.
+            switch argument {
+            case "record": controller.split.show(.record)
+            case "close": if controller.split.isInspectorOpen { controller.split.toggleInspector(nil) }
+            case "toggle": controller.split.toggleInspector(nil)
+            default: controller.split.show(.details)
+            }
+        case "details":
+            // `details <section>`: Details at a section, as a click on a value of the meta line does.
+            controller.split.showDetails(at: EntryDetails.Section.Kind(rawValue: argument))
+        case "toggle-sidebar":
+            controller.split.toggleSidebar(nil)
+        case "window-width":
+            // `window-width <pt>`: the front window this wide (the height stays).
+            guard let window = controller.window, let width = Double(argument) else { return }
+            var frame = window.frame
+            frame.size.width = max(CGFloat(width), window.minSize.width)
+            window.setFrame(frame, display: true)
+        case "layout":
+            let views = controller.split.splitView.arrangedSubviews.map { "\(Int($0.frame.width))\($0.isHidden ? "(hidden)" : "")" }
+            log("layout: window=\(Int(controller.window?.frame.width ?? 0)) columns=\(views) inspector=\(controller.split.isInspectorOpen ? "\(controller.split.inspector.mode)" : "closed")")
+        case "meta":
+            func find(_ view: NSView) -> MetaLineView? {
+                if let meta = view as? MetaLineView { return meta }
+                for sub in view.subviews { if let found = find(sub) { return found } }
+                return nil
+            }
+            log("meta: " + (find(controller.split.detail.view)?.debugText ?? "none"))
+        case "select-many":
+            // The first n rows of the list, as ⌘-clicks do.
+            let ids = NoteListContent.build(for: state, library: library).sections.flatMap(\.1).compactMap { item -> UUID? in
+                if case .note(let id) = item { return id }
+                return nil
+            }
+            state.selection = Array(ids.prefix(Int(argument) ?? 2))
         case "hover-end":
             for view in [controller.split.content.view, controller.split.detail.view] {
                 (view as? NSDraggingDestination)?.draggingExited?(nil)

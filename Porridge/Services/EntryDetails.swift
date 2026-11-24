@@ -190,6 +190,85 @@ enum EntryDetails {
         !note.isDeleted && !context.isReadOnly && (note.isTodo || note.canBeTodo)
     }
 
+    /// The type row shows the switch at all: the entry is a to-do or may become one (locked: shown, not usable).
+    static func showsTodoSwitch(_ note: Note) -> Bool {
+        note.isTodo || note.canBeTodo
+    }
+
+    // MARK: Words of the rows (the same on iPhone and Mac)
+
+    /// The label in a row's label column.
+    static func label(_ row: Row.Kind, for note: Note) -> String {
+        switch row {
+        case .type: String(localized: "Type")
+        case .bowl: String(localized: "Bowl")
+        case .suggestedBowl: String(localized: "Suggested")
+        case .due: String(localized: "Due")
+        case .repeat: String(localized: "Repeat")
+        case .tags: String(localized: "Tags")
+        case .appointment: String(localized: "Linked")
+        case .sameAppointment: String(localized: "Same")
+        case .documentKind: String(localized: "Kind")
+        case .sender: String(localized: "Sender")
+        case .dated: String(localized: "Dated")
+        case .amount: String(localized: "Amount")
+        case .payBy: String(localized: "Pay By")
+        case .paid: String(localized: "Paid")
+        case .speakers: String(localized: "Speakers")
+        case .linkedFrom: String(localized: "Linked From")
+        case .similar: String(localized: "Similar")
+        case .sharing: String(localized: "Bowl")
+        case .activity: String(localized: "Activity")
+        case .origin: origin(for: note).label
+        }
+    }
+
+    /// What the type row names: the kind without its to-do state (that is the switch beside it). "Note", "Meeting",
+    /// "Link", "Image", "PDF", "File".
+    static func typeName(for note: Note) -> String {
+        switch EntryKind(note) {
+        case .note, .todo: String(localized: "Note")
+        case .meeting: String(localized: "Meeting")
+        case .link: String(localized: "Link")
+        case .image: String(localized: "Image")
+        case .document: note.attachments.first?.kind == .pdf ? String(localized: "PDF") : String(localized: "File")
+        }
+    }
+
+    /// The bowl's sharing, for Sharing & Activity: "Shared with Anna and Ben", "Shared by Anna, view only", or
+    /// "Not shared" (also for the Inbox).
+    static func sharingText(for note: Note) -> String {
+        let sharing = BowlSharing.shared
+        for key in note.projectIDs {
+            if let info = sharing.info(for: UUID(uuidString: key)) { return info.summary }
+        }
+        return String(localized: "Not shared")
+    }
+
+    /// Where the entry came from, for Sharing & Activity: "Recorded · MacBook Pro Microphone · 24 Nov 10:00",
+    /// "Came In · By Mail · 23 Nov 9:12", "Created · 24 Nov 9:00".
+    static func origin(for note: Note, now: Date = Date()) -> (label: String, value: String) {
+        let when = EntryMeta.dateText(note.createdAt, now: now)
+        if note.isRecording {
+            let how: String
+            switch note.source {
+            case .plaud: how = "Plaud"
+            case .audioImport: how = String(localized: "Imported Audio")
+            default: how = note.inputName ?? String(localized: "Microphone")
+            }
+            return (String(localized: "Recorded"), how + " · " + when)
+        }
+        if note.isLink {
+            return (String(localized: "Saved"), [note.domain, when].compactMap { $0 }.joined(separator: " · "))
+        }
+        if note.source == .share || note.isStored {
+            // A mail's entry starts with its header lines (`MailNote.text`).
+            let mail = note.text.hasPrefix(MailNote.fromLabel)
+            return (String(localized: "Came In"), (mail ? String(localized: "By Mail") : String(localized: "Shared")) + " · " + when)
+        }
+        return (String(localized: "Created"), when)
+    }
+
     /// The bowl suggested for an entry in the Inbox: the first suggestion that is an active bowl I may file into.
     /// The same as the head's "✦ File into …" (`EntryMeta.suggestion`).
     static func suggestion(for note: Note, context: EntryContext) -> NoteFolder? {

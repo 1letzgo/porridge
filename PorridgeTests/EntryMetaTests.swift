@@ -131,4 +131,78 @@ final class EntryMetaTests: XCTestCase {
         let earlier = calendar.date(from: DateComponents(year: 2026, month: 3, day: 2)) ?? Date()
         XCTAssertFalse(EntryMeta.dateText(earlier, now: now).contains("2026"))
     }
+
+    // MARK: The kinds of the mockups (stage 2)
+
+    /// "Meeting · Today 10:00 · 42 min  Q4 Planning  Design Review 10:00  4 Speakers · 1 unnamed  #design".
+    func testMockupMeeting() throws {
+        let context = try TestStore.context()
+        let q4 = F.bowl("Q4 Planning", in: context)
+        let meeting = F.meeting(speakers: ["Sam", "Ben", "Priya", "Speaker 4"], in: context)
+        meeting.labels = ["design"]
+        F.file(meeting, into: q4)
+        var state = EntryContext(bowls: [q4])
+        state.appointment = AppointmentRef(CalendarAppointment.fixture(title: "Design Review"))
+        let values = EntryMeta.values(for: meeting, context: state)
+        XCTAssertEqual(values.map(\.kind), [.bowl, .appointment, .speakers, .tag])
+        XCTAssertEqual(values.map(\.section), [.organize, .appointment, .speakers, .organize])
+        XCTAssertEqual(values.map(\.tone), [.bowl, .navy, .navy, .secondary])
+        XCTAssertNil(EntryMeta.suggestion(for: meeting, context: state), "filed: no suggestion")
+        // Details: no Document, Speakers with Known Voices…, the type row without a to-do switch (a recording).
+        let sections = EntryDetails.sections(for: meeting, context: state)
+        XCTAssertEqual(sections.map(\.kind), [.organize, .appointment, .speakers, .connections, .sharingActivity])
+        XCTAssertEqual(sections.first { $0.kind == .speakers }?.action, .knownVoices)
+        XCTAssertEqual(sections.first { $0.kind == .appointment }?.rows.map(\.kind), [.appointment, .sameAppointment])
+        XCTAssertFalse(EntryDetails.showsTodoSwitch(meeting))
+        XCTAssertEqual(EntryDetails.typeName(for: meeting), "Meeting")
+        XCTAssertEqual(EntryDetails.label(.origin, for: meeting), "Recorded")
+    }
+
+    /// "PDF · 23 Nov · 2 pages  ✦ File into House & Bills  Invoice · Telekom · 119,00 €  Unpaid".
+    func testMockupPDFInInbox() throws {
+        let context = try TestStore.context()
+        let bills = F.bowl("House & Bills", in: context)
+        var info = DocumentInfo(kind: .invoice, correspondent: "Telekom")
+        info.amount = "119.00 EUR"
+        info.dueDay = F.day(8)
+        let pdf = F.pdf(document: info, in: context)
+        pdf.suggestedProjectIDs = [Projects.key(bills)]
+        let state = EntryContext(bowls: [bills], pageCount: 2)
+        let (facts, values) = EntryMeta.items(for: pdf, context: state)
+        XCTAssertTrue(facts.hasPrefix("PDF · Today "), facts)
+        XCTAssertTrue(facts.hasSuffix(" · 2 pages"), facts)
+        XCTAssertEqual(values.map(\.kind), [.document, .payment])
+        XCTAssertEqual(values.map(\.text).last, "Unpaid")
+        XCTAssertEqual(EntryMeta.suggestion(for: pdf, context: state)?.name, "House & Bills")
+        let organize = try XCTUnwrap(EntryDetails.sections(for: pdf, context: state).first)
+        XCTAssertEqual(organize.rows.map(\.kind), [.type, .bowl, .suggestedBowl, .tags])
+        XCTAssertEqual(EntryDetails.typeName(for: pdf), "PDF")
+        XCTAssertEqual(EntryDetails.sharingText(for: pdf), "Not shared")
+        XCTAssertEqual(EntryDetails.origin(for: pdf).label, "Came In")
+        XCTAssertTrue(EntryDetails.origin(for: pdf).value.hasPrefix("Shared · "))
+        pdf.text = MailNote.fromLabel + "Telekom <bill@telekom.de>\n\nYour bill"
+        XCTAssertTrue(EntryDetails.origin(for: pdf).value.hasPrefix("By Mail · "))
+    }
+
+    /// "To-do · 2 of 4 subtasks  Kitchen Renovation  Due Fri  Weekly"; Details: Type Note + to-do switch on, Due and
+    /// Repeat rows.
+    func testMockupTodoWithRepeat() throws {
+        let context = try TestStore.context()
+        let kitchen = F.bowl("Kitchen Renovation", in: context)
+        let todo = F.todo("Choose worktop colour", text: "- [x] Samples\n- [x] Measure\n- [ ] Compare\n- [ ] Decide", due: F.day(3), in: context)
+        todo.todoRepeat = .weekly
+        F.file(todo, into: kitchen)
+        let state = EntryContext(bowls: [kitchen])
+        let (facts, values) = EntryMeta.items(for: todo, context: state)
+        XCTAssertTrue(facts.hasSuffix("2 of 4 subtasks"), facts)
+        XCTAssertEqual(values.map(\.kind), [.bowl, .due, .repeat])
+        XCTAssertEqual(values.map(\.tone), [.bowl, .task, .task])
+        XCTAssertEqual(values[2].text, "Weekly")
+        XCTAssertEqual(EntryDetails.typeName(for: todo), "Note")
+        XCTAssertTrue(EntryDetails.showsTodoSwitch(todo))
+        XCTAssertTrue(EntryDetails.canSwitchTodo(todo, context: state))
+        XCTAssertEqual(EntryDetails.sections(for: todo, context: state).first?.rows.map(\.kind), [.type, .bowl, .due, .repeat, .tags])
+        XCTAssertEqual(EntryDetails.label(.payBy, for: todo), "Pay By")
+        XCTAssertEqual(EntryDetails.origin(for: todo).label, "Created")
+    }
 }

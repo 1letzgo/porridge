@@ -236,55 +236,6 @@ struct AppointmentBowlMenu: View {
 
 // MARK: - An entry's appointment
 
-/// In the row of an entry's bowl and tags: the appointment it is linked to (a tap changes or removes it), or a
-/// button to link one.
-struct AppointmentChip: View {
-    let note: Note
-    @Binding var isPicking: Bool
-
-    @Environment(\.modelContext) private var context
-
-    var body: some View {
-        if let ref = AppointmentLinks.shared.appointment(for: note.id) {
-            Menu {
-                Button { isPicking = true } label: { Label("Change Appointment…", systemImage: "calendar") }
-                Button(role: .destructive) {
-                    withAnimation(.snappy) { AppointmentLinks.shared.link(note, to: nil, in: context) }
-                } label: {
-                    Label("Remove Appointment", systemImage: "calendar.badge.minus")
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar").font(.caption)
-                    Text(ref.title).lineLimit(1)
-                    Text(ref.when).foregroundStyle(Color.brandNavy.readable.opacity(0.7))
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.brandNavy.readable)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .chunkyPill(fill: .brandNavy)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .fixedSize()
-            .accessibilityLabel("Appointment \(ref.title), \(ref.when)")
-        } else {
-            Button { isPicking = true } label: {
-                Label("Appointment", systemImage: "plus")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.brandNavy)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .chunkyPill(fill: .gray)
-            }
-            .buttonStyle(.plain)
-            .fixedSize()
-            .accessibilityLabel("Link to Appointment")
-        }
-    }
-}
-
 /// Choosing the appointment for an entry: a day (the entry's own at first) and its appointments.
 struct AppointmentPicker: View {
     let note: Note
@@ -372,35 +323,7 @@ struct AppointmentPicker: View {
     }
 }
 
-// MARK: - The other entries of the appointment
-
-/// Under an entry, next to "Similar": the other entries linked to the same appointment.
-struct AppointmentEntriesSection: View {
-    let note: Note
-
-    @Environment(\.allNotes) private var allNotes
-
-    var body: some View {
-        let links = AppointmentLinks.shared
-        let others = links.others(linkedWith: note, among: allNotes)
-        if let ref = links.appointment(for: note.id), !others.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar")
-                    Text(ref.title).lineLimit(1)
-                    Text(ref.when).foregroundStyle(.secondary).fontWeight(.regular)
-                }
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(Color.brandNavy.readable)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
-                RelatedEntryRows(notes: others)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 12)
-        }
-    }
-}
+// MARK: - Related entries
 
 /// Entries under an entry ("Similar", the same appointment): symbol, title and day, each opening the entry.
 struct RelatedEntryRows: View {

@@ -12,6 +12,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var libraryToken: UUID?
     private weak var searchField: NSSearchField?
     private var shareItem: NSSharingServicePickerToolbarItem?
+    /// The red counter of a running recording (hidden otherwise).
+    private var recordingItem: NSToolbarItem?
+    private let recordingButton = NSButton()
+    private var recordingTimer: Timer?
 
     static var all: [MainWindowController] = []
 
@@ -66,10 +70,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = true
         window.toolbar = toolbar
-        // A configuration saved before the Record Meeting column had its own toolbar section lacks the separator.
+        // A configuration saved before the Record Meeting column had its own toolbar section lacks the separator;
+        // one saved before the inspector lacks its button and the recording's counter.
         if !toolbar.items.contains(where: { $0.itemIdentifier == .inspectorTrackingSeparator }) {
             toolbar.insertItem(withItemIdentifier: .inspectorTrackingSeparator, at: toolbar.items.count)
         }
+        if !toolbar.items.contains(where: { $0.itemIdentifier == .toggleInspector }) {
+            toolbar.insertItem(withItemIdentifier: .toggleInspector, at: toolbar.items.count)
+        }
+        if !toolbar.items.contains(where: { $0.itemIdentifier == Item.recording }) {
+            let index = toolbar.items.firstIndex { $0.itemIdentifier == Item.share } ?? toolbar.items.count
+            toolbar.insertItem(withItemIdentifier: Item.recording, at: index)
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(recordingChanged), name: MeetingRecorder.didChange, object: nil)
+        recordingChanged()
 
         observers.append(Observing { [weak self] in
             guard let self else { return }
@@ -141,7 +155,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: Window
 
+    func windowDidResize(_ notification: Notification) {
+        split.enforceSharedWidth()
+    }
+
     func windowWillClose(_ notification: Notification) {
+        recordingTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self, name: MeetingRecorder.didChange, object: nil)
         split.detail.noteDetail?.flushEditing()
         // A recording in this window's right column goes on in a window of its own.
         MeetingRecorder.mainWindowWillClose(self)
@@ -192,14 +212,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         static let chat = NSToolbarItem.Identifier("chat")
         static let search = NSToolbarItem.Identifier("search")
         static let settings = NSToolbarItem.Identifier("settings")
+        static let recording = NSToolbarItem.Identifier("recording")
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, Item.new, Item.importMenu, Item.listSeparator,
-         .flexibleSpace, Item.share, Item.noteMenu, Item.chat, Item.search,
-         // The Record Meeting column (inspector) keeps the part of the toolbar above it to itself: while it is open
-         // the items before this separator, the search included, stay over the columns to its left.
-         .inspectorTrackingSeparator]
+         Item.recording, .flexibleSpace, Item.share, Item.noteMenu, Item.chat, Item.search,
+         // The inspector (Details | Record) keeps the part of the toolbar above it to itself: while it is open the
+         // items before this separator, the search included, stay over the columns to its left.
+         .inspectorTrackingSeparator, .flexibleSpace, .toggleInspector]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -255,6 +276,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.action = #selector(openChat(_:))
             item.target = self
             return item
+        case Item.recording:
+            let item = NSToolbarItem(itemIdentifier: identifier)
+            item.label = String(localized: "Recording")
+            item.toolTip = String(localized: "Show the Recording")
+            recordingButton.bezelStyle = .toolbar
+            recordingButton.image = .symbol("record.circle.fill", size: 13, weight: .semibold)
+            recordingButton.imagePosition = .imageLeading
+            recordingButton.contentTintColor = .systemRed
+            recordingButton.target = self
+            recordingButton.action = #selector(showRecordInspector(_:))
+            recordingButton.setAccessibilityLabel(String(localized: "Recording"))
+            item.view = recordingButton
+            item.isHidden = !MeetingRecorder.isRecording
+            recordingItem = item
+            updateRecordingCounter()
+            return item
         case Item.settings:
             let item = NSToolbarItem(itemIdentifier: identifier)
             item.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")
@@ -294,6 +331,44 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         // A note or to-do from one of the note templates, after New To-do.
         menu.insertItem(NoteTemplateMenu.item(for: self), at: 2)
         return menu
+    }
+
+    /// A recording started or ended: the counter shows while it runs.
+    @objc private func recordingChanged() {
+        let running = MeetingRecorder.isRecording
+        recordingItem?.isHidden = !running
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        if running {
+            recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateRecordingCounter() }
+            }
+        }
+        updateRecordingCounter()
+    }
+
+    private func updateRecordingCounter() {
+        let time = (MeetingRecorder.elapsed ?? 0).clockString
+        recordingButton.attributedTitle = NSAttributedString(string: " " + time, attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor.systemRed,
+        ])
+        recordingButton.setAccessibilityValue(time)
+    }
+
+    // MARK: Inspector
+
+    /// View › Details (⌥⌘I): the inspector's Details; again while they show, the inspector closes.
+    @objc func showDetailsInspector(_ sender: Any?) {
+        if split.isInspectorOpen, split.inspector.mode == .details {
+            split.toggleInspector(sender)
+        } else {
+            split.show(.details)
+        }
+    }
+
+    /// View › Record (⌥⌘R) and the toolbar's counter: the inspector's Record mode.
+    @objc func showRecordInspector(_ sender: Any?) {
+        split.show(.record)
     }
 
     private func updateShareItem() {
@@ -570,6 +645,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return !todos.isEmpty
         case #selector(showArchive(_:)):
             return true
+        case #selector(showDetailsInspector(_:)):
+            item.state = split.isInspectorOpen && split.inspector.mode == .details ? .on : .off
+            return true
+        case #selector(showRecordInspector(_:)):
+            item.state = split.isInspectorOpen && split.inspector.mode == .record ? .on : .off
+            return MeetingRecorder.isRecording || state.page.allowsCreating
         case #selector(pasteAsNote(_:)):
             return state.page.allowsCreating
         default:

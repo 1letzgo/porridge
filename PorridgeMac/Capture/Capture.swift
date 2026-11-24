@@ -3,25 +3,25 @@ import AppKit
 /// Bringing things in: recording a meeting (for an appointment or not), continuing a recording, and Plaud.
 @MainActor
 enum Capture {
-    /// Today's appointments in the right column of the window; the recording takes their place there. Asked again
-    /// while they show, the column closes.
+    /// Today's appointments in the inspector's Record mode; the recording takes their place there. Asked again
+    /// while they show, Record ends (back to Details).
     static func recordMeeting(in controller: MainWindowController) {
         guard !MeetingRecorder.isRecording else {
             MeetingRecorder.reveal()
             return
         }
         let split = controller.split
-        if split.meetingPaneContent is RecordMeetingViewController {
-            split.hideMeetingPane()
+        if split.recordPaneContent is RecordMeetingViewController {
+            split.endRecord()
             return
         }
         let state = controller.state
         let picker = RecordMeetingViewController(onStart: { [weak controller] appointment in
             startRecording(for: appointment, state: state, in: controller)
         }, onCancel: { [weak split] in
-            split?.hideMeetingPane()
+            split?.endRecord()
         })
-        split.showMeetingPane(picker)
+        split.showRecord(picker)
     }
 
     /// A recorded meeting becomes a note that is transcribed with speakers; it opens in the window it was started from.

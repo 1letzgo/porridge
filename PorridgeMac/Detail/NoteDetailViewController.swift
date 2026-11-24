@@ -1,12 +1,13 @@
 import AppKit
 import AVFoundation
+import PDFKit
 import SwiftData
 
 private enum NoteTab: Int {
     case summary, note, transcript, article
 }
 
-/// One note: its head stays in place (title, link, date, bowls and tags, files, state, speakers), below it the
+/// One note: its head stays in place (title, link, the meta line, files, state), below it the
 /// tab that is chosen scrolls on its own: the summary, the text, the transcript or the article. A meeting's
 /// recording plays from the bar at the bottom; the microphone dictates into the text.
 final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
@@ -24,9 +25,8 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private var didChooseTab = false
     private var observers: [Observing] = []
     private var libraryToken: UUID?
-    /// "Linked From" and "Mentions": what they were worked out for (`EntryLinks.scanSignature`), and the work.
-    private var entryLinksSignature: Int?
-    private var entryLinksTask: Task<Void, Never>?
+    /// Pages of the document's PDF, once counted (for the meta line).
+    private var pageCount: Int?
     private var shownErrors = Set<String>()
     private var isFetchingAudio = false
     private var fetchAudioError: String?
@@ -37,17 +37,15 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     private let titleField = NSTextField()
     private let sourcePill = PillButton(title: "", symbol: "arrow.turn.up.left", tint: .brandSky, target: nil, action: nil)
     private let linkButton = NSButton()
-    private let meta = NSTextField.label(color: .secondaryLabelColor, lines: 2)
+    /// Facts and set values; a click on a value opens Details at its section.
+    private let meta = MetaLineView()
     private let deletedBanner = NSStackView()
     /// In a bowl shared with me to view only.
     private let readOnlyBanner = NSStackView()
-    /// "New from Anna", "Changed by Ben": until the note was open here once.
-    private let activityLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold), color: .brandProject.readable)
-    private let chips = NoteChipsView()
+    /// "New from Anna", "Changed by Ben", as it was when the note was opened (a value of the meta line).
     private var openedActivity: String?
     private let attachments = AttachmentStripView()
     private let statusPanel = PanelView()
-    private let speakers = FlowView()
     private let tabs = NSSegmentedControl()
     private var tabOrder: [NoteTab] = []
 
@@ -79,12 +77,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
     // Bottom
     private lazy var playerBar = PlayerBarView(player: player)
-    /// The entries most like this one, under the page.
-    private let similar = SimilarEntriesView()
-    /// Next to "Similar": the other entries of the appointment this one is linked to.
-    private let sameAppointment = SimilarEntriesView(title: "", symbol: "calendar", label: String(localized: "Entries of the Same Appointment"))
-    /// The entries that link here, and those that name it without a link.
-    private let entryLinks = EntryLinksView()
     private let fetchBar = NSStackView()
     private let fetchButton = PillButton(title: "Download Recording", symbol: "arrow.down.circle", tint: .brandSky, target: nil, action: nil)
     private let fetchMessage = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .brandDangerText)
@@ -150,9 +142,12 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         readOnlyBanner.orientation = .horizontal
         readOnlyBanner.spacing = 8
         readOnlyBanner.isHidden = true
-        activityLabel.isHidden = true
 
-        chips.onAddTag = { [weak self] in self?.addTag() }
+        meta.onOpen = { [weak self] section in self?.openDetails(at: section) }
+        meta.onFile = { [weak self] bowl in
+            guard let self else { return }
+            Undoable.move([self.note], toBowl: Projects.key(bowl), named: bowl.name, in: self.library.context)
+        }
         attachments.onRemove = { [weak self] in self?.removeAttachment($0) }
 
         tabs.segmentStyle = .automatic
@@ -162,12 +157,12 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         tabs.setAccessibilityLabel("Show")
 
         let head = NSStackView.vertical(
-            [titleRow, sourcePill, linkButton, meta, activityLabel, deletedBanner, readOnlyBanner, chips, attachments, statusPanel, speakers, tabs],
+            [titleRow, sourcePill, linkButton, meta, deletedBanner, readOnlyBanner, attachments, statusPanel, tabs],
             spacing: 10
         )
         head.setCustomSpacing(4, after: titleRow)
         head.setCustomSpacing(4, after: linkButton)
-        head.setCustomSpacing(14, after: speakers)
+        head.setCustomSpacing(14, after: meta)
 
         content.translatesAutoresizingMaskIntoConstraints = false
         buildContent()
@@ -179,11 +174,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         fetchBar.alignment = .centerX
         fetchBar.spacing = 6
         playerBar.onDelete = { [weak self] in self?.confirmDeleteRecording() }
-        similar.onOpen = { [weak self] other in self?.state.reveal(other) }
-        sameAppointment.onOpen = { [weak self] other in self?.state.reveal(other) }
-        entryLinks.onOpen = { [weak self] other in self?.state.reveal(other) }
-        entryLinks.onChange = { [weak self] in self?.renderEntryLinks(force: true) }
-        let bottom = NSStackView.vertical([entryLinks, sameAppointment, similar, playerBar, fetchBar], spacing: 8, alignment: .leading)
+        let bottom = NSStackView.vertical([playerBar, fetchBar], spacing: 8, alignment: .leading)
 
         page.addSubview(head)
         page.addSubview(content)
@@ -211,13 +202,11 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             head.leadingAnchor.constraint(equalTo: page.leadingAnchor),
             head.trailingAnchor.constraint(equalTo: page.trailingAnchor),
             titleRow.widthAnchor.constraint(equalTo: head.widthAnchor),
-            chips.widthAnchor.constraint(equalTo: head.widthAnchor),
+            meta.widthAnchor.constraint(equalTo: head.widthAnchor),
             attachments.widthAnchor.constraint(equalTo: head.widthAnchor),
             statusPanel.widthAnchor.constraint(equalTo: head.widthAnchor),
-            speakers.widthAnchor.constraint(equalTo: head.widthAnchor),
             deletedBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
             readOnlyBanner.widthAnchor.constraint(equalTo: head.widthAnchor),
-            meta.widthAnchor.constraint(lessThanOrEqualTo: head.widthAnchor),
             todoBox.widthAnchor.constraint(equalToConstant: 28),
             todoBox.heightAnchor.constraint(equalToConstant: 28),
             content.topAnchor.constraint(equalTo: head.bottomAnchor, constant: 12),
@@ -228,10 +217,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             bottom.trailingAnchor.constraint(equalTo: page.trailingAnchor),
             bottom.bottomAnchor.constraint(equalTo: page.bottomAnchor),
             playerBar.widthAnchor.constraint(equalTo: bottom.widthAnchor),
-            // Room on the right for the microphone's button, which lies over the corner.
-            similar.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -72),
-            sameAppointment.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -72),
-            entryLinks.widthAnchor.constraint(equalTo: bottom.widthAnchor, constant: -72),
             fetchBar.widthAnchor.constraint(equalTo: bottom.widthAnchor),
             micButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -22),
             micButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -18),
@@ -369,6 +354,12 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             self?.player.play()
         }
         transcript.onAssign = { [weak self] segment, speaker in self?.reassign(segment, to: speaker) }
+        // A click on a name: who the speaker is, or only this line to another one.
+        transcript.onSpeaker = { [weak self] segment, speaker, anchor in
+            guard let self, !self.isLocked else { return }
+            SpeakerMenu.make(for: speaker, in: self.note, segment: segment, window: self.view.window)
+                .popUp(positioning: nil, at: NSPoint(x: 0, y: anchor.bounds.height + 2), in: anchor)
+        }
 
         for view in [editor!, dictationPreviewScroll, summaryScroll, transcript, articleScroll, dictationStatus] as [NSView] {
             content.addSubview(view)
@@ -408,7 +399,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        chips.hostWindow = view.window
         tab = opensOnSummary || isSummarizing ? .summary : .note
         if let name = note.audioFileName, note.hasLocalAudio { player.load(AudioStore.url(for: name)) }
         // A recording in iCloud is downloaded when its note is opened, then it plays.
@@ -422,7 +412,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         dictation.onStopRequested = { [weak self] in Task { await self?.finishDictation() } }
         // What someone else added or changed: said once more here, and seen from now on.
         openedActivity = BowlSharing.shared.activityLine(for: note)
+        OpenedActivity.remember(openedActivity, for: note.id)
         BowlSharing.shared.markSeen(note)
+        countPages()
         observers.append(Observing { [weak self] in self?.render() })
         taskBar.schedule(for: note, immediately: true)
         // Other notes count too: the to-dos made from this one, its bowls.
@@ -431,20 +423,11 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             // Deleted for good (here or on another device): the window closes it; reading it now would trap.
             guard self.note.modelContext == nil || self.library.note(self.note.id) != nil else { return }
             self.render()
-            self.renderSimilar()
-            self.renderSameAppointment()
-            self.renderEntryLinks()
         }
-        renderEntryLinks()
-        // The similar entries follow the index (worked out again only when it changed).
-        observers.append(Observing { [weak self] in
-            _ = NoteIndex.shared.version
-            self?.renderSimilar()
-        })
-        // The links to appointments change here and on other devices.
+        // The appointment (a value of the meta line) changes here and on other devices.
         observers.append(Observing { [weak self] in
             _ = AppointmentLinks.shared.ledger
-            self?.renderSameAppointment()
+            self?.renderMeta()
         })
         observers.append(Observing { [weak self] in
             guard let self else { return }
@@ -474,7 +457,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
     override func viewDidAppear() {
         super.viewDidAppear()
-        chips.hostWindow = view.window
         guard startsRecording else { return }
         // A new note that should record right away (Settings: "Record new notes").
         guard AVCaptureDevice.authorizationStatus(for: .audio) != .denied else { return }
@@ -586,18 +568,14 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         } else {
             linkButton.isHidden = true
         }
-        meta.stringValue = metaLine(isTodo: isTodo, isDone: isDone)
+        renderMeta()
         deletedBanner.isHidden = !note.isDeleted
         readOnlyBanner.isHidden = !isReadOnly
-        activityLabel.stringValue = openedActivity ?? ""
-        activityLabel.isHidden = openedActivity == nil || note.isDeleted
-        chips.show(note, library: library)
         // Images shown in the note's text are not listed again.
         let listed = note.attachmentsData == nil ? [] : note.stripAttachments
         attachments.isHidden = listed.isEmpty
         if !listed.isEmpty { attachments.show(listed, canRemove: !isLocked) }
         renderStatus()
-        renderSpeakers()
         // Tabs
         let list = computeTabs()
         if !list.contains(where: { $0.0 == tab }), let first = list.first { tab = first.0 }
@@ -653,55 +631,39 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         (view.window?.windowController as? NoteWindowController)?.window?.title = note.displayTitle
     }
 
-    /// "Linked From" and "Mentions": worked out off the main thread, and only when another entry changed, came or
-    /// went, or this one's title changed (not on every change of the library, not while typing here).
-    private func renderEntryLinks(force: Bool = false) {
-        guard !note.isDeleted, note.modelContext != nil else {
-            entryLinksSignature = nil
-            entryLinksTask?.cancel()
-            entryLinks.show(linkedFrom: [], mentions: [], target: nil)
-            return
-        }
-        let notes = library.notes
-        let signature = EntryLinks.scanSignature(for: note, among: notes)
-        guard force || signature != entryLinksSignature else { return }
-        entryLinksSignature = signature
-        entryLinksTask?.cancel()
-        let note = note
-        entryLinksTask = Task { @MainActor [weak self] in
-            let found = await EntryLinks.linkedFromAndMentions(of: note, among: notes)
-            guard !Task.isCancelled, let self, self.note.id == note.id else { return }
-            self.entryLinks.show(linkedFrom: found.linkedFrom, mentions: found.mentions, target: note)
-        }
+    /// What the head and Details read: the live state, with the activity as it was when the note was opened.
+    private var entryContext: EntryContext {
+        var context = EntryContext.live(for: note, bowls: library.projects, processing: processing)
+        if !note.isDeleted { context.activityLine = context.activityLine ?? openedActivity }
+        context.pageCount = pageCount
+        return context
     }
 
-    private func renderSameAppointment() {
-        guard !note.isDeleted, note.modelContext != nil, let ref = AppointmentLinks.shared.appointment(for: note.id) else {
-            sameAppointment.show([])
-            return
-        }
-        sameAppointment.setHeading("\(ref.title) · \(ref.when)")
-        sameAppointment.show(AppointmentLinks.shared.others(linkedWith: note, among: library.notes))
+    private func renderMeta() {
+        let context = entryContext
+        let items = EntryMeta.items(for: note, context: context)
+        meta.show(facts: items.facts, values: items.values, suggestion: EntryMeta.suggestion(for: note, context: context))
     }
 
-    private func renderSimilar() {
-        guard !note.isDeleted, note.modelContext != nil else {
-            similar.show([])
-            return
-        }
-        similar.show(SimilarEntries.similar(to: note, among: library.notes))
+    /// The pages of the document's PDF, when its file is here.
+    private func countPages() {
+        guard let pdf = DocumentFiles.pdf(of: note), AttachmentStore.exists(pdf) else { return }
+        pageCount = PDFDocument(url: AttachmentStore.url(for: pdf))?.pageCount
     }
 
-    private func metaLine(isTodo: Bool, isDone: Bool) -> String {
-        var parts = [note.createdAt.formatted(.dateTime.weekday(.wide).day().month().hour().minute())]
-        if note.isRecording, note.duration > 0 { parts.append(note.duration.durationText) }
-        if let input = note.inputName { parts.append(input) }
-        if isDone, let done = TodoBridge.doneAt(note) {
-            parts.append(String(localized: "Done \(done.formatted(.dateTime.day().month(.abbreviated).hour().minute()))"))
+    /// Details of this note: the inspector of the main window at the section, or a popover in a window of its own.
+    func openDetails(at section: EntryDetails.Section.Kind?) {
+        if let main = view.window?.windowController as? MainWindowController {
+            main.split.showDetails(at: section)
+            return
         }
-        let progress = TodoBridge.progress(of: note)
-        if isTodo, progress.total > 0 { parts.append(String(localized: "\(progress.done) of \(progress.total) done")) }
-        return parts.joined(separator: " · ")
+        let details = DetailsInspectorViewController(note: note)
+        details.preferredContentSize = NSSize(width: 300, height: 460)
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = details
+        popover.show(relativeTo: meta.bounds, of: meta, preferredEdge: .maxY)
+        details.scroll(to: section)
     }
 
     private func renderStatus() {
@@ -736,20 +698,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         } else {
             statusPanel.isHidden = true
         }
-    }
-
-    private func renderSpeakers() {
-        let list = note.speakers
-        speakers.isHidden = list.isEmpty
-        guard !list.isEmpty else { speakers.setViews([]); return }
-        speakers.setViews(list.map { speaker in
-            let title = AppSettings.isMe(speaker) ? "\(speaker.name) (Me)" : speaker.name
-            let pill = PillButton(title: title, symbol: "pencil", tint: .speaker(speaker.colorIndex), target: self, action: #selector(renameSpeaker(_:)))
-            pill.identifier = .init(speaker.id)
-            pill.isEnabled = !isLocked
-            pill.setAccessibilityLabel("Rename \(speaker.name)")
-            return pill
-        })
     }
 
     private var summarizeMessage: String {
@@ -950,38 +898,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             processing.enqueue(.attachment(note.id))
         }
         library.save()
-    }
-
-    /// A meeting recorded for an appointment offers its people as names in a menu, one click each; otherwise (and
-    /// with "Other Name…") the name is typed.
-    @objc private func renameSpeaker(_ sender: NSButton) {
-        guard let id = sender.identifier?.rawValue, let speaker = note.speakers.first(where: { $0.id == id }) else { return }
-        let choices = SpeakerNaming.choices(for: id, in: note)
-        guard !choices.isEmpty else {
-            askSpeakerName(speaker)
-            return
-        }
-        let menu = NSMenu()
-        menu.addItem(.sectionHeader(title: String(localized: "Invited")))
-        for name in choices {
-            menu.add(name) { [weak self] in self?.nameSpeaker(id, name) }
-        }
-        menu.addItem(.separator())
-        menu.add(String(localized: "Other Name…"), symbol: "pencil") { [weak self] in self?.askSpeakerName(speaker) }
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
-    }
-
-    private func askSpeakerName(_ speaker: Speaker) {
-        Alerts.ask("Rename Speaker", placeholder: "Name", value: speaker.name, action: "Save", in: view.window) { [weak self] text in
-            self?.nameSpeaker(speaker.id, text)
-        }
-    }
-
-    /// Also teaches the voice under this name, checks earlier unnamed speakers against it and writes the summary
-    /// again with it (`SpeakerNaming.rename`).
-    private func nameSpeaker(_ id: String, _ name: String) {
-        SpeakerNaming.rename(id, to: name, in: note, context: library.context, processing: processing)
-        library.setNeedsReload()
     }
 
     private func reassign(_ segment: TranscriptSegment, to speaker: Speaker) {

@@ -7,7 +7,7 @@ import AppKit
 enum DueDateMenu {
     /// The menu for some to-dos. `anchor` is where Pick Date… opens its calendar (a popover); without it a sheet
     /// on `window` holds the calendar.
-    static func make(for notes: [Note], window: NSWindow?, anchor: NSView? = nil) -> NSMenu {
+    static func make(for notes: [Note], window: NSWindow?, anchor: NSView? = nil, includesRepeat: Bool = true) -> NSMenu {
         let menu = NSMenu(title: "Due Date")
         let todos = notes.filter(\.isTodo)
         for choice in Todos.DueChoice.allCases {
@@ -17,7 +17,7 @@ enum DueDateMenu {
             item.state = !todos.isEmpty && todos.allSatisfy { $0.todoDue == key } ? .on : .off
         }
         menu.add("Pick Date…", symbol: "calendar") { DueDatePicker.present(for: todos, anchor: anchor, window: window) }
-        menu.addItem(repeatItem(for: todos, window: window))
+        if includesRepeat { menu.addItem(repeatItem(for: todos, window: window)) }
         if todos.contains(where: { $0.todoDue != nil }) {
             menu.addItem(.separator())
             menu.add("Clear Due Date", symbol: "calendar.badge.minus", isDestructive: true) { TodoBridge.setDue(nil, todos) }
@@ -126,45 +126,5 @@ final class DueDatePickerController: NSViewController {
     private func commit() {
         TodoBridge.setDue(Todos.dueKey(picker.dateValue), notes)
         close()
-    }
-}
-
-/// The chip of a to-do's page, first in the row of bowls and tags: "+ Due Date", or the day in green (red when
-/// late). A click opens the menu of choices.
-final class DueDateChip: PillButton {
-    private var note: Note?
-    weak var hostWindow: NSWindow?
-
-    convenience init() {
-        self.init(title: "Due Date", symbol: "plus", tint: .systemGray, target: nil, action: nil)
-        target = self
-        action = #selector(showMenu)
-    }
-
-    func show(_ note: Note) {
-        self.note = note
-        if let due = note.todoDue {
-            let overdue = note.isOverdue
-            title = Todos.dueLabel(due) + (note.todoRepeat != nil ? " ↻" : "")
-            image = .symbol(overdue ? "calendar.badge.exclamationmark" : "calendar", size: 11, weight: .semibold)
-            tint = overdue ? .systemRed : note.isDone ? .systemGray : .brandTask
-            labelColor = overdue ? .brandDangerText : note.isDone ? nil : .brandTaskText
-            setAccessibilityLabel(TodoBridge.dueAccessibility(of: note))
-        } else {
-            title = "Due Date"
-            image = .symbol("plus", size: 11, weight: .semibold)
-            tint = .systemGray
-            labelColor = nil
-            setAccessibilityLabel("Add Due Date")
-        }
-        isEnabled = !note.isDeleted
-        invalidateIntrinsicContentSize()
-        needsDisplay = true
-    }
-
-    @objc private func showMenu() {
-        guard let note else { return }
-        let menu = DueDateMenu.make(for: [note], window: hostWindow ?? window, anchor: self)
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
     }
 }

@@ -5,16 +5,24 @@ struct SegmentRow: View {
     let segment: TranscriptSegment
     let speaker: Speaker?
     let isActive: Bool
+    /// The menu a tap on the speaker's name opens (naming it, giving the line to another one); none: just the name.
+    var speakerMenu: (() -> AnyView)?
+    /// Plays the recording from this passage (a tap on the row outside the name); nil: nothing to play.
+    var onPlay: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 if let speaker {
-                    Circle().fill(Color.speaker(speaker.colorIndex)).frame(width: 10, height: 10)
-                    Text(speaker.name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.brandNavy)
-                    if AppSettings.isMe(speaker) { MeBadge() }
+                    if let speakerMenu {
+                        Menu { speakerMenu() } label: { speakerName(speaker, isMenu: true) }
+                            .menuStyle(.button)
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Speaker \(speaker.name)")
+                            .accessibilityHint("Name the speaker")
+                    } else {
+                        speakerName(speaker, isMenu: false)
+                    }
                 }
                 Spacer()
                 Text(segment.start.clockString)
@@ -23,6 +31,12 @@ struct SegmentRow: View {
             }
             Text(segment.text)
                 .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { onPlay?() }
+                .accessibilityAddTraits(onPlay == nil ? [] : .isButton)
+                .accessibilityHint(onPlay == nil ? "" : "Plays the recording from here.")
+                .accessibilityAction { onPlay?() }
         }
         // Flat tint of the speaker's color (no shadow, which a scroll view would cut off at its edges).
         .padding(14)
@@ -31,6 +45,21 @@ struct SegmentRow: View {
             isActive ? Color.brandSky.opacity(0.22) : (speaker.map { Color.speaker($0.colorIndex) } ?? .gray).opacity(0.08),
             in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous)
         )
+    }
+
+    private func speakerName(_ speaker: Speaker, isMenu: Bool) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(Color.speaker(speaker.colorIndex)).frame(width: 10, height: 10)
+            Text(speaker.name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.brandNavy)
+            if AppSettings.isMe(speaker) { MeBadge() }
+            // An unnamed speaker invites a name.
+            if isMenu, VoiceProfiles.isUnnamed(speaker) {
+                Text("Name…").font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .contentShape(Rectangle())
     }
 }
 

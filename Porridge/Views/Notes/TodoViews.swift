@@ -159,36 +159,6 @@ struct DueDateMenuItems: View {
     }
 }
 
-/// The due day on a to-do's page, in the row of its bowls and tags: a menu with the choices.
-struct DueDateChip: View {
-    let note: Note
-    @Binding var isPicking: Bool
-
-    var body: some View {
-        Menu {
-            DueDateMenuItems(note: note) { isPicking = true }
-        } label: {
-            HStack(spacing: 6) {
-                if let due = note.todoDue {
-                    Image(systemName: note.isOverdue ? "calendar.badge.exclamationmark" : "calendar")
-                    Text(Todos.dueLabel(due))
-                    if note.todoRepeat != nil { Image(systemName: "repeat").imageScale(.small) }
-                } else {
-                    Image(systemName: "plus")
-                    Text("Due Date")
-                }
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(note.todoDue == nil ? Color.brandNavy : note.isOverdue ? Color.brandDangerText : Color.brandTaskText)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .chunkyPill(fill: note.todoDue == nil ? .gray : note.isOverdue ? .red : .brandTask)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(note.todoDue.map { "Due \(Todos.dueLabel($0))" + (note.todoRepeat.map { ", repeats \($0.title)" } ?? "") } ?? "Add Due Date")
-    }
-}
-
 /// How the to-do repeats: Never, Daily, Weekly, Monthly, Yearly, or every so many days (in the date sheet).
 /// A repeating to-do moves to its next due day when it is done; there are no reminders.
 struct RepeatMenu: View {
@@ -196,11 +166,25 @@ struct RepeatMenu: View {
     /// Opens the date sheet, which also sets "Every N Days".
     let custom: () -> Void
 
+    var body: some View {
+        Menu {
+            RepeatMenuItems(note: note, custom: custom)
+        } label: {
+            Label(note.todoRepeat.map { "Repeat: \($0.title)" } ?? String(localized: "Repeat"), systemImage: "repeat")
+        }
+    }
+}
+
+/// The choices of `RepeatMenu` as buttons, for a menu of one's own (the Repeat row in Details).
+struct RepeatMenuItems: View {
+    let note: Note
+    let custom: () -> Void
+
     @Environment(\.modelContext) private var context
 
     var body: some View {
         let current = note.todoRepeat
-        Menu {
+        Group {
             Button {
                 withAnimation(.snappy) { Todos.setRepeat(nil, note, in: context) }
             } label: {
@@ -221,8 +205,6 @@ struct RepeatMenu: View {
                     Text("Every N Days…")
                 }
             }
-        } label: {
-            Label(current.map { "Repeat: \($0.title)" } ?? String(localized: "Repeat"), systemImage: "repeat")
         }
     }
 }

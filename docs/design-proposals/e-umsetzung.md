@@ -192,6 +192,39 @@ Deleted – light and dark, Dynamic Type XXXL on iPhone (meta line wraps to two 
 1180, 1130 and 900 pt with the inspector toggled; Record Meeting started from ⌘R, from "Record" at an appointment and
 from the meeting alert; recording keeps running when switching to Details and when closing the inspector.
 
+**As built (stage 2):**
+
+- Shared words in `EntryDetails`: `label(_:for:)` (row labels), `typeName(for:)` (the type row names the kind without
+  its to-do state: a to-do says "Note" + switch on), `showsTodoSwitch`, `sharingText(for:)` (the bowl's
+  `SharedBowlInfo.summary` or "Not shared"), `origin(for:)` ("Recorded · MacBook Pro Microphone · Today 10:00",
+  "Came In · By Mail · …" for entries whose text starts with the mail header, "Saved", "Created").
+- The bowl value's symbol: the "Bowl" asset is the app's coloured picture (sky square), not a glyph, so both views draw
+  the SF Symbol `folder.fill` (the bowl symbol of every menu) in violet. `EntryMeta.bowlImage` is unchanged.
+- "Changed by Anna": opening an entry marks it as seen, so the live `activityLine` is nil right after; the head and
+  Details use the line as it was at opening (iOS `openedActivity`, Mac `OpenedActivity`).
+- Links keep the orange "example.com ↗" line under the title (it is the only visible "open in browser" until stage 3).
+- iOS: `EntryHeader.swift` (`EntryMetaLine`, measured with the footnote font of the current Dynamic Type size,
+  `WrapLayout`), `EntryDetailsSheet.swift` (Form; sender/dated/amount/pay-by rows open the existing `DocumentInfoSheet`;
+  Kind is a menu, Paid a switch, "Clear Document Details" a row; Connections push lists; Known Voices opens
+  `KnownVoicesSheet`). Transcript names are menus (`SpeakerMenuItems`): Invited names, "<Your Name> (Me)",
+  Other Name…, **Only This Line** as a submenu of the other speakers (no "…": it opens no dialog), Known Voices….
+  The long-press "Assign Speaker" stays as a shortcut. `RepeatMenuItems` split out of `RepeatMenu`.
+- Mac: `MetaLineView` (an `NSTextView` with link runs; "+N" and values open the inspector; no "Details" word),
+  `DetailsInspectorViewController` (also used as a popover for a note in its own window, which has no inspector),
+  `InspectorController` (segment Details | Record) and the width rule in `MainSplitViewController`
+  (`enforceSharedWidth` on toggle and `windowDidResize`; first launch: open at ≥ 1130 pt, key
+  `inspectorFirstLaunchDone`). Toolbar: `.toggleInspector` after the inspector separator, red counter item
+  `recording` (hidden unless recording, click = Record). View › Details ⌥⌘I (again: closes), Record ⌥⌘R.
+  `MeetingPaneController`, `NoteChipsView` and `DueDateChip` are gone; `FlowView` and `AttachmentStripView` moved to
+  `AttachmentStripView.swift`. Speaker naming is `SpeakerMenu` (inspector pills and a click on a transcript name).
+  Connections on the Mac are menu values ("1 entry ⌃", "2 · 1 Mention ⌃" with Open / Make the Name a Link).
+- Multi-select on the Mac already shows `commonFields` (Bowl, Later, Due, Kind, Set Sender of N…, Mark N as Paid,
+  Merge N PDFs…, Delete N) – stage 6 only needs to polish it.
+- List rows: suggestion pills clip inside the narrower list (260 pt) instead of pushing the badge past the edge.
+- Test seed: `-seedEntryKinds YES` (iOS) / debug driver `seed-kinds` (Mac, test data only) makes one entry of every kind
+  with fixed ids; driver commands `open-kind`, `inspector`, `details <section>`, `toggle-sidebar`, `window-width`,
+  `layout`, `meta`, `select-many`.
+
 ---
 
 ## Stage 3 · Actions by verb, Entry and AI menus

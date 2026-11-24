@@ -303,4 +303,13 @@ final class ClosureTarget: NSObject {
     }
 
     @objc func run() { handler() }
+
+    /// Makes `handler` the button's action (kept alive by the button).
+    @MainActor
+    static func attach(to button: NSButton, _ handler: @escaping () -> Void) {
+        let target = ClosureTarget(handler)
+        button.target = target
+        button.action = #selector(run)
+        objc_setAssociatedObject(button, &key, target, .OBJC_ASSOCIATION_RETAIN)
+    }
 }
