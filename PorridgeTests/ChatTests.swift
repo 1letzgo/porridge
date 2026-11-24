@@ -141,6 +141,40 @@ final class ChatTests: XCTestCase {
         XCTAssertEqual(ChatService.scope(of: ChatThread(projectID: "P1"), notes: [inBucket, elsewhere, deleted]).map(\.title), ["A"])
     }
 
+    func testAChatCanBeAboutTheInbox() {
+        let waiting = note("A")
+        let filed = note("B", buckets: ["P1"])
+        XCTAssertEqual(ChatService.scope(of: ChatThread(projectID: SearchAsk.inboxKey), notes: [waiting, filed]).map(\.title), ["A"])
+    }
+
+    func testStartingAChatKeepsItWithItsScope() throws {
+        let context = try TestStore.context()
+        let thread = ChatService.startChat(about: .bowl("P1"), in: context)
+        XCTAssertEqual(thread.projectID, "P1")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<ChatThread>()).map(\.id), [thread.id])
+    }
+
+    /// The scope is read at every question: changed during a chat it holds from the next question on, and the
+    /// earlier answer keeps its sources. (The model is the Debug stand-in `ChatStub`.)
+    func testAScopeChangeAppliesToTheNextQuestionOnly() async throws {
+        let context = try TestStore.context()
+        let first = note("Ferry P1", text: "Die Fähre fährt am Dienstag", buckets: ["P1"])
+        let second = note("Ferry P2", text: "Die Fähre fährt am Freitag", buckets: ["P2"])
+        [first, second].forEach(context.insert)
+        UserDefaults.standard.set(true, forKey: ChatStub.key)
+        defer { UserDefaults.standard.removeObject(forKey: ChatStub.key) }
+        let thread = ChatService.startChat(about: .bowl("P1"), in: context)
+        await ChatService.shared.ask("Wann fährt die Fähre?", in: thread, notes: [first, second], projects: [], context: context)
+        thread.projectID = "P2"
+        await ChatService.shared.ask("Und wann fährt die Fähre?", in: thread, notes: [first, second], projects: [], context: context)
+        let id = thread.id
+        let answers = try context.fetch(FetchDescriptor<ChatEntry>(predicate: #Predicate { $0.threadID == id }, sortBy: [SortDescriptor(\.createdAt)]))
+            .filter { $0.role == .assistant }
+        XCTAssertEqual(answers.count, 2)
+        XCTAssertEqual(answers[0].sources.map(\.noteID), [first.id], "the first answer is from the first bowl")
+        XCTAssertEqual(answers[1].sources.map(\.noteID), [second.id], "the next answer is from the bowl chosen since")
+    }
+
     func testThePromptNamesBucketsAndTheAnswerItsSources() {
         let notes = [note("Urlaub", text: "Fähre am Dienstag", buckets: ["P1"]), note("Projekt", text: "Vertrag im März")]
         notes[1].createdAt = notes[0].createdAt.addingTimeInterval(-60)

@@ -29,8 +29,8 @@ final class ChatNavigation {
     }
 }
 
-/// The chat as a page of its own, reached from its button bottom left: one chat, or the list of all of them.
-/// Chats are kept.
+/// The chat, a place of its own (the Chat tab): one chat, or the list of all of them. Chats are kept; a new chat
+/// offers the recent ones to take up again.
 struct ChatPage: View {
     let notes: [Note]
     let projects: [NoteFolder]
@@ -40,6 +40,8 @@ struct ChatPage: View {
 
     @Environment(\.modelContext) private var context
     @Query(sort: \ChatThread.updatedAt, order: .reverse) private var threads: [ChatThread]
+    /// A chat about to be deleted (it asks first).
+    @State private var deleting: ChatThread?
 
     private var open: ChatThread? { navigation.openID.flatMap { id in threads.first { $0.id == id } } }
 
@@ -50,25 +52,40 @@ struct ChatPage: View {
                     navigation.openID = thread.id
                     navigation.showsList = false
                 } onDelete: { thread in
-                    delete(thread)
+                    deleting = thread
                 }
             } else {
-                ChatView(thread: open, notes: notes, projects: projects, scope: $navigation.newScope, onOpen: onOpen) { thread in
+                ChatView(
+                    thread: open, notes: notes, projects: projects, scope: $navigation.newScope,
+                    recent: open == nil ? SearchAsk.recentChats(threads) : [],
+                    onOpen: onOpen,
+                    onOpenChat: { thread in navigation.openID = thread.id },
+                    onAllChats: { withAnimation(.snappy) { navigation.showsList = true } }
+                ) { thread in
                     navigation.openID = thread.id
                 }
             }
         }
         // Left: the model the chat loaded gives its memory back.
         .onDisappear { ChatService.shared.release() }
+        .alert(
+            "Delete “\(deleting.map { $0.title.isEmpty ? String(localized: "New Chat") : $0.title } ?? "")”?",
+            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+            presenting: deleting
+        ) { thread in
+            Button("Delete Chat", role: .destructive) { delete(thread) }
+            Button("Cancel", role: .cancel) { deleting = nil }
+        } message: { _ in
+            Text("Its questions and answers are deleted from this iPhone. You can undo this right after.")
+        }
     }
 
+    /// Deleted with the one undo toast (`ChatDeletion`): the chat comes back with its answers and their changes.
     private func delete(_ thread: ChatThread) {
         let id = thread.id
-        let entries = (try? context.fetch(FetchDescriptor<ChatEntry>(predicate: #Predicate { $0.threadID == id }))) ?? []
-        entries.forEach(context.delete)
-        context.delete(thread)
-        try? context.save()
+        ChatDeletion.delete(thread, in: context)
         if navigation.openID == id { navigation.openID = nil }
+        deleting = nil
     }
 }
 
@@ -113,7 +130,7 @@ private struct ChatList: View {
                             Text(thread.title.isEmpty ? "New Chat" : thread.title)
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
-                            Text(ChatView.scopeName(thread.projectID, projects: projects) + " · " + thread.updatedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute()))
+                            Text(SearchAsk.chatName(thread.projectID, bowls: projects) + " · " + thread.updatedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute()))
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -131,8 +148,9 @@ private struct ChatList: View {
                     Button(role: .destructive) { onDelete(thread) } label: { Label("Delete", systemImage: "trash") }
                 }
                 .contextMenu {
-                    Button(role: .destructive) { onDelete(thread) } label: { Label("Delete", systemImage: "trash") }
+                    Button(role: .destructive) { onDelete(thread) } label: { Label("Delete Chat…", systemImage: "trash") }
                 }
+                .accessibilityAction(named: "Delete Chat") { onDelete(thread) }
             }
         }
         .cardList()
@@ -140,7 +158,8 @@ private struct ChatList: View {
 }
 
 /// One chat with the notes: the questions are answered by the model chosen in Settings, from the passages of the
-/// notes that fit. A chat is about all notes or about one bowl.
+/// notes that fit. A chat is about all notes, the Inbox or one bowl; that can be changed at any time and holds from
+/// the next question on (earlier answers keep their sources).
 struct ChatView: View {
     /// The chat; nil is a new one, made with the first question.
     let thread: ChatThread?
@@ -148,9 +167,13 @@ struct ChatView: View {
     let projects: [NoteFolder]
     /// What a new chat is about.
     @Binding var scope: String?
+    /// The chats to take up again, shown while no chat is open.
+    var recent: [ChatThread] = []
     /// The model the chat answers with ("Chat Model" in Settings); nil is the default model.
     @State private var chatModel = SummaryModel.chatChoice
     var onOpen: (UUID) -> Void
+    var onOpenChat: (ChatThread) -> Void = { _ in }
+    var onAllChats: () -> Void = {}
     /// A new chat was made.
     var onCreate: (ChatThread) -> Void
 
@@ -173,8 +196,7 @@ struct ChatView: View {
     ]
 
     static func scopeName(_ project: String?, projects: [NoteFolder]) -> String {
-        guard let project else { return String(localized: "All Bowls") }
-        return projects.first { Projects.key($0) == project }?.name ?? String(localized: "Deleted Bowl")
+        SearchAsk.chatName(project, bowls: projects)
     }
 
     var body: some View {
@@ -182,7 +204,17 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(spacing: 14) {
                     scopeRow
-                    if entries.isEmpty { intro }
+                    if let hint = SummaryModel.chat.sendsHint("question and excerpts of your notes") {
+                        Text(hint)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id("hint-\(chatModel?.id ?? "default")")
+                    }
+                    if entries.isEmpty {
+                        if !recent.isEmpty { recentChats }
+                        intro
+                    }
                     ForEach(entries) { entry in
                         bubble(entry).id(entry.id)
                     }
@@ -193,7 +225,9 @@ struct ChatView: View {
                 .padding(.top, 12)
             }
             // The newest message stays in view, also while the keyboard comes and goes; an empty chat starts at the top.
-            .defaultScrollAnchor(entries.isEmpty ? .top : .bottom)
+            .defaultScrollAnchor(entries.isEmpty ? .top : .bottom, for: .initialOffset)
+            // A short chat stays at the top under the pills instead of sinking to the field.
+            .defaultScrollAnchor(.top, for: .alignment)
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: entries.count) { scrollToEnd(proxy) }
             .onChange(of: isThinking) { scrollToEnd(proxy) }
@@ -215,31 +249,79 @@ struct ChatView: View {
 
     // MARK: Pieces
 
-    /// What the chat is about. A new chat can still choose; a held one keeps what it was started with.
+    /// What the chat is about: changeable at any time; in a chat that runs it holds from the next question on.
     private var scopeRow: some View {
-        HStack(spacing: 8) {
-            if let thread {
-                scopePill(Self.scopeName(thread.projectID, projects: projects), chooses: false)
-            } else {
-                Menu {
-                    Picker("About", selection: $scope) {
-                        Label("All Bowls", systemImage: "tray.full").tag(String?.none)
-                        ForEach(projects.filter { !$0.isArchived }) { project in
-                            Label(project.name, systemImage: "folder").tag(Optional(Projects.key(project)))
-                        }
+        let current = thread?.projectID ?? scope
+        return HStack(spacing: 8) {
+            Menu {
+                Picker("About", selection: Binding(get: { current }, set: { choose($0) })) {
+                    Label("All Bowls", systemImage: "tray.full").tag(String?.none)
+                    Label("Inbox", systemImage: "tray.fill").tag(Optional(SearchAsk.inboxKey))
+                    ForEach(projects.filter { !$0.isArchived || Projects.key($0) == current }) { project in
+                        Label(project.name, systemImage: "folder").tag(Optional(Projects.key(project)))
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                } label: {
-                    scopePill(Self.scopeName(scope, projects: projects), chooses: true)
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .accessibilityLabel("Chat About")
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                scopePill(Self.scopeName(current, projects: projects), chooses: true)
             }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Chat About")
+            .accessibilityValue(Self.scopeName(current, projects: projects))
             Spacer(minLength: 0)
             modelMenu
         }
+    }
+
+    /// Another scope: a new chat starts with it, a running one asks the next question about it.
+    private func choose(_ key: String?) {
+        scope = key
+        guard let thread, thread.projectID != key else { return }
+        thread.projectID = key
+        try? context.save()
+    }
+
+    /// The latest chats, to take up again, and the way to all of them.
+    private var recentChats: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Recent Chats")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                Spacer()
+                Button("All Chats", action: onAllChats)
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("RecentAllChats")
+            }
+            .padding(.bottom, 6)
+            ForEach(recent) { chat in
+                Button { onOpenChat(chat) } label: {
+                    HStack(spacing: 12) {
+                        ThingsRowIcon(systemImage: "bubble.left.and.bubble.right.fill", tint: .brandNavy)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(chat.title.isEmpty ? String(localized: "New Chat") : chat.title)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            Text(Self.scopeName(chat.projectID, projects: projects) + " · " + chat.updatedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute()))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("RecentChat")
+                if chat.id != recent.last?.id { Divider().padding(.leading, ThingsRowIcon.inset) }
+            }
+        }
+        .padding(12)
+        .background(Color.appSecondaryBackground, in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
     }
 
     /// Which model answers, and a quick way to choose another: the same choice as "Chat Model" in Settings.

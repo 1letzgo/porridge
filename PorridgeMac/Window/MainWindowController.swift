@@ -11,6 +11,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var observers: [Observing] = []
     private var libraryToken: UUID?
     private weak var searchField: NSSearchField?
+    private weak var searchItem: NSSearchToolbarItem?
     private var shareItem: NSToolbarItem?
     private let shareButton = NSButton()
     /// The red counter of a running recording (hidden otherwise).
@@ -304,15 +305,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.action = #selector(AppDelegate.showSettings(_:))
             return item
         case Item.search:
+            // Search or Ask (⌘K): its results hang below it (`CommandBarController`).
             let item = NSSearchToolbarItem(itemIdentifier: identifier)
-            item.label = "Search"
-            item.searchField.placeholderString = "Search"
+            item.label = "Search or Ask"
+            item.searchField.placeholderString = "Search or Ask"
+            item.searchField.setAccessibilityLabel("Search or Ask")
+            item.searchField.toolTip = "Search or Ask (⌘K)"
             item.searchField.delegate = self
             item.searchField.sendsSearchStringImmediately = true
             item.searchField.target = self
             item.searchField.action = #selector(searchChanged(_:))
-            item.preferredWidthForSearchField = 220
+            item.preferredWidthForSearchField = 240
             searchField = item.searchField
+            searchItem = item
             return item
         default:
             return nil
@@ -429,41 +434,94 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         picker.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     }
 
-    // MARK: Search
+    // MARK: Search or Ask
 
+    /// The toolbar's field: on the search page it narrows the page as it is typed; elsewhere the results of Search or
+    /// Ask hang below it.
     @objc private func searchChanged(_ sender: NSSearchField) {
         let text = sender.stringValue
-        if !text.isEmpty, state.page != .search {
-            state.page = .search
+        if state.page == .search {
+            state.searchText = text
+            return
         }
-        state.searchText = text
+        // Only while typing: the field also sends its text when it stops being edited (a row was just run).
+        guard sender.currentEditor() != nil else { return }
+        CommandBarController.showAnchored(for: self, field: sender)
     }
 
-    func searchFieldDidStartSearching(_ sender: NSSearchField) {
-        if state.page != .search { state.page = .search }
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard control === searchField else { return false }
+        if let bar = CommandBarController.current, bar.isAnchored {
+            if selector == #selector(NSResponder.cancelOperation(_:)) {
+                bar.close()
+                searchField?.stringValue = ""
+                window?.makeFirstResponder(nil)
+                return true
+            }
+            return bar.handle(selector)
+        }
+        return false
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
-        // Return in the field moves to the results.
+        guard (obj.object as? NSSearchField) === searchField else { return }
+        if let bar = CommandBarController.current, bar.isAnchored { bar.close() }
+        // Return in the field of the search page moves to the results.
         if (obj.userInfo?["NSTextMovement"] as? Int) == NSTextMovement.return.rawValue, state.page == .search {
             split.content.notes.focusList()
         }
     }
 
-    /// ⌘F: the search field.
+    /// ⌘K (View › Search or Ask…): the toolbar's field with its results; without a toolbar field, the floating panel.
     @objc func focusSearch(_ sender: Any?) {
-        if state.page != .search { state.page = .search }
-        if let field = searchField {
-            window?.makeFirstResponder(field)
+        guard let field = searchField, let item = searchItem, window?.toolbar?.isVisible == true,
+              window?.toolbar?.items.contains(where: { $0 === item }) == true else {
+            CommandBarController.show(for: self)
+            return
         }
+        item.beginSearchInteraction()
+        window?.makeFirstResponder(field)
+        if state.page != .search { CommandBarController.showAnchored(for: self, field: field) }
     }
 
-    /// A `porridge://search?q=…` link: the search with this text.
+    /// A `porridge://search?q=…` link: the search page with this text.
     func search(for text: String) {
-        searchField?.stringValue = text
+        showAllResults(text)
+    }
+
+    /// "Ask Porridge: …" (⌘↩): the Chat place opens with a new chat about everything, and the question is asked there.
+    func askPorridge(_ question: String) {
+        state.chatScope = nil
+        state.chatID = nil
+        state.page = .chat
+        state.pendingQuestion = question
+    }
+
+    /// "Show All Results" (⇧↩): the search page in the list column, with kind and tag pills and Save as Smart Filter.
+    func showAllResults(_ query: String) {
+        SearchAsk.RecentSearches.add(query)
+        searchField?.stringValue = query
         if state.page != .search { state.page = .search }
-        state.searchText = text
+        state.searchText = query
+    }
+
+    #if DEBUG
+    /// `DebugDriver`: ⌘K and typing `text` into the toolbar's field.
+    func debugSearchAsk(_ text: String) {
         focusSearch(nil)
+        guard let field = searchField else { return }
+        field.stringValue = text
+        if let editor = field.currentEditor() as? NSTextView { editor.string = text }
+        searchChanged(field)
+    }
+    #endif
+
+    /// A recent search: back into the field, its results below.
+    func fillSearch(_ line: String) {
+        guard let field = searchField else { return showAllResults(line) }
+        field.stringValue = line
+        focusSearch(nil)
+        if state.page == .search { state.searchText = line } else { CommandBarController.showAnchored(for: self, field: field) }
     }
 
     // MARK: Pages
@@ -471,6 +529,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func showToday(_ sender: Any?) { state.page = .today }
     @objc func showInbox(_ sender: Any?) { state.page = .inbox }
     @objc func showBowls(_ sender: Any?) { state.page = .bowls }
+    @objc func showChat(_ sender: Any?) { state.page = .chat }
     @objc func showTodos(_ sender: Any?) { state.page = .todos }
     @objc func showArchive(_ sender: Any?) { state.page = .archive }
     @objc func showTrash(_ sender: Any?) { state.page = .trash }

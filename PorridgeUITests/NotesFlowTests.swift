@@ -166,7 +166,7 @@ final class NotesFlowTests: XCTestCase {
     /// Smart Filters, Archive and Recently Deleted, also when they are empty.
     func testThreePlacesAsTabs() throws {
         let app = launchApp()
-        for tab in ["Today", "Inbox", "Bowls", "Search"] {
+        for tab in ["Today", "Inbox", "Bowls", "Chat", "Search"] {
             XCTAssertTrue(app.tabBars.buttons[tab].waitForExistence(timeout: 30), "tab \(tab) missing")
         }
         app.openTab("Today")
@@ -192,7 +192,8 @@ final class NotesFlowTests: XCTestCase {
         app.buttons["Back"].firstMatch.tap()
         app.openTab("Search")
         XCTAssertTrue(app.textFields["SearchField"].waitForExistence(timeout: 5), "the search tab has no field")
-        XCTAssertTrue(app.buttons["SearchChat"].exists, "the chat is not reachable from the search")
+        app.openTab("Chat")
+        XCTAssertTrue(app.buttons["Chat About"].waitForExistence(timeout: 5), "the Chat tab shows no chat")
     }
 
     /// "+" in a bowl: the Add sheet puts new things into that bowl ("Into:"); its ⋯ holds the bowl's management.

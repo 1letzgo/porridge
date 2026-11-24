@@ -28,6 +28,10 @@ struct NotesView: View {
     @State private var tagTokens: [TagToken] = []
     /// Kind of element the search is narrowed to.
     @State private var searchKind: SearchKind?
+    /// Where the search looks (Everywhere, the Inbox, a bowl); also what "Ask Porridge" asks about.
+    @State private var searchScope = SearchAsk.Scope.everywhere
+    /// What was searched for lately on this device (`SearchAsk.RecentSearches`).
+    @State private var recentSearches = SearchAsk.RecentSearches.all()
     /// The day the Today page shows; nil is today. Only while the app runs: opening Today starts on today.
     @State private var todayDay: Date?
     @AppStorage(HomeList.bowlOrderKey) private var bowlOrder = HomeList.BowlOrder.lastChange
@@ -113,7 +117,7 @@ struct NotesView: View {
         }
     }
 
-    /// The three places and the search as tabs; each has its own stack, so a place keeps where it was.
+    /// The places, the chat and the search as tabs; each has its own stack, so a place keeps where it was.
     private var tabs: some View {
         TabView(selection: $place) {
             Tab("Today", systemImage: "calendar", value: Place.today) { placeStack(.today) }
@@ -124,6 +128,8 @@ struct NotesView: View {
                 .accessibilityIdentifier("TabInbox")
             Tab("Bowls", systemImage: "folder.fill", value: Place.bowls) { placeStack(.bowls) }
                 .accessibilityIdentifier("TabBowls")
+            Tab("Chat", systemImage: "bubble.left.and.bubble.right.fill", value: Place.chat) { placeStack(.chat) }
+                .accessibilityIdentifier("TabChat")
             Tab(value: Place.search, role: .search) { placeStack(.search) }
         }
     }
@@ -170,7 +176,7 @@ struct NotesView: View {
 
     /// Goes to a page: a place's own page brings its tab to the front at its start; any other page is pushed onto
     /// the stack it belongs to (Open To-dos onto Today, a bowl, a smart filter, Archive, Recently Deleted and Settings
-    /// onto Bowls, the chat onto the search), or the stack is taken back to it when it is on it already.
+    /// onto Bowls), or the stack is taken back to it when it is on it already.
     private func go(_ target: ListPage) {
         if sizeClass != .compact {
             // iPad: one stack in the sidebar with the Bowls place at its root.
@@ -229,11 +235,13 @@ struct NotesView: View {
     var body: some View {
         smartFilterDialogs(bowlDialogs(columns))
         .onChange(of: page) { old, new in
-            // The search page was left: what was asked is forgotten. (A found note opened from it keeps the page.)
-            if old == .search, new != .search {
+            // iPad: the search page was left, what was asked is forgotten. On a phone the Search tab keeps its query
+            // like every tab keeps its place (a field left with text while it was off screen showed it again anyway).
+            if old == .search, new != .search, sizeClass != .compact {
                 search = ""
                 tagTokens = []
                 searchKind = nil
+                searchScope = .everywhere
             }
             // Another page: what was chosen there is let go, and so is the Add sheet's last "Into:".
             isSelecting = false
@@ -575,30 +583,78 @@ struct NotesView: View {
         }
     }
 
-    /// The search as a page of its own: what is found opens from it, and going back returns to the results. Until
-    /// the search and the chat become one field (stage 5) the chat is a row of its empty page.
+    /// Search & Ask, a page of its own: what is found opens from it, and going back returns to the results. The
+    /// empty field shows the recent searches and the tags.
     private var searchPage: some View {
-        SearchPane(
-            text: $search, tokens: $tagTokens, kind: $searchKind,
-            tags: TagToken.counts(notes.filter { !$0.isDeleted }),
+        let tags = TagToken.counts(notes.filter { !$0.isDeleted })
+        return SearchPane(
+            text: $search, tokens: $tagTokens, kind: $searchKind, scope: $searchScope,
+            bowls: HomeList.bowls(projects, notes: notes, order: bowlOrder),
+            allBowls: projects,
+            tags: tags,
             hasQuery: hasQuery,
-            onChat: { openChat() }
+            recentSearches: recentSearches,
+            onRecent: { line in
+                let parsed = SearchAsk.RecentSearches.parse(line, known: tags.map(\.name))
+                tagTokens = parsed.tags.map { TagToken(name: $0) }
+                search = parsed.text
+            },
+            onClearRecent: {
+                SearchAsk.RecentSearches.clear()
+                recentSearches = []
+            },
+            onSubmit: { keepSearch() }
         ) {
             searchResults
         }
     }
 
-    /// ✦ AI › Ask About This Bowl on an entry, or the bowl's ⋯: the chat about the bowl opens in the search.
+    /// What is searched for is kept as a recent search (Return in the field, or a result opened from it).
+    private func keepSearch() {
+        SearchAsk.RecentSearches.add(search, tags: tagTokens.map(\.name))
+        recentSearches = SearchAsk.RecentSearches.all()
+    }
+
+    /// ✦ AI › Ask About This Bowl on an entry, or the bowl's ⋯: the Chat tab opens with the chat about the bowl.
     private func askAbout(_ bowl: String) {
         selection = nil
         chatNavigation.open(from: bowl, threads: chatThreads)
         go(.chat)
     }
 
-    /// Opens the chat page (the search's "Chat" row): the last chat about all bowls is taken up again.
-    private func openChat() {
-        chatNavigation.open(from: nil, threads: chatThreads)
+    /// "Ask Porridge: …" in the search: a new chat about the search's scope opens in the Chat tab and the question is
+    /// asked there. Asking is always this choice; typing never starts a chat.
+    private func handOver(_ question: String) {
+        // A question is kept as a chat (the Chat tab's Recent Chats), not as a recent search.
+        selection = nil
+        let thread = ChatService.startChat(about: searchScope, in: context)
+        chatNavigation.project = searchScope.chatKey
+        chatNavigation.newScope = searchScope.chatKey
+        chatNavigation.showsList = false
+        chatNavigation.openID = thread.id
         go(.chat)
+        let (all, bowls) = (notes, projects)
+        Task { await ChatService.shared.ask(question, in: thread, notes: all, projects: bowls, context: context) }
+    }
+
+    /// A Go To row of the search.
+    private func goTo(_ target: SearchAsk.Target) {
+        keepSearch()
+        switch target.destination {
+        case .today: go(.today)
+        case .inbox: go(.inbox)
+        case .bowls: go(.bowls)
+        case .openTodos: go(.todos)
+        case .weeklyReview: showReview = true
+        case .archive: go(.archive)
+        case .trash: go(.trash)
+        case .settings: go(.settings)
+        case .allChats:
+            chatNavigation.showsList = true
+            go(.chat)
+        case .smartFilter(let id): go(.smartFilter(id))
+        case .bowl(let id): go(.project(id))
+        }
     }
 
     /// Open To-dos (Today's row): every open to-do by due day, grouped as the search's "Open To-dos", then those
@@ -718,17 +774,53 @@ struct NotesView: View {
         }
     }
 
+    /// The results of Search & Ask, in the order of `SearchAsk`: "Ask Porridge: …" (with typed text), the places,
+    /// smart filters and bowls that fit ("Go To"), then the entries by date (open to-dos by when they are due).
     private var searchResults: some View {
         let found = foundNotes
-        // The open to-dos by when they are due; everything else by when it changed.
+        let question = SearchAsk.question(search)
+        let targets = question == nil ? [] : SearchAsk.goTo(
+            search, in: SearchAsk.targets(bowls: projects, filters: SmartFilterStore.shared.filters, notes: notes)
+        )
         let grouped = searchKind == .todos
             ? Todos.dueGroups(found).map { (title: $0.title, label: String($0.title.prefix(1)), notes: $0.notes) }
-            : groups(found)
+            : SearchAsk.dateGroups(found)
         return List {
+            if let question {
+                Section {
+                    Button { handOver(question) } label: {
+                        SearchAskRow(
+                            title: SearchAsk.askTitle(question), subtitle: SearchAsk.askSubtitle(searchScope, bowls: projects),
+                            systemImage: "sparkles", tint: .brandNavy
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .cardListRow()
+                    .lastInSection(true)
+                    .accessibilityIdentifier("SearchAsk")
+                    .accessibilityHint("Opens the chat and asks this question")
+                }
+            }
+            if !targets.isEmpty {
+                Section {
+                    ForEach(targets) { target in
+                        Button { goTo(target) } label: {
+                            SearchAskRow(title: target.title, subtitle: target.subtitle, systemImage: target.symbol, tint: tint(of: target))
+                        }
+                        .buttonStyle(.plain)
+                        .cardListRow()
+                        .lastInSection(target.id == targets.last?.id)
+                        .accessibilityIdentifier("GoTo")
+                    }
+                } header: {
+                    ListHeader(title: String(localized: "Go To"), tint: .brandNavy, isFirst: question == nil)
+                }
+            }
             ForEach(grouped, id: \.title) { group in
                 Section {
                     ForEach(group.notes) { note in
                         Button {
+                            keepSearch()
                             openNote(note.id)
                         } label: {
                             NoteRow(note: note, stage: processing.stages[note.id])
@@ -739,16 +831,36 @@ struct NotesView: View {
                         .lastInSection(note.id == group.notes.last?.id)
                     }
                 } header: {
-                    ListHeader(title: group.title, tint: .brandSky, isFirst: group.title == grouped.first?.title)
+                    ListHeader(title: group.title, tint: .brandSky, isFirst: question == nil && targets.isEmpty && group.title == grouped.first?.title)
+                }
+            }
+            if found.isEmpty, question != nil {
+                Section {
+                    Text("No entries contain “\(search.trimmingCharacters(in: .whitespaces))”.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
                 }
             }
         }
         .cardList()
         .scrollDismissesKeyboard(.interactively)
         .overlay {
-            if found.isEmpty {
-                ContentUnavailableView.search(text: search.isEmpty ? tagTokens.map { "#" + $0.name }.joined(separator: " ") : search)
+            if found.isEmpty, question == nil {
+                ContentUnavailableView.search(text: tagTokens.map { "#" + $0.name }.joined(separator: " "))
             }
+        }
+    }
+
+    private func tint(of target: SearchAsk.Target) -> Color {
+        switch target.destination {
+        case .bowl: .brandProject
+        case .smartFilter, .settings, .archive, .weeklyReview, .allChats: .brandNavy
+        case .trash: .red
+        case .openTodos: .brandTask
+        case .today: .brandNavy
+        case .inbox: .brandSky
+        case .bowls: .brandProject
         }
     }
 
@@ -781,7 +893,7 @@ struct NotesView: View {
     }
 
     private var hasQuery: Bool {
-        !search.trimmingCharacters(in: .whitespaces).isEmpty || !tagTokens.isEmpty || searchKind != nil
+        !search.trimmingCharacters(in: .whitespaces).isEmpty || !tagTokens.isEmpty || searchKind != nil || searchScope != .everywhere
     }
 
     /// Opens a note; the list stays where it is.
@@ -1093,59 +1205,13 @@ struct NotesView: View {
 
     /// What the search finds among the notes, those in archived bowls included.
     private var foundNotes: [Note] {
-        var result = notes.filter { !$0.isDeleted }
-        if let searchKind { result = result.filter(searchKind.matches) }
-        if !tagTokens.isEmpty {
-            result = result.filter { note in
-                let tags = Set(note.tags.map { $0.lowercased() })
-                return tagTokens.allSatisfy { tags.contains($0.id) }
-            }
-        }
-        if !search.isEmpty {
-            // The index knows the words of every passage (transcripts included) without decoding anything.
-            if let ids = NoteIndex.shared.noteIDs(matching: search) {
-                _ = NoteIndex.shared.version
-                result = result.filter { ids.contains($0.id) || $0.title.localizedCaseInsensitiveContains(search) || ($0.url?.localizedCaseInsensitiveContains(search) ?? false) || Documents.matches($0, query: search) }
-            } else {
-                result = result.filter { $0.matches(search) }
-            }
-        }
-        // Strictly a timeline: the newest on top.
-        return result.sorted { $0.updatedAt > $1.updatedAt }
-    }
-
-    /// Notes under headings like Today, Yesterday, Previous 7 Days, months and years. `label` is the short form
-    /// shown in the index along the right edge.
-    private func groups(_ list: [Note]) -> [(title: String, label: String, notes: [Note])] {
-        let calendar = Calendar.current
-        let now = Date()
-        var result: [(title: String, label: String, notes: [Note])] = []
-        for note in list {
-            let date = note.updatedAt
-            let title: String
-            let label: String
-            let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
-            // A date ahead (another device's clock) counts as today, so no heading comes twice.
-            if calendar.isDateInToday(date) || days < 0 {
-                title = String(localized: "Today"); label = "T"
-            } else if calendar.isDateInYesterday(date) {
-                title = String(localized: "Yesterday"); label = "Y"
-            } else if days <= 7 {
-                title = String(localized: "Previous 7 Days"); label = "7"
-            } else if days <= 30 {
-                title = String(localized: "Previous 30 Days"); label = "30"
-            } else if calendar.isDate(date, equalTo: now, toGranularity: .year) {
-                title = date.formatted(.dateTime.month(.wide)); label = String(date.formatted(.dateTime.month(.wide)).prefix(1)).uppercased()
-            } else {
-                title = date.formatted(.dateTime.year()); label = String(title.suffix(2))
-            }
-            if result.last?.title == title {
-                result[result.count - 1].notes.append(note)
-            } else {
-                result.append((title, label, [note]))
-            }
-        }
-        return result
+        // The index knows the words of every passage (transcripts included) without decoding anything.
+        _ = NoteIndex.shared.version
+        let indexed = search.isEmpty ? nil : NoteIndex.shared.noteIDs(matching: search)
+        return SearchAsk.entries(
+            notes, query: search, tags: tagTokens.map(\.name), kind: searchKind.map { kind in { kind.matches($0) } },
+            scope: searchScope, indexMatches: indexed
+        )
     }
 
     // MARK: - Actions
@@ -1272,6 +1338,9 @@ struct NotesView: View {
         case .openBowls:
             selection = nil
             go(.bowls)
+        case .openChat:
+            selection = nil
+            go(.chat)
         case .openTodos:
             selection = nil
             go(.todos)
@@ -1539,9 +1608,9 @@ enum ListRoute: Hashable {
     var isPage: Bool { page != nil }
 }
 
-/// The three places and the search: the tabs of the phone, in this order.
+/// The places and the search: the tabs of the phone, in this order (Today · Inbox · Bowls · Chat · Search).
 enum Place: String, CaseIterable {
-    case today, inbox, bowls, search
+    case today, inbox, bowls, chat, search
 
     /// The page at the start of the place's stack.
     var root: ListPage {
@@ -1549,6 +1618,7 @@ enum Place: String, CaseIterable {
         case .today: .today
         case .inbox: .inbox
         case .bowls: .bowls
+        case .chat: .chat
         case .search: .search
         }
     }
@@ -1568,7 +1638,8 @@ enum ListPage: Hashable {
     case inbox
     /// Every bowl, the smart filters, Archive and Recently Deleted (`BowlsPlace`). A place.
     case bowls
-    /// The search through everything. The fourth tab.
+    /// Search & Ask: the search through everything, the places, smart filters and bowls to go to, and "Ask
+    /// Porridge: …", which hands the question over to the chat. The last tab.
     case search
     /// One project with everything in it.
     case project(UUID)
@@ -1576,8 +1647,8 @@ enum ListPage: Hashable {
     case todos
     /// A saved search (`SmartFilter`): the entries that fit it, wherever they are.
     case smartFilter(UUID)
-    /// The chat with the notes; reached from the search (its "Chat" row) and Ask About This Bowl until stage 5
-    /// makes search and chat one field.
+    /// The chat with the notes: a place of its own (the fourth tab), also reached by Ask About This Bowl and the
+    /// search's "Ask Porridge: …".
     case chat
     case archive
     case trash
@@ -1590,7 +1661,8 @@ enum ListPage: Hashable {
         switch self {
         case .today, .todos: .today
         case .inbox: .inbox
-        case .search, .chat: .search
+        case .chat: .chat
+        case .search: .search
         case .bowls, .project, .smartFilter, .archive, .trash, .settings, .voices, .acknowledgements: .bowls
         }
     }

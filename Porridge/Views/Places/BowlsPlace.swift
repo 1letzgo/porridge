@@ -35,6 +35,7 @@ struct BowlsPlace: View {
                 Section {
                     PlaceLinkRow(title: String(localized: "Today"), systemImage: "calendar", tint: .brandNavy, count: Places.todayCount(notes)) { onOpen(.today) }
                     PlaceLinkRow(title: String(localized: "Inbox"), systemImage: "tray.fill", tint: .brandSky, count: Places.inboxCount(notes)) { onOpen(.inbox) }
+                    PlaceLinkRow(title: String(localized: "Chat"), systemImage: "bubble.left.and.bubble.right.fill", tint: .brandNavy) { onOpen(.chat) }
                     PlaceLinkRow(title: String(localized: "Search"), systemImage: "magnifyingglass", tint: .brandNavy) { onOpen(.search) }
                         .lastInSection(true)
                 } header: {

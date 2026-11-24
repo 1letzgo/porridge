@@ -129,11 +129,20 @@ final class ChatService {
         Task { await ModelManager.shared.releaseLLM() }
     }
 
-    /// The notes a chat is about: all living ones, or those of its bowl.
+    /// The notes a chat is about: all living ones, those in the Inbox, or those of its bowl. Read at every question,
+    /// so a scope changed during the chat applies from the next question on (earlier answers keep their sources).
     static func scope(of thread: ChatThread, notes: [Note]) -> [Note] {
-        let living = notes.filter { !$0.isDeleted }
-        guard let project = thread.projectID else { return living }
-        return living.filter { $0.projectIDs.contains(project) }
+        let scope = SearchAsk.Scope(chatKey: thread.projectID)
+        return notes.filter { !$0.isDeleted && scope.contains($0) }
+    }
+
+    /// A new chat about `scope`, kept at once (Search & Ask's "Ask Porridge: …" row); the question is asked by the
+    /// caller (`ask`), so the page can open first.
+    static func startChat(about scope: SearchAsk.Scope, in context: ModelContext) -> ChatThread {
+        let thread = ChatThread(projectID: scope.chatKey)
+        context.insert(thread)
+        try? context.save()
+        return thread
     }
 
     /// A title for a chat from its first question.
@@ -185,7 +194,12 @@ final class ChatService {
         let found = await index.context(for: question, within: within, bucketNames: names, budget: .for(model))
         // "Create a note …" needs no entry to answer from.
         guard !found.isEmpty || found.matched != nil || ChatActionTools.asksForChange(question) else {
-            answer(thread.projectID == nil ? "There is nothing in your notes yet." : "There is nothing in this bowl yet.")
+            let empty: String = switch SearchAsk.Scope(chatKey: thread.projectID) {
+            case .everywhere: "There is nothing in your notes yet."
+            case .inbox: "There is nothing in the Inbox."
+            case .bowl: "There is nothing in this bowl yet."
+            }
+            answer(empty)
             return
         }
 
@@ -416,6 +430,12 @@ final class ChatService {
         bucket: String?, model: SummaryModel, actions: ActionMode, progress: @escaping (String) -> Void
     ) async throws -> (text: String, calls: [ChatActionCall]) {
         let limit = ChatBudget.for(model).promptLimit
+        #if DEBUG
+        // Tests and screenshots (`-chatStub YES`): a fixed answer from the found items, no model and no network.
+        if UserDefaults.standard.bool(forKey: ChatStub.key) {
+            return (ChatStub.reply(question: question, context: context, actions: actions), [])
+        }
+        #endif
         switch model {
         case .local(let local):
             // The Apple model has room for far fewer excerpts.
@@ -449,6 +469,27 @@ final class ChatService {
         }
     }
 }
+
+#if DEBUG
+@MainActor
+/// A stand-in for the model in Debug builds (`-chatStub YES`, the UI tests and the screenshots): answers with the
+/// first found items as sources and, when the question asks for a change, proposes two changes as ACTION lines.
+enum ChatStub {
+    static let key = "chatStub"
+
+    static func reply(question: String, context: ChatContext, actions: ChatService.ActionMode) -> String {
+        let numbered = ChatService.numbered(context)
+        guard !numbered.isEmpty else { return "I found nothing about it in the notes." }
+        let named = numbered.prefix(2).enumerated().map { "\($0.element.title) [\($0.offset + 1)]" }
+        var text = "From your notes: " + named.joined(separator: " and ") + "."
+        if actions != .none {
+            text += "\nACTION: {\"action\": \"set_tags\", \"entry\": \"1\", \"add\": [\"checked\"]}"
+            text += "\nACTION: {\"action\": \"create_note\", \"title\": \"Follow up\", \"todo\": true}"
+        }
+        return text
+    }
+}
+#endif
 
 /// Deleting a chat (kept on this device only): its questions and answers go with it, and the one undo toast brings
 /// all of it back as it was (on the Mac ⌘Z too).

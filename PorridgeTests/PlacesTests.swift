@@ -86,10 +86,10 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(ListPage.archive.place, .bowls)
         XCTAssertEqual(ListPage.trash.place, .bowls)
         XCTAssertEqual(ListPage.settings.place, .bowls)
-        XCTAssertEqual(ListPage.chat.place, .search)
+        XCTAssertEqual(ListPage.chat.place, .chat)
         XCTAssertEqual(Place(root: .inbox), .inbox)
         XCTAssertNil(Place(root: .todos))
-        XCTAssertEqual(Place.allCases.map(\.root), [.today, .inbox, .bowls, .search])
+        XCTAssertEqual(Place.allCases.map(\.root), [.today, .inbox, .bowls, .chat, .search])
     }
 
     /// An entry link waits until the entry can be opened (cold start: before the list has loaded it).
@@ -100,5 +100,18 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(EntryLinkRouter.waiting, id, "looking does not take it")
         XCTAssertEqual(EntryLinkRouter.take(), id)
         XCTAssertNil(EntryLinkRouter.waiting)
+    }
+
+    /// Five tabs in this order; the chat is a place of its own (owner decision, revision 3).
+    func testTheTabsAreTheFourPlacesAndTheSearch() {
+        XCTAssertEqual(Place.allCases, [.today, .inbox, .bowls, .chat, .search])
+        XCTAssertEqual(ListPage.chat.place, .chat)
+        XCTAssertEqual(Place(root: .chat), .chat)
+        XCTAssertEqual(ListPage.search.place, .search)
+    }
+
+    func testTheChatLinkOpensTheChat() {
+        XCTAssertEqual(QuickAction(url: URL(string: "porridge://chat")!), .openChat)
+        XCTAssertEqual(QuickAction.openChat.url.absoluteString, "porridge://chat")
     }
 }

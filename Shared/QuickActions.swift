@@ -11,6 +11,8 @@ enum QuickAction: Equatable {
     case openToday
     case openInbox
     case openBowls
+    /// The Chat place (a tab on the iPhone, a sidebar row on the Mac).
+    case openChat
     /// Today's "Open To-dos" (every open to-do by due day).
     case openTodos
     /// The search page with this query.
@@ -21,7 +23,7 @@ enum QuickAction: Equatable {
     static let scheme = PorridgeURL.scheme
 
     /// The link that asks for this action: `porridge://new`, `porridge://meeting`, `porridge://today`,
-    /// `porridge://inbox`, `porridge://bowls`, `porridge://todos`, `porridge://search?q=…`, `porridge://entry/<id>` (`porridge://note/<id>` is read too).
+    /// `porridge://inbox`, `porridge://bowls`, `porridge://chat`, `porridge://todos`, `porridge://search?q=…`, `porridge://entry/<id>` (`porridge://note/<id>` is read too).
     var url: URL {
         var components = URLComponents()
         components.scheme = Self.scheme
@@ -31,6 +33,7 @@ enum QuickAction: Equatable {
         case .openToday: components.host = "today"
         case .openInbox: components.host = "inbox"
         case .openBowls: components.host = "bowls"
+        case .openChat: components.host = "chat"
         case .openTodos: components.host = "todos"
         case .search(let query):
             components.host = "search"
@@ -50,6 +53,7 @@ enum QuickAction: Equatable {
         case "today": self = .openToday
         case "inbox": self = .openInbox
         case "bowls": self = .openBowls
+        case "chat": self = .openChat
         case "todos": self = .openTodos
         case "search":
             self = .search(components.queryItems?.first { $0.name == "q" }?.value ?? "")

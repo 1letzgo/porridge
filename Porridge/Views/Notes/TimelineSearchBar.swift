@@ -48,15 +48,25 @@ enum SearchKind: CaseIterable {
     }
 }
 
-/// The search view: a field, the kinds and tags as chips for quick filtering, and what matches below.
+/// Search & Ask: a field, where it looks (Everywhere, the Inbox, a bowl) and the kinds as chips, the tags that fit
+/// what is typed, and what matches below (`results`: "Ask Porridge: …", Go To, the entries). The empty field shows
+/// the recent searches and the tags.
 struct SearchPane<Results: View>: View {
     @Binding var text: String
     @Binding var tokens: [TagToken]
     @Binding var kind: SearchKind?
+    @Binding var scope: SearchAsk.Scope
+    /// The bowls to look in (active ones, in the order of the Bowls place).
+    let bowls: [NoteFolder]
+    /// Every bowl, for the name of the chosen one.
+    let allBowls: [NoteFolder]
     let tags: [(key: String, name: String, count: Int)]
     let hasQuery: Bool
-    /// The chat with the bowls, as the first row of the empty search (until search and chat are one field).
-    var onChat: (() -> Void)?
+    var recentSearches: [String] = []
+    var onRecent: (String) -> Void = { _ in }
+    var onClearRecent: () -> Void = {}
+    /// Return in the field: what was typed is kept as a recent search (it never asks the chat).
+    var onSubmit: () -> Void = {}
     @ViewBuilder var results: Results
 
     @FocusState private var focused: Bool
@@ -80,6 +90,7 @@ struct SearchPane<Results: View>: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    scopeChip
                     ForEach(SearchKind.allCases, id: \.self) { option in kindChip(option) }
                 }
                 .padding(.horizontal)
@@ -100,17 +111,42 @@ struct SearchPane<Results: View>: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        if let onChat {
-                            chatRow(onChat)
+                        if !recentSearches.isEmpty {
+                            HStack {
+                                Text("Recent Searches")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.accentColor)
+                                Spacer()
+                                Button("Clear", action: onClearRecent)
+                                    .font(.subheadline)
+                                    .accessibilityLabel("Clear Recent Searches")
+                            }
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(recentSearches, id: \.self) { line in
+                                    Button { onRecent(line) } label: {
+                                        HStack(spacing: 10) {
+                                            Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+                                            Text(line).foregroundStyle(.primary).lineLimit(1)
+                                            Spacer(minLength: 0)
+                                        }
+                                        .padding(.vertical, 9)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("RecentSearch")
+                                    if line != recentSearches.last { Divider() }
+                                }
+                            }
                         }
                         if openTags.isEmpty, tokens.isEmpty {
-                            Text("Type a word to search your notes and meetings. Tags show up here once you have some.")
+                            Text("Type to search your entries, go to a place, smart filter or bowl, or ask Porridge. Tags show up here once you have some.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         } else if !openTags.isEmpty {
                             Text("Tags")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Color.accentColor)
+                                .padding(.top, recentSearches.isEmpty ? 0 : 6)
                             FlowLayout(spacing: 8) {
                                 ForEach(openTags, id: \.key) { tag in chip(tag) }
                             }
@@ -125,28 +161,34 @@ struct SearchPane<Results: View>: View {
         }
     }
 
-    /// "Chat": a question to the bowls instead of a search.
-    private func chatRow(_ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                ThingsRowIcon(systemImage: "bubble.left.and.bubble.right.fill", tint: .brandNavy)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Chat")
-                        .foregroundStyle(.primary)
-                    Text("Ask your bowls a question")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+    /// Where the search looks: Everywhere, the Inbox or one bowl. "Ask Porridge" asks about the same.
+    private var scopeChip: some View {
+        Menu {
+            Picker("Search In", selection: $scope) {
+                Label("Everywhere", systemImage: "square.grid.2x2").tag(SearchAsk.Scope.everywhere)
+                Label("Inbox", systemImage: "tray.fill").tag(SearchAsk.Scope.inbox)
+                ForEach(bowls) { bowl in
+                    Label(bowl.name, systemImage: "folder").tag(SearchAsk.Scope.bowl(Projects.key(bowl)))
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.tertiary)
             }
-            .contentShape(Rectangle())
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            let isOn = scope != .everywhere
+            HStack(spacing: 4) {
+                Text(SearchAsk.searchName(scope, bowls: allBowls)).lineLimit(1)
+                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(isOn ? Color.brandOnNavy : Color.brandNavy)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(isOn ? Color.brandNavy : Color.brandSky.opacity(0.18), in: Capsule())
         }
+        .menuStyle(.button)
         .buttonStyle(.plain)
-        .accessibilityIdentifier("SearchChat")
-        .padding(.bottom, 4)
+        .accessibilityLabel("Search In")
+        .accessibilityValue(SearchAsk.searchName(scope, bowls: allBowls))
     }
 
     private func kindChip(_ option: SearchKind) -> some View {
@@ -200,9 +242,10 @@ struct SearchPane<Results: View>: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Remove #\(token.name)")
                     }
-                    TextField("Search", text: $text)
+                    TextField("Search or Ask", text: $text)
                         .focused($focused)
                         .submitLabel(.search)
+                        .onSubmit(onSubmit)
                         .autocorrectionDisabled()
                         .frame(minWidth: 90)
                         .accessibilityIdentifier("SearchField")
@@ -223,6 +266,35 @@ struct SearchPane<Results: View>: View {
         .frame(height: 44)
         .background(Color.appBackground, in: Capsule())
         .overlay(Capsule().strokeBorder(Color.brandNavy.opacity(0.25), lineWidth: 1))
+    }
+}
+
+/// A row of Search & Ask that is not an entry: "Ask Porridge: …" and the Go To rows.
+struct SearchAskRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ThingsRowIcon(systemImage: systemImage, tint: tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 

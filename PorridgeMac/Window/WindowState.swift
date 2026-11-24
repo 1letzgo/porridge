@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// What the sidebar of a window shows; the Mac form of the list pages of iOS (`ListPage`). The three places Today,
-/// Inbox and Bowls come first in the sidebar (⌘1–3), Archive and Recently Deleted last (⌘4, ⌘5).
+/// What the sidebar of a window shows; the Mac form of the list pages of iOS (`ListPage`). The places Today, Inbox,
+/// Bowls and Chat come first in the sidebar (⌘1–4), Archive and Recently Deleted last (⌘5, ⌘6).
 enum SidebarPage: Hashable, Codable {
     /// The day's appointments with what is linked to them, and the to-dos due (`TodayCalendar`, `TodayTodos`).
     case today
@@ -13,8 +13,8 @@ enum SidebarPage: Hashable, Codable {
     /// Open To-dos: every open to-do by due day, wherever it is filed: a view, not a place (`Todos.folder`); a row
     /// of Today, View › Open To-dos and the command bar, not a sidebar row.
     case todos
-    /// The chat with the bowls: AI › New Chat, Ask About This Bowl and the command bar (no sidebar row; stage 5 moves
-    /// it into the detail column).
+    /// The chat with the bowls, the fourth place (⌘4): the chats in the list column, the open one in the detail. Also
+    /// AI › New Chat, Ask About This Bowl and "Ask Porridge: …" of Search or Ask.
     case chat
     /// One bowl with everything in it.
     case project(UUID)
@@ -118,6 +118,8 @@ final class WindowState {
     var chatID: UUID?
     /// What a new chat is about (`Projects.key`); nil is all bowls.
     var chatScope: String?
+    /// A question handed over by Search or Ask ("Ask Porridge: …"): the chat asks it in a new chat once it shows.
+    var pendingQuestion: String?
 
     /// The note open in the detail, a new one not saved yet included.
     var openNoteID: UUID? { selection.count == 1 ? selection.first : nil }

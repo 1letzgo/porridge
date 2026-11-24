@@ -18,6 +18,9 @@ final class ActionMenuItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError() }
 
     @objc private func run() { handler() }
+
+    /// Runs the item's closure (Search or Ask offers the rows of a menu as commands).
+    func perform() { handler() }
 }
 
 extension NSMenu {

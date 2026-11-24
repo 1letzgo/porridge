@@ -2,8 +2,9 @@ import AppKit
 import SwiftData
 
 /// One chat with the bowls: questions are answered by the chosen model from the passages of the notes that fit.
-/// A chat is about all bowls or one (a new chat can choose, a held one keeps what it started with); answers
-/// name the notes they come from, a click opens one. The field is at the bottom.
+/// A chat is about all bowls, the Inbox or one bowl, changeable at any time (it holds from the next question on;
+/// earlier answers keep their sources); answers name the notes they come from, a click opens one. The field is at
+/// the bottom. A question handed over by Search or Ask (`WindowState.pendingQuestion`) is asked in a new chat.
 final class ChatViewController: NSViewController, NSTextViewDelegate {
     private let state: WindowState
     private let library = Library.shared
@@ -14,7 +15,8 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
     private let scroll = NSScrollView()
     private let transcript = NSStackView()
     private let scope = NSPopUpButton(frame: .zero, pullsDown: false)
-    private let scopeLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold), color: .brandProject)
+    /// Where the answers go when the chat's model is not on this Mac (`SummaryModel.sendsHint`).
+    private let hintLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor, lines: 2)
     /// Which model answers, and a quick way to choose another: the same choice as "Chat Model" in Settings.
     private let modelPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let input = ChatInputView()
@@ -60,7 +62,8 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         scope.setAccessibilityLabel("Chat About")
         let folder = NSImageView(image: .symbol("folder.fill", size: 11, weight: .bold))
         folder.contentTintColor = .brandProject
-        let scopeRow = NSStackView.horizontal([folder, scopeLabel, scope], spacing: 6)
+        let scopeRow = NSStackView.horizontal([folder, scope], spacing: 6)
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
         modelPopUp.target = self
         modelPopUp.action = #selector(modelChosen)
         modelPopUp.controlSize = .small
@@ -81,6 +84,7 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         let root = NSView()
         root.addSubview(scopeRow)
         root.addSubview(modelPopUp)
+        root.addSubview(hintLabel)
         root.addSubview(scroll)
         root.addSubview(inputRow)
         NSLayoutConstraint.activate([
@@ -89,7 +93,10 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
             modelPopUp.centerYAnchor.constraint(equalTo: scopeRow.centerYAnchor),
             modelPopUp.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
             modelPopUp.leadingAnchor.constraint(greaterThanOrEqualTo: scopeRow.trailingAnchor, constant: 12),
-            scroll.topAnchor.constraint(equalTo: scopeRow.bottomAnchor, constant: 6),
+            hintLabel.topAnchor.constraint(equalTo: scopeRow.bottomAnchor, constant: 4),
+            hintLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
+            hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -24),
+            scroll.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: 4),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             inputRow.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8),
@@ -114,6 +121,10 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
             guard let self else { return }
             _ = (self.state.chatID, self.state.chatScope, self.service.thinking, self.service.status, self.service.actions)
             self.render()
+        })
+        observers.append(Observing { [weak self] in
+            guard let self, let question = self.state.pendingQuestion else { return }
+            DispatchQueue.main.async { self.takePendingQuestion(question) }
         })
     }
 
@@ -161,7 +172,18 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         }
         let chosen = SummaryModel.chatChoice.flatMap { models.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
         if modelPopUp.indexOfSelectedItem != chosen { modelPopUp.selectItem(at: chosen) }
-        modelPopUp.toolTip = SummaryModel.chat.sendsHint("question and excerpts of your notes") ?? "Answers on this device"
+        let hint = SummaryModel.chat.sendsHint("question and excerpts of your notes")
+        modelPopUp.toolTip = hint ?? "Answers on this device"
+        hintLabel.stringValue = hint ?? ""
+        hintLabel.isHidden = hint == nil
+    }
+
+    /// Search or Ask handed over a question: a new chat about the chosen scope asks it.
+    private func takePendingQuestion(_ question: String) {
+        guard state.pendingQuestion == question, service.thinking == nil else { return }
+        state.pendingQuestion = nil
+        state.chatID = nil
+        ask(question)
     }
 
     @objc private func modelChosen() {
@@ -172,27 +194,22 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
     }
 
     private func render() {
-        // What the chat is about: a new chat can still choose.
+        // What the chat is about: changeable at any time.
         let projects = library.projects
-        if let thread {
-            scope.isHidden = true
-            scopeLabel.isHidden = false
-            scopeLabel.stringValue = ChatScope.name(thread.projectID, projects: projects)
+        let current = thread?.projectID ?? state.chatScope
+        scope.removeAllItems()
+        scope.addItem(withTitle: String(localized: "All Bowls"))
+        scope.lastItem?.representedObject = nil
+        scope.addItem(withTitle: String(localized: "Inbox"))
+        scope.lastItem?.representedObject = SearchAsk.inboxKey
+        for project in projects where !project.isArchived || Projects.key(project) == current {
+            scope.addItem(withTitle: project.name)
+            scope.lastItem?.representedObject = Projects.key(project)
+        }
+        if let current, let index = scope.itemArray.firstIndex(where: { $0.representedObject as? String == current }) {
+            scope.selectItem(at: index)
         } else {
-            scope.isHidden = false
-            scopeLabel.isHidden = true
-            scope.removeAllItems()
-            scope.addItem(withTitle: String(localized: "All Bowls"))
-            scope.lastItem?.representedObject = nil
-            for project in projects where !project.isArchived {
-                scope.addItem(withTitle: project.name)
-                scope.lastItem?.representedObject = Projects.key(project)
-            }
-            if let current = state.chatScope, let index = scope.itemArray.firstIndex(where: { $0.representedObject as? String == current }) {
-                scope.selectItem(at: index)
-            } else {
-                scope.selectItem(at: 0)
-            }
+            scope.selectItem(at: 0)
         }
 
         renderModel()
@@ -313,8 +330,14 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
 
     // MARK: Actions
 
+    /// Another scope: a new chat starts with it, a running one asks the next question about it.
     @objc private func scopeChosen() {
-        state.chatScope = scope.selectedItem?.representedObject as? String
+        let key = scope.selectedItem?.representedObject as? String
+        state.chatScope = key
+        if let thread, thread.projectID != key {
+            thread.projectID = key
+            library.save()
+        }
     }
 
     @objc private func exampleTapped(_ sender: NSButton) {

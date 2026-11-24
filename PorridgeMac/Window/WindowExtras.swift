@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 extension MainWindowController {
-    /// ⌘K: the command bar over this window.
+    /// ⌘K: Search or Ask, the toolbar's field with its results (else the floating panel).
     @objc func showCommandBar(_ sender: Any?) {
-        CommandBarController.show(for: self)
+        focusSearch(sender)
     }
 
     /// View › Triage Inbox and the Inbox's "Triage": the Inbox with the keyboard (J/K, L, F, D).

@@ -5,7 +5,8 @@ import SwiftData
 /// Lets a developer drive the app from the command line in a debug build, for checking the interface without
 /// clicking: with PORRIDGE_DEBUG_DRIVER set, commands written to `commandFile` are run. Not part of release builds.
 ///
-/// Commands: `page today|inbox|bowls|later|todos|chat|archive|trash|search`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
+/// Commands: `page today|inbox|bowls|later|todos|chat|archive|trash|search`, `search-ask <text>`, `search-ask-key …`,
+/// `shot-ask <path.png>`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
 /// `search <text>`, `dump`, `shot <path.png>`, `key <window title>` (orders a window front), `title <text>` / `body <text>` (types
 /// into the open note), `settings <tab>`.
 @MainActor
@@ -24,6 +25,36 @@ enum DebugDriver {
                 try? FileManager.default.removeItem(at: commandFile)
                 for line in text.split(separator: "\n") { run(String(line)) }
             }
+        }
+    }
+
+    /// The window and its child panels (the results of Search or Ask, the toast) in one picture.
+    static func shotWithPanels(_ window: NSWindow?, _ path: String) {
+        guard let window, let content = window.contentView?.superview ?? window.contentView,
+              let base = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { log("shot: no window"); return }
+        content.cacheDisplay(in: content.bounds, to: base)
+        let size = window.frame.size
+        let image = NSImage(size: size)
+        image.lockFocus()
+        base.draw(in: NSRect(origin: .zero, size: size))
+        for child in window.childWindows ?? [] where child.isVisible {
+            guard let view = child.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let origin = NSPoint(x: child.frame.minX - window.frame.minX, y: child.frame.minY - window.frame.minY)
+            NSColor.black.withAlphaComponent(0.18).setFill()
+            NSBezierPath(roundedRect: NSRect(origin: origin, size: child.frame.size).offsetBy(dx: 0, dy: -3), xRadius: 12, yRadius: 12).fill()
+            NSColor.windowBackgroundColor.setFill()
+            NSBezierPath(roundedRect: NSRect(origin: origin, size: child.frame.size), xRadius: 12, yRadius: 12).fill()
+            bitmap.draw(in: NSRect(origin: origin, size: child.frame.size))
+        }
+        image.unlockFocus()
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { log("shot: no image"); return }
+        do {
+            try png.write(to: URL(fileURLWithPath: path))
+            log("shot: \(path)")
+        } catch {
+            log("shot: \(error.localizedDescription)")
         }
     }
 
@@ -251,6 +282,37 @@ enum DebugDriver {
             }
             shoot(controller.window, argument)
             if let sheet = controller.window?.attachedSheet { shoot(sheet, (argument as NSString).deletingPathExtension + "-sheet.png") }
+        case "search-ask":
+            // `search-ask <text>`: ⌘K, then the text typed into the toolbar's field; the results hang below it.
+            controller.debugSearchAsk(argument)
+            DispatchQueue.main.async { log((CommandBarController.current?.dump ?? ["search-ask: no results"]).joined(separator: "\n")) }
+        case "search-ask-floating":
+            // The floating panel (the global shortcut, no toolbar).
+            CommandBarController.show(for: controller)
+            log((CommandBarController.current?.dump ?? []).joined(separator: "\n"))
+        case "search-ask-dump":
+            log((CommandBarController.current?.dump ?? ["search-ask-dump: closed"]).joined(separator: "\n"))
+        case "search-ask-key":
+            // `search-ask-key return|ask|all|down|up|escape`: ↩, ⌘↩, ⇧↩, the arrows and Escape in the field.
+            guard let bar = CommandBarController.current else { log("search-ask-key: closed"); return }
+            switch argument {
+            case "ask": bar.ask()
+            case "all": bar.showAll()
+            case "down": _ = bar.handle(#selector(NSResponder.moveDown(_:)))
+            case "up": _ = bar.handle(#selector(NSResponder.moveUp(_:)))
+            case "escape": _ = bar.handle(#selector(NSResponder.cancelOperation(_:)))
+            default: bar.runSelected()
+            }
+        case "windows":
+            // The window's number and frame and those of its child panels, for `screencapture -l`.
+            guard let window = controller.window else { return }
+            log("window \(window.windowNumber) \(Int(window.frame.minX)) \(Int(window.frame.minY)) \(Int(window.frame.width)) \(Int(window.frame.height))")
+            for child in window.childWindows ?? [] where child.isVisible {
+                log("child \(child.windowNumber) \(Int(child.frame.minX)) \(Int(child.frame.minY)) \(Int(child.frame.width)) \(Int(child.frame.height))")
+            }
+        case "shot-ask":
+            // `shot-ask <path.png>`: the window with the results of Search or Ask drawn where they hang.
+            shotWithPanels(controller.window, argument)
         case "select-all":
             // Every row of the list, as Command-A does.
             state.selection = NoteListContent.build(for: state, library: library).sections.flatMap(\.1).compactMap {

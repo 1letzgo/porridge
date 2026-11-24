@@ -47,6 +47,12 @@ struct PorridgeShortcuts: AppShortcutsProvider {
             systemImageName: "folder.fill"
         )
         AppShortcut(
+            intent: OpenChatIntent(),
+            phrases: ["Open \(.applicationName) chat", "Ask \(.applicationName)"],
+            shortTitle: "Open Chat",
+            systemImageName: "bubble.left.and.bubble.right.fill"
+        )
+        AppShortcut(
             intent: OpenInboxIntent(),
             phrases: ["Open \(.applicationName) inbox", "Open my inbox in \(.applicationName)"],
             shortTitle: "Open Inbox",

@@ -1,5 +1,13 @@
 # Porridge redesign E ("Three Places + Details"): implementation plan
 
+> **Revision 3 (2026-11-24): Chat has its own tab / sidebar place.** Owner: "Wir haben Platz für 5 icons in der
+> Tabbar. Gebe Chat seinen eigenen Platz." The chat is not folded into the search. iPhone tabs: Today · Inbox · Bowls ·
+> Chat · Search; Mac sidebar: Today ⌘1 · Inbox ⌘2 · Bowls ⌘3 · Chat ⌘4, Archive ⌘5, Recently Deleted ⌘6. Search & Ask
+> (Search tab, Mac toolbar field "Search or Ask" ⌘K) searches and goes to places, bowls, smart filters and commands;
+> its first row "Ask Porridge: …" hands the question over to the Chat place, no answers inside the search. Ask About
+> This Bowl opens the Chat place with the bowl as scope. Affected: stage 5 (rebuilt as described in its As-built note),
+> the stage overview, open questions 7 and 16 (Search & Ask keeps the Weekly Review and Settings rows).
+
 > **Revision 2 (2026-11-24).** Owner feedback: no two-line header and no user icon. Changes: every iPhone screen keeps
 > today's single-line `ChromeBar` (`Porridge/Design/Theme.swift`): back pill, square + title, pills on the right. "+" is
 > its last pill (filled). There is no `PlaceHeader`, no subtitle row and no "You" avatar/sheet. Settings opens from a gear
@@ -35,7 +43,7 @@ Ground rules for every stage:
 | 2 | Entry page: quiet head + Details | M | L | new head, Details sheet / inspector (Details \| Record) |
 | 3 | Actions by verb, Entry and AI menus | S | M | ✦ AI · Share · ⋯ per kind; Mac menu bar regrouped |
 | 4 | Three places (navigation, one-row `ChromeBar` kept) | L | M | tab bar / new sidebar; home, floating buttons, Import menu gone |
-| 5 | Search & Ask (search + chat + commands in one field) | L | M | Search tab / toolbar field = ⌘K |
+| 5 | Search & Ask (search + go-to + commands in one field; chat its own place, revision 3) | L | M | Search and Chat tabs / toolbar field = ⌘K, Chat sidebar place |
 | 6 | Inbox work: swipes, Later, triage, multi-select | M | S | iPhone triage, new selection bar, Mac multi-select inspector |
 | 7 | Editor bar, Settings, visual polish, onboarding | M | M | ✦ in editor bars, Settings tidied (Bowls group), tokens applied |
 
@@ -474,6 +482,58 @@ rows (there is no Mac test target).
 
 Verify on screen: typing never starts a chat by itself; ⌘K / ⌘↩ / ⇧↩ on the Mac; chat opens in the detail column and
 the list keeps its place; confirm cards + the one undo; recent chats reopen; Dynamic Type.
+
+**As built (stage 5, revision 3):**
+
+- **Owner decision during the stage** (quoted): "Wir haben Platz für 5 icons in der Tabbar. Gebe Chat seinen eigenen
+  Platz." So the chat is not merged into the search field: it is its own place on both platforms, and Search & Ask
+  hands questions over to it. Everything else of the stage stands.
+- Shared `Porridge/Services/SearchAsk.swift` (`@MainActor`, pure): `Scope` (Everywhere / Inbox / bowl; as a chat
+  keeps it in `ChatThread.projectID`: nil, `SearchAsk.inboxKey` = "inbox", the bowl key – local-only model, no CloudKit
+  field), `question`/`askTitle`/`askSubtitle` ("Ask Porridge: “…”", "Answers with sources · All Bowls"), `Target` +
+  `places()` (Today, Inbox, Bowls, Open To-dos, Weekly Review, Archive, Recently Deleted, **Settings**, All Chats) +
+  `targets(bowls:filters:notes:places:)` ("Smart Filter · 3 entries", "Bowl · 24 entries", archived bowls last) +
+  `goTo` (FuzzyMatch, a name match beats a keyword match, ties: places, smart filters, bowls), `entries(…)` (scope,
+  kind, all tags, text via the index/title/link/document; newest change first), `dateGroups`, `rows` (Ask, Go To,
+  entries), `recentChats`, `RecentSearches` (UserDefaults `searchAskRecentSearches`, last 10, per device, "#tag text").
+  `ChatService.scope(of:)` reads the scope per question (Inbox scope added), `ChatService.startChat(about:in:)`.
+- iOS: `Place` gains `.chat` (tabs Today · Inbox · Bowls · Chat · Search, the tab in `@SceneStorage` as before; iPad
+  sidebar "Places" gets a Chat row). `ListPage.chat` is the Chat tab's root (bar "Chat" · All Chats · New Chat,
+  `ChatBarActions`). The scope pill is always a menu (All Bowls, Inbox, bowls); in a running chat it rewrites
+  `thread.projectID` and holds from the next question (the old lock is gone). A cloud model shows its hint line
+  (`SummaryModel.sendsHint`) under the pills. A new chat shows "Recent Chats" (3) with "All Chats" above the examples.
+  Delete Chat (swipe, long press, VoiceOver action) asks first and offers the one undo (`ChatDeletion`). Search tab
+  (`SearchPane`): field "Search or Ask", a scope chip (Everywhere ▾ / Inbox / bowls) before the kind chips, empty field
+  = Recent Searches (with Clear) + Tags; results = "Ask Porridge: …" (hands over: a new chat about the search's scope
+  opens in the Chat tab and asks there), "Go To" rows, then the entries by date. Return keeps the search as a recent
+  one, never asks. Save as Smart Filter stays in the bar. `porridge://chat`, `QuickAction.openChat`, App Shortcut
+  "Open Chat".
+- Mac: `SidebarPage.chat` is a sidebar row again (after Bowls); View: Search or Ask… ⌘K, Today ⌘1, Inbox ⌘2, Bowls ⌘3,
+  Chat ⌘4, Archive ⌘5, Recently Deleted ⌘6; Edit › Find › "Search Notes… ⌥⌘F" removed. The Chat place works as before
+  stage 4: chats in the list column (New Chat, Delete Chat with confirm + undo), the open chat in the detail; scope
+  pop-up always active (All Bowls, Inbox, bowls), cloud hint line under it. The toolbar field is "Search or Ask"
+  (⌘K focuses it; `NSSearchToolbarItem.beginSearchInteraction`); its results hang below it in a non-key child panel
+  (`CommandBarController.showAnchored`), the field keeps the keyboard: ↑↓, ↩ runs the selected row (at first the best
+  one after "Ask"), ⌘↩ asks (hand-over to the Chat place via `WindowState.pendingQuestion`), ⇧↩ Show All Results (the
+  search page in the list column with kind/tag pills and Save as Smart Filter…), Esc closes. Sections: Ask Porridge,
+  Commands, Bowls & Smart Filters, Entries, Show All Results; empty field: Recent Chats, Recent Searches, Commands,
+  Latest Entries. Commands now also: New Chat, Go to Chat, Import Photo or File…, Import Audio…, Import from Plaud…,
+  Export Everything…, Settings, and the open bowl's ⋯ rows (from `BucketActions.addItems`) plus "New Note in <bowl>".
+  Without a toolbar field (hidden toolbar, global shortcut) the same list is the floating panel with its own field.
+  While the search page is open the field narrows it live (no panel).
+- **Deviations:** the Mac's "Ask Porridge" asks about everything (no scope chip in the toolbar; the chat's pop-up
+  changes it at once); the iPhone's scope chip is not saved into a smart filter (criteria have no scope). An asked
+  question is not kept as a recent search (it is a recent chat). **Fixed:** leaving the Search tab cleared the query
+  while the field (off screen) kept showing the old text over empty results; on the iPhone the Search tab now keeps
+  its query like every tab keeps its place (the iPad's one stack still forgets it).
+- Debug: `-chatStub YES` (Debug builds) answers without a model (`ChatStub`: the first two found items as sources,
+  two ACTION lines when the question asks for a change). Driver: `search-ask <text>`, `search-ask-floating`,
+  `search-ask-dump`, `search-ask-key return|ask|all|down|up|escape`, `shot-ask`, `windows`.
+- Tests: `SearchAskTests` (row order, go-to ranking incl. Settings, scope keys, entries, date groups, recent searches,
+  recent chats), `ChatTests` (Inbox scope, `startChat`, scope change applies to the next question only – with the
+  stub), `PlacesTests` (five tabs, `porridge://chat`), UI `SearchAskFlowTests` (tabs, Ask/Go To/entries order, Settings
+  row, hand-over + answer with sources + Confirm All + undo, Ask About This Bowl + scope change, Delete Chat confirm +
+  undo, `porridge://chat`), `SearchAskShotsTests` → /tmp/porridge-s5-shots.
 
 ---
 

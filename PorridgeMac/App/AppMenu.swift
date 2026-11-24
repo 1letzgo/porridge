@@ -100,7 +100,6 @@ enum AppMenu {
         item(menu, "Paste as New Note", #selector(MainWindowController.pasteAsNote(_:)), "v", [.command, .shift])
         menu.addItem(.separator())
         let find = NSMenu(title: "Find")
-        item(find, "Search Notes…", #selector(MainWindowController.focusSearch(_:)), "f", [.command, .option])
         item(find, "Find…", #selector(NSTextView.performFindPanelAction(_:)), "f", tag: Int(NSFindPanelAction.showFindPanel.rawValue))
         item(find, "Find Next", #selector(NSTextView.performFindPanelAction(_:)), "g", tag: Int(NSFindPanelAction.next.rawValue))
         item(find, "Find Previous", #selector(NSTextView.performFindPanelAction(_:)), "g", [.command, .shift], tag: Int(NSFindPanelAction.previous.rawValue))
@@ -148,14 +147,15 @@ enum AppMenu {
 
     private static func viewMenu() -> NSMenu {
         let menu = NSMenu(title: "View")
-        item(menu, "Command Bar…", #selector(MainWindowController.showCommandBar(_:)), "k", symbol: "command")
+        item(menu, "Search or Ask…", #selector(MainWindowController.showCommandBar(_:)), "k", symbol: "magnifyingglass")
         menu.addItem(.separator())
-        // The three places, then the two fixed rows at the end of the sidebar.
+        // The four places, then the two fixed rows at the end of the sidebar.
         item(menu, "Today", #selector(MainWindowController.showToday(_:)), "1", symbol: "calendar")
         item(menu, "Inbox", #selector(MainWindowController.showInbox(_:)), "2", symbol: "tray")
         item(menu, "Bowls", #selector(MainWindowController.showBowls(_:)), "3", symbol: "folder")
-        item(menu, "Archive", #selector(MainWindowController.showArchive(_:)), "4", symbol: "archivebox")
-        item(menu, "Recently Deleted", #selector(MainWindowController.showTrash(_:)), "5", symbol: "trash")
+        item(menu, "Chat", #selector(MainWindowController.showChat(_:)), "4", symbol: "bubble.left.and.bubble.right")
+        item(menu, "Archive", #selector(MainWindowController.showArchive(_:)), "5", symbol: "archivebox")
+        item(menu, "Recently Deleted", #selector(MainWindowController.showTrash(_:)), "6", symbol: "trash")
         menu.addItem(.separator())
         item(menu, "Open To-dos", #selector(MainWindowController.showTodos(_:)), "", symbol: "checklist")
         item(menu, "Weekly Review", #selector(MainWindowController.showWeeklyReview(_:)), "", symbol: "calendar.badge.checkmark")

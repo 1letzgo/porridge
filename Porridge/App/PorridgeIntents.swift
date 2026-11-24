@@ -109,4 +109,17 @@ struct OpenBowlsIntent: AppIntent {
         return .result()
     }
 }
+
+/// Opens the Chat place: ask your bowls.
+struct OpenChatIntent: AppIntent {
+    static let title: LocalizedStringResource = "Open Chat"
+    static let description = IntentDescription("Opens the chat in Porridge to ask your bowls a question.")
+    static let openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        QuickActionCenter.request(.openChat)
+        return .result()
+    }
+}
 #endif

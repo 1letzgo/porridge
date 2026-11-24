@@ -1,15 +1,22 @@
 import AppKit
 
-/// One line of the command bar: a command, a bowl to go to, or an entry to open.
+/// One line of Search or Ask: the question for the chat, a command, a bowl or smart filter to go to, an entry, a
+/// recent chat or search, or "Show All Results".
 struct CommandItem {
     enum Kind: Int {
-        case command, bowl, entry
+        case ask, command, bowl, smartFilter, entry, chat, recentSearch, showAll
 
+        /// The word (or the keys) on the right of the row.
         var label: String {
             switch self {
+            case .ask: "⌘↩"
             case .command: String(localized: "Command")
             case .bowl: String(localized: "Bowl")
+            case .smartFilter: String(localized: "Smart Filter")
             case .entry: String(localized: "Entry")
+            case .chat: String(localized: "Chat")
+            case .recentSearch: String(localized: "Search")
+            case .showAll: "⇧↩"
             }
         }
     }
@@ -26,56 +33,117 @@ struct CommandItem {
     var run: @MainActor () -> Void
 }
 
-/// What the command bar offers for a window: its commands (new note, record a meeting, dictation, settings, moving
-/// the selected entries into a bowl), the bowls, and the entries (by title, fuzzy, and by their words through the
-/// search index, `NoteIndex`).
+/// A part of the results under its heading.
+struct CommandSection {
+    var title: String?
+    var items: [CommandItem]
+}
+
+/// What Search or Ask offers for a window, in the order of `SearchAsk`: "Ask Porridge: …" first (⌘↩; it hands the
+/// question over to the Chat place), the commands that fit (every place, Open To-dos, Triage, Weekly Review, Import,
+/// Export, the open bowl's actions, moving the selection), the bowls and smart filters (`SearchAsk.goTo`), the entries
+/// by date (`SearchAsk.entries`), and "Show All Results" (⇧↩, the search page). The empty field shows the recent chats,
+/// the recent searches, the usual commands and the latest entries.
 @MainActor
 enum CommandBarItems {
-    static let limit = 40
+    static let commandLimit = 6
+    static let goToLimit = 5
+    static let entryLimit = 8
 
-    static func items(for query: String, controller: MainWindowController) -> [CommandItem] {
+    static func sections(for query: String, controller: MainWindowController) -> [CommandSection] {
         let library = Library.shared
-        let commands = commands(for: controller) + bowlItems(for: controller)
-        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let living = library.notes.filter { !$0.isDeleted }
-        guard !query.isEmpty else {
-            // The usual commands, then the latest entries.
-            return commands.filter(\.isSuggested) + living.prefix(6).map { entryItem($0, controller: controller) }
-        }
-        var scored: [(item: CommandItem, score: Int, order: Int)] = []
-        for (index, item) in commands.enumerated() {
-            if let score = FuzzyMatch.score(query, in: [item.title, item.title + " " + item.keywords]) {
-                scored.append((item, score + (item.kind == .command ? 30 : 20), index))
+        let commands = commands(for: controller)
+        guard let question = SearchAsk.question(query) else {
+            var sections: [CommandSection] = []
+            let chats = SearchAsk.recentChats(library.threads).map { chatItem($0, controller: controller) }
+            if !chats.isEmpty { sections.append(CommandSection(title: String(localized: "Recent Chats"), items: chats)) }
+            let searches = SearchAsk.RecentSearches.all().prefix(4).map { line in
+                CommandItem(kind: .recentSearch, title: line, symbol: "clock.arrow.circlepath", tint: .secondaryLabelColor) { [weak controller] in
+                    controller?.fillSearch(line)
+                }
             }
+            if !searches.isEmpty { sections.append(CommandSection(title: String(localized: "Recent Searches"), items: Array(searches))) }
+            sections.append(CommandSection(title: String(localized: "Commands"), items: commands.filter(\.isSuggested)))
+            let latest = library.notes.filter { !$0.isDeleted }.prefix(5).map { entryItem($0, query: nil, controller: controller) }
+            if !latest.isEmpty { sections.append(CommandSection(title: String(localized: "Latest Entries"), items: Array(latest))) }
+            return sections
         }
-        // Entries by their title first; then those whose words hold the query (the search's index).
-        var seen = Set<UUID>()
-        for (index, note) in living.enumerated() {
-            guard let score = FuzzyMatch.score(query, in: note.displayTitle) else { continue }
-            seen.insert(note.id)
-            scored.append((entryItem(note, controller: controller), score, 1000 + index))
+        var sections = [CommandSection(title: nil, items: [askItem(question, controller: controller)])]
+        let matching = FuzzyMatch.rank(commands, query: question) { $0.title + " " + $0.keywords }
+            .filter { FuzzyMatch.score(question, in: [$0.title, $0.title + " " + $0.keywords]) ?? 0 > 0 }
+            .prefix(commandLimit)
+        if !matching.isEmpty { sections.append(CommandSection(title: String(localized: "Commands"), items: Array(matching))) }
+        let targets = SearchAsk.goTo(
+            question, in: SearchAsk.targets(bowls: library.projects, filters: SmartFilterStore.shared.filters, notes: library.notes, places: false),
+            limit: goToLimit
+        )
+        if !targets.isEmpty {
+            sections.append(CommandSection(title: String(localized: "Bowls & Smart Filters"), items: targets.map { goToItem($0, query: question, controller: controller) }))
         }
-        if let ids = NoteIndex.shared.noteIDs(matching: query) {
-            for (index, note) in living.enumerated() where ids.contains(note.id) && !seen.contains(note.id) {
-                scored.append((entryItem(note, controller: controller), 0, 2000 + index))
-                if scored.count > 400 { break }
-            }
+        let entries = SearchAsk.entries(library.notes, query: question, indexMatches: NoteIndex.shared.noteIDs(matching: question))
+        if !entries.isEmpty {
+            sections.append(CommandSection(title: String(localized: "Entries"), items: entries.prefix(entryLimit).map { entryItem($0, query: question, controller: controller) }))
         }
-        var ranked = scored
-            .sorted { $0.score != $1.score ? $0.score > $1.score : $0.order < $1.order }
-            .prefix(limit)
-            .map(\.item)
-        // Always a way into the full search.
-        ranked.append(CommandItem(kind: .command, title: String(localized: "Search for “\(query)”"), symbol: "magnifyingglass", tint: .brandNavy) { [weak controller] in
+        sections.append(CommandSection(title: nil, items: [showAllItem(question, controller: controller)]))
+        return sections
+    }
+
+    /// The flat rows: the commands, bowls and entries, without headings (the debug driver).
+    static func items(for query: String, controller: MainWindowController) -> [CommandItem] {
+        sections(for: query, controller: controller).flatMap(\.items)
+    }
+
+    private static func askItem(_ question: String, controller: MainWindowController) -> CommandItem {
+        CommandItem(
+            kind: .ask, title: SearchAsk.askTitle(question), subtitle: SearchAsk.askSubtitle(.everywhere, bowls: Library.shared.projects),
+            symbol: "sparkles", tint: .brandNavy
+        ) { [weak controller] in
+            controller?.askPorridge(question)
+        }
+    }
+
+    private static func showAllItem(_ query: String, controller: MainWindowController) -> CommandItem {
+        CommandItem(kind: .showAll, title: String(localized: "Show All Results for “\(query)”"), symbol: "magnifyingglass", tint: .brandNavy) { [weak controller] in
+            controller?.showAllResults(query)
+        }
+    }
+
+    private static func goToItem(_ target: SearchAsk.Target, query: String, controller: MainWindowController) -> CommandItem {
+        let kind: CommandItem.Kind = target.kind == .smartFilter ? .smartFilter : .bowl
+        return CommandItem(
+            kind: kind, title: target.title, subtitle: target.subtitle, symbol: target.symbol,
+            tint: kind == .bowl ? .brandProject : .brandNavy
+        ) { [weak controller] in
             guard let controller else { return }
-            controller.state.page = .search
-            controller.state.searchText = query
-            controller.focusSearch(nil)
-        })
-        return ranked
+            SearchAsk.RecentSearches.add(query)
+            switch target.destination {
+            case .bowl(let id): controller.state.page = .project(id)
+            case .smartFilter(let id): controller.state.page = .smartFilter(id)
+            default: break
+            }
+        }
+    }
+
+    private static func chatItem(_ thread: ChatThread, controller: MainWindowController) -> CommandItem {
+        let id = thread.id
+        let subtitle = SearchAsk.chatName(thread.projectID, bowls: Library.shared.projects) + " · "
+            + thread.updatedAt.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+        return CommandItem(
+            kind: .chat, title: thread.title.isEmpty ? String(localized: "New Chat") : thread.title, subtitle: subtitle,
+            symbol: "bubble.left.and.bubble.right.fill", tint: .brandNavy
+        ) { [weak controller] in
+            guard let controller else { return }
+            controller.state.page = .chat
+            controller.state.chatID = id
+        }
     }
 
     private static func commands(for controller: MainWindowController) -> [CommandItem] {
+        func go(_ title: String, _ symbol: String, _ tint: NSColor, _ keywords: String, suggested: Bool = false, _ page: SidebarPage) -> CommandItem {
+            CommandItem(kind: .command, title: title, symbol: symbol, tint: tint, keywords: keywords, isSuggested: suggested) { [weak controller] in
+                controller?.state.page = page
+            }
+        }
         var items: [CommandItem] = [
             CommandItem(kind: .command, title: String(localized: "New Note"), symbol: "square.and.pencil", tint: .brandSky, keywords: "create add write", isSuggested: true) { [weak controller] in
                 controller?.newNote(nil)
@@ -91,7 +159,7 @@ enum CommandBarItems {
             },
             CommandItem(
                 kind: .command, title: DictationController.shared.isRecording ? String(localized: "Stop Dictation") : String(localized: "Start Dictation"),
-                symbol: "mic", tint: .brandSky, keywords: "dictate speak voice", isSuggested: true
+                symbol: "mic", tint: .brandSky, keywords: "dictate speak voice"
             ) {
                 DictationController.shared.toggleFromMenu()
             },
@@ -101,38 +169,41 @@ enum CommandBarItems {
             CommandItem(kind: .command, title: String(localized: "New Bowl…"), symbol: "folder.badge.plus", tint: .brandProject, keywords: "create") { [weak controller] in
                 controller?.newBucket(nil)
             },
+            CommandItem(kind: .command, title: String(localized: "New Chat"), symbol: "bubble.left.and.bubble.right", tint: .brandNavy, keywords: "ask question chat") { [weak controller] in
+                controller?.newChat(nil)
+            },
+            CommandItem(kind: .command, title: String(localized: "Import Photo or File…"), symbol: "paperclip", tint: .brandNavy, keywords: "import add pdf scan image document") { [weak controller] in
+                controller?.importFile(nil)
+            },
+            CommandItem(kind: .command, title: String(localized: "Import Audio…"), symbol: "waveform", tint: .brandNavy, keywords: "import recording transcribe") { [weak controller] in
+                controller?.importAudio(nil)
+            },
+            CommandItem(kind: .command, title: String(localized: "Export Everything…"), symbol: "square.and.arrow.up", tint: .brandNavy, keywords: "backup markdown") { [weak controller] in
+                controller?.exportEverything(nil)
+            },
             CommandItem(kind: .command, title: String(localized: "Weekly Review"), symbol: "calendar.badge.checkmark", tint: .brandNavy, keywords: "week summary", isSuggested: true) { [weak controller] in
                 controller?.showWeeklyReview(nil)
-            },
-            CommandItem(kind: .command, title: String(localized: "Open Settings"), symbol: "gearshape", tint: .systemGray, keywords: "preferences options", isSuggested: true) {
-                NSApp.activate()
-                SettingsWindowController.shared.show(tab: nil)
-            },
-            CommandItem(kind: .command, title: String(localized: "Go to Today"), symbol: "calendar", tint: .brandNavy, keywords: "show day appointments") { [weak controller] in
-                controller?.state.page = .today
-            },
-            CommandItem(kind: .command, title: String(localized: "Go to Inbox"), symbol: "tray.fill", tint: .brandSky, keywords: "show") { [weak controller] in
-                controller?.state.page = .inbox
-            },
-            CommandItem(kind: .command, title: String(localized: "Go to Bowls"), symbol: "folder.fill", tint: .brandProject, keywords: "show all bowls") { [weak controller] in
-                controller?.state.page = .bowls
-            },
-            CommandItem(kind: .command, title: String(localized: "Open To-dos"), symbol: "checklist", tint: .brandTask, keywords: "show tasks go to") { [weak controller] in
-                controller?.state.page = .todos
             },
             CommandItem(kind: .command, title: String(localized: "Triage Inbox"), symbol: "keyboard", tint: .brandSky, keywords: "inbox file sort") { [weak controller] in
                 controller?.triageInbox(nil)
             },
-            CommandItem(kind: .command, title: String(localized: "Go to Archive"), symbol: "archivebox.fill", tint: .brandNavy, keywords: "show archived bowls") { [weak controller] in
-                controller?.state.page = .archive
+            CommandItem(kind: .command, title: String(localized: "Settings"), symbol: "gearshape", tint: .systemGray, keywords: "open preferences options models", isSuggested: true) {
+                NSApp.activate()
+                SettingsWindowController.shared.show(tab: nil)
             },
-            CommandItem(kind: .command, title: String(localized: "Go to Recently Deleted"), symbol: "trash.fill", tint: .systemRed, keywords: "show trash bin") { [weak controller] in
-                controller?.state.page = .trash
-            },
-            CommandItem(kind: .command, title: String(localized: "Chat"), symbol: "bubble.left.and.bubble.right", tint: .brandNavy, keywords: "ask question") { [weak controller] in
-                controller?.openChat(nil)
-            },
+            go(String(localized: "Go to Today"), "calendar", .brandNavy, "show day appointments", .today),
+            go(String(localized: "Go to Inbox"), "tray.fill", .brandSky, "show new", .inbox),
+            go(String(localized: "Go to Bowls"), "folder.fill", .brandProject, "show all bowls", .bowls),
+            go(String(localized: "Go to Chat"), "bubble.left.and.bubble.right.fill", .brandNavy, "show chats all chats ask", .chat),
+            go(String(localized: "Open To-dos"), "checklist", .brandTask, "show tasks go to", .todos),
+            go(String(localized: "Go to Archive"), "archivebox.fill", .brandNavy, "show archived bowls", .archive),
+            go(String(localized: "Go to Recently Deleted"), "trash.fill", .systemRed, "show trash bin", .trash),
         ]
+        if Library.shared.plaudSignedIn {
+            items.append(CommandItem(kind: .command, title: String(localized: "Import from Plaud…"), symbol: "recordingtape", tint: .brandNavy, keywords: "import recorder") { [weak controller] in
+                controller?.importPlaud(nil)
+            })
+        }
         // A note or to-do from each note template.
         for template in NoteTemplateStore.shared.templates {
             items.append(CommandItem(
@@ -141,6 +212,20 @@ enum CommandBarItems {
             ) { [weak controller] in
                 controller?.newFromTemplate(template)
             })
+        }
+        // The open bowl's actions: the rows of its ⋯ menu.
+        if let id = controller.state.page.projectID, let project = Library.shared.project(id) {
+            let menu = NSMenu()
+            BucketActions.addItems(for: project, to: menu, state: controller.state, window: controller.window, opens: false)
+            items.append(CommandItem(kind: .command, title: String(localized: "New Note in \(project.name)"), symbol: "square.and.pencil", tint: .brandSky, keywords: "create add bowl") { [weak controller] in
+                controller?.newNote(nil)
+            })
+            for case let item as ActionMenuItem in menu.items where item.isEnabled {
+                let title = item.title.hasSuffix("…") || item.title.contains("Bowl") ? item.title : String(localized: "\(item.title) Bowl")
+                items.append(CommandItem(kind: .command, title: title, subtitle: project.name, symbol: "folder", tint: .brandProject, keywords: "bowl \(project.name)") {
+                    item.perform()
+                })
+            }
         }
         // The selected entries into a bowl or back to the Inbox.
         // Entries in a bowl shared with me to view only stay where they are.
@@ -164,33 +249,30 @@ enum CommandBarItems {
         return items
     }
 
-    private static func bowlItems(for controller: MainWindowController) -> [CommandItem] {
-        Library.shared.projects.map { project in
-            CommandItem(
-                kind: .bowl, title: project.name, subtitle: project.isArchived ? String(localized: "Archived") : nil,
-                symbol: project.isArchived ? "archivebox" : "folder.fill", tint: .brandProject, keywords: "go to bowl"
-            ) { [weak controller] in
-                controller?.state.page = .project(project.id)
-            }
-        }
-    }
-
-    private static func entryItem(_ note: Note, controller: MainWindowController) -> CommandItem {
+    private static func entryItem(_ note: Note, query: String?, controller: MainWindowController) -> CommandItem {
         let bowl = note.projectIDs.first.flatMap { Library.shared.project(key: $0)?.name } ?? String(localized: "Inbox")
-        let date = note.createdAt.formatted(date: .abbreviated, time: .omitted)
+        let date = note.updatedAt.formatted(date: .abbreviated, time: .omitted)
         let id = note.id
         return CommandItem(kind: .entry, title: note.displayTitle, subtitle: "\(note.kindName) · \(bowl) · \(date)", symbol: note.kindSymbol, tint: .brandNavy) { [weak controller] in
             guard let controller, let note = Library.shared.note(id) else { return }
+            if let query { SearchAsk.RecentSearches.add(query) }
             controller.state.reveal(note)
         }
     }
 }
 
-/// The command bar (⌘K): one field to find a command, a bowl or an entry and run it with Return. Arrows move through
-/// the list, Escape closes it, clicking elsewhere too.
+/// Search or Ask (⌘K): the results under the toolbar's field ("anchored": the field stays the window's, its keys are
+/// handed over by `MainWindowController`), or a floating panel with its own field (the global shortcut, a window
+/// whose toolbar is hidden). Arrows move through the list, ↩ runs the selected row (at first the best one after
+/// "Ask"), ⌘↩ asks, ⇧↩ shows all results, Escape closes it, clicking elsewhere too.
 @MainActor
 final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
-    private static var current: CommandBarController?
+    private(set) static var current: CommandBarController?
+
+    private enum Row {
+        case header(String)
+        case item(CommandItem)
+    }
 
     private let panel: CommandBarPanel
     private let field = NSTextField()
@@ -198,25 +280,50 @@ final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewData
     private let scroll = NSScrollView()
     private var heightConstraint: NSLayoutConstraint?
     private weak var controller: MainWindowController?
-    private var items: [CommandItem] = []
+    /// The toolbar's field the results hang from; nil for the floating panel.
+    private weak var anchor: NSSearchField?
+    private var rows: [Row] = []
+    private var query = ""
 
     private static let width: CGFloat = 600
+    private static let anchoredWidth: CGFloat = 480
     private static let rowHeight: CGFloat = 40
-    private static let maxRows = 9
+    private static let headerHeight: CGFloat = 26
+    private static let maxHeight: CGFloat = 460
 
+    var isAnchored: Bool { anchor != nil }
+
+    /// The floating panel over the window, with its own field.
     static func show(for controller: MainWindowController) {
-        if let current {
-            current.close()
-        }
-        let bar = CommandBarController(controller: controller)
+        current?.close()
+        let bar = CommandBarController(controller: controller, anchor: nil)
         current = bar
         bar.present()
     }
 
-    private init(controller: MainWindowController) {
+    /// The results under the toolbar's field, for what it holds now.
+    static func showAnchored(for controller: MainWindowController, field: NSSearchField) {
+        if let current, current.anchor === field, current.controller === controller {
+            current.update(query: field.stringValue)
+            return
+        }
+        current?.close()
+        let bar = CommandBarController(controller: controller, anchor: field)
+        current = bar
+        bar.present()
+    }
+
+    static func closeCurrent() {
+        current?.close()
+    }
+
+    private init(controller: MainWindowController, anchor: NSSearchField?) {
         self.controller = controller
+        self.anchor = anchor
         panel = CommandBarPanel(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 300), styleMask: [.borderless, .fullSizeContentView], backing: .buffered, defer: true)
+        panel.takesKeyboard = anchor == nil
         super.init()
+        query = anchor?.stringValue ?? ""
         build()
     }
 
@@ -226,7 +333,8 @@ final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewData
         panel.isOpaque = false
         panel.hasShadow = true
         panel.delegate = self
-        panel.setAccessibilityLabel(String(localized: "Command Bar"))
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.setAccessibilityLabel(String(localized: "Search or Ask"))
 
         let background = NSVisualEffectView()
         background.material = .popover
@@ -237,7 +345,40 @@ final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewData
         background.layer?.masksToBounds = true
         panel.contentView = background
 
-        field.placeholderString = String(localized: "Search entries, bowls and commands")
+        let column = NSTableColumn(identifier: .init("item"))
+        table.addTableColumn(column)
+        table.headerView = nil
+        table.intercellSpacing = NSSize(width: 0, height: 0)
+        table.floatsGroupRows = false
+        table.backgroundColor = .clear
+        table.style = .plain
+        table.selectionHighlightStyle = .regular
+        table.dataSource = self
+        table.delegate = self
+        table.target = self
+        table.action = #selector(clicked)
+        table.refusesFirstResponder = true
+        table.setAccessibilityLabel(String(localized: "Results"))
+        scroll.documentView = table
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(scroll)
+        let height = scroll.heightAnchor.constraint(equalToConstant: Self.rowHeight * 6)
+        heightConstraint = height
+
+        if isAnchored {
+            NSLayoutConstraint.activate([
+                scroll.topAnchor.constraint(equalTo: background.topAnchor, constant: 6),
+                scroll.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 6),
+                scroll.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -6),
+                scroll.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -6),
+                height,
+            ])
+            return
+        }
+
+        field.placeholderString = String(localized: "Search or Ask")
         field.font = .systemFont(ofSize: 20)
         field.isBordered = false
         field.drawsBackground = false
@@ -245,7 +386,7 @@ final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewData
         field.delegate = self
         field.cell?.sendsActionOnEndEditing = false
         field.translatesAutoresizingMaskIntoConstraints = false
-        field.setAccessibilityLabel(String(localized: "Command Bar"))
+        field.setAccessibilityLabel(String(localized: "Search or Ask"))
 
         let icon = NSImageView(image: .symbol("magnifyingglass", size: 18, weight: .medium))
         icon.contentTintColor = .secondaryLabelColor
@@ -255,30 +396,9 @@ final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewData
         line.boxType = .separator
         line.translatesAutoresizingMaskIntoConstraints = false
 
-        let column = NSTableColumn(identifier: .init("item"))
-        table.addTableColumn(column)
-        table.headerView = nil
-        table.rowHeight = Self.rowHeight
-        table.intercellSpacing = NSSize(width: 0, height: 0)
-        table.backgroundColor = .clear
-        table.style = .plain
-        table.selectionHighlightStyle = .regular
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
-        table.action = #selector(clicked)
-        table.refusesFirstResponder = true
-        scroll.documentView = table
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-
         background.addSubview(icon)
         background.addSubview(field)
         background.addSubview(line)
-        background.addSubview(scroll)
-        let height = scroll.heightAnchor.constraint(equalToConstant: Self.rowHeight * 6)
-        heightConstraint = height
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 16),
             icon.centerYAnchor.constraint(equalTo: field.centerYAnchor),
@@ -298,74 +418,149 @@ final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewData
 
     private func present() {
         guard let window = controller?.window else { return }
-        window.makeKeyAndOrderFront(nil)
-        update()
-        let frame = window.frame
-        let size = panel.contentView?.fittingSize ?? NSSize(width: Self.width, height: 300)
-        let width = min(Self.width, frame.width - 40)
-        panel.setFrame(NSRect(x: frame.midX - width / 2, y: frame.maxY - 110 - size.height, width: width, height: size.height), display: true)
+        if !isAnchored { window.makeKeyAndOrderFront(nil) }
+        reload()
+        position()
         window.addChildWindow(panel, ordered: .above)
-        panel.makeKeyAndOrderFront(nil)
-        panel.makeFirstResponder(field)
+        if isAnchored {
+            panel.orderFront(nil)
+        } else {
+            panel.makeKeyAndOrderFront(nil)
+            panel.makeFirstResponder(field)
+        }
     }
 
-    private func close() {
+    /// Floating: centred near the top of the window. Anchored: right under the field, its right edge with the
+    /// field's, inside the window.
+    private func position() {
+        guard let window = controller?.window, let content = panel.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        let height = content.fittingSize.height
+        let frame = window.frame
+        if let anchor, anchor.window != nil {
+            let rect = anchor.window!.convertToScreen(anchor.convert(anchor.bounds, to: nil))
+            let width = min(Self.anchoredWidth, frame.width - 24)
+            let x = max(frame.minX + 12, min(rect.maxX - width, frame.maxX - 12 - width))
+            panel.setFrame(NSRect(x: x, y: rect.minY - 6 - height, width: width, height: height), display: true)
+        } else {
+            let width = min(Self.width, frame.width - 40)
+            panel.setFrame(NSRect(x: frame.midX - width / 2, y: frame.maxY - 110 - height, width: width, height: height), display: true)
+        }
+    }
+
+    func close() {
         panel.delegate = nil
         panel.parent?.removeChildWindow(panel)
         panel.orderOut(nil)
         if Self.current === self { Self.current = nil }
     }
 
-    private func update() {
-        guard let controller else { return }
-        items = CommandBarItems.items(for: field.stringValue, controller: controller)
-        table.reloadData()
-        if !items.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false); table.scrollRowToVisible(0) }
-        let rows = CGFloat(min(max(items.count, 1), Self.maxRows))
-        let height = rows * Self.rowHeight
-        guard heightConstraint?.constant != height else { return }
-        heightConstraint?.constant = height
-        // Keep the top edge where it is.
-        if panel.isVisible, let content = panel.contentView {
-            content.layoutSubtreeIfNeeded()
-            let fitting = content.fittingSize.height
-            var frame = panel.frame
-            frame.origin.y += frame.height - fitting
-            frame.size.height = fitting
-            panel.setFrame(frame, display: true)
-        }
+    /// The anchored field's text changed.
+    func update(query new: String) {
+        query = new
+        reload()
+        position()
     }
 
-    private func runSelected() {
-        let row = table.selectedRow
-        guard row >= 0, row < items.count else { return }
-        let item = items[row]
+    private func reload() {
+        guard let controller else { return }
+        let text = isAnchored ? query : field.stringValue
+        rows = CommandBarItems.sections(for: text, controller: controller).flatMap { section -> [Row] in
+            (section.title.map { [Row.header($0)] } ?? []) + section.items.map { .item($0) }
+        }
+        table.reloadData()
+        selectBest()
+        let content = rows.reduce(CGFloat(0)) { $0 + height(of: $1) }
+        let height = min(max(content, Self.rowHeight), Self.maxHeight)
+        if heightConstraint?.constant != height { heightConstraint?.constant = height }
+    }
+
+    /// The best row: the first one after "Ask Porridge" (asking is ⌘↩), else the first.
+    private func selectBest() {
+        let selectable = rows.indices.filter { if case .item = rows[$0] { true } else { false } }
+        guard let first = selectable.first else { return }
+        let best = selectable.first { index in
+            if case .item(let item) = rows[index] { return item.kind != .ask && item.kind != .showAll }
+            return false
+        } ?? first
+        table.selectRowIndexes([best], byExtendingSelection: false)
+        table.scrollRowToVisible(0)
+    }
+
+    private func height(of row: Row) -> CGFloat {
+        if case .header = row { return Self.headerHeight }
+        return Self.rowHeight
+    }
+
+    private func item(at row: Int) -> CommandItem? {
+        guard rows.indices.contains(row), case .item(let item) = rows[row] else { return nil }
+        return item
+    }
+
+    private func run(_ item: CommandItem) {
         let window = controller?.window
+        let anchor = anchor
         close()
+        if let anchor {
+            // Done with the field: its text goes (the search page keeps what it shows).
+            if item.kind != .showAll, item.kind != .recentSearch { anchor.stringValue = "" }
+            window?.makeFirstResponder(nil)
+        }
         window?.makeKeyAndOrderFront(nil)
         item.run()
     }
 
+    func runSelected() {
+        guard let item = item(at: table.selectedRow) else { return }
+        run(item)
+    }
+
+    /// ⌘↩: the question goes to the chat.
+    func ask() {
+        guard let item = rows.compactMap({ if case .item(let item) = $0, item.kind == .ask { item } else { nil } }).first else { return }
+        run(item)
+    }
+
+    /// ⇧↩: the search page with every result.
+    func showAll() {
+        guard let item = rows.compactMap({ if case .item(let item) = $0, item.kind == .showAll { item } else { nil } }).first else { return }
+        run(item)
+    }
+
+    /// The titles of the rows, headings in brackets (the debug driver).
+    var dump: [String] {
+        rows.enumerated().map { index, row in
+            switch row {
+            case .header(let title): "[\(title)]"
+            case .item(let item): (index == table.selectedRow ? "> " : "  ") + item.title + (item.subtitle.map { " — \($0)" } ?? "") + " · " + item.kind.label
+            }
+        }
+    }
+
     @objc private func clicked() {
-        guard table.clickedRow >= 0 else { return }
+        guard item(at: table.clickedRow) != nil else { return }
         table.selectRowIndexes([table.clickedRow], byExtendingSelection: false)
         runSelected()
     }
 
-    // MARK: Field
+    // MARK: Keys
 
-    func controlTextDidChange(_ obj: Notification) {
-        update()
-    }
-
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+    /// The keys of a field (its own or the toolbar's): true when handled.
+    func handle(_ selector: Selector) -> Bool {
         switch selector {
         case #selector(NSResponder.moveDown(_:)):
             move(by: 1)
         case #selector(NSResponder.moveUp(_:)):
             move(by: -1)
-        case #selector(NSResponder.insertNewline(_:)):
-            runSelected()
+        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertLineBreak(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
+            let flags = NSApp.currentEvent?.modifierFlags ?? []
+            if flags.contains(.command) {
+                ask()
+            } else if flags.contains(.shift) {
+                showAll()
+            } else {
+                runSelected()
+            }
         case #selector(NSResponder.cancelOperation(_:)):
             close()
         default:
@@ -374,31 +569,81 @@ final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewData
         return true
     }
 
+    func controlTextDidChange(_ obj: Notification) {
+        reload()
+        position()
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        handle(selector)
+    }
+
     private func move(by offset: Int) {
-        guard !items.isEmpty else { return }
-        let row = max(0, min(items.count - 1, table.selectedRow + offset))
+        guard !rows.isEmpty else { return }
+        var row = table.selectedRow
+        repeat {
+            row += offset
+        } while rows.indices.contains(row) && item(at: row) == nil
+        guard rows.indices.contains(row) else { return }
         table.selectRowIndexes([row], byExtendingSelection: false)
         table.scrollRowToVisible(row)
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        close()
+        if !isAnchored { close() }
     }
 
     // MARK: Table
 
-    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        height(of: rows[row])
+    }
+
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
+        if case .header = rows[row] { return true }
+        return false
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+        item(at: row) != nil
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = (tableView.makeView(withIdentifier: CommandBarCell.identifier, owner: nil) as? CommandBarCell) ?? CommandBarCell()
-        cell.show(items[row])
-        return cell
+        switch rows[row] {
+        case .header(let title):
+            let label = NSTextField.label(title, font: .systemFont(ofSize: 11, weight: .semibold), color: .secondaryLabelColor)
+            let view = NSView()
+            label.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+                label.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -4),
+            ])
+            return view
+        case .item(let item):
+            let cell = (tableView.makeView(withIdentifier: CommandBarCell.identifier, owner: nil) as? CommandBarCell) ?? CommandBarCell()
+            cell.show(item)
+            return cell
+        }
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        if case .header = rows[row] { return PlainGroupRowView() }
+        return nil
     }
 }
 
-/// A borderless panel that can still take the keyboard.
+/// A heading row without the group row's floating bar.
+private final class PlainGroupRowView: NSTableRowView {
+    override func drawBackground(in dirtyRect: NSRect) {}
+}
+
+/// A borderless panel; the floating one takes the keyboard, the anchored one leaves it with the toolbar's field.
 private final class CommandBarPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    var takesKeyboard = true
+    override var canBecomeKey: Bool { takesKeyboard }
     override var canBecomeMain: Bool { false }
 }
 
@@ -438,6 +683,7 @@ private final class CommandBarCell: NSTableCellView {
         icon.image = .symbol(item.symbol, size: 14, weight: .medium)
         icon.contentTintColor = item.tint.readable
         title.stringValue = item.title
+        title.font = .systemFont(ofSize: 14, weight: item.kind == .ask ? .semibold : .regular)
         subtitle.stringValue = item.subtitle ?? ""
         subtitle.isHidden = item.subtitle == nil
         kind.stringValue = item.kind.label

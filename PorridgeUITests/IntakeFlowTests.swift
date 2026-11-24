@@ -42,7 +42,8 @@ final class IntakeFlowTests: XCTestCase {
         XCTAssertTrue(row.waitForNonExistence(timeout: 10), "filed note still in the inbox")
     }
 
-    /// The chat about a bowl opens from the bowl's ⋯ (Ask About This Bowl); it is kept and taken up again.
+    /// The chat about a bowl opens from the bowl's ⋯ (Ask About This Bowl) in the Chat tab; it is kept and taken up
+    /// again.
     func testAChatAboutABucketIsKeptAndTakenUpAgain() throws {
         let app = launchApp()
         let bucket = unique("Chat")
@@ -76,13 +77,17 @@ final class IntakeFlowTests: XCTestCase {
         // (documents got their payment state), that takes a while on a simulator full of earlier test entries.
         XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 90), "answer missing")
 
+        // Asking about a bowl opens the Chat tab.
+        XCTAssertTrue(app.tabBars.buttons["Chat"].isSelected, "the chat did not open in the Chat tab")
         // Kept: it is in the list of chats, and asking about the bowl again shows it.
         app.buttons["All Chats"].tap()
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 5), "chat missing in the list of chats")
-        app.buttons["Back"].firstMatch.tap()
+        app.buttons["New Chat"].tap()
+        XCTAssertTrue(app.staticTexts["Ask Your Bowls"].waitForExistence(timeout: 5), "New Chat did not start an empty chat")
+        XCTAssertTrue(app.buttons.matching(identifier: "RecentChat").firstMatch.exists, "a new chat offers no recent chats")
         app.openTab("Bowls")
         askAboutTheBowl()
-        XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 10), "the chat was not taken up again")
+        XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 10), "the chat was not taken up again")
         XCTAssertTrue(app.buttons["New Chat"].exists, "no way to start another chat")
     }
 }

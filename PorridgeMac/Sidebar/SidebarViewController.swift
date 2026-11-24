@@ -35,9 +35,9 @@ private final class SidebarNode: NSObject {
     }
 }
 
-/// The sidebar as a source list: the three places Today, Inbox and Bowls (⌘1–3; Bowls unfolds into every bowl in the
+/// The sidebar as a source list: the places Today, Inbox, Bowls and Chat (⌘1–4; Bowls unfolds into every bowl in the
 /// order of Sort Bowls By, no limit), the smart filters with "New Smart Filter…", then Archive and Recently Deleted
-/// (⌘4, ⌘5), always there. Notes dropped on a bowl go into it; files dropped on it are brought in there.
+/// (⌘5, ⌘6), always there. Notes dropped on a bowl go into it; files dropped on it are brought in there.
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSTextFieldDelegate {
     private let state: WindowState
     private let library = Library.shared
@@ -146,6 +146,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             SidebarNode(.page(.today)),
             SidebarNode(.page(.inbox)),
             SidebarNode(.page(.bowls), children: bowls.map { SidebarNode(.page(.project($0.id))) }),
+            // The chat is the fourth place (⌘4): its chats in the list column, the open one in the detail.
+            SidebarNode(.page(.chat)),
         ]
         let filters = SmartFilterStore.shared.filters
         top.append(SidebarNode(.group("Smart Filters"), children: filters.map { SidebarNode(.page(.smartFilter($0.id))) } + [SidebarNode(.action("newSmartFilter"))]))

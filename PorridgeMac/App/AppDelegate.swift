@@ -158,6 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .openToday: controller.showToday(nil)
         case .openInbox: controller.showInbox(nil)
         case .openBowls: controller.showBowls(nil)
+        case .openChat: controller.showChat(nil)
         case .openTodos: controller.showTodos(nil)
         case .search(let query): controller.search(for: query)
         case .openNote(let id): EntryLinkRouter.request(id)

@@ -51,7 +51,12 @@ extension XCUIApplication {
     func create(_ option: String) {
         // An alert that is still going away has a "Create" of its own.
         _ = alerts.firstMatch.waitForNonExistence(timeout: 5)
-        let plus = addButton
+        // The app opens on the tab used last; Chat and Search have no "+": Today has.
+        var plus = addButton
+        if !(plus.waitForExistence(timeout: 5) && plus.isHittable) {
+            openTab("Today")
+            plus = addButton
+        }
         XCTAssertTrue(plus.waitForExistence(timeout: 30), "plus button missing")
         plus.tap()
         XCTAssertTrue(navigationBars["Add"].waitForExistence(timeout: 10), "the Add sheet did not open")
