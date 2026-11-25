@@ -36,7 +36,7 @@ enum AppMenu {
         let item = menu.addItem(withTitle: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
         item.tag = tag
-        if let symbol { item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
+        if let symbol { item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? .symbol(symbol) }
         return item
     }
 
@@ -152,7 +152,7 @@ enum AppMenu {
         // The four places, then the two fixed rows at the end of the sidebar.
         item(menu, "Today", #selector(MainWindowController.showToday(_:)), "1", symbol: "calendar")
         item(menu, "Inbox", #selector(MainWindowController.showInbox(_:)), "2", symbol: "tray")
-        item(menu, "Bowls", #selector(MainWindowController.showBowls(_:)), "3", symbol: "folder")
+        item(menu, "Bowls", #selector(MainWindowController.showBowls(_:)), "3", symbol: Places.bowlsSymbol)
         item(menu, "Chat", #selector(MainWindowController.showChat(_:)), "4", symbol: "bubble.left.and.bubble.right")
         item(menu, "Archive", #selector(MainWindowController.showArchive(_:)), "5", symbol: "archivebox")
         item(menu, "Recently Deleted", #selector(MainWindowController.showTrash(_:)), "6", symbol: "trash")

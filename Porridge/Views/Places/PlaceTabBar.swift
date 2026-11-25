@@ -185,7 +185,7 @@ extension Place {
     @ViewBuilder
     func tabIcon(chosen: Bool) -> some View {
         if self == .bowls {
-            Image(chosen ? "BowlPlaceFill" : "BowlPlace")
+            Image(chosen ? Places.bowlsSymbol : "BowlPlace")
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
@@ -200,7 +200,7 @@ extension Place {
         switch self {
         case .today: "calendar"
         case .inbox: "tray.fill"
-        case .bowls: "folder.fill"
+        case .bowls: Places.bowlsSymbol
         case .search: "magnifyingglass"
         }
     }

@@ -101,7 +101,7 @@ final class ListHeaderView: NSView {
         let (name, symbol, tint): (String, String, NSColor) = switch page {
         case .today: (TodayDay.title(state.todayShownDay), "calendar", .brandNavy)
         case .inbox: ("Inbox", "tray.fill", .brandSky)
-        case .bowls: ("Bowls", "folder.fill", .brandProject)
+        case .bowls: ("Bowls", Places.bowlsSymbol, .brandProject)
         case .todos: ("Open To-dos", "checklist", .brandTask)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)
         case .project(let id): (library.project(id)?.name ?? "Bowl", "folder.fill", .brandProject)

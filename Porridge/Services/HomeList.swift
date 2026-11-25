@@ -77,6 +77,10 @@ enum HomeList {
 /// The counts on the three places: Today's tab and sidebar row show the to-dos due today or overdue, the Inbox's
 /// what waits in it (not put away for later). The same numbers on iPhone and Mac.
 enum Places {
+    /// The place Bowls as a whole (tab, page head, Go To, onboarding, Mac sidebar and menus): a bowl of the app's own
+    /// (template images `BowlPlaceFill`, `BowlPlace` outlined; SF Symbols has no bowl). A single bowl keeps the folder.
+    static let bowlsSymbol = "BowlPlaceFill"
+
     static func todayCount(_ notes: [Note], now: Date = Date()) -> Int {
         TodayTodos.open(notes, now: now).count
     }

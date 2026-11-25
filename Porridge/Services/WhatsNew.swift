@@ -66,8 +66,8 @@ enum WhatsNew {
     static func places(mac: Bool) -> [Item] {
         let today = Item(symbol: "calendar", title: String(localized: "Today"), text: String(localized: "Appointments and the to-dos that are due."))
         let inbox = Item(symbol: "tray.fill", title: String(localized: "Inbox"),
-                         text: String(localized: "Everything new lands here first, until it is filed into a bowl. At its end: Open To-dos and the Weekly Review."))
-        let bowls = Item(symbol: "folder.fill", title: String(localized: "Bowls"), text: mac
+                         text: String(localized: "Everything new lands here first, until it is filed into a bowl. On top: Open To-dos and the Weekly Review."))
+        let bowls = Item(symbol: Places.bowlsSymbol, title: String(localized: "Bowls"), text: mac
             ? String(localized: "One bowl per topic, the smart filters, Archive and Recently Deleted.")
             : String(localized: "One bowl per topic and the smart filters; the switch on top shows the Archive and Recently Deleted."))
         if mac {

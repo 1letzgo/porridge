@@ -111,7 +111,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(WhatsNew.places(mac: false), id: \.self) { place in
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: place.symbol)
+                        SymbolImage(place.symbol, textStyle: .body)
                             .font(.body.weight(.semibold))
                             .foregroundStyle(Color.brandSkyText)
                             .frame(width: 28)

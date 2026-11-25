@@ -309,7 +309,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             cell.configure(title: "Inbox", symbol: "tray.fill", tint: .brandSky, badge: cellBadge(for: page) ?? 0)
         case .bowls:
             // A bowl of the app's own (SF Symbols has none); single bowls keep the folder.
-            cell.configure(title: "Bowls", symbol: "BowlPlaceFill", tint: .brandProject, badge: 0)
+            cell.configure(title: "Bowls", symbol: Places.bowlsSymbol, tint: .brandProject, badge: 0)
         case .todos:
             let folder = Todos.folder(notes)
             cell.configure(title: "Open To-dos", symbol: "checklist", tint: .brandTask, badge: folder.open, alert: folder.overdue)

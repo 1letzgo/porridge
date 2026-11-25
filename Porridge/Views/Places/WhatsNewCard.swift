@@ -26,7 +26,7 @@ struct WhatsNewCard: View {
             }
             ForEach(WhatsNew.items(mac: false), id: \.self) { item in
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: item.symbol)
+                    SymbolImage(item.symbol, textStyle: .subheadline)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.brandSkyText)
                         .frame(minWidth: 22)

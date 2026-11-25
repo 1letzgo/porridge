@@ -190,7 +190,7 @@ struct ThingsRowIcon: View {
     @ScaledMetric(relativeTo: .body) private var size: CGFloat = 30
 
     var body: some View {
-        Image(systemName: systemImage)
+        SymbolImage(systemImage, textStyle: .subheadline)
             .font(.subheadline.weight(.semibold))
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .foregroundStyle(tint.readable)
@@ -215,6 +215,40 @@ extension View {
     /// The header of the next section brings its own line: the last row of a section draws none.
     func lastInSection(_ isLast: Bool) -> some View {
         listRowSeparator(isLast ? .hidden : .automatic, edges: .bottom)
+    }
+}
+
+/// An SF Symbol by name, or one of the app's own symbol images (`Places.bowlsSymbol`): drawn as large as a symbol in
+/// that text style would be, following Dynamic Type, in the foreground style.
+struct SymbolImage: View {
+    let name: String
+    @ScaledMetric private var height: CGFloat
+
+    init(_ name: String, textStyle: Font.TextStyle = .body) {
+        self.name = name
+        let base: CGFloat = switch textStyle {
+        case .caption, .caption2, .footnote: 10.5
+        case .subheadline, .callout: 12.5
+        case .title3: 16
+        case .title2: 18
+        case .title, .largeTitle: 22
+        default: 14
+        }
+        _height = ScaledMetric(wrappedValue: base, relativeTo: textStyle)
+    }
+
+    static func isOwn(_ name: String) -> Bool { name.hasPrefix("BowlPlace") }
+
+    var body: some View {
+        if Self.isOwn(name) {
+            Image(name)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: (height * 26 / 22).rounded(), height: height.rounded())
+        } else {
+            Image(systemName: name)
+        }
     }
 }
 
@@ -401,7 +435,7 @@ struct ChromeBar<Actions: View>: View {
 
     private func titleView(lineLimit: Int) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: systemImage)
+            SymbolImage(systemImage, textStyle: .body)
                 .font(.body.weight(.bold))
                 .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .foregroundStyle(tint.onFill)

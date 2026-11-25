@@ -253,7 +253,7 @@ enum NoteListContent {
         sections.append((ListSection(id: "bowls-filters", title: String(localized: "Smart Filters"), tint: .navy),
                          filters.map { .link(.smartFilter($0.id)) } + [.link(.newSmartFilter)]))
         sections.append((ListSection(id: "bowls-more", title: "", tint: .navy), [.link(.archive), .link(.trash)]))
-        return Built(sections: sections, emptyTitle: "", emptyMessage: "", emptySymbol: "folder")
+        return Built(sections: sections, emptyTitle: "", emptyMessage: "", emptySymbol: Places.bowlsSymbol)
     }
 
     /// What the search finds among the notes, those in archived bowls included; strictly a timeline.

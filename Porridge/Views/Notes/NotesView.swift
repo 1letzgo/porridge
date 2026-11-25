@@ -144,9 +144,17 @@ struct NotesView: View {
         let badges: [Place: Int] = [.today: Places.todayCount(notes), .inbox: inboxCount]
         return TabView(selection: $place) {
             ForEach(Place.allCases, id: \.self) { shown in
-                Tab(shown.tabTitle, systemImage: shown.tabSymbol, value: shown) {
-                    placeStack(shown)
-                        .toolbar(.hidden, for: .tabBar)
+                // The app's own bowl is an image, not an SF Symbol (`Places.bowlsSymbol`).
+                if SymbolImage.isOwn(shown.tabSymbol) {
+                    Tab(shown.tabTitle, image: shown.tabSymbol, value: shown) {
+                        placeStack(shown)
+                            .toolbar(.hidden, for: .tabBar)
+                    }
+                } else {
+                    Tab(shown.tabTitle, systemImage: shown.tabSymbol, value: shown) {
+                        placeStack(shown)
+                            .toolbar(.hidden, for: .tabBar)
+                    }
                 }
             }
         }
@@ -1378,7 +1386,7 @@ struct NotesView: View {
     /// Symbol in the colored square in front of the title (the list icon of Things).
     private func listIcon(_ shown: ListPage) -> String {
         switch shown {
-        case .bowls: "folder.fill"
+        case .bowls: Places.bowlsSymbol
         case .project: "folder.fill"
         case .inbox: "tray.fill"
         case .todos: "checklist"
