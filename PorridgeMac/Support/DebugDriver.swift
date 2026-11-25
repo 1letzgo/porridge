@@ -506,6 +506,10 @@ enum DebugDriver {
             guard DataLocation.testFolder != nil else { log("seed-inbox: test data only"); return }
             TestSeed.seedInbox(library.context)
             library.setNeedsReload()
+        case "scroll-end":
+            // The end of the middle column (the Inbox's end card).
+            let table = controller.split.content.notes.table
+            if table.numberOfRows > 0 { table.scrollRowToVisible(table.numberOfRows - 1) }
         case "triage":
             // Triage on or off (the Inbox's "Triage"); `triage-key f|l|d|j|k|delete|escape` presses a key.
             controller.split.content.notes.toggleTriage()

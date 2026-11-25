@@ -231,6 +231,9 @@ final class EmptyMessageView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Only a message: clicks go through to what is below it (the empty Inbox's end card).
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
     func show(title: String, message: String, symbol: String) {
         image.image = .symbol(symbol, size: 34, weight: .light)
         self.title.stringValue = title

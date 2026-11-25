@@ -104,7 +104,13 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             return cell
         }
         dataSource.rowViewProvider = { table, row, item in
-            (item.base is ListSection) ? GroupRowView() : NSTableRowView()
+            if item.base is ListSection { return GroupRowView() }
+            // The Inbox's end card: Open To-dos on top, the Weekly Review below (only the Inbox has these rows).
+            switch item.base as? ListItem {
+            case .link(.openTodos)?: return CardRowView(edge: .top)
+            case .link(.weeklyReview)?: return CardRowView(edge: .bottom)
+            default: return NSTableRowView()
+            }
         }
         header.onFilter = { [weak self] kind in self?.state.kindFilter = kind }
         header.onTag = { [weak self] tag in
@@ -202,9 +208,11 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         bundleBanner.host = self
         bundleBanner.refresh(isInbox: state.page == .inbox && state.searchText.isEmpty)
         let isEmpty = built.sections.isEmpty
-        empty.isHidden = !isEmpty || state.page == .chat
+        // The empty Inbox keeps its end card: the message shows over the list, which stays.
+        let showsMessage = isEmpty || built.showsEmptyMessage
+        empty.isHidden = !showsMessage || state.page == .chat
         scroll.isHidden = isEmpty
-        if isEmpty { empty.show(title: built.emptyTitle, message: built.emptyMessage, symbol: built.emptySymbol) }
+        if showsMessage { empty.show(title: built.emptyTitle, message: built.emptyMessage, symbol: built.emptySymbol) }
         syncSelection()
         if pageChanged { table.scrollRowToVisible(0) }
     }
@@ -571,6 +579,52 @@ private final class SectionHeaderCell: NSTableCellView {
 /// Group rows draw no selection and keep the page's background.
 private final class GroupRowView: NSTableRowView {
     override func drawBackground(in dirtyRect: NSRect) {}
+}
+
+/// A row of the Inbox's end card: a soft fill with the card's rounded corners on its outer edge; the table's spacing
+/// between the two rows is the line between the targets.
+private final class CardRowView: NSTableRowView {
+    enum Edge { case top, bottom }
+    private let edge: Edge
+
+    init(edge: Edge) {
+        self.edge = edge
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        let rect = bounds.insetBy(dx: 10, dy: 0)
+        let radius: CGFloat = 10
+        let path = NSBezierPath()
+        let (minX, maxX, minY, maxY) = (rect.minX, rect.maxX, rect.minY, rect.maxY)
+        // Flipped: minY is the top of the row.
+        let roundTop = edge == .top
+        path.move(to: NSPoint(x: minX, y: roundTop ? minY + radius : minY))
+        if roundTop {
+            path.appendArc(from: NSPoint(x: minX, y: minY), to: NSPoint(x: minX + radius, y: minY), radius: radius)
+            path.line(to: NSPoint(x: maxX - radius, y: minY))
+            path.appendArc(from: NSPoint(x: maxX, y: minY), to: NSPoint(x: maxX, y: minY + radius), radius: radius)
+        } else {
+            path.line(to: NSPoint(x: maxX, y: minY))
+        }
+        if roundTop {
+            path.line(to: NSPoint(x: maxX, y: maxY))
+            path.line(to: NSPoint(x: minX, y: maxY))
+        } else {
+            path.line(to: NSPoint(x: maxX, y: maxY - radius))
+            path.appendArc(from: NSPoint(x: maxX, y: maxY), to: NSPoint(x: maxX - radius, y: maxY), radius: radius)
+            path.line(to: NSPoint(x: minX + radius, y: maxY))
+            path.appendArc(from: NSPoint(x: minX, y: maxY), to: NSPoint(x: minX, y: maxY - radius), radius: radius)
+        }
+        path.close()
+        NSColor.quaternarySystemFill.setFill()
+        path.fill()
+    }
+
+    override var isFlipped: Bool { true }
 }
 
 /// A fixed row that leads somewhere: a symbol in its color, the name, a line about what is there, a count.

@@ -3,7 +3,7 @@ import SwiftData
 import UniformTypeIdentifiers
 
 /// A main window: sidebar, list and detail, with the toolbar. Several can be open, also as tabs; each has its
-/// own page, selection and search, and comes back where it was after a restart.
+/// own page, selection and search. After a restart it comes back at its size and place, on Today.
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSSearchFieldDelegate, NSMenuItemValidation, NSToolbarItemValidation {
     let state: WindowState
     let split: MainSplitViewController
@@ -860,16 +860,11 @@ private struct RestoredState: Codable {
         chatID = state.chatID
     }
 
+    /// A restored window starts on Today (owner revision 5), not on the place it was left on; its size and place on
+    /// the screen come back as before (AppKit), and so does the chat that was open in the Chat place.
     @MainActor
     func apply(to state: WindowState, library: Library) {
-        if case .project(let id) = page, library.project(id) == nil {
-            state.page = .inbox
-        } else if case .smartFilter(let id) = page, SmartFilterStore.shared.filter(id) == nil {
-            state.page = .inbox
-        } else {
-            state.page = page
-        }
-        state.selection = selection.filter { library.note($0) != nil }
+        state.page = .today
         state.chatID = chatID
     }
 }

@@ -6,8 +6,8 @@ enum ListItem: Hashable {
     case project(UUID)
     /// An appointment of the day (Today), by `CalendarAppointment.key`.
     case appointment(String)
-    /// A fixed row that leads somewhere (Today's Open To-dos and Weekly Review; the Bowls place's smart filters,
-    /// Archive and Recently Deleted).
+    /// A fixed row that leads somewhere (the Inbox's end card: Open To-dos and Weekly Review; the Bowls place's smart
+    /// filters, Archive and Recently Deleted).
     case link(ListLink)
 }
 
@@ -38,9 +38,14 @@ enum NoteListContent {
         var emptyTitle: String
         var emptyMessage: String
         var emptySymbol: String
+        /// The empty message shows over the list although it has sections (the empty Inbox keeps its end card).
+        var showsEmptyMessage = false
         /// The kinds a bowl holds, for its filter; empty elsewhere.
         var kindCounts: [KindFilter: Int] = [:]
     }
+
+    /// The section of the Inbox's end card (Open To-dos, Weekly Review): its rows are drawn as one card.
+    static let inboxCardID = "inbox-card"
 
     static func build(for state: WindowState, library: Library) -> Built {
         let notes = library.notes
@@ -60,9 +65,12 @@ enum NoteListContent {
             let waiting = Inbox.notes(notes)
             let later = InboxSnooze.snoozed(notes)
             let next = later.compactMap(\.snoozedUntil).min().map { " " + String(localized: "\(later.count) come back from Later · next \(InboxSnooze.timeLabel($0)).") } ?? ""
+            // At the end, also when nothing waits: the card with Open To-dos and the Weekly Review.
+            let card = (ListSection(id: Self.inboxCardID, title: "", tint: .navy), [ListItem.link(.openTodos), .link(.weeklyReview)])
             return Built(
-                sections: waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })],
-                emptyTitle: "Inbox Empty", emptyMessage: "Everything is filed. Drop files, mails or links here, or press ⌘N." + next, emptySymbol: "tray"
+                sections: (waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]) + [card],
+                emptyTitle: "Inbox Empty", emptyMessage: "Everything is filed. Drop files, mails or links here, or press ⌘N." + next, emptySymbol: "tray",
+                showsEmptyMessage: waiting.isEmpty
             )
         case .bowls:
             return bowls(notes, library: library)
@@ -197,12 +205,11 @@ enum NoteListContent {
             ), open.map { .note($0.id) }))
         }
         if isToday {
-            // The next seven days, a few rows; then the fixed rows, so Today looks the same every day.
+            // The next seven days, a few rows. (Open To-dos and the Weekly Review are the Inbox's end card.)
             let upcoming = TodayTodos.upcoming(notes).filter { !shown.contains($0.id) }.prefix(5)
             if !upcoming.isEmpty {
                 sections.append((ListSection(id: "today-upnext", title: String(localized: "Up Next"), tint: .navy), upcoming.map { .note($0.id) }))
             }
-            sections.append((ListSection(id: "today-links", title: "", tint: .navy), [.link(.openTodos), .link(.weeklyReview)]))
         }
         return Built(
             sections: sections, emptyTitle: isToday ? "Nothing Today" : "Nothing on This Day",
