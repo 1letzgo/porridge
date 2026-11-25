@@ -298,16 +298,21 @@ final class BowlSharingTests: XCTestCase {
         XCTAssertEqual(decide(nil, lastSynced: nil, SharedNotePayload(note()), mayInsert: false), .skip)
     }
 
-    func testRemovalNeverDeletes() {
-        XCTAssertEqual(SharedBowlMerge.removal(isInBowl: true), .moveToInbox)
-        XCTAssertEqual(SharedBowlMerge.removal(isInBowl: false), .none, "taken out here already: it is mine")
+    func testRemovalDeletesOnlyCopiesOfABowlSharedWithMe() {
+        // The owner took the entry out of the bowl or deleted it for good.
+        XCTAssertEqual(SharedBowlEnding.removal(role: .participant, isCopy: true, isInBowl: true), .deleteCopy)
+        XCTAssertEqual(SharedBowlEnding.removal(role: .participant, isCopy: false, isInBowl: true), .moveToInbox, "what I made myself stays mine")
+        XCTAssertEqual(SharedBowlEnding.removal(role: .owner, isCopy: true, isInBowl: true), .moveToInbox, "the owner never loses an entry")
+        XCTAssertEqual(SharedBowlEnding.removal(role: .owner, isCopy: false, isInBowl: true), .moveToInbox)
+        XCTAssertEqual(SharedBowlEnding.removal(role: .participant, isCopy: true, isInBowl: false), .none, "out of the bowl here: not touched")
+        XCTAssertEqual(SharedBowlEnding.removal(role: .owner, isCopy: false, isInBowl: false), .none)
     }
 
     func testWhenAShareEndsOnlyCopiesGo() {
-        XCTAssertEqual(SharedBowlMerge.shareEnd(role: .owner, isCopy: true), .none)
-        XCTAssertEqual(SharedBowlMerge.shareEnd(role: .owner, isCopy: false), .none)
-        XCTAssertEqual(SharedBowlMerge.shareEnd(role: .participant, isCopy: true), .deleteCopy)
-        XCTAssertEqual(SharedBowlMerge.shareEnd(role: .participant, isCopy: false), .moveToInbox, "what I made myself stays mine")
+        XCTAssertEqual(SharedBowlEnding.shareEnd(role: .owner, isCopy: true, isInBowl: true, isTracked: true), .none)
+        XCTAssertEqual(SharedBowlEnding.shareEnd(role: .owner, isCopy: false, isInBowl: true), .none)
+        XCTAssertEqual(SharedBowlEnding.shareEnd(role: .participant, isCopy: true, isInBowl: true), .deleteCopy)
+        XCTAssertEqual(SharedBowlEnding.shareEnd(role: .participant, isCopy: false, isInBowl: true), .moveToInbox, "what I made myself stays mine")
     }
 
     func testRemovalsWaitForThePrivateSyncNotForTime() {

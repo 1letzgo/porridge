@@ -8,7 +8,8 @@ import Foundation
 // other bowls, the inbox, the chats) stays in the private SwiftData sync as before; nothing in it is moved.
 //
 // This file holds what needs no network: the names of zones and records, a note as the payload of its record,
-// what each device knows about a shared bowl, what has to be sent, and how what comes in is merged.
+// what each device knows about a shared bowl, what has to be sent, and how what comes in is merged. How a share
+// ends and what happens to the copies then is in `SharedBowlEnding.swift`.
 
 /// Names of the shared zones and of the records in them.
 enum SharedBowlNames {
@@ -316,6 +317,11 @@ struct SharedBowlInfo: Codable, Equatable {
     var watchingSince: Date?
     /// When the bowl's page was last open on this device ("New since your last visit").
     var lastVisit: Date?
+    /// A bowl shared with me: the ids of the entries ever copied from its zone into this store (and not deleted
+    /// since). When the share ends they go wherever they are then (`SharedBowlEnding.shareEnd`); a copy taken out
+    /// of the bowl here becomes an entry of my own (`SharedBowlEnding.mustFork`). Nil in the state of earlier
+    /// versions: filled from the copies in the bowl and the zone's notes (`BowlSharing.scan`).
+    var copiedNotes: Set<String>?
 
     init(bowlID: UUID, role: SharedBowlRole, zoneOwnerName: String, name: String = "") {
         self.bowlID = bowlID
@@ -557,23 +563,12 @@ enum SharedBowlMerge {
         case none
         /// The note leaves the bowl and is back in the inbox; nothing of it is deleted.
         case moveToInbox
-        /// A copy taken from the zone goes; its files stay.
+        /// A copy taken from the zone goes, with its files where no other entry points at them.
         case deleteCopy
     }
 
-    /// A note left the zone (taken out of the bowl, or deleted for good, by someone). Only a note that is still in
-    /// the bowl here is touched, and only moved to the inbox: deleting it could delete what another of my devices
-    /// just moved into another bowl.
-    static func removal(isInBowl: Bool) -> Removal {
-        isInBowl ? .moveToInbox : .none
-    }
-
-    /// The share ended for me (the owner stopped sharing, or I left). Mine (the owner's) stays as it is. Of a bowl
-    /// shared with me, the copies taken from the zone go (never their files); what I made myself goes to my inbox.
-    static func shareEnd(role: SharedBowlRole, isCopy: Bool) -> Removal {
-        guard role == .participant else { return .none }
-        return isCopy ? .deleteCopy : .moveToInbox
-    }
+    // What happens to the entries when the zone drops one or the share ends, and to a copy taken out of the bowl
+    // here: `SharedBowlEnding`.
 
     /// The same note or bowl (same id) can end up twice in the store: two devices of one person both took it from
     /// the zone, and the private sync brings each one the other's copy. Every device has to keep the same one, or
