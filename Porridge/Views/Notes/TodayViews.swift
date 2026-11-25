@@ -192,12 +192,13 @@ struct AppointmentRow: View {
                     Text(time)
                     if let bowlName {
                         Label(bowlName, systemImage: "folder.fill")
-                            .labelStyle(.titleAndIcon)
+                            .labelStyle(.tight)
                             .foregroundStyle(Color.brandProject)
                             .lineLimit(1)
                     }
                     if linked > 0 {
                         Label("\(linked)", systemImage: "link")
+                            .labelStyle(.tight)
                             .accessibilityLabel(linked == 1 ? String(localized: "1 linked entry") : String(localized: "\(linked) linked entries"))
                     }
                 }

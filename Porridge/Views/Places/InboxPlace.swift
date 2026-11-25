@@ -3,8 +3,8 @@ import SwiftUI
 
 /// The Inbox, the second place: what is new or in no bowl, and what was put away for later, as the two halves of
 /// one segment (New / Later) in the first row of the content. New shows the bundle suggestion (one line) above its
-/// entries; each entry names its suggested bowl ("✦ Bowl") and swipes to file or put away. At the end of New, also
-/// when it is empty, one card leads to Open To-dos and the Weekly Review (`InboxEndCard`). While choosing several,
+/// entries; each entry names its suggested bowl ("✦ Bowl") and swipes to file or put away. At the top of New, above
+/// the entries and also when it is empty, one card leads to Open To-dos and the Weekly Review (`InboxEndCard`). While choosing several,
 /// "N Selected · Select All" is the first row and the selection bar takes the tab bar's place.
 struct InboxPlace: View {
     let notes: [Note]
@@ -15,7 +15,7 @@ struct InboxPlace: View {
     /// The Later half of the segment.
     @Binding var showsLater: Bool
     var onRemove: (Note) -> Void
-    /// The end card: Open To-dos and the Weekly Review.
+    /// The card at the top of New: Open To-dos and the Weekly Review.
     var onOpenTodos: () -> Void = {}
     var onReview: () -> Void = {}
 
@@ -53,7 +53,14 @@ struct InboxPlace: View {
                         .environment(\.editMode, .constant(.active))
                 } else {
                     List(selection: $selection) {
-                        // Nothing new: the message in the list, so the card stays below it on every screen.
+                        // First, above the entries (owner revision 7), also when nothing is new.
+                        Section {
+                            InboxEndCard(notes: notes, onOpenTodos: onOpenTodos, onReview: onReview)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                        // Nothing new: the message in the list, below the card.
                         if waiting.isEmpty {
                             Section {
                                 empty(later: later)
@@ -64,12 +71,6 @@ struct InboxPlace: View {
                             }
                         }
                         newRows(waiting)
-                        Section {
-                            InboxEndCard(notes: notes, onOpenTodos: onOpenTodos, onReview: onReview)
-                                .listRowInsets(EdgeInsets(top: waiting.isEmpty ? 8 : 20, leading: 16, bottom: 24, trailing: 16))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                        }
                     }
                 }
             }
@@ -124,7 +125,7 @@ struct InboxPlace: View {
     }
 }
 
-/// The end of the Inbox's New side: one card with the two ways that used to hang at the end of Today, Open To-dos
+/// The top of the Inbox's New side (owner revision 7; the name is from revision 5, when it was at the end): one card with the two ways that used to hang at the end of Today, Open To-dos
 /// ("5 open · 2 overdue") and the Weekly Review ("This Week · 8 new entries").
 struct InboxEndCard: View {
     let notes: [Note]

@@ -181,8 +181,8 @@ final class NotesFlowTests: XCTestCase {
         XCTAssertTrue(app.inboxSegment(0).waitForExistence(timeout: 5), "Inbox has no New / Later")
         XCTAssertTrue(app.buttons["Select"].exists, "Inbox has no Select")
         let todos = app.buttons["InboxOpenTodos"]
-        XCTAssertTrue(app.reveal(todos), "Open To-dos missing at the end of the Inbox")
-        XCTAssertTrue(app.buttons["InboxWeeklyReview"].exists, "Weekly Review missing at the end of the Inbox")
+        XCTAssertTrue(app.reveal(todos), "Open To-dos missing at the top of the Inbox")
+        XCTAssertTrue(app.buttons["InboxWeeklyReview"].exists, "Weekly Review missing at the top of the Inbox")
         todos.tap()
         XCTAssertTrue(app.staticTexts["Open To-dos"].waitForExistence(timeout: 5), "Open To-dos did not open")
         XCTAssertTrue(app.tab("Inbox").isSelected, "Open To-dos did not open on the Inbox")

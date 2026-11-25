@@ -805,6 +805,23 @@ changes; the notes on the tab bar's "+", the Bowls place's last rows and the Cha
   the Chat side's back, All Chats and New Chat), `Revision6ShotsTests` → /tmp/porridge-s11-shots. Tests that tapped
   the Archive / Recently Deleted rows or the bar's All Chats now use `app.bowlsSide(_:)` and `app.openAllChats()`.
 
+**As built (owner revision 7, 2026-11-25):** two changes after the owner looked at revision 6 on his iPhone.
+
+- **The Inbox's card on top.** Open To-dos and Weekly Review (`InboxEndCard`, the name kept from revision 5) are the
+  first row of New, under the New / Later switch and the bundle line, above the entries; with an empty Inbox above
+  its message. Content and behaviour unchanged; Later has no card, as before. Mac: the card's section is the first of
+  the Inbox list (`NoteListContent`), the empty message still lies over the list below it. What's New says "at the
+  top of the Inbox". Tests: `testTheInboxCardIsOnTopAndTheLastRowClearsThePlus` (card under the switch, entries under
+  the card, the last entry scrolls clear of "+"), `testEmptyInboxShowsTheCard` (card above the message); the shots
+  are named `inbox-top-card`.
+- **Symbol and words close together in rows.** A `Label` with `.titleAndIcon` in a list row keeps the list's icon
+  column: about 18 pt between a small symbol and its words (Today's appointment line "18:00–22:00 📁      SPD /
+  Politik", the bowl names and other footer labels of entry rows). `TightLabelStyle` (`.labelStyle(.tight)`, 3 pt
+  as the due day of a to-do) replaces it there. The space under the appointment row before "Due" is the same section
+  gap as before Up Next (measured 42 pt vs 40 pt at 390 pt); unchanged. Mac: the appointment's line is one text
+  ("18:00–22:00 · Bowl · 2 linked entries"), not affected. Debug: `-seedAppointment <bowl>` adds an appointment
+  today 18:00–22:00 filed into a new bowl of that name (only in memory, shown as if the calendar were allowed).
+
 ---
 
 ## What gets removed (summary)

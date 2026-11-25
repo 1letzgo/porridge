@@ -105,7 +105,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         }
         dataSource.rowViewProvider = { table, row, item in
             if item.base is ListSection { return GroupRowView() }
-            // The Inbox's end card: Open To-dos on top, the Weekly Review below (only the Inbox has these rows).
+            // The Inbox's top card: Open To-dos on top, the Weekly Review below (only the Inbox has these rows).
             switch item.base as? ListItem {
             case .link(.openTodos)?: return CardRowView(edge: .top)
             case .link(.weeklyReview)?: return CardRowView(edge: .bottom)
@@ -208,7 +208,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         bundleBanner.host = self
         bundleBanner.refresh(isInbox: state.page == .inbox && state.searchText.isEmpty)
         let isEmpty = built.sections.isEmpty
-        // The empty Inbox keeps its end card: the message shows over the list, which stays.
+        // The empty Inbox keeps its top card: the message shows over the list, which stays.
         let showsMessage = isEmpty || built.showsEmptyMessage
         empty.isHidden = !showsMessage || state.page == .chat
         scroll.isHidden = isEmpty
@@ -581,7 +581,7 @@ private final class GroupRowView: NSTableRowView {
     override func drawBackground(in dirtyRect: NSRect) {}
 }
 
-/// A row of the Inbox's end card: a soft fill with the card's rounded corners on its outer edge; the table's spacing
+/// A row of the Inbox's top card: a soft fill with the card's rounded corners on its outer edge; the table's spacing
 /// between the two rows is the line between the targets.
 private final class CardRowView: NSTableRowView {
     enum Edge { case top, bottom }

@@ -1738,18 +1738,18 @@ struct NoteRow: View {
             // Put away for later, back from it, or, in the Inbox, how long it has been waiting there.
             if note.isSnoozed(), let until = note.snoozedUntil {
                 Label("Later: back \(InboxSnooze.timeLabel(until))", systemImage: "clock")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.tight)
                     .foregroundStyle(Color.brandNavy)
                     .keepsWidth(!wraps)
             } else if note.isBackFromLater() {
                 Label("Back from Later", systemImage: "clock.arrow.circlepath")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.tight)
                     .fontWeight(.semibold)
                     .foregroundStyle(Color.brandSkyText)
                     .keepsWidth(!wraps)
             } else if showsInboxAge, !compact, note.isInInbox, let waiting = InboxSnooze.waitingLabel(since: note.createdAt) {
                 Label(waiting, systemImage: "hourglass")
-                    .labelStyle(.titleAndIcon)
+                    .labelStyle(.tight)
             }
         }
         if note.isTodo {
@@ -1759,20 +1759,21 @@ struct NoteRow: View {
         // Where a list mixes bowls the row names its own; on a narrow row the names give way first.
         if !buckets.isEmpty {
             Label(buckets.joined(separator: ", "), systemImage: "folder")
-                .labelStyle(.titleAndIcon)
+                .labelStyle(.tight)
                 .foregroundStyle(Color.brandProject.readable)
                 .truncationMode(.tail)
                 .layoutPriority(compact ? -1 : 0)
         }
         if let domain = note.domain, !compact {
             Label(domain, systemImage: "link")
-                .labelStyle(.titleAndIcon)
+                .labelStyle(.tight)
         }
         if note.isRecording, note.duration > 0 {
             Text(note.duration.durationText)
                 .keepsWidth(!wraps)
             if note.speakers.count > 1, !compact {
                 Label("\(note.speakers.count)", systemImage: "person.2.fill")
+                    .labelStyle(.tight)
                     .keepsWidth(!wraps)
             }
         }

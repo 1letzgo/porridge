@@ -34,7 +34,14 @@ final class TodayCalendar {
         status = CalendarAccess.status
         let day = Calendar.current.startOfDay(for: Date())
         if day != today { today = day }
-        let read = CalendarAccess.todaysAppointments().filter { !$0.isDeclined }
+        var read = CalendarAccess.todaysAppointments().filter { !$0.isDeclined }
+        #if DEBUG
+        // Appointments added for a test stay through every reading, and show as if the calendar were allowed.
+        if !testing.isEmpty {
+            status = .granted
+            read += testing
+        }
+        #endif
         if read != appointments { appointments = read }
         otherDays = [:]
         version += 1
@@ -54,8 +61,11 @@ final class TodayCalendar {
     #if DEBUG
     /// For looking at the Today page without touching a calendar: an appointment only in memory.
     func addForTesting(_ appointment: CalendarAppointment) {
-        appointments.append(appointment)
+        testing.append(appointment)
+        refresh()
     }
+
+    @ObservationIgnored private var testing: [CalendarAppointment] = []
     #endif
 
     /// Asks for the calendars, once.

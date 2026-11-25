@@ -16,6 +16,7 @@ enum TestSeed {
         // `-resetWhatsNew YES`: the What's New card shows again (a launch argument would override what "Got It" sets).
         if UserDefaults.standard.bool(forKey: "resetWhatsNew") { UserDefaults.standard.removeObject(forKey: WhatsNew.seenKey) }
         seedTodos(container)
+        seedAppointment(container)
         if UserDefaults.standard.bool(forKey: "seedEntryKinds") { seedEntryKinds(container.mainContext) }
         // Only on the store in memory: added on every launch, it would pile up in a real one.
         if UserDefaults.standard.bool(forKey: "seedInbox"), UserDefaults.standard.bool(forKey: "emptyStore") { seedInbox(container.mainContext) }
@@ -61,6 +62,24 @@ enum TestSeed {
         context.insert(meeting)
         try? context.save()
         UserDefaults.standard.removeObject(forKey: "seedMeetingWithTasks")
+    }
+
+    /// `-seedAppointment <bowl>`: an appointment today 18:00–22:00 ("Board Meeting", only in memory, no calendar
+    /// touched) filed into a new bowl of that name, for looking at the Today page's appointment row.
+    @MainActor
+    private static func seedAppointment(_ container: ModelContainer) {
+        guard let name = UserDefaults.standard.string(forKey: "seedAppointment"), !name.isEmpty else { return }
+        let context = container.mainContext
+        removeSeeded([], bowlsNamed: [name], in: context)
+        let bowl = NoteFolder(name: name)
+        context.insert(bowl)
+        try? context.save()
+        let day = Calendar.current.startOfDay(for: Date())
+        let start = Calendar.current.date(byAdding: .hour, value: 18, to: day) ?? day
+        let end = Calendar.current.date(byAdding: .hour, value: 22, to: day) ?? day
+        let appointment = CalendarAppointment(id: "seeded-appointment", title: "Board Meeting", start: start, end: end, isAllDay: false, calendarName: "Test")
+        TodayCalendar.shared.addForTesting(appointment)
+        AppointmentLinks.shared.setBowl(Projects.key(bowl), for: appointment, notes: [], in: context)
     }
 
     @MainActor

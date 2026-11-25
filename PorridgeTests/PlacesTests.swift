@@ -77,7 +77,7 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(QuickAction.openBowls.url.absoluteString, "porridge://bowls")
     }
 
-    /// Each page opened from elsewhere lands on its place's stack: Open To-dos on the Inbox (its end card), the bowls'
+    /// Each page opened from elsewhere lands on its place's stack: Open To-dos on the Inbox (its top card), the bowls'
     /// pages and Settings on Bowls, the chat on the search (its Chat side).
     func testPagesBelongToTheirPlace() {
         XCTAssertEqual(ListPage.todos.place, .inbox)
@@ -205,7 +205,7 @@ final class PlacesTests: XCTestCase {
         XCTAssertTrue(phone.contains("Chat"), "the Chat side is named")
         XCTAssertTrue(phone.contains("“+” in the middle"), "the + of the tab bar is named")
         XCTAssertTrue(phone.contains("gear in Today"), "the gear in Today is named")
-        XCTAssertTrue(phone.contains("end of the Inbox"), "the Inbox's end card is named")
+        XCTAssertTrue(phone.contains("top of the Inbox"), "the Inbox's card is named")
         XCTAssertFalse(phone.contains("Chat tab"), "Chat has no tab of its own any more")
         // The onboarding's last page: the tab bar from left to right.
         XCTAssertEqual(WhatsNew.places(mac: false).map(\.title), ["Today", "Inbox", "Add", "Bowls", "Search and Chat"])

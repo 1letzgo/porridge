@@ -2,7 +2,7 @@ import XCTest
 
 /// Pictures of owner revision 6 to look at: the tab bar with the raised "+" (a badge "120" on the Inbox, each tab
 /// chosen once), the Bowls tab on its three sides, the Search tab's Search and Chat sides (start, an open conversation,
-/// All Chats) and the Inbox's end card above "+". They go to /tmp/porridge-s11-shots (or `SHOTS_DIR`,
+/// All Chats) and the Inbox's card on top (owner revision 7). They go to /tmp/porridge-s11-shots (or `SHOTS_DIR`,
 /// `TEST_RUNNER_SHOTS_DIR` for xcodebuild) when that folder exists; dark mode and the text size are switched from
 /// outside (`xcrun simctl ui …`) and named by `SHOTS_SUFFIX`.
 final class Revision6ShotsTests: XCTestCase {
@@ -35,9 +35,8 @@ final class Revision6ShotsTests: XCTestCase {
             shoot("tabbar-120-\(tab.lowercased())")
         }
         app.openTab("Inbox")
-        for _ in 0..<40 where !(app.buttons["InboxWeeklyReview"].exists && app.buttons["InboxWeeklyReview"].isHittable) { app.swipeUp() }
-        app.swipeUp()
-        shoot("inbox-end-card")
+        _ = app.buttons["InboxWeeklyReview"].waitForExistence(timeout: 10)
+        shoot("inbox-top-card")
     }
 
     func testRevision6Screens() throws {

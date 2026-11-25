@@ -56,7 +56,7 @@ enum WhatsNew {
             ),
             Item(
                 symbol: "calendar", title: String(localized: "Today Shows What Is Open"),
-                text: String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Open To-dos and the Weekly Review are at the end of the Inbox.")
+                text: String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Open To-dos and the Weekly Review are at the top of the Inbox.")
             ),
         ]
     }

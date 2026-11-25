@@ -507,7 +507,7 @@ enum DebugDriver {
             TestSeed.seedInbox(library.context)
             library.setNeedsReload()
         case "scroll-end":
-            // The end of the middle column (the Inbox's end card).
+            // The end of the middle column.
             let table = controller.split.content.notes.table
             if table.numberOfRows > 0 { table.scrollRowToVisible(table.numberOfRows - 1) }
         case "triage":

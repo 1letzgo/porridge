@@ -283,7 +283,7 @@ struct SharedActivityLabel: View {
 
     var body: some View {
         Label(text, systemImage: "person.crop.circle.badge.exclamationmark")
-            .labelStyle(.titleAndIcon)
+            .labelStyle(.tight)
             .font(.caption.weight(.semibold))
             .foregroundStyle(Color.brandProject.readable)
             .lineLimit(1)

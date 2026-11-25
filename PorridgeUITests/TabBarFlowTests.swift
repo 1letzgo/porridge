@@ -74,15 +74,23 @@ final class TabBarFlowTests: XCTestCase {
         }
     }
 
-    /// The last rows of a list stay reachable above the raised "+": the Inbox's end card scrolls clear of it.
-    func testTheInboxEndCardClearsThePlus() {
+    /// The card with Open To-dos and Weekly Review is the first thing of the Inbox, above its entries (owner
+    /// revision 7), and the last rows of the list still scroll clear of the raised "+".
+    func testTheInboxCardIsOnTopAndTheLastRowClearsThePlus() {
         let app = launch(["-emptyStore", "YES", "-seedInboxCount", "30"])
         app.openTab("Inbox")
+        app.inboxSegment(0).tap()
         let review = app.buttons["InboxWeeklyReview"]
-        for _ in 0..<20 where !(review.exists && review.isHittable) { app.swipeUp() }
-        app.swipeUp()
-        XCTAssertTrue(review.waitForExistence(timeout: 5) && review.isHittable, "the end card is not reachable")
-        XCTAssertLessThanOrEqual(review.frame.maxY, app.addButton.frame.minY, "the end card stays under +")
+        let todos = app.buttons["InboxOpenTodos"]
+        XCTAssertTrue(review.waitForExistence(timeout: 10) && review.isHittable, "the card is not on top of the Inbox")
+        XCTAssertGreaterThan(todos.frame.minY, app.inboxSegment(0).frame.maxY, "the card is not under New / Later")
+        let first = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Inbox note '")).firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "no entries")
+        XCTAssertGreaterThan(first.frame.minY, review.frame.maxY, "the entries are not under the card")
+        let last = app.staticTexts["Inbox note 1"]
+        for _ in 0..<20 where !(last.exists && last.isHittable && last.frame.maxY <= app.addButton.frame.minY) { app.swipeUp() }
+        XCTAssertLessThanOrEqual(last.frame.maxY, app.addButton.frame.minY, "the last entry stays under +")
+        for _ in 0..<20 where !(review.exists && review.isHittable) { app.swipeDown() }
         review.tap()
         XCTAssertTrue(app.staticTexts["Weekly Review"].waitForExistence(timeout: 5), "Weekly Review did not open")
     }
@@ -152,22 +160,22 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 10), "a link did not win over Today")
     }
 
-    /// The end of the Inbox: one card with Open To-dos and Weekly Review, also when the Inbox is empty.
+    /// The top of the Inbox: one card with Open To-dos and Weekly Review, also when the Inbox is empty.
     func testInboxCardOpensOpenTodosAndWeeklyReview() {
         let app = launch(["-seedTodos", unique("Card")])
         app.openTab("Inbox")
         app.inboxSegment(0).tap()
         let card = app.descendants(matching: .any)["InboxEndCard"]
         let todos = app.buttons["InboxOpenTodos"]
-        XCTAssertTrue(app.reveal(todos), "Open To-dos missing at the end of the Inbox")
+        XCTAssertTrue(app.reveal(todos), "Open To-dos missing at the top of the Inbox")
         XCTAssertTrue(card.exists, "Open To-dos is not on a card")
         XCTAssertTrue(todos.label.contains("open"), "the card does not count the open to-dos: \(todos.label)")
         XCTAssertTrue(todos.label.contains("overdue"), "the card does not say that to-dos are late: \(todos.label)")
         let review = app.buttons["InboxWeeklyReview"]
-        XCTAssertTrue(review.exists, "Weekly Review missing at the end of the Inbox")
+        XCTAssertTrue(review.exists, "Weekly Review missing at the top of the Inbox")
         XCTAssertTrue(review.label.contains("This Week"), "Weekly Review says nothing about the week: \(review.label)")
         XCTAssertGreaterThan(review.frame.minY, todos.frame.minY, "Weekly Review is not under Open To-dos")
-        screenshot("inbox-end-card", app)
+        screenshot("inbox-top-card", app)
         todos.tap()
         XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "Open To-dos did not open")
         XCTAssertTrue(app.tab("Inbox").isSelected, "Open To-dos left the Inbox tab")
@@ -183,7 +191,7 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["TodayWeeklyReview"].exists, "Weekly Review still hangs at the end of Today")
     }
 
-    /// An empty Inbox shows the card too, under its message.
+    /// An empty Inbox shows the card too, above its message.
     func testEmptyInboxShowsTheCard() {
         let app = launch(["-emptyStore", "YES"])
         app.openTab("Inbox")
@@ -191,7 +199,7 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Inbox Empty"].waitForExistence(timeout: 10), "the empty Inbox says nothing")
         let todos = app.buttons["InboxOpenTodos"]
         XCTAssertTrue(app.reveal(todos), "the empty Inbox has no card")
-        XCTAssertGreaterThan(todos.frame.minY, app.staticTexts["Inbox Empty"].frame.maxY, "the card is not under the message")
+        XCTAssertLessThan(app.buttons["InboxWeeklyReview"].frame.maxY, app.staticTexts["Inbox Empty"].frame.minY, "the card is not above the message")
         XCTAssertTrue(app.buttons["InboxWeeklyReview"].exists)
         screenshot("inbox-empty-card", app)
     }

@@ -33,8 +33,7 @@ final class Revision5ShotsTests: XCTestCase {
         app.openTab("Inbox")
         app.inboxSegment(0).tap()
         shoot("inbox")
-        for _ in 0..<40 where !(app.buttons["InboxWeeklyReview"].exists && app.buttons["InboxWeeklyReview"].isHittable) { app.swipeUp() }
-        app.swipeUp()
+        _ = app.buttons["InboxWeeklyReview"].waitForExistence(timeout: 10)
         shoot("inbox-end-card")
         app.tapAddWhenHittable()
         shoot("add-sheet-inbox")

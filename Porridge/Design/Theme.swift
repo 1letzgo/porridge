@@ -218,6 +218,21 @@ extension View {
     }
 }
 
+/// Symbol and words close together (3 pt, as the due day of a to-do): a `Label` in a list row otherwise keeps the
+/// list's icon column, which leaves a wide gap between a small symbol and its words ("📁      Bowl").
+struct TightLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 3) {
+            configuration.icon
+            configuration.title
+        }
+    }
+}
+
+extension LabelStyle where Self == TightLabelStyle {
+    static var tight: TightLabelStyle { TightLabelStyle() }
+}
+
 /// Things: bold title over a hairline, no symbol. The first one sits right under the bar (the gap comes from
 /// there, `Look.headerGap`); later ones keep a little more air than the list gives between sections.
 struct ListHeader: View {

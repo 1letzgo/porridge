@@ -367,10 +367,10 @@ struct SuggestedTodosCard: View {
                 if s.owner != nil || s.dueDay != nil {
                     HStack(spacing: 8) {
                         if let owner = s.owner {
-                            Label(owner, systemImage: "person").labelStyle(.titleAndIcon)
+                            Label(owner, systemImage: "person").labelStyle(.tight)
                         }
                         if let due = s.dueDay {
-                            Label(Todos.dueLabel(due), systemImage: "calendar").labelStyle(.titleAndIcon)
+                            Label(Todos.dueLabel(due), systemImage: "calendar").labelStyle(.tight)
                         }
                     }
                     .font(.caption)
