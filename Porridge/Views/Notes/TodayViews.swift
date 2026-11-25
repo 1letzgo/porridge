@@ -74,9 +74,23 @@ struct TodayPage: View {
         let upcoming = isToday ? Array(TodayTodos.upcoming(notes).prefix(Self.upNextLimit)) : []
         let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
         func buckets(_ note: Note) -> [String] { note.projectIDs.compactMap { names[$0] } }
-        return List(selection: $selection) {
+        // Nothing at all on the day (the calendar read, no appointment, nothing due, nothing up next, no card): one
+        // message in the middle of the page instead of two sections that each say so (as on the Mac). With something
+        // in one section the other keeps its own short line.
+        let showsWhatsNew = isToday && onboardingDone && !whatsNewSeen
+        if calendar.status == .granted, appointments.isEmpty, open.isEmpty, upcoming.isEmpty, !showsWhatsNew {
+            return AnyView(
+                EmptyStateView(
+                    title: isToday ? "Nothing Today" : "Nothing on This Day",
+                    message: isToday ? "Today's appointments and the to-dos due show up here." : "The day's appointments and the to-dos due on it show up here.",
+                    systemImage: "calendar"
+                )
+                .refreshable { calendar.refresh() }
+            )
+        }
+        return AnyView(List(selection: $selection) {
             // After the update to the three places: what moved, once, on top of today.
-            if isToday, onboardingDone, !whatsNewSeen {
+            if showsWhatsNew {
                 Section {
                     WhatsNewCard { withAnimation(.snappy) { whatsNewSeen = true } }
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16))
@@ -171,7 +185,7 @@ struct TodayPage: View {
         .cardList()
         // A to-do ticked done leaves Today: the tick offers Undo.
         .environment(\.ticksLeaveList, true)
-        .refreshable { calendar.refresh() }
+        .refreshable { calendar.refresh() })
     }
 }
 

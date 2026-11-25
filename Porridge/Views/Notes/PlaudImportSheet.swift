@@ -56,11 +56,10 @@ struct PlaudImportSheet: View {
     }
 
     private var signedOut: some View {
-        VStack(spacing: 20) {
-            EmptyStateView(title: "Plaud Recorder", message: "Sign in to Plaud once. After that the recordings come straight from the recorder over Bluetooth.", systemImage: "waveform")
+        EmptyStateView(title: "Plaud Recorder", message: "Sign in to Plaud once. After that the recordings come straight from the recorder over Bluetooth.", systemImage: "waveform") {
             Button("Sign In to Plaud") { showLogin = true }
                 .buttonStyle(ChunkyButtonStyle())
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 16)
         }
     }
 
@@ -82,10 +81,11 @@ struct PlaudImportSheet: View {
                     title: importer.status.isEmpty ? "No Recorder Found" : "Nothing to Import",
                     message: importer.status.isEmpty ? "Wake the recorder with its button and try again." : importer.status,
                     systemImage: "waveform"
-                )
-                Button("Try Again") { Task { await importer.refresh() } }
-                    .buttonStyle(ChunkyButtonStyle())
-                    .padding(.horizontal, 40)
+                ) {
+                    Button("Try Again") { Task { await importer.refresh() } }
+                        .buttonStyle(ChunkyButtonStyle())
+                        .padding(.horizontal, 16)
+                }
             }
         }
         .padding()

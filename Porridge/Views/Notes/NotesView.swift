@@ -938,7 +938,13 @@ struct NotesView: View {
         .scrollDismissesKeyboard(.interactively)
         .overlay {
             if found.isEmpty, question == nil {
-                ContentUnavailableView.search(text: tagTokens.map { "#" + $0.name }.joined(separator: " "))
+                // Only tags or a kind chosen, and nothing fits (with typed text "Ask Porridge" stays as a row).
+                let tags = tagTokens.map { "#" + $0.name }.joined(separator: " ")
+                EmptyStateView(
+                    title: tags.isEmpty ? "No Results" : "No Results for “\(tags)”",
+                    message: "Check the spelling or try a new search.",
+                    systemImage: "magnifyingglass"
+                )
             }
         }
     }

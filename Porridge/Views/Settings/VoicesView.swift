@@ -42,22 +42,22 @@ struct VoicesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(sorted) { voice in
-                        row(voice)
-                        Rectangle().fill(Look.hairline).frame(height: 0.5)
+            if voices.isEmpty {
+                // Without voices the page would otherwise be empty, with nothing to say how one gets there: the line
+                // in its middle.
+                EmptyStateView(title: "", message: "No voices yet. Naming a speaker in a meeting teaches Porridge the voice.", systemImage: "person.wave.2")
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(sorted) { voice in
+                            row(voice)
+                            Rectangle().fill(Look.hairline).frame(height: 0.5)
+                        }
                     }
-                    // Without voices the page would otherwise be empty, with nothing to say how one gets there.
-                    if voices.isEmpty {
-                        Text("No voices yet. Naming a speaker in a meeting teaches Porridge the voice.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+                    .padding(.bottom, 32)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 4)
-                .padding(.bottom, 32)
             }
         }
         .background(Color.appBackground)

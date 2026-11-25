@@ -27,14 +27,12 @@ struct WeeklyReviewView: View {
         VStack(spacing: 0) {
             header(review)
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    if review.isEmpty {
-                        Text("Nothing came in this week.")
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 40)
-                    } else {
+            if review.isEmpty {
+                // An empty week: the line in the middle of the page, under the week's head (iPhone and Mac).
+                EmptyStateView(title: "", message: "Nothing came in this week.", systemImage: "calendar")
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
                         counts(review)
                         aiSection(review)
                         if !review.meetings.isEmpty { meetings(review) }
@@ -42,10 +40,10 @@ struct WeeklyReviewView: View {
                         if !review.openTodos.isEmpty { todos(review) }
                         if !review.bowls.isEmpty { bowlsSection(review) }
                     }
+                    .padding(20)
+                    .frame(maxWidth: 640, alignment: .leading)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(20)
-                .frame(maxWidth: 640, alignment: .leading)
-                .frame(maxWidth: .infinity)
             }
         }
         .onChange(of: offset) {

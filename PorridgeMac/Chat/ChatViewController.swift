@@ -14,6 +14,9 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
 
     private let scroll = NSScrollView()
     private let transcript = NSStackView()
+    /// A conversation from the top; the intro of an empty chat in the middle of the visible room.
+    private var transcriptAtTop: NSLayoutConstraint!
+    private var transcriptInMiddle: NSLayoutConstraint!
     private let scope = NSPopUpButton(frame: .zero, pullsDown: false)
     /// Where the answers go when the chat's model is not on this Mac (`SummaryModel.sendsHint`).
     private let hintLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor, lines: 2)
@@ -106,11 +109,21 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
             document.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
             document.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
             document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
-            transcript.topAnchor.constraint(equalTo: document.topAnchor),
+            transcript.topAnchor.constraint(greaterThanOrEqualTo: document.topAnchor),
             transcript.leadingAnchor.constraint(equalTo: document.leadingAnchor),
             transcript.trailingAnchor.constraint(equalTo: document.trailingAnchor),
-            transcript.bottomAnchor.constraint(equalTo: document.bottomAnchor),
+            transcript.bottomAnchor.constraint(lessThanOrEqualTo: document.bottomAnchor),
+            // At least the visible height, else as tall as the transcript: the intro of an empty chat stands in its
+            // middle, a conversation starts at the top.
+            document.heightAnchor.constraint(greaterThanOrEqualTo: scroll.contentView.heightAnchor),
         ])
+        let fitsTranscript = document.heightAnchor.constraint(equalTo: transcript.heightAnchor)
+        fitsTranscript.priority = .defaultLow
+        fitsTranscript.isActive = true
+        transcriptAtTop = transcript.topAnchor.constraint(equalTo: document.topAnchor)
+        transcriptInMiddle = transcript.centerYAnchor.constraint(equalTo: document.centerYAnchor)
+        transcriptInMiddle.priority = .defaultHigh
+        transcriptAtTop.isActive = true
         view = root
     }
 
@@ -230,6 +243,11 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         shownThinking = thinking
         shownActions = actions
         transcript.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        // Only the intro: centered, across and up and down.
+        let introOnly = entries.isEmpty && !thinking
+        transcriptAtTop.isActive = !introOnly
+        transcriptInMiddle.isActive = introOnly
+        transcript.alignment = introOnly ? .centerX : .leading
         if entries.isEmpty { addIntro() }
         for entry in entries { addBubble(entry) }
         if thinking {

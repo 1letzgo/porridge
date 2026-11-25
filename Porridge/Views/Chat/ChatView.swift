@@ -180,6 +180,8 @@ struct ChatView: View {
     @Query(sort: \ChatEntry.createdAt) private var allEntries: [ChatEntry]
     @State private var input = ""
     @FocusState private var focused: Bool
+    /// The scroll view's visible height, for the intro in its middle.
+    @State private var visibleHeight: CGFloat = 0
 
     private var service: ChatService { ChatService.shared }
     private var entries: [ChatEntry] {
@@ -198,30 +200,58 @@ struct ChatView: View {
         SearchAsk.chatName(project, bowls: projects)
     }
 
+    /// The chat's start without recent chats: only the intro, in the middle of the room below the scope row.
+    private var centersIntro: Bool { entries.isEmpty && recent.isEmpty && !isThinking }
+
+    @ViewBuilder
+    private var head: some View {
+        scopeRow
+        if let hint = SummaryModel.chat.sendsHint("question and excerpts of your notes") {
+            Text(hint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .id("hint-\(chatModel?.id ?? "default")")
+        }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 14) {
-                    scopeRow
-                    if let hint = SummaryModel.chat.sendsHint("question and excerpts of your notes") {
-                        Text(hint)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .id("hint-\(chatModel?.id ?? "default")")
-                    }
-                    if entries.isEmpty {
-                        if !recent.isEmpty { recentChats }
+                if centersIntro {
+                    // The visible height (between the switch and the field) at least, the intro in its middle; it
+                    // scrolls when the words need more (the largest text sizes).
+                    VStack(spacing: 14) {
+                        head
+                        Spacer(minLength: 0)
                         intro
+                        Spacer(minLength: 0)
+                        Color.clear.frame(height: 4).id("end")
                     }
-                    ForEach(entries) { entry in
-                        bubble(entry).id(entry.id)
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+                    .frame(minHeight: visibleHeight, alignment: .top)
+                } else {
+                    LazyVStack(spacing: 14) {
+                        head
+                        if entries.isEmpty {
+                            if !recent.isEmpty { recentChats }
+                            intro
+                        }
+                        ForEach(entries) { entry in
+                            bubble(entry).id(entry.id)
+                        }
+                        if isThinking { thinking.id("thinking") }
+                        Color.clear.frame(height: 4).id("end")
                     }
-                    if isThinking { thinking.id("thinking") }
-                    Color.clear.frame(height: 4).id("end")
+                    .padding(.horizontal)
+                    .padding(.top, 12)
                 }
-                .padding(.horizontal)
-                .padding(.top, 12)
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.containerSize.height - geometry.contentInsets.top - geometry.contentInsets.bottom
+            } action: { _, height in
+                visibleHeight = max(0, height)
             }
             // The newest message stays in view, also while the keyboard comes and goes; an empty chat starts at the top.
             .defaultScrollAnchor(entries.isEmpty ? .top : .bottom, for: .initialOffset)
@@ -385,12 +415,10 @@ struct ChatView: View {
 
     private var intro: some View {
         VStack(spacing: 18) {
-            EmptyStateView(
+            EmptyStateLabel(
                 title: "Ask Your Bowls",
-                message: "Ask about anything in your notes, meetings, links, images and files. The answer comes from your own data.",
-                systemImage: "bubble.left.and.text.bubble.right"
-            )
-            .frame(height: 240)
+                message: "Ask about anything in your notes, meetings, links, images and files. The answer comes from your own data."
+            ) {}
             VStack(spacing: 10) {
                 ForEach(examples, id: \.self) { example in
                     Button { send(example) } label: {

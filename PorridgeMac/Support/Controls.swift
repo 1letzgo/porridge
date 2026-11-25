@@ -199,10 +199,11 @@ final class StateBadge: NSView {
     }
 }
 
-/// A centered message for an empty list or detail: symbol, title, a line of explanation.
+/// The Mac's one empty view, for an empty list, detail, sheet or the chat's start: symbol, title, a line of
+/// explanation, in the middle of the room it is pinned to (across and up and down). Title and message wrap.
 final class EmptyMessageView: NSView {
     private let image = NSImageView()
-    private let title = NSTextField(labelWithString: "")
+    private let title = NSTextField(wrappingLabelWithString: "")
     private let message = NSTextField(wrappingLabelWithString: "")
 
     init() {
@@ -212,6 +213,9 @@ final class EmptyMessageView: NSView {
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.textColor = .secondaryLabelColor
         title.alignment = .center
+        title.preferredMaxLayoutWidth = 280
+        title.isSelectable = false
+        message.isSelectable = false
         message.textColor = .secondaryLabelColor
         message.alignment = .center
         message.preferredMaxLayoutWidth = 260
@@ -222,10 +226,16 @@ final class EmptyMessageView: NSView {
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
+            stack.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 8),
+            title.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
             message.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
         ])
+        // In the middle; a room too low for it keeps its top in view.
+        let middle = stack.centerYAnchor.constraint(equalTo: centerYAnchor)
+        middle.priority = .defaultHigh
+        middle.isActive = true
     }
 
     @available(*, unavailable)

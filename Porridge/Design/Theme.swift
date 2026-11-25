@@ -611,29 +611,6 @@ struct StatusBadge: View {
     }
 }
 
-struct EmptyStateView: View {
-    let title: String
-    let message: String
-    /// Kept for call sites; the bowl from the app icon is shown instead.
-    var systemImage = "tray"
-
-    var body: some View {
-        ContentUnavailableView {
-            Label {
-                Text(title)
-            } icon: {
-                Image("Bowl")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 72, height: 72)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }
-        } description: {
-            Text(message)
-        }
-    }
-}
-
 enum Clipboard {
     static func copy(_ text: String) {
         UIPasteboard.general.string = text

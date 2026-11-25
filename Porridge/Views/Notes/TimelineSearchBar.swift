@@ -132,6 +132,16 @@ struct SearchPane<Results: View>: View {
                 // The keyboard goes with a drag through the results (their list) or a tap in them.
                 results
                     .simultaneousGesture(TapGesture().onEnded { focused = false })
+            } else if recentSearches.isEmpty, openTags.isEmpty, tokens.isEmpty {
+                // Nothing typed and nothing to offer yet: the hint in the middle of the page.
+                EmptyStateView(
+                    title: "",
+                    message: "Type to search your entries, go to a place, smart filter or bowl, or ask Porridge. Tags show up here once you have some.",
+                    systemImage: "magnifyingglass"
+                )
+                .scrollDismissesKeyboard(.interactively)
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { focused = false })
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -163,6 +173,7 @@ struct SearchPane<Results: View>: View {
                             }
                         }
                         if openTags.isEmpty, tokens.isEmpty {
+                            // Below the recent searches: a line of the page, not an empty page.
                             Text("Type to search your entries, go to a place, smart filter or bowl, or ask Porridge. Tags show up here once you have some.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)

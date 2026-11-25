@@ -22,6 +22,10 @@ struct InboxPlace: View {
 
     var body: some View {
         let waiting = Inbox.notes(notes)
+        // Today's appointments not filed into a bowl (`InboxAppointments`): filing one into a bowl takes it out of here.
+        let calendar = TodayCalendar.shared
+        let links = AppointmentLinks.shared
+        let appointments = calendar.status == .granted ? links.inboxAppointments(among: calendar.appointments, day: calendar.today) : []
         return VStack(spacing: 0) {
             if isSelecting {
                 NoteSelectionHeader(notes: waiting, chosen: $chosen)
@@ -35,11 +39,6 @@ struct InboxPlace: View {
                         .environment(\.editMode, .constant(.active))
                 } else {
                     List(selection: $selection) {
-                        // Today's appointments not filed into a bowl (`InboxAppointments`): filing one into a bowl
-                        // takes it out of here.
-                        let calendar = TodayCalendar.shared
-                        let links = AppointmentLinks.shared
-                        let appointments = calendar.status == .granted ? links.inboxAppointments(among: calendar.appointments, day: calendar.today) : []
                         if !appointments.isEmpty {
                             Section {
                                 ForEach(appointments) { appointment in
@@ -58,10 +57,10 @@ struct InboxPlace: View {
                                 ListHeader(title: String(localized: "Appointments"), count: appointments.count, tint: .brandNavy, isFirst: true)
                             }
                         }
-                        // Nothing new: the message in the list, below the appointments.
-                        if waiting.isEmpty {
+                        // Nothing new below appointments: the message is a part of the page, under them.
+                        if waiting.isEmpty, !appointments.isEmpty {
                             Section {
-                                empty
+                                EmptyStateLabel(title: Self.emptyTitle, message: Self.emptyMessage) {}
                                     .frame(maxWidth: .infinity)
                                     .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 20))
                                     .listRowBackground(Color.clear)
@@ -73,6 +72,12 @@ struct InboxPlace: View {
                 }
             }
             .cardList()
+            .overlay {
+                // The whole page is empty: the message in its middle (adding is the "+" of the tab bar right below).
+                if !isSelecting, waiting.isEmpty, appointments.isEmpty {
+                    EmptyStateView(title: Self.emptyTitle, message: Self.emptyMessage)
+                }
+            }
         }
         .sheet(item: $opened) { appointment in
             AppointmentSheet(
@@ -96,22 +101,7 @@ struct InboxPlace: View {
         }
     }
 
-    /// Nothing new: one sentence (adding is the "+" of the tab bar right below; a button in the list's row would make
-    /// the whole row a button).
-    private var empty: some View {
-        ContentUnavailableView {
-            Label {
-                Text("Inbox Empty")
-            } icon: {
-                Image("Bowl")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 72, height: 72)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }
-        } description: {
-            Text("Everything is filed into a bowl. New things land here first and stay until they are filed.")
-        }
-    }
+    static let emptyTitle = "Inbox Empty"
+    static let emptyMessage = "Everything is filed into a bowl. New things land here first and stay until they are filed."
 }
 
