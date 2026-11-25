@@ -28,7 +28,17 @@ enum Keychain {
         }
     }
 
+    #if os(macOS) && DEBUG
+    /// Test runs of the Mac app (`PORRIDGE_TEST_DATA`) never see the owner's secrets (model keys, Plaud account):
+    /// what they store lives in memory for the run (`TestDefaults`).
+    nonisolated(unsafe) private static var testItems: [String: String] = [:]
+    private static var usesTestItems: Bool { DataLocation.testFolder != nil }
+    #endif
+
     static func get(_ account: String) -> String? {
+        #if os(macOS) && DEBUG
+        if usesTestItems { return testItems[account] }
+        #endif
         for store in Store.allCases {
             var query = store.attributes(account)
             query[kSecReturnData as String] = true
@@ -43,6 +53,12 @@ enum Keychain {
     }
 
     static func set(_ value: String?, for account: String) {
+        #if os(macOS) && DEBUG
+        if usesTestItems {
+            testItems[account] = value.flatMap { $0.isEmpty ? nil : $0 }
+            return
+        }
+        #endif
         guard let value, !value.isEmpty else {
             for store in Store.allCases { SecItemDelete(store.attributes(account) as CFDictionary) }
             return

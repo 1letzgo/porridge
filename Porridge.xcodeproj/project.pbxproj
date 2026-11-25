@@ -211,6 +211,7 @@
 		614A3FC1F9204E7140A79A96 /* AISettingsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2859C602EE177C280F20034 /* AISettingsPane.swift */; };
 		61BC06FB33BC0EFC917B673C /* EntryLinkViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0BA523E839BCC3CEFB71E1 /* EntryLinkViews.swift */; };
 		628492CB51C629B184ED4F9C /* EntryMenusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71A0292EAB04B9D7CCD4A301 /* EntryMenusTests.swift */; };
+		630E0FF07363F7731F0DD7EE /* TestDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B9C7922245A160FF962F65A /* TestDefaults.swift */; };
 		632F2A02C1AB2A2C38F93258 /* NoteCellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A774E41E8B24EDEAF494FF5C /* NoteCellView.swift */; };
 		6383679114584EAB9E25C603 /* AppleSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 987A111F4ACA578E340E5A7E /* AppleSpeech.swift */; };
 		64D44D1EE6EC0B68371FC937 /* VoicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56FD02EAB29161B15D0292BF /* VoicesView.swift */; };
@@ -591,6 +592,7 @@
 		0A5BA31269396F576ACB04B7 /* ShareInboxFixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareInboxFixTests.swift; sourceTree = "<group>"; };
 		0AD0D880B770EA9F20337E25 /* ProjectOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectOrderTests.swift; sourceTree = "<group>"; };
 		0B6A63E3C8B887E235A9CA50 /* MCPTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPTools.swift; sourceTree = "<group>"; };
+		0B9C7922245A160FF962F65A /* TestDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestDefaults.swift; sourceTree = "<group>"; };
 		0BD178D63DFCF6BABF5A3BF3 /* WindowState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowState.swift; sourceTree = "<group>"; };
 		0C2CBC3B5E2F3838724312F3 /* NoteMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteMerger.swift; sourceTree = "<group>"; };
 		0D153A7F0D4CF14B20EC47A7 /* TodoSuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoSuggestionsTests.swift; sourceTree = "<group>"; };
@@ -1021,6 +1023,7 @@
 				8349B8784801A4FEBFF4EB4D /* NoteOperations.swift */,
 				54793F562BAFDC3E4009AA75 /* NoteTemplatesMac.swift */,
 				F013C5650E64D901E946C117 /* Observing.swift */,
+				0B9C7922245A160FF962F65A /* TestDefaults.swift */,
 				28E351C35792659E6BC889F1 /* Thumbnails.swift */,
 				70D8B970B5691D19DCFFFF26 /* TodoBridge.swift */,
 				61F609E05172519C59985E6F /* UndoToastPanel.swift */,
@@ -2294,6 +2297,7 @@
 				1C104E8790DD61FD32114FDD /* TaskDetection.swift in Sources */,
 				AD00C37129276CD83A260909 /* TaskDetectionBarView.swift in Sources */,
 				8E92A95213B7A6628B3B09FC /* TemplatesSheetController.swift in Sources */,
+				630E0FF07363F7731F0DD7EE /* TestDefaults.swift in Sources */,
 				101E685552267AC1595F1EAC /* TestSeed.swift in Sources */,
 				9A6485677604C313A2311584 /* TextEmbedder.swift in Sources */,
 				2697AD78C33F37B438D36D46 /* TextInserter.swift in Sources */,
