@@ -39,11 +39,31 @@ extension XCUIApplication {
         XCTAssertFalse(alert.exists, "alert did not close")
     }
 
-    /// New (0) or To-dos (1) of the Inbox: a segmented control, or capsules with the largest text sizes.
-    func inboxSegment(_ index: Int) -> XCUIElement {
-        let control = segmentedControls["InboxSegment"]
-        if control.exists { return control.buttons.element(boundBy: index) }
-        return buttons.matching(NSPredicate(format: "label BEGINSWITH %@", index == 0 ? "New" : "To-dos")).firstMatch
+    /// Every open to-do: the Bowls tab on its To-dos side (owner revision 10; before, the Inbox's To-dos side).
+    @discardableResult
+    func openTodos() -> XCUIElement {
+        openTab("Bowls")
+        return bowlsSide("To-dos")
+    }
+
+    /// Recently Deleted: the trash pill in the Bowls bar pushes it as a page with a back pill (owner revision 10).
+    func openRecentlyDeleted() {
+        openTab("Bowls")
+        let trash = buttons["BowlsTrash"]
+        XCTAssertTrue(trash.waitForExistence(timeout: 10), "no trash pill in the Bowls bar")
+        trash.tap()
+        XCTAssertTrue(staticTexts["Recently Deleted"].firstMatch.waitForExistence(timeout: 5), "Recently Deleted did not open")
+    }
+
+    /// The archived bowls: the row Archive, the last section of the Bowls side, pushes them as a page (owner
+    /// revision 10).
+    func openArchive() {
+        openTab("Bowls")
+        bowlsSide("Bowls")
+        let row = buttons["BowlsArchive"]
+        XCTAssertTrue(reveal(row), "no Archive row at the end of Bowls")
+        row.tap()
+        XCTAssertTrue(buttons["Back"].firstMatch.waitForExistence(timeout: 5), "Archive did not open as a page")
     }
 
     /// "+" in the middle of the tab bar (on an iPad the last pill of the bar).
@@ -124,18 +144,18 @@ extension XCUIApplication {
         all.tap()
     }
 
-    /// The side of the Bowls tab's switch (Bowls, Archive or Deleted; their labels carry a count): a segmented
+    /// The side of the Bowls tab's switch (Bowls or To-dos; To-dos carries the count of open to-dos): a segmented
     /// control, or capsules with the largest text sizes. Returns the segment.
     @discardableResult
     func bowlsSide(_ name: String) -> XCUIElement {
-        // "Archive" without a count when it is empty (no "0"), "Deleted 27" with one.
+        // "Bowls" never with a count, "To-dos" without one when nothing is open (no "0"), "To-dos 4" with one.
         let predicate = NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + " ")
         let control = segmentedControls["BowlsSide"]
         let barTop = placeTabBar.exists ? placeTabBar.frame.minY : .greatestFiniteMagnitude
         let side = control.waitForExistence(timeout: 5) ? control.buttons.matching(predicate).firstMatch
             : buttons.matching(predicate).allElementsBoundByIndex.first { $0.exists && $0.isHittable && $0.frame.maxY < barTop }
                 ?? buttons.matching(predicate).firstMatch
-        XCTAssertTrue(side.waitForExistence(timeout: 10), "Bowls · Archive · Deleted has no \(name)")
+        XCTAssertTrue(side.waitForExistence(timeout: 10), "Bowls · To-dos has no \(name)")
         if !side.isSelected { side.tap() }
         return side
     }

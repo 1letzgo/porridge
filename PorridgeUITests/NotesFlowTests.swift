@@ -163,8 +163,8 @@ final class NotesFlowTests: XCTestCase {
         return count
     }
 
-    /// The three places and the search are tabs with "+" in the middle; Today has its gear, the Inbox ends in the card
-    /// with Open To-dos and Weekly Review, Bowls in Smart Filters and switches to Archive and Recently Deleted (also
+    /// The three places and the search are tabs with "+" in the middle; Today has its gear, the Inbox no switch, Bowls
+    /// switches to To-dos, ends in Smart Filters and the Archive row and has the trash pill (both open pages, also
     /// when empty); the Search tab switches to Chat.
     func testThreePlacesAsTabs() throws {
         let app = launchApp()
@@ -178,26 +178,24 @@ final class NotesFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["PlaceSettings"].exists, "Today has no Settings gear")
         XCTAssertFalse(app.buttons["TodayOpenTodos"].exists, "Open To-dos still hangs at the end of Today")
         app.openTab("Inbox")
-        XCTAssertTrue(app.inboxSegment(0).waitForExistence(timeout: 5), "Inbox has no New · To-dos")
-        XCTAssertTrue(app.inboxSegment(1).exists, "Inbox has no To-dos side")
-        XCTAssertTrue(app.buttons["Select"].exists, "Inbox has no Select")
-        app.inboxSegment(1).tap()
+        XCTAssertTrue(app.buttons["Select"].waitForExistence(timeout: 5), "Inbox has no Select")
+        XCTAssertFalse(app.segmentedControls["InboxSegment"].exists, "the Inbox still has a switch")
+        // The open to-dos are the To-dos side of the Bowls tab (owner revision 10).
+        app.openTodos()
         XCTAssertTrue(app.buttons["TodosAdd"].waitForExistence(timeout: 5), "the To-dos side has no New To-do")
-        XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox")
-        app.inboxSegment(0).tap()
-        app.openTab("Bowls")
+        XCTAssertTrue(app.tab("Bowls").isSelected, "the To-dos side left Bowls")
+        app.bowlsSide("Bowls")
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 5), "Bowls has no sort menu")
         XCTAssertTrue(app.buttons["PlaceSettings"].exists, "Bowls has no Settings gear")
+        XCTAssertTrue(app.buttons["BowlsTrash"].exists, "Bowls has no trash pill")
         XCTAssertTrue(app.reveal(app.buttons["NewSmartFilter"]), "New Smart Filter… missing")
-        XCTAssertFalse(app.buttons["BowlsArchive"].exists, "Archive is still a row at the end of Bowls")
-        XCTAssertFalse(app.buttons["BowlsRecentlyDeleted"].exists, "Recently Deleted is still a row at the end of Bowls")
-        // Archive and Recently Deleted are the other sides of the Bowls tab's switch (also when empty).
-        app.bowlsSide("Archive")
-        XCTAssertTrue(app.bowlsSide("Archive").isSelected, "Archive did not open")
-        XCTAssertFalse(app.buttons["BowlSort"].exists, "Sort shows on the Archive side")
-        app.bowlsSide("Deleted")
+        // Archive is the last section's row, Recently Deleted the trash pill; both open pages (also when empty).
+        app.openArchive()
+        XCTAssertTrue(app.staticTexts["Nothing Archived"].exists || app.staticTexts["Bowls"].exists, "Archive did not open")
+        app.goBack()
+        app.openRecentlyDeleted()
         XCTAssertTrue(app.staticTexts["Nothing Deleted"].exists || app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Notes are deleted after'")).firstMatch.exists, "Recently Deleted did not open")
-        app.bowlsSide("Bowls")
+        app.goBack()
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 5), "Sort did not come back on the Bowls side")
         app.openTab("Search")
         app.searchSide("Search")

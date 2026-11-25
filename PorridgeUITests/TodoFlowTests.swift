@@ -123,7 +123,7 @@ final class TodoFlowTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["3 suggested to-dos"].exists, "the row still says that to-dos wait")
     }
 
-    /// The to-dos folder under the Inbox: every open to-do by due day, the longest overdue first; ticked there, it
+    /// The to-dos folder, the Bowls tab's To-dos side: every open to-do by due day, the longest overdue first; ticked there, it
     /// stays for today under "Done Today".
     func testTodosFolderListsOpenTodosByDueDay() throws {
         let prefix = unique("Folder")
@@ -131,12 +131,8 @@ final class TodoFlowTests: XCTestCase {
         app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
         app.launch()
 
-        // Open To-dos is the Inbox's To-dos side (owner revision 9).
-        app.openTab("Inbox")
-        let entry = app.inboxSegment(1)
-        XCTAssertTrue(entry.waitForExistence(timeout: 10), "no To-dos side in the Inbox")
-        screenshot("inbox-todos-folder-home", app)
-        entry.tap()
+        // Open To-dos is the Bowls tab's To-dos side (owner revision 10).
+        app.openTodos()
 
         XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "no Overdue group")
         let first = app.staticTexts["\(prefix) long overdue"]
@@ -145,7 +141,7 @@ final class TodoFlowTests: XCTestCase {
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "\(prefix) long overdue, ")).firstMatch
         XCTAssertTrue(row.exists, "row of the overdue to-do missing")
         XCTAssertEqual(row.label.components(separatedBy: prefix).count - 1, 2, "the row does not name its bowl: \(row.label)")
-        screenshot("inbox-todos-folder", app)
+        screenshot("bowls-todos-folder", app)
 
         // Ticked in the folder, it goes to Done Today.
         let box = app.switches.matching(NSPredicate(format: "label == 'To-do' AND value == 'Not Done'")).firstMatch

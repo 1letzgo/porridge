@@ -1,9 +1,10 @@
 import SwiftData
 import SwiftUI
 
-/// Bowls, the third place, on the Bowls side of its switch (Bowls · Archive · Deleted, `BowlsSide`): every bowl
-/// (pinned first, then "All Bowls" in the order of Sort Bowls By, no limit), then the smart filters with "New Smart
-/// Filter…", always there. On an iPad (the sidebar has no tab bar) the other places come first.
+/// Bowls, the third place, on the Bowls side of its switch (Bowls · To-dos, `BowlsSide`): every bowl (pinned first,
+/// then "All Bowls" in the order of Sort Bowls By, no limit), then the smart filters with "New Smart Filter…", always
+/// there, and last the section Archive with its one row (owner revision 10), which opens the archived bowls. On an
+/// iPad (the sidebar has no tab bar) the other places come first.
 struct BowlsPlace: View {
     let notes: [Note]
     let projects: [NoteFolder]
@@ -95,6 +96,18 @@ struct BowlsPlace: View {
             } header: {
                 ListHeader(title: String(localized: "Smart Filters"), tint: .brandNavy)
             }
+            // The archived bowls, a page of their own (owner revision 10; before, a side of the switch). Always there,
+            // the count only when something is archived.
+            CardSection {
+                PlaceLinkRow(
+                    title: String(localized: "Archive"), systemImage: "archivebox.fill", tint: .brandNavy,
+                    count: HomeList.archivedProjects(projects).count
+                ) { onOpen(.archive) }
+                    .lastInSection(true)
+                    .accessibilityIdentifier("BowlsArchive")
+            } header: {
+                ListHeader(title: String(localized: "Archive"), tint: .brandNavy)
+            }
         }
         .cardList()
     }
@@ -111,6 +124,53 @@ struct BowlsPlace: View {
                 onSelect: { onSelect(project) }
             )
             .lastInSection(project.id == bowls.last?.id)
+        }
+    }
+}
+
+/// The Bowls tab's To-dos side (owner revision 10; before, the Inbox's To-dos side and the page Open To-dos): every
+/// open to-do by due day, grouped as the search's "Open To-dos", then those done today. Each row names its bowl. Only
+/// a view: the to-dos stay where they are.
+struct OpenTodosList: View {
+    let notes: [Note]
+    let projects: [NoteFolder]
+    @Binding var selection: UUID?
+    var onRemove: (Note) -> Void
+
+    var body: some View {
+        let folder = Todos.folder(notes)
+        let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
+        func buckets(_ note: Note) -> [String] { note.projectIDs.compactMap { names[$0] } }
+        return List(selection: $selection) {
+            ForEach(Array(folder.groups.enumerated()), id: \.element.title) { index, group in
+                Section {
+                    ForEach(group.notes) { note in
+                        NoteListRow(note: note, buckets: buckets(note)) { onRemove(note) }
+                            .lastInSection(note.id == group.notes.last?.id)
+                    }
+                } header: {
+                    ListHeader(
+                        title: group.title, count: group.notes.count,
+                        tint: group.title == String(localized: "Overdue") ? .red : .brandTask, isFirst: index == 0
+                    )
+                }
+            }
+            if !folder.doneToday.isEmpty {
+                Section {
+                    ForEach(folder.doneToday) { note in
+                        NoteListRow(note: note, buckets: buckets(note)) { onRemove(note) }
+                            .lastInSection(note.id == folder.doneToday.last?.id)
+                    }
+                } header: {
+                    ListHeader(title: String(localized: "Done Today"), count: folder.doneToday.count, tint: .brandNavy, isFirst: folder.groups.isEmpty)
+                }
+            }
+        }
+        .cardList()
+        .overlay {
+            if folder.isEmpty {
+                EmptyStateView(title: "Nothing to Do", message: "Open to-dos from the inbox and every bowl show up here.", systemImage: "checklist")
+            }
         }
     }
 }

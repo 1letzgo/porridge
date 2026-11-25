@@ -137,7 +137,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case .today: "Today"
         case .inbox: "Inbox"
         case .bowls: "Bowls"
-        case .todos: "Inbox"
+        case .todos: "Bowls"
         case .chat: "Chat"
         case .project(let id): library.project(id)?.name ?? "Porridge"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Porridge"

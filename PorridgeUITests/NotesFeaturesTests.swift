@@ -95,11 +95,10 @@ final class NotesFeaturesTests: XCTestCase {
         delete.tap()
         XCTAssertFalse(app.staticTexts[name].waitForExistence(timeout: 3), "note still in the inbox")
 
-        // Recently Deleted is the Deleted side of the Bowls tab's switch.
-        app.openTab("Bowls")
-        app.bowlsSide("Deleted")
+        // Recently Deleted opens from the trash pill in the Bowls bar.
+        app.openRecentlyDeleted()
         XCTAssertTrue(app.reveal(app.staticTexts[name]), "note not in the trash")
-        app.bowlsSide("Bowls")
+        app.goBack()
     }
 
     func testTagIsOfferedInTheSearch() throws {

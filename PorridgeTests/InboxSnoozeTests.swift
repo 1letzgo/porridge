@@ -71,8 +71,8 @@ final class InboxSnoozeTests: XCTestCase {
     }
 
     func testCountedTitlesLeaveOutZero() {
-        XCTAssertEqual(Places.countedTitle("Archive", 0), "Archive")
-        XCTAssertEqual(Places.countedTitle("Deleted", 27), "Deleted 27")
+        XCTAssertEqual(Places.countedTitle("To-dos", 0), "To-dos")
+        XCTAssertEqual(Places.countedTitle("To-dos", 27), "To-dos 27")
         XCTAssertEqual(Places.countedTitle("All", 3, gap: "  "), "All  3")
     }
 }

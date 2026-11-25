@@ -57,8 +57,8 @@ enum WhatsNew {
             Item(
                 symbol: "calendar", title: String(localized: "Today Shows What Is Open"),
                 text: mac
-                    ? String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is on the Inbox’s To-dos side; the Weekly Review is a button in Today’s head.")
-                    : String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is on the Inbox’s To-dos side; the Weekly Review is a button in Today’s bar.")
+                    ? String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is on the To-dos side of Bowls; the Weekly Review is a button in Today’s head.")
+                    : String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is on the To-dos side of Bowls; the Weekly Review opens from Today’s bar.")
             ),
         ]
     }
@@ -68,10 +68,10 @@ enum WhatsNew {
     static func places(mac: Bool) -> [Item] {
         let today = Item(symbol: "calendar", title: String(localized: "Today"), text: String(localized: "Appointments and the to-dos that are due."))
         let inbox = Item(symbol: "tray.fill", title: String(localized: "Inbox"),
-                         text: String(localized: "Everything new lands here first and stays until it is filed into a bowl. Its To-dos side lists every open to-do."))
+                         text: String(localized: "Everything new lands here first and stays until it is filed into a bowl."))
         let bowls = Item(symbol: Places.bowlsSymbol, title: String(localized: "Bowls"), text: mac
-            ? String(localized: "One bowl per topic, the smart filters, Archive and Recently Deleted.")
-            : String(localized: "One bowl per topic and the smart filters; the switch on top shows the Archive and Recently Deleted."))
+            ? String(localized: "One bowl per topic, the smart filters and every open to-do; Archive and Recently Deleted have their own rows.")
+            : String(localized: "One bowl per topic, the smart filters and the Archive; the switch on top shows every open to-do, the trash Recently Deleted."))
         if mac {
             return [
                 today, inbox, bowls,

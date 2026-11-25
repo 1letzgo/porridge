@@ -74,16 +74,16 @@ final class TabBarFlowTests: XCTestCase {
         }
     }
 
-    /// The Inbox's entries are right under its switch New · To-dos (owner revision 9: no card), and the last rows of
-    /// the list still scroll clear of the raised "+".
+    /// The Inbox's entries are right under its bar, without a switch (owner revision 10: the To-dos side moved to
+    /// Bowls), and the last rows of the list still scroll clear of the raised "+".
     func testTheInboxEntriesAreOnTopAndTheLastRowClearsThePlus() {
         let app = launch(["-emptyStore", "YES", "-seedInboxCount", "30"])
         app.openTab("Inbox")
-        app.inboxSegment(0).tap()
         XCTAssertFalse(app.buttons["InboxWeeklyReview"].exists, "the card is still in the Inbox")
+        XCTAssertFalse(app.segmentedControls["InboxSegment"].exists, "the Inbox still has a switch")
         let first = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Inbox note '")).firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 5), "no entries")
-        XCTAssertGreaterThan(first.frame.minY, app.inboxSegment(0).frame.maxY, "the entries are not under New · To-dos")
+        XCTAssertGreaterThan(first.frame.minY, app.buttons["InboxTriage"].frame.maxY, "the entries are not under the bar")
         let last = app.staticTexts["Inbox note 1"]
         for _ in 0..<20 where !(last.exists && last.isHittable && last.frame.maxY <= app.addButton.frame.minY) { app.swipeUp() }
         XCTAssertLessThanOrEqual(last.frame.maxY, app.addButton.frame.minY, "the last entry stays under +")
@@ -154,33 +154,39 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 10), "a link did not win over Today")
     }
 
-    /// The Inbox's To-dos side lists the open to-dos (owner revision 9; before, the page Open To-dos), and the Weekly
-    /// Review is a button in Today's bar.
-    func testInboxToDosSideAndWeeklyReviewInToday() {
+    /// The Bowls tab's To-dos side lists the open to-dos (owner revision 10; before, the Inbox's To-dos side), and
+    /// the Weekly Review opens from Today's bar as a page with a back pill (no sheet).
+    func testBowlsToDosSideAndWeeklyReviewPageInToday() {
         let app = launch(["-seedTodos", unique("Card")])
-        app.openTab("Inbox")
-        app.inboxSegment(1).tap()
+        let side = app.openTodos()
         XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "the To-dos side shows no open to-dos")
-        XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox tab")
-        screenshot("inbox-todos-side", app)
-        app.inboxSegment(0).tap()
+        XCTAssertTrue(app.tab("Bowls").isSelected, "the To-dos side left the Bowls tab")
+        XCTAssertTrue(side.label.hasPrefix("To-dos "), "the To-dos side does not count the open to-dos: \(side.label)")
+        XCTAssertEqual(app.bowlsSide("Bowls").label, "Bowls", "the Bowls side carries a count")
+        app.bowlsSide("To-dos")
+        screenshot("bowls-todos-side", app)
+        app.bowlsSide("Bowls")
 
         app.openTab("Today")
         let review = app.buttons["TodayWeeklyReview"]
         XCTAssertTrue(review.waitForExistence(timeout: 10), "no Weekly Review in Today's bar")
         review.tap()
         XCTAssertTrue(app.staticTexts["This Week"].waitForExistence(timeout: 5), "the Weekly Review did not open")
-        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(app.tab("Today").isSelected, "the Weekly Review left Today")
+        XCTAssertFalse(app.buttons["Done"].exists, "the Weekly Review is still a sheet")
+        app.buttons["Back"].firstMatch.tap()
+        XCTAssertTrue(review.waitForExistence(timeout: 5), "Back did not return to Today")
     }
 
-    /// An empty Inbox says so, under its switch.
+    /// An empty Inbox says so, without a switch; the Bowls tab's To-dos side shows no "0".
     func testEmptyInboxSaysSo() {
         let app = launch(["-emptyStore", "YES"])
         app.openTab("Inbox")
-        app.inboxSegment(0).tap()
         XCTAssertTrue(app.staticTexts["Inbox Empty"].waitForExistence(timeout: 10), "the empty Inbox says nothing")
-        XCTAssertTrue(app.inboxSegment(0).label.hasPrefix("New"), "no New side")
-        XCTAssertFalse(app.inboxSegment(0).label.contains("0"), "a 0 on the switch")
+        XCTAssertFalse(app.segmentedControls["InboxSegment"].exists, "the Inbox still has a switch")
+        XCTAssertEqual(app.openTodos().label, "To-dos", "a 0 on the switch")
+        app.bowlsSide("Bowls")
+        app.openTab("Inbox")
         screenshot("inbox-empty", app)
     }
 

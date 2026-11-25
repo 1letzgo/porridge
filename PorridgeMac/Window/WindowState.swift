@@ -10,9 +10,9 @@ enum SidebarPage: Hashable, Codable {
     case inbox
     /// Every bowl like the iPhone's Bowls place, the smart filters, Archive and Recently Deleted (`NoteListContent`).
     case bowls
-    /// The Inbox on the To-dos side of its segment New · To-dos (owner revision 9): every open to-do by due day,
-    /// wherever it is filed (`Todos.folder`). The sidebar's Inbox row, View › Open To-dos, the command bar and the
-    /// widgets lead here. Not a sidebar row of its own.
+    /// Bowls on the To-dos side of its segment Bowls · To-dos (owner revision 10; before, the Inbox's To-dos side):
+    /// every open to-do by due day, wherever it is filed (`Todos.folder`). View › Open To-dos, the command bar, the
+    /// hint and the widgets lead here. Not a sidebar row of its own: the Bowls row stays selected.
     case todos
     /// The chat with the bowls, the fourth place (⌘4): the chats in the list column, the open one in the detail. Also
     /// AI › New Chat, Ask About This Bowl and "Ask Porridge: …" of Search or Ask.

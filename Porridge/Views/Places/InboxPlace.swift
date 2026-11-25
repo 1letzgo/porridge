@@ -1,24 +1,17 @@
 import SwiftData
 import SwiftUI
 
-/// The Inbox's two sides, one switch on top (owner revision 9): New, everything in no bowl (it stays there until it
-/// is filed), and To-dos, every open to-do of the Inbox and all bowls. Every launch starts on New.
-enum InboxSide: Hashable {
-    case new, todos
-}
-
-/// The Inbox, the second place, with its switch New · To-dos in the first row of the content. New shows the bundle
-/// suggestion (one line) above its entries, and today's appointments that are in no bowl yet first
-/// (`InboxAppointments`); each entry names its suggested bowl ("✦ Bowl") and swipes to file. To-dos lists every open
-/// to-do by due day (`Todos.folder`), then those done today; each row names its bowl. While choosing several (New
-/// only), "N Selected · Select All" is the first row and the selection bar takes the tab bar's place.
+/// The Inbox, the second place: everything in no bowl (it stays there until it is filed), one list without a switch
+/// (owner revision 10: the open to-dos moved to the Bowls tab). The bundle suggestion (one line) above the entries,
+/// today's appointments that are in no bowl yet first (`InboxAppointments`); each entry names its suggested bowl
+/// ("✦ Bowl") and swipes to file. While choosing several, "N Selected · Select All" is the first row and the selection
+/// bar takes the tab bar's place.
 struct InboxPlace: View {
     let notes: [Note]
     let projects: [NoteFolder]
     @Binding var selection: UUID?
     @Binding var isSelecting: Bool
     @Binding var chosen: Set<UUID>
-    @Binding var side: InboxSide
     var onRemove: (Note) -> Void
     /// Records a meeting for one of today's appointments, or starts a note for it.
     var onRecord: (CalendarAppointment) -> Void = { _ in }
@@ -29,28 +22,15 @@ struct InboxPlace: View {
 
     var body: some View {
         let waiting = Inbox.notes(notes)
-        let folder = Todos.folder(notes)
         return VStack(spacing: 0) {
             if isSelecting {
                 NoteSelectionHeader(notes: waiting, chosen: $chosen)
             } else {
-                // The counts only where there is something (owner revision 9).
-                TabSwitcher(selection: $side, options: [
-                    (value: InboxSide.new, title: Places.countedTitle(String(localized: "New"), waiting.count)),
-                    (value: InboxSide.todos, title: Places.countedTitle(String(localized: "To-dos"), folder.open)),
-                ])
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-                .accessibilityIdentifier("InboxSegment")
-                if side == .new {
-                    // Entries that belong together: one suggestion for a new bowl at a time (`InboxBundler`).
-                    InboxBundleCard(notes: notes, projects: projects)
-                }
+                // Entries that belong together: one suggestion for a new bowl at a time (`InboxBundler`).
+                InboxBundleCard(notes: notes, projects: projects)
             }
             Group {
-                if side == .todos, !isSelecting {
-                    todos(folder)
-                } else if isSelecting {
+                if isSelecting {
                     List(selection: $chosen) { newRows(waiting) }
                         .environment(\.editMode, .constant(.active))
                 } else {
@@ -113,45 +93,6 @@ struct InboxPlace: View {
             // While choosing, the suggestion gives way to the selection.
             NoteListRow(note: note, inInbox: true, suggestion: isSelecting ? nil : EntryMeta.suggestion(for: note, bowls: projects)) { onRemove(note) }
                 .lastInSection(note.id == waiting.last?.id)
-        }
-    }
-
-    /// The To-dos side (until owner revision 9 the page Open To-dos): every open to-do by due day, grouped as the
-    /// search's "Open To-dos", then those done today. Each row names its bowl. Only a view: the to-dos stay where they
-    /// are.
-    private func todos(_ folder: Todos.Folder) -> some View {
-        let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
-        func buckets(_ note: Note) -> [String] { note.projectIDs.compactMap { names[$0] } }
-        return List(selection: $selection) {
-            ForEach(Array(folder.groups.enumerated()), id: \.element.title) { index, group in
-                Section {
-                    ForEach(group.notes) { note in
-                        NoteListRow(note: note, buckets: buckets(note)) { onRemove(note) }
-                            .lastInSection(note.id == group.notes.last?.id)
-                    }
-                } header: {
-                    ListHeader(
-                        title: group.title, count: group.notes.count,
-                        tint: group.title == String(localized: "Overdue") ? .red : .brandTask, isFirst: index == 0
-                    )
-                }
-            }
-            if !folder.doneToday.isEmpty {
-                Section {
-                    ForEach(folder.doneToday) { note in
-                        NoteListRow(note: note, buckets: buckets(note)) { onRemove(note) }
-                            .lastInSection(note.id == folder.doneToday.last?.id)
-                    }
-                } header: {
-                    ListHeader(title: String(localized: "Done Today"), count: folder.doneToday.count, tint: .brandNavy, isFirst: folder.groups.isEmpty)
-                }
-            }
-        }
-        .cardList()
-        .overlay {
-            if folder.isEmpty {
-                EmptyStateView(title: "Nothing to Do", message: "Open to-dos from the inbox and every bowl show up here.", systemImage: "checklist")
-            }
         }
     }
 

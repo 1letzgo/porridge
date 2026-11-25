@@ -66,7 +66,7 @@ enum NoteListContent {
         case .bowls:
             return bowls(notes, library: library)
         case .todos:
-            // The To-dos side of the Inbox's segment (owner revision 9; before, the page Open To-dos): exactly the groups of the search's "Open To-dos", then those done today (`Todos.folder`).
+            // The To-dos side of the segment Bowls · To-dos (owner revision 10; before, the Inbox's To-dos side and the page Open To-dos): exactly the groups of the search's "Open To-dos", then those done today (`Todos.folder`).
             let folder = Todos.folder(notes)
             var sections = folder.groups.enumerated().map { index, group -> (ListSection, [ListItem]) in
                 let late = group.notes.first.flatMap { TodoBridge.dueStatus(of: $0) } == .overdue

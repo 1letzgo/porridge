@@ -35,7 +35,6 @@ final class Revision6ShotsTests: XCTestCase {
             shoot("tabbar-120-\(tab.lowercased())")
         }
         app.openTab("Inbox")
-        app.inboxSegment(0).tap()
         shoot("inbox-top")
     }
 
@@ -43,10 +42,10 @@ final class Revision6ShotsTests: XCTestCase {
         let app = launch(["-seedEntryKinds", "YES", "-seedTodos", "Garden"])
 
         // Bowls: one bowl archived (made here when the Archive is empty), one entry deleted.
-        app.openTab("Bowls")
-        app.bowlsSide("Archive")
-        if app.staticTexts["Nothing Archived"].waitForExistence(timeout: 2) {
-            app.bowlsSide("Bowls")
+        app.openArchive()
+        let archiveEmpty = app.staticTexts["Nothing Archived"].waitForExistence(timeout: 2)
+        app.goBack()
+        if archiveEmpty {
             let name = unique("Old Trip")
             app.create("Bowl")
             let field = app.alerts.textFields.firstMatch
@@ -62,7 +61,10 @@ final class Revision6ShotsTests: XCTestCase {
                 if app.buttons["Back"].firstMatch.exists { app.buttons["Back"].firstMatch.tap() }
             }
         }
-        if app.bowlsSide("Deleted").label == "Deleted" {
+        app.openRecentlyDeleted()
+        let trashEmpty = app.staticTexts["Nothing Deleted"].waitForExistence(timeout: 2)
+        app.goBack()
+        if trashEmpty {
             let name = unique("Old draft")
             app.newNote(title: name)
             app.goBack()
@@ -77,11 +79,15 @@ final class Revision6ShotsTests: XCTestCase {
         app.openTab("Bowls")
         app.bowlsSide("Bowls")
         shoot("bowls-bowls")
-        app.bowlsSide("Archive")
-        shoot("bowls-archive")
-        app.bowlsSide("Deleted")
-        shoot("bowls-deleted")
+        app.openTodos()
+        shoot("bowls-todos")
         app.bowlsSide("Bowls")
+        app.openArchive()
+        shoot("bowls-archive")
+        app.goBack()
+        app.openRecentlyDeleted()
+        shoot("bowls-deleted")
+        app.goBack()
 
         // Search and Chat.
         app.openTab("Search")

@@ -9,9 +9,9 @@ final class ListHeaderView: NSView {
     var onEmptyTrash: (() -> Void)?
     /// A click on the hint of the day (in Today's head).
     var onHint: ((DailyHint) -> Void)?
-    /// The Inbox's triage switched on or off, and its segment New · To-dos (true: To-dos).
+    /// The Inbox's triage switched on or off, and the segment Bowls · To-dos of Bowls (true: To-dos).
     var onTriage: (() -> Void)?
-    var onInboxSide: ((Bool) -> Void)?
+    var onBowlsSide: ((Bool) -> Void)?
     /// Today paged a day back (-1) or on (1), and back to today.
     var onStepDay: ((Int) -> Void)?
     var onToday: (() -> Void)?
@@ -21,7 +21,7 @@ final class ListHeaderView: NSView {
     private let title = NSTextField.label(font: .systemFont(ofSize: 17, weight: .bold))
     /// Today's date under its title.
     private let dateLine = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize + 1), color: .secondaryLabelColor)
-    /// The Inbox's New · To-dos.
+    /// Bowls · To-dos (owner revision 10; before, the Inbox's New · To-dos).
     private let segment = NSSegmentedControl()
     private let filters = NSStackView()
     private let tags = NSStackView()
@@ -60,8 +60,8 @@ final class ListHeaderView: NSView {
         segment.controlSize = .small
         segment.target = self
         segment.action = #selector(segmentChanged)
-        segment.setAccessibilityIdentifier("InboxSegment")
-        segment.setAccessibilityLabel(String(localized: "Inbox"))
+        segment.setAccessibilityIdentifier("BowlsSide")
+        segment.setAccessibilityLabel(String(localized: "Bowls"))
         dateLine.isHidden = true
         let stack = NSStackView.vertical([titleRow, dateLine, segment, whatsNew, hintRow, triageKeys, filters, tags], spacing: 10)
         stack.setCustomSpacing(2, after: titleRow)
@@ -103,8 +103,8 @@ final class ListHeaderView: NSView {
         case .today: (TodayDay.title(state.todayShownDay), "calendar", .brandNavy)
         case .inbox: ("Inbox", "tray.fill", .brandSky)
         case .bowls: ("Bowls", Places.bowlsSymbol, .brandProject)
-        // The Inbox's To-dos side (owner revision 9): the head stays the Inbox's.
-        case .todos: ("Inbox", "tray.fill", .brandSky)
+        // The To-dos side of Bowls (owner revision 10): the head stays the Bowls'.
+        case .todos: ("Bowls", Places.bowlsSymbol, .brandProject)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)
         case .project(let id): (library.project(id)?.name ?? "Bowl", "folder.fill", .brandProject)
         case .smartFilter(let id): (SmartFilterStore.shared.filter(id)?.name ?? String(localized: "Smart Filter"), "line.3.horizontal.decrease", .brandNavy)
@@ -164,13 +164,12 @@ final class ListHeaderView: NSView {
             sort.setAccessibilityIdentifier("BowlSort")
             trailing.addArrangedSubview(sort)
         }
-        // The Inbox: its segment New · To-dos in the second row (the counts only where there is something), and on New
-        // its triage.
-        segment.isHidden = !(page == .inbox || page == .todos) || state.isTriaging
-        if page == .inbox || page == .todos {
-            let waiting = Inbox.notes(library.notes).count
+        // Bowls: its segment Bowls · To-dos in the second row (owner revision 10: Bowls without a count, To-dos with
+        // the open to-dos when there are any). The Inbox has none; on it its triage.
+        segment.isHidden = !(page == .bowls || page == .todos)
+        if page == .bowls || page == .todos {
             let open = Todos.folder(library.notes).open
-            segment.setLabel(Places.countedTitle(String(localized: "New"), waiting, gap: "  "), forSegment: 0)
+            segment.setLabel(String(localized: "Bowls"), forSegment: 0)
             segment.setLabel(Places.countedTitle(String(localized: "To-dos"), open, gap: "  "), forSegment: 1)
             segment.selectedSegment = page == .todos ? 1 : 0
         }
@@ -346,7 +345,7 @@ final class ListHeaderView: NSView {
     }
 
     @objc private func segmentChanged() {
-        onInboxSide?(segment.selectedSegment == 1)
+        onBowlsSide?(segment.selectedSegment == 1)
     }
 
     @objc private func sortChanged(_ sender: NSPopUpButton) {

@@ -889,6 +889,29 @@ in das register. weekly reviews als button auf home in navbar".
 - **Weekly Review in Today's bar:** iPhone a pill (`calendar.badge.checkmark`, "Weekly Review") between ‹ › and the
   gear; Mac a button in Today's head; Go To, View › Weekly Review and the command bar stay.
 
+**As built (owner revision 10, 2026-11-25):** owner: "This week nicht als popup sondern als view mit back button;
+Bowls reiter Bowl braucht keine anzahl; [To-dos] als zweiten reiter in bowls; archive und delete nicht als reiter in
+bowls sondern delete als papierkorb icon [in der Kopfleiste von Bowls] und archive als kategorie unter smartfilters als
+letzte kategorie inkl zeile".
+
+- **Weekly Review as a page:** the pill in Today's bar pushes it onto Today's stack (`ListPage.weeklyReview`) with the
+  usual bar (back pill, square `calendar.badge.checkmark`, "Weekly Review"); the content is unchanged (its own "This
+  Week" head with the week arrows, no Done). An entry opens on top of it. Mac: unchanged, its own window (the main
+  window has no stack with a back button).
+- **Bowls · To-dos:** the Bowls tab's switch has two sides; "Bowls" never carries a count, "To-dos" the open to-dos
+  only when there are any (`Places.countedTitle`). To-dos is the former Inbox side (same groups, rows, empty state and
+  green "+" New To-do in the bar). Every way to the open to-dos (Go To, the overdue hint, quick action, widgets,
+  `porridge://todos`, Mac View › Open To-dos and the command bar) opens it. Every launch starts on Bowls. Mac: the
+  page `.todos` shows under the head of Bowls with the segment Bowls · To-dos, the sidebar's Bowls row selected.
+- **The Inbox has no switch any more:** one list (today's appointments in no bowl, then the entries), Triage and
+  Select as before (iPhone and Mac).
+- **Recently Deleted:** a pill with `trash` (filled while something is in it, VoiceOver "Recently Deleted") in the
+  Bowls bar left of Sort and the gear, on both sides; it pushes Recently Deleted as a page with Delete All in its bar.
+- **Archive:** a last section "Archive" after Smart Filters (always there) with one row "Archive" (archive box, the
+  number of archived bowls only when > 0, chevron); it pushes the archived bowls as a page (empty: "Nothing Archived").
+- Go To Archive and Recently Deleted select the Bowls tab and push that page. Mac: Archive and Recently Deleted stay
+  rows of the sidebar.
+
 ---
 
 ## What gets removed (summary)

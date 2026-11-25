@@ -78,10 +78,6 @@ struct NotesView: View {
     @State private var chosen = Set<UUID>()
     /// A note in Recently Deleted that is about to go for good.
     @State private var deletingNow: Note?
-    /// The Inbox's side: New or To-dos (`InboxSide`). Not kept: every launch starts on New.
-    @State private var inboxSide = InboxSide.new
-    /// The weekly review (the button in Today's bar).
-    @State private var showReview = false
     /// Triage: the Inbox one entry at a time, full screen (`TriageView`).
     @State private var showTriage = false
     @AppStorage(DailyHint.enabledKey) private var hintsEnabled = true
@@ -97,7 +93,7 @@ struct NotesView: View {
     @State private var screenWidth: CGFloat = 390
     @State private var bottomSafeArea: CGFloat = 34
     @State private var keyboardShown = false
-    /// The Bowls tab's side: Bowls, Archive or Deleted. Not kept: every launch starts on Bowls.
+    /// The Bowls tab's side: Bowls or To-dos (owner revision 10). Not kept: every launch starts on Bowls.
     @State private var bowlsSide = BowlsSide.bowls
 
     /// The note that is open, a new one not saved yet included.
@@ -241,12 +237,11 @@ struct NotesView: View {
     }
 
     /// Goes to a page: a place's own page brings its tab to the front at its start; the chat is the Search tab on its
-    /// Chat side, Archive and Recently Deleted the Bowls tab on its Archive or Deleted side; any other page is pushed
-    /// onto the stack it belongs to (a bowl, a smart filter and Settings onto Bowls;
-    /// Settings onto Today when Today is in front, from its gear), or the stack is taken back to it when it is on it
-    /// already.
+    /// Chat side; any other page is pushed onto the stack it belongs to (a bowl, a smart filter, Archive, Recently
+    /// Deleted and Settings onto Bowls; the Weekly Review onto Today; Settings onto Today when Today is in front, from
+    /// its gear), or the stack is taken back to it when it is on it already.
     private func go(_ target: ListPage) {
-        // Search and Chat are the two sides of one place; Bowls, Archive and Recently Deleted the three of another.
+        // Search and Chat are the two sides of one place.
         var target = target
         switch target {
         case .chat, .search:
@@ -254,14 +249,6 @@ struct NotesView: View {
             target = .search
         case .bowls:
             bowlsSide = .bowls
-        case .inbox:
-            inboxSide = .new
-        case .archive:
-            bowlsSide = .archive
-            target = .bowls
-        case .trash:
-            bowlsSide = .deleted
-            target = .bowls
         default:
             break
         }
@@ -384,9 +371,7 @@ struct NotesView: View {
         } message: {
             Text(audioImportError ?? "")
         }
-        .modifier(ReviewAndHint(
-            showReview: $showReview, notes: notes, projects: projects, signature: indexSignature, hintsEnabled: hintsEnabled
-        ) { openNote($0) })
+        .modifier(DailyHintRefresh(notes: notes, signature: indexSignature, hintsEnabled: hintsEnabled))
         .sheet(isPresented: $showCalendar) {
             RecordMeetingSheet(
                 onPick: { appointment in startRecording(for: appointment) },
@@ -610,7 +595,6 @@ struct NotesView: View {
         case .inbox:
             InboxPlace(
                 notes: notes, projects: projects, selection: $selection, isSelecting: $isSelecting, chosen: $chosen,
-                side: $inboxSide,
                 onRemove: { remove($0) },
                 onRecord: { startRecording(for: $0) },
                 onNewNote: { addNote(for: $0) }
@@ -636,6 +620,9 @@ struct NotesView: View {
             archive
         case .trash:
             trash
+        case .weeklyReview:
+            // A page of Today's stack with the back pill (owner revision 10; before, a sheet). An entry opens on top.
+            WeeklyReviewView(notes: notes, bowls: projects, onOpen: { openNote($0) })
         case .settings:
             SettingsView(isEmbedded: true)
                 .environment(\.openListPage, { go($0) })
@@ -646,18 +633,15 @@ struct NotesView: View {
         }
     }
 
-    /// The Bowls tab: a switch "Bowls · Archive · Deleted" on top (like the Inbox's New · To-dos, with counts
-    /// where there is something), then
-    /// the bowls with the smart filters, the archived bowls, or Recently Deleted. Every launch starts on Bowls.
+    /// The Bowls tab: a switch "Bowls · To-dos" on top (owner revision 10: Bowls without a count, To-dos with the
+    /// number of open to-dos when there are any), then the bowls with the smart filters and the Archive row, or every
+    /// open to-do. Archive and Recently Deleted are pages pushed from here. Every launch starts on Bowls.
     private var bowlsPlace: some View {
-        let active = HomeList.bowls(projects, notes: notes, order: bowlOrder).count
-        let archived = HomeList.archivedProjects(projects).count
-        let deleted = notes.lazy.filter(\.isDeleted).count
+        let open = Todos.folder(notes).open
         return VStack(spacing: 0) {
             TabSwitcher(selection: $bowlsSide, options: [
-                (value: BowlsSide.bowls, title: Places.countedTitle(String(localized: "Bowls"), active)),
-                (value: BowlsSide.archive, title: Places.countedTitle(String(localized: "Archive"), archived)),
-                (value: BowlsSide.deleted, title: Places.countedTitle(String(localized: "Deleted"), deleted)),
+                (value: BowlsSide.bowls, title: String(localized: "Bowls")),
+                (value: BowlsSide.todos, title: Places.countedTitle(String(localized: "To-dos"), open)),
             ])
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
@@ -665,10 +649,8 @@ struct NotesView: View {
             switch bowlsSide {
             case .bowls:
                 bowlsList
-            case .archive:
-                archive
-            case .deleted:
-                trash
+            case .todos:
+                OpenTodosList(notes: notes, projects: projects, selection: $selection) { remove($0) }
             }
         }
     }
@@ -698,7 +680,7 @@ struct NotesView: View {
         )
     }
 
-    /// The last tab: a switch "Search | Chat" on top (like the Inbox's New · To-dos; it keeps the side last
+    /// The last tab: a switch "Search | Chat" on top (like the Bowls tab's Bowls · To-dos; it keeps the side last
     /// chosen),
     /// then Search & Ask or the chat.
     private var searchPlace: some View {
@@ -782,7 +764,7 @@ struct NotesView: View {
         case .inbox: go(.inbox)
         case .bowls: go(.bowls)
         case .openTodos: goToTodos()
-        case .weeklyReview: showReview = true
+        case .weeklyReview: go(.weeklyReview)
         case .triage:
             go(.inbox)
             showTriage = !Inbox.notes(notes).isEmpty
@@ -797,11 +779,12 @@ struct NotesView: View {
         }
     }
 
-    /// Every open to-do: the Inbox's To-dos side (until owner revision 9 a page of its own, Open To-dos). Search's Go
-    /// To, the hint about overdue to-dos, the quick action and the widgets come here.
+    /// Every open to-do: the Bowls tab's To-dos side (owner revision 10; before, the Inbox's To-dos side, and until
+    /// owner revision 9 a page of its own, Open To-dos). Search's Go To, the hint about overdue to-dos, the quick action
+    /// and the widgets come here.
     private func goToTodos() {
-        go(.inbox)
-        inboxSide = .todos
+        go(.bowls)
+        bowlsSide = .todos
     }
 
     /// The hint of the day was tapped: what it is about opens.
@@ -1004,7 +987,7 @@ struct NotesView: View {
     // MARK: - The bar
 
     /// The actions of the one-row bar of each page (iOS), "+" last: what does not fit the row is the first row of
-    /// the content (the Inbox's New · To-dos, a bowl's sharing line) or in a menu (a bowl's ⋯).
+    /// the content (the Bowls tab's Bowls · To-dos, a bowl's sharing line) or in a menu (a bowl's ⋯).
     @ViewBuilder
     private func listActions(_ shown: ListPage) -> some View {
         switch shown {
@@ -1019,15 +1002,6 @@ struct NotesView: View {
         case .inbox:
             if isSelecting {
                 doneSelectingButton
-            } else if inboxSide == .todos {
-                // A new to-do at once, in no bowl (the "+" of the tab bar opens the Add sheet).
-                Button { addNote(todo: true) } label: {
-                    Label("New To-do", systemImage: "plus")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(ChromePillButtonStyle(fill: .brandTask))
-                .help("New To-do")
-                .accessibilityIdentifier("TodosAdd")
             } else {
                 let isEmpty = Inbox.notes(notes).isEmpty
                 // One entry at a time, full screen: File, Skip, Delete (Done for to-dos).
@@ -1046,13 +1020,20 @@ struct NotesView: View {
                 barAddButton
             }
         case .bowls:
-            // Sort applies to the bowls; Recently Deleted has Delete All.
-            switch bowlsSide {
-            case .bowls: bowlSortMenu
-            case .archive: EmptyView()
-            case .deleted: deleteAllButton
-            }
+            // Recently Deleted on both sides (owner revision 10); Sort applies to the bowls; on To-dos a new to-do at
+            // once, in no bowl (the "+" of the tab bar opens the Add sheet).
+            trashButton
+            if bowlsSide == .bowls { bowlSortMenu }
             settingsButton
+            if bowlsSide == .todos {
+                Button { addNote(todo: true) } label: {
+                    Label("New To-do", systemImage: "plus")
+                        .fontWeight(.semibold)
+                }
+                .buttonStyle(ChromePillButtonStyle(fill: .brandTask))
+                .help("New To-do")
+                .accessibilityIdentifier("TodosAdd")
+            }
             barAddButton
         case .project:
             if isSelecting {
@@ -1126,7 +1107,7 @@ struct NotesView: View {
                 }
                 .menuStyle(.button)
             }
-        case .archive, .settings, .voices, .acknowledgements:
+        case .archive, .weeklyReview, .settings, .voices, .acknowledgements:
             EmptyView()
         }
     }
@@ -1168,7 +1149,20 @@ struct NotesView: View {
         }
     }
 
-    /// Recently Deleted (the Bowls tab's Deleted side): everything in it goes for good, after asking.
+    /// Recently Deleted (owner revision 10: the trash pill in the Bowls bar, before the Deleted side of the
+    /// switch): a page pushed onto the Bowls stack. When something is in it the symbol is filled.
+    private var trashButton: some View {
+        let hasDeleted = notes.contains(where: \.isDeleted)
+        return Button { go(.trash) } label: {
+            Label("Recently Deleted", systemImage: hasDeleted ? "trash.fill" : "trash")
+        }
+        .help("Recently Deleted")
+        .accessibilityLabel("Recently Deleted")
+        .accessibilityValue(hasDeleted ? String(localized: "Has entries") : String(localized: "Empty"))
+        .accessibilityIdentifier("BowlsTrash")
+    }
+
+    /// Recently Deleted: everything in it goes for good, after asking.
     @ViewBuilder
     private var deleteAllButton: some View {
         if notes.contains(where: \.isDeleted) {
@@ -1180,9 +1174,10 @@ struct NotesView: View {
         }
     }
 
-    /// The Weekly Review, in Today's bar: the week's new entries, open to-dos and bowls (`WeeklyReviewView`).
+    /// The Weekly Review, in Today's bar: the week's new entries, open to-dos and bowls (`WeeklyReviewView`), a page
+    /// pushed onto Today's stack (owner revision 10).
     private var weeklyReviewButton: some View {
-        Button { showReview = true } label: {
+        Button { go(.weeklyReview) } label: {
             Label("Weekly Review", systemImage: "calendar.badge.checkmark")
         }
         .help("Weekly Review")
@@ -1312,6 +1307,7 @@ struct NotesView: View {
         case .chat, .search: "Search"
         case .archive: "Archive"
         case .trash: "Recently Deleted"
+        case .weeklyReview: "Weekly Review"
         case .settings: "Settings"
         case .voices: "Known Voices"
         case .acknowledgements: "Acknowledgements"
@@ -1323,7 +1319,7 @@ struct NotesView: View {
         switch shown {
         case .project: project(on: shown) == nil ? .brandSky : .brandProject
         case .bowls: .brandProject
-        case .archive, .chat, .search, .smartFilter: .brandNavy
+        case .archive, .chat, .search, .smartFilter, .weeklyReview: .brandNavy
         case .trash: .red
         case .today: .brandNavy
         default: .brandSky
@@ -1353,6 +1349,7 @@ struct NotesView: View {
         case .chat, .search: "magnifyingglass"
         case .archive: "archivebox.fill"
         case .trash: "trash.fill"
+        case .weeklyReview: "calendar.badge.checkmark"
         case .settings: "gearshape.fill"
         case .voices: "person.2.fill"
         case .acknowledgements: "heart.text.square.fill"
@@ -1825,9 +1822,10 @@ enum SearchSide: String, CaseIterable {
     static let key = "searchSide"
 }
 
-/// The three sides of the Bowls tab, switched at its top; every launch starts on Bowls.
+/// The two sides of the Bowls tab, switched at its top (owner revision 10): the bowls, and every open to-do. Every
+/// launch starts on Bowls.
 enum BowlsSide: String, CaseIterable {
-    case bowls, archive, deleted
+    case bowls, todos
 }
 
 /// What the list column shows.
@@ -1836,7 +1834,7 @@ enum ListPage: Hashable {
     case today
     /// The inbox: what is new or in no bowl. A place.
     case inbox
-    /// Every bowl, the smart filters, Archive and Recently Deleted (`BowlsPlace`). A place.
+    /// Every bowl, the smart filters and the Archive row (`BowlsPlace`), or every open to-do (`BowlsSide`). A place.
     case bowls
     /// Search & Ask: the search through everything, the places, smart filters and bowls to go to, and "Ask
     /// Porridge: …", which hands the question over to the chat. The last tab.
@@ -1848,8 +1846,12 @@ enum ListPage: Hashable {
     /// The chat with the notes: the Search tab on its Chat side (`SearchSide`), also reached by Ask About This Bowl
     /// and the search's "Ask Porridge: …". Not a page of its own on a stack: going to it switches the side.
     case chat
+    /// The archived bowls, pushed onto the Bowls stack from the Archive row.
     case archive
+    /// Recently Deleted, pushed onto the Bowls stack from the trash pill of its bar.
     case trash
+    /// The weekly review (`WeeklyReviewView`), pushed onto Today's stack from the pill of its bar.
+    case weeklyReview
     case settings
     case voices
     case acknowledgements
@@ -1857,7 +1859,7 @@ enum ListPage: Hashable {
     /// The stack a page is pushed onto when it is opened from elsewhere.
     var place: Place {
         switch self {
-        case .today: .today
+        case .today, .weeklyReview: .today
         case .inbox: .inbox
         case .chat, .search: .search
         case .bowls, .project, .smartFilter, .archive, .trash, .settings, .voices, .acknowledgements: .bowls
@@ -1916,24 +1918,15 @@ private struct EntryLinkOpening: ViewModifier {
 }
 
 /// Files come into the list through a picker ("Photo or File") or by dropping them on it (Mac, iPad).
-/// The weekly review's sheet, and the hint of the day kept up with the entries, the setting and the day.
-private struct ReviewAndHint: ViewModifier {
-    @Binding var showReview: Bool
+/// The hint of the day kept up with the entries, the setting and the day.
+private struct DailyHintRefresh: ViewModifier {
     let notes: [Note]
-    let projects: [NoteFolder]
     let signature: Int
     let hintsEnabled: Bool
-    var openNote: (UUID) -> Void
     @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $showReview) {
-                WeeklyReviewView(notes: notes, bowls: projects, onOpen: { id in
-                    showReview = false
-                    openNote(id)
-                }, onClose: { showReview = false })
-            }
             .task(id: signature) { DailyHints.shared.refresh(notes: notes) }
             .onChange(of: hintsEnabled) { DailyHints.shared.refresh(notes: notes) }
             .onChange(of: scenePhase) { _, phase in

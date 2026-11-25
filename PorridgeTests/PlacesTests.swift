@@ -135,11 +135,16 @@ final class PlacesTests: XCTestCase {
         }
     }
 
-    /// The Bowls tab's three sides (owner revision 6), Bowls first.
-    func testTheBowlsTabHasThreeSides() {
-        XCTAssertEqual(BowlsSide.allCases, [.bowls, .archive, .deleted])
+    /// The Bowls tab's two sides (owner revision 10), Bowls first; Archive and Recently Deleted are pages pushed onto
+    /// the Bowls stack, the Weekly Review a page of Today's.
+    func testTheBowlsTabHasTwoSidesAndThePagesTheirStacks() {
+        XCTAssertEqual(BowlsSide.allCases, [.bowls, .todos])
         XCTAssertEqual(ListPage.archive.place, .bowls)
         XCTAssertEqual(ListPage.trash.place, .bowls)
+        XCTAssertEqual(ListPage.weeklyReview.place, .today)
+        XCTAssertNil(Place(root: .archive), "Archive is no place of its own")
+        XCTAssertNil(Place(root: .trash), "Recently Deleted is no place of its own")
+        XCTAssertNil(Place(root: .weeklyReview), "the Weekly Review is no place of its own")
     }
 
     /// The Chat side's back pill: from a chat picked in All Chats back to the list, from any other chat and from All
@@ -201,7 +206,8 @@ final class PlacesTests: XCTestCase {
         XCTAssertTrue(phone.contains("Chat"), "the Chat side is named")
         XCTAssertTrue(phone.contains("“+” in the middle"), "the + of the tab bar is named")
         XCTAssertTrue(phone.contains("gear in Today"), "the gear in Today is named")
-        XCTAssertTrue(phone.contains("To-dos side"), "the Inbox's To-dos side is named")
+        XCTAssertTrue(phone.contains("To-dos side of Bowls"), "the Bowls tab's To-dos side is named")
+        XCTAssertFalse(phone.contains("Inbox’s To-dos"), "the Inbox has no To-dos side any more")
         XCTAssertFalse(phone.contains("Chat tab"), "Chat has no tab of its own any more")
         // The onboarding's last page: the tab bar from left to right.
         XCTAssertEqual(WhatsNew.places(mac: false).map(\.title), ["Today", "Inbox", "Add", "Bowls", "Search and Chat"])

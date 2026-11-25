@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The weekly review (iOS sheet, Mac window): what came in this week, the meetings and documents, the open to-dos
+/// The weekly review (iOS a page of Today's stack, Mac window): what came in this week, the meetings and documents, the open to-dos
 /// with their due days and the bowls that grew. A summary, not a planner. Arrows step to earlier weeks; the model can
 /// write a few sentences about the week on request.
 struct WeeklyReviewView: View {

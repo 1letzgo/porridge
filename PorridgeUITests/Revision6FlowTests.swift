@@ -1,7 +1,7 @@
 import XCTest
 
-/// Owner revision 6: the Bowls tab's switch Bowls · Archive · Deleted (in place of the two rows at the end of the
-/// list), and the Search tab's Chat side without a page title of its own or a list pill in the bar.
+/// Owner revision 6, as changed by owner revision 10: the Bowls tab's switch Bowls · To-dos, the trash pill and the
+/// Archive row, and the Search tab's Chat side without a page title of its own or a list pill in the bar.
 final class Revision6FlowTests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -19,27 +19,31 @@ final class Revision6FlowTests: XCTestCase {
         NSPredicate(format: "label BEGINSWITH 'Notes are deleted after' OR label == 'Nothing Deleted'")
     }
 
-    /// The switch has three sides with counts; Sort shows only on Bowls, Delete All only on Deleted (when something is
-    /// there); "+" on Archive and Deleted adds to the Inbox; a cold launch starts on Bowls again.
-    func testBowlsSwitchesToArchiveAndDeleted() throws {
+    /// Owner revision 10: the switch has two sides, Bowls (never a count) and To-dos; the trash pill in the bar opens
+    /// Recently Deleted as a page with Delete All (when something is there); the Archive row at the end of the Bowls
+    /// side opens the archived bowls as a page; Sort shows only on Bowls; a cold launch starts on Bowls again.
+    func testBowlsSwitchTrashPillAndArchiveRow() throws {
         let app = launch()
         app.openTab("Bowls")
         let bowls = app.bowlsSide("Bowls")
         XCTAssertTrue(bowls.isSelected, "Bowls does not start on its Bowls side")
+        XCTAssertEqual(bowls.label, "Bowls", "the Bowls side carries a count")
         XCTAssertTrue(app.buttons["BowlSort"].exists, "no Sort on the Bowls side")
+        XCTAssertTrue(app.buttons["BowlsTrash"].exists, "no trash pill on the Bowls side")
         XCTAssertTrue(app.reveal(app.buttons["NewSmartFilter"]), "Smart Filters missing on the Bowls side")
-        XCTAssertFalse(app.buttons["BowlsArchive"].exists, "the Archive row is still there")
-        XCTAssertFalse(app.buttons["BowlsRecentlyDeleted"].exists, "the Recently Deleted row is still there")
+        XCTAssertTrue(app.reveal(app.buttons["BowlsArchive"]), "no Archive row after the smart filters")
+        XCTAssertGreaterThan(app.buttons["BowlsArchive"].frame.minY, app.buttons["NewSmartFilter"].frame.maxY, "Archive is not the last section")
 
-        let archive = app.bowlsSide("Archive")
-        XCTAssertTrue(archive.isSelected, "Archive did not open")
-        XCTAssertFalse(app.buttons["BowlSort"].exists, "Sort shows on the Archive side")
-        XCTAssertTrue(app.buttons["PlaceSettings"].exists, "the gear left the bar")
-        XCTAssertTrue(app.tapAddWhenHittable(), "+ did not open the Add sheet on the Archive side")
-        let into = app.buttons["AddInto"]
-        XCTAssertTrue(into.waitForExistence(timeout: 5), "the Add sheet has no Into")
-        XCTAssertEqual(into.label, "Into: Inbox", "+ on the Archive side does not add to the Inbox")
-        app.buttons["Close"].tap()
+        app.bowlsSide("To-dos")
+        XCTAssertFalse(app.buttons["BowlSort"].exists, "Sort shows on the To-dos side")
+        XCTAssertTrue(app.buttons["BowlsTrash"].exists, "no trash pill on the To-dos side")
+        XCTAssertTrue(app.buttons["TodosAdd"].exists, "no New To-do on the To-dos side")
+        app.bowlsSide("Bowls")
+
+        // The Archive, a page with a back pill.
+        app.openArchive()
+        XCTAssertFalse(app.buttons["BowlSort"].exists, "Sort shows on the Archive page")
+        app.goBack()
 
         // Something in Recently Deleted: a note made and deleted.
         let name = unique("Gone")
@@ -53,19 +57,15 @@ final class Revision6FlowTests: XCTestCase {
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
         delete.tap()
 
-        app.openTab("Bowls")
-        let deleted = app.bowlsSide("Deleted")
-        XCTAssertTrue(deleted.isSelected, "Deleted did not open")
-        XCTAssertFalse(deleted.label == "Deleted", "the Deleted side does not count its entries: \(deleted.label)")
+        app.openRecentlyDeleted()
+        XCTAssertTrue(app.buttons["Back"].firstMatch.exists, "Recently Deleted has no back pill")
         XCTAssertTrue(app.staticTexts.matching(deletedPredicate).firstMatch.waitForExistence(timeout: 5), "no 30-days hint")
-        XCTAssertTrue(app.reveal(app.staticTexts[name]), "the deleted note is not on the Deleted side")
-        XCTAssertTrue(app.buttons["TrashDeleteAll"].exists, "no Delete All on the Deleted side")
-        XCTAssertFalse(app.buttons["BowlSort"].exists, "Sort shows on the Deleted side")
+        XCTAssertTrue(app.reveal(app.staticTexts[name]), "the deleted note is not in Recently Deleted")
+        XCTAssertTrue(app.buttons["TrashDeleteAll"].exists, "no Delete All in Recently Deleted")
+        XCTAssertFalse(app.buttons["BowlSort"].exists, "Sort shows in Recently Deleted")
+        app.goBack()
+        XCTAssertTrue(app.bowlsSide("Bowls").isSelected, "Back did not return to Bowls")
 
-        // Another tab and back keeps the side; a cold launch starts on Bowls.
-        app.openTab("Today")
-        app.openTab("Bowls")
-        XCTAssertTrue(app.bowlsSide("Deleted").isSelected, "the side was not kept while the app ran")
         app.terminate()
         let again = launch()
         again.openTab("Bowls")
@@ -73,8 +73,8 @@ final class Revision6FlowTests: XCTestCase {
         XCTAssertTrue(again.bowlsSide("Bowls").isSelected, "a cold launch did not start on Bowls")
     }
 
-    /// Go To rows of the search land on the Bowls tab on the right side.
-    func testGoToArchiveAndRecentlyDeletedSelectTheirSide() throws {
+    /// Go To rows of the search open Recently Deleted and the Archive as pages of the Bowls tab, with a back pill.
+    func testGoToArchiveAndRecentlyDeletedOpenTheirPages() throws {
         let app = launch()
         app.search(for: "Recently Deleted")
         let goTo = app.buttons.matching(identifier: "GoTo").matching(NSPredicate(format: "label CONTAINS 'Recently Deleted'")).firstMatch
@@ -83,7 +83,9 @@ final class Revision6FlowTests: XCTestCase {
         XCTAssertTrue(app.tab("Bowls").waitForExistence(timeout: 5))
         expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: app.tab("Bowls"))
         waitForExpectations(timeout: 10)
-        XCTAssertTrue(app.bowlsSide("Deleted").isSelected, "Go To Recently Deleted did not select the Deleted side")
+        XCTAssertTrue(app.staticTexts.matching(deletedPredicate).firstMatch.waitForExistence(timeout: 5), "Go To Recently Deleted did not open it")
+        XCTAssertTrue(app.buttons["Back"].firstMatch.exists, "Recently Deleted was not pushed as a page")
+        app.goBack()
 
         app.openTab("Search")
         app.searchAgain(for: "Archive")
@@ -92,8 +94,8 @@ final class Revision6FlowTests: XCTestCase {
         archive.tap()
         expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: app.tab("Bowls"))
         waitForExpectations(timeout: 10)
-        XCTAssertTrue(app.bowlsSide("Archive").isSelected, "Go To Archive did not select the Archive side")
-        XCTAssertFalse(app.buttons["Back"].exists, "Archive was pushed as a page of its own")
+        XCTAssertTrue(app.buttons["Back"].firstMatch.waitForExistence(timeout: 5), "Archive was not pushed as a page")
+        XCTAssertFalse(app.segmentedControls["BowlsSide"].exists, "Go To Archive stayed on the Bowls switch")
     }
 
     /// The Chat side: no list pill in the bar; a conversation has New Chat and a back pill to the chat's start; All
