@@ -96,6 +96,33 @@ struct AppointmentLedger: Codable, Equatable {
     }
 
     static let keepTombstones: TimeInterval = 90 * 86400
+
+    /// The bowl is gone (deleted, or a shared bowl left): the series filed into it are taken out of it (a tombstone
+    /// each), so their appointments show in the Inbox and Today again instead of nowhere.
+    func forgettingBowl(_ bowl: String, now: Date = Date()) -> AppointmentLedger {
+        var result = self
+        for (series, link) in bowls where link.bowl == bowl {
+            result.bowls[series] = BowlLink(bowl: nil, changedAt: now)
+        }
+        return result
+    }
+
+    /// The entries are gone (copies of a shared bowl that were deleted): their links are removed (a tombstone each).
+    func forgettingNotes(_ ids: Set<String>, now: Date = Date()) -> AppointmentLedger {
+        var result = self
+        for id in ids where notes[id]?.ref != nil {
+            result.notes[id] = NoteLink(ref: nil, changedAt: now)
+        }
+        return result
+    }
+
+    /// `to` (an entry of my own made from a copy) is linked as `from` is, unless it has a link already.
+    func copyingLink(from: String, to: String, now: Date = Date()) -> AppointmentLedger {
+        guard let ref = notes[from]?.ref, notes[to] == nil else { return self }
+        var result = self
+        result.notes[to] = NoteLink(ref: ref, changedAt: now)
+        return result
+    }
 }
 
 /// The appointments a bowl shows: those of the series filed into it (by hand, from an appointment's Bowl menu), one row
@@ -339,6 +366,32 @@ final class AppointmentLinks {
         for note in notes where note.isInInbox && !BowlSharing.shared.isReadOnly(note) {
             Inbox.file(note, into: bowl, in: context)
         }
+    }
+
+    // MARK: Gone
+
+    /// A bowl was deleted or left: what was filed into it is no longer (`AppointmentLedger.forgettingBowl`).
+    func bowlWasDeleted(_ bowl: String, now: Date = Date()) {
+        let changed = ledger.forgettingBowl(bowl, now: now)
+        guard changed != ledger else { return }
+        ledger = changed
+        save()
+    }
+
+    /// Entries were deleted for good (copies of a shared bowl): their links go.
+    func notesWereDeleted(_ ids: Set<String>, now: Date = Date()) {
+        let changed = ledger.forgettingNotes(ids, now: now)
+        guard changed != ledger else { return }
+        ledger = changed
+        save()
+    }
+
+    /// An entry of my own was made from a copy (`SharedBowlEnding.fork`): it keeps the copy's appointment.
+    func copyLink(from: UUID, to: UUID, now: Date = Date()) {
+        let changed = ledger.copyingLink(from: from.uuidString, to: to.uuidString, now: now)
+        guard changed != ledger else { return }
+        ledger = changed
+        save()
     }
 
     // MARK: Storage

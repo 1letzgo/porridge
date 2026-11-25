@@ -316,7 +316,10 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
                     let symbol = library.note(source.noteID)?.kindSymbol ?? "doc.text"
                     let pill = PillButton(title: source.title, symbol: symbol, tint: .brandSky, target: self, action: #selector(openSource(_:)))
                     pill.identifier = .init(source.noteID.uuidString)
-                    pill.setAccessibilityHelp("Opens the note")
+                    // Gone since (deleted, or a copy of a bowl that was left): shown, not opened.
+                    let isGone = library.note(source.noteID) == nil
+                    pill.isEnabled = !isGone
+                    pill.setAccessibilityHelp(isGone ? "The note is gone" : "Opens the note")
                     return pill
                 })
                 parts.append(flow)

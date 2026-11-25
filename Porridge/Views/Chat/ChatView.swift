@@ -449,10 +449,12 @@ struct ChatView: View {
                     ScrollView(large ? [] : .horizontal, showsIndicators: false) {
                         (large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))) {
                             ForEach(sources) { source in
+                                // Gone since (deleted, or a copy of a bowl that was left): shown, not opened.
+                                let note = notes.first { $0.id == source.noteID }
                                 Button { onOpen(source.noteID) } label: {
                                     HStack(spacing: 6) {
                                         // The kind of the note it comes from (`checklist` for a to-do), or a page when it is gone.
-                                        Image(systemName: notes.first { $0.id == source.noteID }?.kindSymbol ?? "doc.text").font(.caption.weight(.bold))
+                                        Image(systemName: note?.kindSymbol ?? "doc.text").font(.caption.weight(.bold))
                                         Text(source.title).lineLimit(large ? 3 : 1)
                                     }
                                     .font(.caption.weight(.semibold))
@@ -462,7 +464,9 @@ struct ChatView: View {
                                     .chunkyPill(fill: .brandSky)
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityHint("Opens the note")
+                                .disabled(note == nil)
+                                .opacity(note == nil ? 0.5 : 1)
+                                .accessibilityHint(note == nil ? "The note is gone" : "Opens the note")
                             }
                         }
                     }
