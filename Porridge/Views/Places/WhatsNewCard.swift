@@ -29,7 +29,8 @@ struct WhatsNewCard: View {
                     Image(systemName: item.symbol)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.brandSkyText)
-                        .frame(width: 22)
+                        .frame(minWidth: 22)
+                        .fixedSize()
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(item.title).font(.subheadline.weight(.semibold))

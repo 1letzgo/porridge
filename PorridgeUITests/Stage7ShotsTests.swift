@@ -85,6 +85,10 @@ final class Stage7ShotsTests: XCTestCase {
         app.alerts.buttons["OK"].tap()
         app.buttons["Insert"].firstMatch.tap()
         let link = app.buttons["Link to Entry [["]
+        // With the largest text sizes the menu is taller than the room above the bar: its first row is scrolled to.
+        for _ in 0..<4 where !(link.waitForExistence(timeout: 2) && link.isHittable) {
+            app.buttons["Heading"].firstMatch.swipeDown()
+        }
         XCTAssertTrue(link.waitForExistence(timeout: 5), "no Link to Entry in Insert")
         shoot("editor-insert")
         link.tap()

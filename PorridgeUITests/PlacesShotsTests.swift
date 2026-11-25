@@ -52,11 +52,14 @@ final class PlacesShotsTests: XCTestCase {
                 shoot("bowl")
                 app.buttons["BowlMenu"].tap()
                 shoot("bowl-menu")
-                // Closed by a tap above it: with the largest text sizes the menu covers the left edge too, and a tap
-                // there chose one of its rows (Select Entries), which hides "+".
-                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02)).tap()
+                // Closed by a tap below it: with the largest text sizes the menu covers the left edge at 60 % too,
+                // and a tap there chose one of its rows (Select Entries), which hides "+".
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.8)).tap()
+                _ = app.buttons["Select Entries"].waitForNonExistence(timeout: 3)
+                sleep(1)
                 XCTAssertTrue(app.addButton.waitForExistence(timeout: 5), "PlaceAdd missing after the bowl menu")
                 app.addButton.tap()
+                if !app.buttons["Close"].waitForExistence(timeout: 3) { app.addButton.tap() }
                 shoot("add-sheet-bowl")
                 app.buttons["Close"].tap()
                 app.buttons["Back"].firstMatch.tap()
