@@ -253,6 +253,32 @@ struct ListHeader: View {
     }
 }
 
+/// A section of a card list whose header stays pinned at the top while its rows scroll, as before, except with the
+/// largest text sizes: there the header (two lines and more) scrolls along as the section's first row, since a
+/// pinned header that tall lies over the rows under it and takes their taps.
+struct CardSection<Content: View, Header: View>: View {
+    @ViewBuilder var content: Content
+    @ViewBuilder var header: Header
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        if typeSize.isAccessibilitySize {
+            Section {
+                header
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                content
+            }
+        } else {
+            Section {
+                content
+            } header: {
+                header
+            }
+        }
+    }
+}
+
 /// A section header that can be tapped, with a chevron at its end: unfolds its section or leads to a page.
 struct ListHeaderButton: View {
     let title: String

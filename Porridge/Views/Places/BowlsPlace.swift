@@ -66,14 +66,14 @@ struct BowlsPlace: View {
                 }
             }
             if !pinned.isEmpty {
-                Section {
+                CardSection {
                     rows(pinned, contents: contents)
                 } header: {
                     ListHeader(title: String(localized: "Pinned"), tint: .brandProject, isFirst: !showsPlaces)
                 }
             }
             if !others.isEmpty {
-                Section {
+                CardSection {
                     rows(others, contents: contents)
                 } header: {
                     ListHeader(
@@ -83,7 +83,7 @@ struct BowlsPlace: View {
                 }
             }
             // Saved searches: only views, nothing is moved into them.
-            Section {
+            CardSection {
                 ForEach(filters) { filter in
                     SmartFilterRow(
                         filter: filter, count: SmartFilters.results(filter.criteria, in: notes).count,
@@ -147,10 +147,12 @@ struct PlaceLinkRow: View {
     var count: Int?
     var showsChevron = true
     let action: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            // With the largest text sizes the row is tall: the icon stays by the first line.
+            HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
                 ThingsRowIcon(systemImage: systemImage, tint: tint)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)

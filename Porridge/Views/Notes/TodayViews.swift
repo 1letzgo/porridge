@@ -200,10 +200,12 @@ struct AppointmentRow: View {
     var onBowl: (NoteFolder?) -> Void
     var onRecord: () -> Void
     var onNewNote: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let isOver = appointment.end < Date()
-        HStack(spacing: 12) {
+        // With the largest text sizes the row is tall: the icon stays by the first line.
+        HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
             ThingsRowIcon(systemImage: "calendar", tint: .brandNavy)
             VStack(alignment: .leading, spacing: 3) {
                 Text(appointment.title)

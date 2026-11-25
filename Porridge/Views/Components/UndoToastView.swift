@@ -5,26 +5,36 @@ import SwiftUI
 /// (`UndoToast.duration`); a swipe down closes it at once.
 struct UndoToastView: View {
     var toast = UndoToast.shared
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         ZStack {
             if let offer = toast.current {
-                HStack(spacing: 10) {
-                    Image(systemName: offer.systemImage)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .accessibilityHidden(true)
-                    Text(offer.message)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                let large = typeSize.isAccessibilitySize
+                // With the largest text sizes "Undo" goes under the message, which keeps the whole width.
+                (large ? AnyLayout(VStackLayout(alignment: .trailing, spacing: 2)) : AnyLayout(HStackLayout(spacing: 10))) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Image(systemName: offer.systemImage)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .accessibilityHidden(true)
+                        // The message wraps instead of being cut ("2 chan…"); "Undo" keeps its one line.
+                        Text(offer.message)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.white)
+                            .lineLimit(large ? 8 : 3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.top, large ? 10 : 0)
                     Button {
                         withAnimation(.snappy) { toast.undo() }
                     } label: {
                         Text("Undo")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .fixedSize()
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
                             .background(.white.opacity(0.16), in: Capsule())
@@ -32,12 +42,15 @@ struct UndoToastView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .layoutPriority(1)
                 }
                 .padding(.leading, 16)
                 .padding(.trailing, 8)
                 .frame(minHeight: 50)
                 .frame(maxWidth: 520)
-                .background(Color.toastFill, in: Capsule())
+                .padding(.vertical, large ? 4 : 0)
+                // A capsule on one line; with more lines its ends stay round instead of bulging.
+                .background(Color.toastFill, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
                 .shadow(color: .black.opacity(0.3), radius: 15, y: 10)
                 .padding(.horizontal, 16)
                 .id(offer.id)

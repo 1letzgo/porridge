@@ -304,7 +304,8 @@ struct ChatView: View {
             .padding(.bottom, 6)
             ForEach(recent) { chat in
                 Button { onOpenChat(chat) } label: {
-                    HStack(spacing: 12) {
+                    // With the largest text sizes the row is tall: the icon stays by the first line.
+                    HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
                         ThingsRowIcon(systemImage: "bubble.left.and.bubble.right.fill", tint: .brandNavy)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(chat.title.isEmpty ? String(localized: "New Chat") : chat.title)

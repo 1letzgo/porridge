@@ -9,6 +9,7 @@ struct TriageView: View {
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// Taken once the entries are there (the Inbox's order at the start).
     @State private var triage: InboxTriage?
@@ -109,7 +110,8 @@ struct TriageView: View {
                 Text(text)
                     .font(.subheadline)
                     .foregroundStyle(.primary.opacity(0.85))
-                    .lineLimit(6)
+                    // With the largest text sizes six lines would push File, Later and Skip off the screen.
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 6)
             }
             if let document {
                 HStack(spacing: 8) {

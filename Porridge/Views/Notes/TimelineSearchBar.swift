@@ -329,7 +329,8 @@ struct SearchAskRow: View {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        HStack(spacing: 12) {
+        // With the largest text sizes the row is tall: the icon stays by the first line.
+        HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
             ThingsRowIcon(systemImage: systemImage, tint: tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
