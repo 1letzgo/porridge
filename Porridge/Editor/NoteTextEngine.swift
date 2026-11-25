@@ -164,6 +164,17 @@ final class NoteTextCoordinator: NSObject {
         textView?.endEditing()
     }
 
+    /// Text put in at the cursor as if it was typed (the format bar's Link to Entry types "[[", which opens the
+    /// entry suggestions like typing it does).
+    func type(_ text: String) {
+        guard let textView, textView.isEditable else { return }
+        #if os(macOS)
+        textView.insertText(text, replacementRange: textView.selectedRange())
+        #else
+        textView.insertText(text)
+        #endif
+    }
+
     // MARK: Paragraphs
 
     var storage: NSTextStorage? { textView?.noteStorage }

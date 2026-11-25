@@ -14,7 +14,7 @@ enum GlobalShortcutAction: String, CaseIterable, Identifiable {
         switch self {
         case .dictation: String(localized: "Dictation")
         case .recordMeeting: String(localized: "Record Meeting Now")
-        case .commandBar: String(localized: "Command Bar")
+        case .commandBar: String(localized: "Search or Ask")
         }
     }
 

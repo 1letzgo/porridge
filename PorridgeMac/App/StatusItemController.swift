@@ -1,11 +1,13 @@
 import AppKit
 
 /// The microphone in the menu bar: the dictation shortcut, start and stop, the way back to the app, and the minutes
-/// until the next meeting (`MeetingAlerts.countdownText`) with Record and Join for it.
+/// until the next meeting (`MeetingAlerts.countdownText`) with Record and Join for it. While a meeting is being
+/// recorded it shows a red recording symbol, and its menu leads to the recording.
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var observing: Observing?
+    private var recordingObserver: NSObjectProtocol?
 
     override init() {
         super.init()
@@ -15,10 +17,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.button?.setAccessibilityLabel("Porridge Dictation")
         item.button?.imagePosition = .imageOnly
         observing = Observing { [weak self] in
-            let recording = DictationController.shared.isRecording
-            self?.item.button?.image = NSImage(systemSymbolName: recording ? "mic.fill" : "mic", accessibilityDescription: recording ? "Dictating" : "Dictation")
+            _ = DictationController.shared.isRecording
+            self?.refreshSymbol()
+        }
+        recordingObserver = NotificationCenter.default.addObserver(forName: MeetingRecorder.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshSymbol() }
         }
         refreshCountdown()
+    }
+
+    /// A meeting being recorded (red), dictation (filled mic), or the plain mic.
+    private func refreshSymbol() {
+        guard let button = item.button else { return }
+        if MeetingRecorder.isRecording {
+            let configuration = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
+            button.image = NSImage(systemSymbolName: "record.circle.fill", accessibilityDescription: String(localized: "Recording a Meeting"))?
+                .withSymbolConfiguration(configuration)
+        } else {
+            let dictating = DictationController.shared.isRecording
+            button.image = NSImage(systemSymbolName: dictating ? "mic.fill" : "mic", accessibilityDescription: dictating ? "Dictating" : "Dictation")
+        }
     }
 
     /// The minutes until the next meeting next to the microphone, while one is less than half an hour away.
@@ -35,6 +53,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        if MeetingRecorder.isRecording {
+            let time = MeetingRecorder.elapsed.map { Duration.seconds($0).formatted(.time(pattern: .minuteSecond)) } ?? ""
+            menu.addItem(.sectionHeader(title: String(localized: "Recording a Meeting · \(time)")))
+            menu.add("Show Recording", symbol: "record.circle") {
+                (NSApp.delegate as? AppDelegate)?.showMainWindow(nil)
+                MeetingRecorder.reveal()
+            }
+            menu.addItem(.separator())
+        }
         let dictation = DictationController.shared
         if DictationSettings.enabled {
             if dictation.shortcutNeedsAccessibility {

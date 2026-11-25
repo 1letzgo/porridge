@@ -123,22 +123,22 @@ final class NoteEditorView: NSView {
         format.toolTip = "Format"
         format.setAccessibilityLabel("Format")
         formatBar.addArrangedSubview(format)
-        let insert = NSButton(image: NSImage(systemSymbolName: "plus.circle", accessibilityDescription: "Insert")!, target: self, action: #selector(showInsertMenu(_:)))
-        insert.isBordered = false
-        insert.contentTintColor = .brandNavy
-        insert.toolTip = "Insert"
-        formatBar.addArrangedSubview(insert)
-        for (symbol, label, action) in [
-            ("checklist", "Checklist", #selector(makeChecklist(_:))),
-            ("decrease.indent", "Outdent", #selector(outdentItems(_:))),
-            ("increase.indent", "Indent", #selector(indentItems(_:))),
-        ] as [(String, String, Selector)] {
+        // The places of the iPhone's editor bar: Format · Checklist · Insert · ✦ Rewrite · Outdent · Indent.
+        func barButton(_ symbol: String, _ label: String, _ action: Selector, tint: NSColor = .brandNavy) -> NSButton {
             let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: label)!, target: self, action: action)
             button.isBordered = false
-            button.contentTintColor = .brandNavy
+            button.contentTintColor = tint
             button.toolTip = label
-            formatBar.addArrangedSubview(button)
+            return button
         }
+        formatBar.addArrangedSubview(barButton("checklist", "Checklist", #selector(makeChecklist(_:))))
+        formatBar.addArrangedSubview(barButton("plus.circle", "Insert", #selector(showInsertMenu(_:))))
+        let rewrite = barButton("sparkles", String(localized: "Rewrite with AI (⌘J)"), #selector(rewriteFromBar(_:)), tint: .brandProjectText)
+        rewrite.setAccessibilityLabel(String(localized: "Rewrite with AI"))
+        rewrite.setAccessibilityIdentifier("EditorRewrite")
+        formatBar.addArrangedSubview(rewrite)
+        formatBar.addArrangedSubview(barButton("decrease.indent", "Outdent", #selector(outdentItems(_:))))
+        formatBar.addArrangedSubview(barButton("increase.indent", "Indent", #selector(indentItems(_:))))
 
         footerStack.orientation = .vertical
         footerStack.alignment = .leading
@@ -198,6 +198,19 @@ final class NoteEditorView: NSView {
     /// The selection rewritten with AI (⌘J, the text's context menu).
     @objc func rewriteWithAI(_ sender: Any?) { controller.beginRewrite() }
 
+    /// ✦ in the format bar: the selection, or a word on what to select first.
+    @objc private func rewriteFromBar(_ sender: Any?) {
+        guard isEditable else { return NSSound.beep() }
+        guard controller.canRewrite else {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Select Text to Rewrite")
+            alert.informativeText = String(localized: "Select the words or lines to rewrite, then click ✦ or press ⌘J.")
+            if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
+            return
+        }
+        controller.beginRewrite()
+    }
+
     private func presentRewrite(_ request: RewriteRequest) {
         guard rewriteSheet == nil, let host = window?.contentViewController else { return }
         let close: () -> Void = { [weak self, weak host] in
@@ -227,6 +240,12 @@ final class NoteEditorView: NSView {
             } else {
                 menu.add(item.title, symbol: item.systemImage, enabled: isEditable) { [weak self] in self?.controller.insert(item) }
             }
+        }
+        menu.addItem(.separator())
+        // "[[" at the cursor: the entries to link come up under it.
+        menu.add(String(localized: "Link to Entry [["), symbol: "link", enabled: isEditable) { [weak self] in
+            self?.focus()
+            self?.controller.beginEntryLink()
         }
         if let templates = NoteTemplateActions.insertMenu(enabled: isEditable, insert: { [weak self] template in
             self?.controller.insertTemplate(template)

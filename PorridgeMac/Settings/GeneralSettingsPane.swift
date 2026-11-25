@@ -1,7 +1,7 @@
 import AppKit
 
-/// General: who the user is (the summaries name them), the Plaud account, iCloud sync and the version with the
-/// acknowledgements. Switching sync takes effect at the next launch; updates come through TestFlight.
+/// General: who the user is (the summaries name them), iCloud sync, the Plaud account, Sort Bowls By, note
+/// templates, hints, export and the version with the acknowledgements. Switching sync takes effect at the next launch; updates come through TestFlight.
 final class GeneralSettingsPane: SettingsPane {
     private lazy var nameField = SettingsTextField(placeholder: "Your Name") { name in
         UserDefaults.standard.set(name, forKey: AppSettings.myNameKey)
@@ -24,33 +24,36 @@ final class GeneralSettingsPane: SettingsPane {
     }
 
     override func build() {
+        // The order of the iPhone's General: who you are, sync, Plaud, how bowls are sorted, note templates, hints,
+        // export, the version.
         form.row("Your Name", nameField)
         form.note("Summaries call you by this name.")
-        form.separator()
-        form.row("Plaud", NSStackView.horizontal([plaudStatus, plaudButton], spacing: 12))
         form.separator()
 
         form.row("", iCloudSync)
         form.separator()
 
-        form.row("Sort Bowls By", bowlOrder)
-        form.note("Pinned bowls are always shown first.")
+        form.row("Plaud", NSStackView.horizontal([plaudStatus, plaudButton], spacing: 12))
         form.separator()
 
-        form.row("Templates", NSButton.push("Edit Note Templates…") { [weak self] in
+        form.row("Sort Bowls By", bowlOrder)
+        form.note("The order of the bowls in the sidebar and the Bowls place. Pinned bowls are always shown first.")
+        form.separator()
+
+        form.row("Note Templates", NSButton.push("Edit Note Templates…") { [weak self] in
             self?.presentSheet(NoteTemplatesSheetController())
         })
         form.note("Start notes and to-dos from a template, or insert one into a note.")
+        form.separator()
+
+        form.row("Hints", dailyHint)
+        form.note("At most one a day, across your devices. Hints you leave alone go quiet for a while.")
         form.separator()
 
         form.row("Export", NSButton.push("Export Everything…") { [weak self] in
             ExportSheetController.export(.everything, title: String(localized: "Export Everything"), in: self?.view.window)
         })
         form.note("A Markdown file for each entry with its attachments and recordings next to it, and all data as JSON, in a folder.")
-        form.separator()
-
-        form.row("Hints", dailyHint)
-        form.note("At most one a day, across your devices. Hints you leave alone go quiet for a while.")
         form.separator()
 
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"

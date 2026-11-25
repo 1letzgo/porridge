@@ -1,6 +1,6 @@
 import AppKit
 
-/// The Settings window: a toolbar of tabs (General, Recording, AI, Dictation, MCP Server), the areas of
+/// The Settings window: a toolbar of tabs (General, Recording, AI, Keyboard, MCP Server), the areas of
 /// `SettingsView`. The window takes the height of the tab that shows.
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SettingsWindowController()
@@ -25,8 +25,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Opens the window on a tab: "general", "recording", "ai", "dictation", "mcp" (nil: where it was).
+    /// Opens the window on a tab: "general", "recording", "ai", "keyboard" (also "dictation", "shortcuts"), "mcp" (nil: where it was).
     func show(tab: String?) {
+        // The former Dictation and Shortcuts tabs are the Keyboard tab now.
+        let tab = tab == "dictation" || tab == "shortcuts" ? "keyboard" : tab
         if let tab, let index = tabs.tabViewItems.firstIndex(where: { ($0.identifier as? String) == tab }) {
             tabs.selectedTabViewItemIndex = index
         }
@@ -43,8 +45,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         // A shortcut being recorded ends with the window.
-        tabs.tabViewItems.forEach { ($0.viewController as? DictationSettingsPane)?.stopRecording() }
-        tabs.tabViewItems.forEach { ($0.viewController as? ShortcutsSettingsPane)?.stopRecording() }
+        tabs.tabViewItems.forEach { ($0.viewController as? KeyboardSettingsPane)?.stopRecording() }
     }
 }
 
@@ -57,8 +58,7 @@ final class SettingsTabController: NSTabViewController {
         add(GeneralSettingsPane(), id: "general", label: "General", symbol: "gearshape")
         add(RecordingSettingsPane(), id: "recording", label: "Recording", symbol: "waveform")
         add(AISettingsPane(), id: "ai", label: "AI", symbol: "sparkles")
-        add(DictationSettingsPane(), id: "dictation", label: "Dictation", symbol: "mic")
-        add(ShortcutsSettingsPane(), id: "shortcuts", label: "Shortcuts", symbol: "command")
+        add(KeyboardSettingsPane(), id: "keyboard", label: "Keyboard", symbol: "keyboard")
         add(MCPSettingsPane(), id: "mcp", label: "MCP Server", symbol: "point.3.connected.trianglepath.dotted")
     }
 

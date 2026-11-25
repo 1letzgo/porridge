@@ -19,7 +19,11 @@ struct RootView: View {
             // Sharing a bowl: the system's sheet for its people, and the questions before stopping or leaving.
             .modifier(BowlShareHost())
             .fullScreenCoverOrSheet(isPresented: .init(get: { !onboardingDone }, set: { onboardingDone = !$0 })) {
-                OnboardingView { onboardingDone = true }
+                OnboardingView {
+                    // The onboarding showed the places already: no "What's New" card after it.
+                    WhatsNew.dismiss()
+                    onboardingDone = true
+                }
             }
             .alert("Your Notes Could Not Be Opened", isPresented: $showStoreError) {
                 Button("OK", role: .cancel) {}

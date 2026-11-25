@@ -75,6 +75,10 @@ final class SettingsForm {
         row.topPadding = 6
         row.bottomPadding = 6
         box.translatesAutoresizingMaskIntoConstraints = false
+        // One point high across both columns: left to itself the box could come out taller than wide, and a
+        // separator box then draws as a short vertical line with a gap around it.
+        row.cell(at: 0).xPlacement = .fill
+        box.heightAnchor.constraint(equalToConstant: 1).isActive = true
         return row
     }
 

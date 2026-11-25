@@ -28,6 +28,9 @@ struct TodayPage: View {
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
     /// Up Next folded (on this device).
     @AppStorage("todayUpNextFolded") private var upNextFolded = false
+    /// The one-time "What's New" card was put away (`WhatsNew`).
+    @AppStorage(WhatsNew.seenKey) private var whatsNewSeen = false
+    @AppStorage(AppSettings.onboardingDoneKey) private var onboardingDone = false
 
     /// Up Next shows this many rows at most.
     static let upNextLimit = 5
@@ -67,6 +70,15 @@ struct TodayPage: View {
         let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
         func buckets(_ note: Note) -> [String] { note.projectIDs.compactMap { names[$0] } }
         return List(selection: $selection) {
+            // After the update to the three places: what moved, once, on top of today.
+            if isToday, onboardingDone, !whatsNewSeen {
+                Section {
+                    WhatsNewCard { withAnimation(.snappy) { whatsNewSeen = true } }
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+            }
             Section {
                 switch calendar.status {
                 case .granted:

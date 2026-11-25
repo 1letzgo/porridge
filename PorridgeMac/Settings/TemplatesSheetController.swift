@@ -14,7 +14,7 @@ final class TemplatesSheetController: NSViewController {
             self?.edit(SummaryTemplate(id: UUID().uuidString, name: "", focus: "", sections: nil))
         }
         let done = SettingsSheet.defaultButton("Done") { [weak self] in self?.dismiss(nil) }
-        let header = NSStackView.horizontal([SettingsSheet.title("Custom Templates")])
+        let header = NSStackView.horizontal([SettingsSheet.title("Summary Templates")])
         header.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 10, right: 20)
         let page = NSStackView.vertical([header, scroll, SettingsSheet.footer(left: [add], right: [done])], spacing: 0, alignment: .leading)
         page.arrangedSubviews.forEach { $0.widthAnchor.constraint(equalTo: page.widthAnchor).isActive = true }

@@ -2,8 +2,12 @@ import AppKit
 import AVFoundation
 import Carbon.HIToolbox
 
-/// Dictation anywhere on the Mac: the shortcut, how it behaves, and the two permissions it needs.
-final class DictationSettingsPane: SettingsPane {
+/// Settings › Keyboard (the former Dictation and Shortcuts tabs in one): dictation anywhere on the Mac (its shortcut,
+/// how it behaves, the two permissions it needs), then the other system-wide shortcuts (recording a meeting now, Search
+/// or Ask), each changed by clicking it and pressing new keys. A shortcut that clashes with another one, with macOS or
+/// with a menu command is refused and the reason shows below it; one another app holds is reported after registering.
+/// The settings keep their keys (`DictationSettings`, `GlobalShortcutAction`).
+final class KeyboardSettingsPane: SettingsPane {
     private let controller = DictationController.shared
 
     private lazy var enabled = SettingsCheckbox("Dictate with a shortcut") { [weak self] on in
@@ -28,12 +32,17 @@ final class DictationSettingsPane: SettingsPane {
     private let microphone = PermissionControl()
     private let accessibility = PermissionControl()
     private var accessibilityHintRow: NSGridRow?
+    /// The other system-wide shortcuts (dictation's is above).
+    private var shortcutRecorders: [GlobalShortcutAction: ShortcutRecorderControl] = [:]
+    private var shortcutNotes: [GlobalShortcutAction: NSTextField] = [:]
+    private var clearButtons: [GlobalShortcutAction: NSButton] = [:]
+    private static let otherShortcuts = GlobalShortcutAction.allCases.filter { $0 != .dictation }
     private var timer: Timer?
     private var activeObserver: NSObjectProtocol?
 
     override func build() {
         form.row("", enabled)
-        form.row("Shortcut", recorder)
+        form.row("Dictation", recorder)
         hint = form.note().label
         form.row("Mode", modePopUp)
         form.row("", sounds)
@@ -45,6 +54,23 @@ final class DictationSettingsPane: SettingsPane {
             "Switch Porridge on under Accessibility in System Settings. If it is already on there, switch it off and on again — macOS forgets the permission when the app was replaced."
         )
         accessibilityHintRow = note.row
+
+        for action in Self.otherShortcuts {
+            form.separator()
+            let recorder = ShortcutRecorderControl(action: action) { [weak self] in self?.render() }
+            shortcutRecorders[action] = recorder
+            let clear = NSButton.push("Clear") { [weak self] in
+                self?.shortcutRecorders[action]?.stop()
+                action.set(nil)
+                self?.render()
+            }
+            clear.controlSize = .small
+            clearButtons[action] = clear
+            form.row(action.title, NSStackView.horizontal([recorder, clear], spacing: 8))
+            shortcutNotes[action] = form.note().label
+        }
+        form.separator()
+        form.note("Search or Ask also opens with ⌘K while Porridge is in front.")
 
         microphone.onAllow = { [weak self] in
             if AVAudioApplication.shared.recordPermission == .undetermined {
@@ -88,6 +114,7 @@ final class DictationSettingsPane: SettingsPane {
 
     func stopRecording() {
         recorder.stop()
+        shortcutRecorders.values.forEach { $0.stop() }
     }
 
     private func permissionsChanged() {
@@ -128,6 +155,30 @@ final class DictationSettingsPane: SettingsPane {
         if accessibilityHintRow?.isHidden != canPaste {
             accessibilityHintRow?.isHidden = canPaste
             contentChanged()
+        }
+        renderShortcuts()
+    }
+
+    private func renderShortcuts() {
+        let shortcuts = GlobalShortcuts.shared
+        for action in Self.otherShortcuts {
+            shortcutRecorders[action]?.refresh()
+            clearButtons[action]?.isEnabled = action.key != nil
+            guard let note = shortcutNotes[action] else { continue }
+            if let problem = shortcutRecorders[action]?.problem {
+                note.stringValue = problem
+                note.textColor = .brandDangerText
+            } else if action.key != nil, shortcuts.unavailable.contains(action) {
+                note.stringValue = String(localized: "Another app already uses this shortcut. Choose a different one.")
+                note.textColor = .brandDangerText
+            } else {
+                note.stringValue = switch action {
+                case .dictation: ""
+                case .recordMeeting: String(localized: "Starts recording a meeting at once, from any app. It lands in the Inbox.")
+                case .commandBar: String(localized: "Opens Search or Ask from any app.")
+                }
+                note.textColor = .secondaryLabelColor
+            }
         }
     }
 

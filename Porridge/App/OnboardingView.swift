@@ -104,10 +104,29 @@ struct OnboardingView: View {
         }
     }
 
+    /// The last page shows the places (the tabs) and what each is for.
     private var ready: some View {
         page(icon: "checkmark.seal.fill", title: "All Set",
-             text: "Record a note or a meeting. Everything can be changed later in Settings.") {
-            EmptyView()
+             text: "Porridge has three places, plus Chat and Search:") {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(WhatsNew.places(mac: false), id: \.self) { place in
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: place.symbol)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Color.brandSkyText)
+                            .frame(width: 28)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(place.title).font(.headline)
+                            Text(place.text).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .padding(14)
+            .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 
@@ -115,21 +134,27 @@ struct OnboardingView: View {
 
     private func page<Content: View>(icon: String, title: String, text: String,
                                       @ViewBuilder extra: () -> Content) -> some View {
-        VStack(spacing: 18) {
-            Spacer(minLength: 20)
+        // Centred while it fits; with large text it scrolls instead of being cut off.
+        let content = VStack(spacing: 18) {
             Image(systemName: icon)
                 .font(.system(size: 64))
                 .foregroundStyle(Color.brandSkyText)
+                .accessibilityHidden(true)
             Text(title)
                 .font(.largeTitle.weight(.bold))
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
             Text(text)
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             extra()
-            Spacer(minLength: 20)
+        }
+        .padding(.vertical, 20)
+        return ViewThatFits(in: .vertical) {
+            VStack { Spacer(minLength: 0); content; Spacer(minLength: 0) }
+            ScrollView { content }
         }
     }
 

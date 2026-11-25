@@ -19,6 +19,7 @@ enum SettingsArea: String, CaseIterable {
 struct SettingsView: View {
     @Environment(ModelManager.self) private var models
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     @AppStorage(AppSettings.languageKey) private var language = "auto"
     @AppStorage(AppSettings.speechEngineKey) private var engine = SpeechEngine.parakeet
@@ -91,11 +92,21 @@ struct SettingsView: View {
     private var page: some View {
         VStack(spacing: 0) {
             // The areas of the settings as pills, like the kinds in a bowl: one area shows at a time.
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(SettingsArea.allCases, id: \.self) { areaPill($0) }
+            Group {
+                if typeSize.isAccessibilitySize {
+                    // The largest text sizes: the pills wrap, so "AI" is not hidden past the edge.
+                    FlowLayout(spacing: 8) {
+                        ForEach(SettingsArea.allCases, id: \.self) { areaPill($0) }
+                    }
+                    .padding(.horizontal, 20)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(SettingsArea.allCases, id: \.self) { areaPill($0) }
+                        }
+                        .padding(.horizontal, 20)
+                    }
                 }
-                .padding(.horizontal, 20)
             }
             .padding(.top, settingsTopPadding)
             .padding(.bottom, Look.headerGap)
@@ -174,13 +185,15 @@ struct SettingsView: View {
     private var cards: some View {
         switch area {
         case .general:
+            // The order of the Mac's General pane: who you are, sync, Plaud, how bowls are sorted, note templates,
+            // hints, export, about.
             youCard
-            plaudCard
             SyncCard()
-            NoteTemplatesCard()
-            ExportCard()
+            plaudCard
             BowlsCard()
+            NoteTemplatesCard()
             HintCard()
+            ExportCard()
             aboutCard
         case .recording:
             transcriptionCard
@@ -322,7 +335,7 @@ struct SettingsView: View {
             CardDivider()
 
             HStack {
-                Text("Custom Templates").font(.body)
+                Text("Summary Templates").font(.body)
                 Spacer(minLength: 12)
                 Button("Edit") { showTemplates = true }.buttonStyle(PillButtonStyle())
             }

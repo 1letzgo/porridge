@@ -1,0 +1,100 @@
+import XCTest
+
+/// Stage 7 (design E): the one-time What's New card on Today, the onboarding's last page with the places, the editor
+/// bar (✦ with and without a selection, Link to Entry), a meeting and Settings. Pictures go to `SHOTS_DIR`
+/// (`TEST_RUNNER_SHOTS_DIR` for xcodebuild) or /tmp/porridge-s7-shots when that folder exists; the text size and
+/// dark mode are switched from outside (`xcrun simctl ui …`) and named by `SHOTS_SUFFIX`.
+final class Stage7ShotsTests: XCTestCase {
+    private lazy var folder = shotsFolder(default: "/tmp/porridge-s7-shots")
+    private let suffix = ProcessInfo.processInfo.environment["SHOTS_SUFFIX"] ?? ""
+
+    override func setUp() {
+        continueAfterFailure = true
+    }
+
+    private func shoot(_ name: String) {
+        sleep(1)
+        guard FileManager.default.fileExists(atPath: folder.path) else { return }
+        try? XCUIScreen.main.screenshot().pngRepresentation.write(to: folder.appendingPathComponent("ios-\(name)\(suffix).png"))
+    }
+
+    private func launch(_ extra: [String]) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-syncMode", "off", "-recordsNewNotes", "NO", "-quietNotifications", "YES"] + extra
+        app.launch()
+        return app
+    }
+
+    /// After the update: the card on top of Today, once; "Got It" puts it away.
+    func testWhatsNewCardOnToday() throws {
+        let app = launch(["-onboardingDone", "YES", "-whatsNewSeen", "NO", "-seedTodos", "Garden"])
+        app.openTab("Today")
+        let card = app.descendants(matching: .any)["WhatsNew"]
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "no What's New card on Today")
+        XCTAssertTrue(app.staticTexts["Three Places"].exists)
+        shoot("whats-new")
+        let done = app.buttons["WhatsNewDone"]
+        for _ in 0..<4 where !done.isHittable { app.swipeUp() }
+        shoot("whats-new-end")
+        done.tap()
+        XCTAssertTrue(card.waitForNonExistence(timeout: 5), "Got It did not put the card away")
+        shoot("whats-new-gone")
+    }
+
+    /// A new install: the onboarding ends on the places (and no card after it).
+    func testOnboardingShowsThePlaces() throws {
+        let app = launch(["-onboardingDone", "NO", "-whatsNewSeen", "NO", "-emptyStore", "YES"])
+        let start = app.buttons["Get Started"]
+        XCTAssertTrue(start.waitForExistence(timeout: 15), "no onboarding")
+        shoot("onboarding-welcome")
+        start.tap()
+        // The microphone is granted from outside (`simctl privacy`); without that the system asks.
+        let allow = app.buttons["Allow Microphone"]
+        if allow.waitForExistence(timeout: 5) { allow.tap() }
+        let cont = app.buttons["Continue"]
+        if cont.waitForExistence(timeout: 5) { cont.tap() }
+        let later = app.buttons["Later"]
+        if later.waitForExistence(timeout: 10) { later.tap() } else if cont.waitForExistence(timeout: 3) { cont.tap() }
+        XCTAssertTrue(app.staticTexts["All Set"].waitForExistence(timeout: 10), "the last page did not come")
+        XCTAssertTrue(app.staticTexts["Bowls"].exists, "the last page names the places")
+        shoot("onboarding-places")
+        app.buttons["Done"].firstMatch.tap()
+        app.openTab("Today")
+        XCTAssertFalse(app.descendants(matching: .any)["WhatsNew"].waitForExistence(timeout: 3), "a new install saw the What's New card")
+    }
+
+    /// The editor bar: Aa · Checklist · Insert · ✦ · Outdent · Indent · Mic · Done; ✦ without a selection asks for
+    /// one; Insert has Link to Entry.
+    func testEditorBarAndMeeting() throws {
+        let app = launch(["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-seedEntryKinds", "YES"])
+        app.openTab("Bowls")
+        XCTAssertTrue(app.addButton.waitForExistence(timeout: 30))
+        app.open(URL(string: "porridge://entry/5EED0000-0000-4000-8000-000000000005")!)
+        let editor = app.bodyEditor
+        XCTAssertTrue(editor.waitForExistence(timeout: 10), "the note did not open")
+        editor.tap()
+        let rewrite = app.buttons["EditorRewrite"]
+        XCTAssertTrue(rewrite.waitForExistence(timeout: 5), "no ✦ in the editor bar")
+        XCTAssertTrue(app.buttons["EditorDictate"].exists, "no mic in the editor bar")
+        XCTAssertTrue(app.buttons["Checklist"].exists)
+        shoot("editor-bar")
+        rewrite.tap()
+        XCTAssertTrue(app.alerts["Select Text to Rewrite"].waitForExistence(timeout: 5), "✦ without a selection says what to do")
+        shoot("editor-rewrite-no-selection")
+        app.alerts.buttons["OK"].tap()
+        app.buttons["Insert"].firstMatch.tap()
+        let link = app.buttons["Link to Entry [["]
+        XCTAssertTrue(link.waitForExistence(timeout: 5), "no Link to Entry in Insert")
+        shoot("editor-insert")
+        link.tap()
+        shoot("editor-link-suggestions")
+        app.buttons["EditorDone"].tap()
+
+        app.open(URL(string: "porridge://entry/5EED0000-0000-4000-8000-000000000001")!)
+        XCTAssertTrue(app.textFields.matching(NSPredicate(format: "value == %@", "Design Review")).firstMatch.waitForExistence(timeout: 10))
+        shoot("meeting")
+        app.openTab("Bowls")
+        app.buttons["Settings"].firstMatch.tap()
+        shoot("settings-general")
+    }
+}

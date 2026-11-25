@@ -32,30 +32,66 @@ struct NoteBodyEditor: View {
 
 }
 
-/// One bar over the keyboard with all the buttons, like in Notes.
+/// One glass bar over the keyboard with fixed places (design stage 7): Aa (format) · Checklist · ⊕ Insert (with Link
+/// to Entry "[[") · ✦ Rewrite (the selection, `AIRewriteView`) · Outdent · Indent · Mic (dictation, where the page
+/// offers it) · Done. Like a tab bar its symbols stop growing at the largest text sizes; a long press shows them big.
 struct NoteKeyboardBar: View {
     let controller: NoteEditorController
+    /// Starts dictating into the note (the note page); nil leaves the mic out.
+    var dictate: (() -> Void)?
+
+    @State private var needsSelection = false
 
     var body: some View {
         let buttons = NoteFormatButtons(controller: controller)
-        HStack {
-            buttons.formatMenu
-            Spacer()
-            buttons.insertMenu
-            Spacer()
-            buttons.checklistButton
-            Spacer()
-            buttons.outdentButton
-            Spacer()
-            buttons.indentButton
-            Spacer()
-            Button("Done") { controller.blur() }.fontWeight(.semibold)
+        HStack(spacing: 0) {
+            buttons.formatMenu.barSlot("Format", systemImage: "textformat")
+            buttons.checklistButton.barSlot("Checklist", systemImage: "checklist")
+            buttons.insertMenu.barSlot("Insert", systemImage: "plus.circle")
+            Button {
+                if controller.canRewrite { controller.beginRewrite() } else { needsSelection = true }
+            } label: {
+                Image(systemName: "sparkles")
+            }
+            .foregroundStyle(Color.brandProjectText)
+            .accessibilityLabel("Rewrite with AI")
+            .accessibilityIdentifier("EditorRewrite")
+            .barSlot("Rewrite with AI", systemImage: "sparkles")
+            buttons.outdentButton.barSlot("Outdent", systemImage: "decrease.indent")
+            buttons.indentButton.barSlot("Indent", systemImage: "increase.indent")
+            if let dictate {
+                Button(action: dictate) { Image(systemName: "mic") }
+                    .accessibilityLabel("Dictate")
+                    .accessibilityIdentifier("EditorDictate")
+                    .barSlot("Dictate", systemImage: "mic")
+            }
+            Button("Done") { controller.blur() }
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.leading, 4)
+                .accessibilityIdentifier("EditorDone")
         }
         .font(.title3)
-        .padding(.horizontal, 22)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .padding(.horizontal, 14)
         .frame(height: 52)
         .modifier(BarBackground())
         .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity)))
+        .alert("Select Text to Rewrite", isPresented: $needsSelection) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Select the words or lines to rewrite, then tap ✦ again.")
+        }
+    }
+}
+
+private extension View {
+    /// One place of the editor bar: the same width for each, and the large content viewer for a long press.
+    func barSlot(_ title: LocalizedStringKey, systemImage: String) -> some View {
+        frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityShowsLargeContentViewer { Label(title, systemImage: systemImage) }
     }
 }
 
@@ -84,7 +120,7 @@ private struct NoteFormatButtons {
             Button { controller.perform(.moveLine(up: false)) } label: { Label("Move Line Down", systemImage: "arrow.down") }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .option])
         } label: {
-            Image(systemName: "textformat")
+            Text("Aa").font(.title3.weight(.semibold))
         }
         .accessibilityLabel("Format")
     }
@@ -96,6 +132,9 @@ private struct NoteFormatButtons {
             ForEach(NoteInsertItem.allCases.filter { images || !$0.isImage }) { item in
                 Button { controller.insert(item) } label: { Label(item.title, systemImage: item.systemImage) }
             }
+            Divider()
+            // "[[" at the cursor: the entries to link come up above the keyboard.
+            Button { controller.beginEntryLink() } label: { Label("Link to Entry [[", systemImage: "link") }
             // A note template's text at the cursor.
             let templates = NoteTemplateStore.shared.templates
             if !templates.isEmpty {

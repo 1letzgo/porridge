@@ -1,7 +1,8 @@
 import AppKit
 
 /// The rounded square in front of a row (the place of the checkbox in Things): its color says what the entry is.
-/// A pinned entry wears a small navy pin badge on the top right of its border.
+/// The design's token (stage 7): 26 pt, corner 7, a 15 % wash of the kind's color without a border, the symbol in the
+/// readable value. A pinned entry wears a small navy pin badge on its top right corner.
 final class KindIconView: NSView {
     var symbol = "text.alignleft" { didSet { update() } }
     var tint: NSColor = .brandSky { didSet { update() } }
@@ -11,13 +12,12 @@ final class KindIconView: NSView {
     private let pinImage = NSImageView()
     private let side: CGFloat
 
-    init(side: CGFloat = 36) {
+    init(side: CGFloat = 26) {
         self.side = side
         super.init(frame: NSRect(x: 0, y: 0, width: side, height: side))
         wantsLayer = true
-        layer?.cornerRadius = side * 0.25
+        layer?.cornerRadius = (side * 0.27).rounded()
         layer?.cornerCurve = .continuous
-        layer?.borderWidth = 1.5
         translatesAutoresizingMaskIntoConstraints = false
         image.translatesAutoresizingMaskIntoConstraints = false
         addSubview(image)
@@ -52,7 +52,7 @@ final class KindIconView: NSView {
     override var allowsVibrancy: Bool { false }
 
     private func update() {
-        image.image = .symbol(symbol, size: side * 0.4, weight: .semibold)
+        image.image = .symbol(symbol, size: (side * 0.48).rounded(), weight: .semibold)
         image.contentTintColor = tint.readable
         needsDisplay = true
         updateLayer()
@@ -61,8 +61,7 @@ final class KindIconView: NSView {
     override var wantsUpdateLayer: Bool { true }
 
     override func updateLayer() {
-        layer?.backgroundColor = tint.withAlphaComponent(0.14).resolved(for: self)
-        layer?.borderColor = tint.withAlphaComponent(0.55).resolved(for: self)
+        layer?.backgroundColor = tint.withAlphaComponent(0.15).resolved(for: self)
         pin.layer?.backgroundColor = NSColor.brandNavy.resolved(for: self)
         pin.layer?.borderColor = NSColor.textBackgroundColor.resolved(for: self)
         pinImage.contentTintColor = .brandOnNavy

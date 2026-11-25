@@ -40,7 +40,7 @@ struct SummaryTemplatesView: View {
             } message: {
                 Text("This cannot be undone.")
             }
-            .navigationTitle("Custom Templates")
+            .navigationTitle("Summary Templates")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

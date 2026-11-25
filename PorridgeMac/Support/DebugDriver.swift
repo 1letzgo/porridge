@@ -6,7 +6,7 @@ import SwiftData
 /// clicking: with PORRIDGE_DEBUG_DRIVER set, commands written to `commandFile` are run. Not part of release builds.
 ///
 /// Commands: `page today|inbox|bowls|later|todos|chat|archive|trash|search`, `search-ask <text>`, `search-ask-key …`,
-/// `shot-ask <path.png>`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
+/// `shot-ask <path.png>`, `shot-settings <path.png>`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
 /// `search <text>`, `dump`, `shot <path.png>`, `key <window title>` (orders a window front), `title <text>` / `body <text>` (types
 /// into the open note), `settings <tab>`.
 @MainActor
@@ -282,6 +282,14 @@ enum DebugDriver {
             }
             shoot(controller.window, argument)
             if let sheet = controller.window?.attachedSheet { shoot(sheet, (argument as NSString).deletingPathExtension + "-sheet.png") }
+        case "shot-settings":
+            // `shot-settings <path.png>`: the Settings window (open it first with `settings <tab>`).
+            let window = SettingsWindowController.shared.window
+            guard let content = window?.contentView?.superview ?? window?.contentView,
+                  let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { log("shot-settings: no window"); break }
+            content.cacheDisplay(in: content.bounds, to: bitmap)
+            try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
+            log("shot-settings: \(argument)")
         case "search-ask":
             // `search-ask <text>`: ⌘K, then the text typed into the toolbar's field; the results hang below it.
             controller.debugSearchAsk(argument)

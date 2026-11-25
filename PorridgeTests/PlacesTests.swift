@@ -114,4 +114,35 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(QuickAction(url: URL(string: "porridge://chat")!), .openChat)
         XCTAssertEqual(QuickAction.openChat.url.absoluteString, "porridge://chat")
     }
+
+    // MARK: What's New
+
+    func testWhatsNewShowsOnceAfterAnEarlierVersionAndNeverAfterOnboarding() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "WhatsNewTests"))
+        defaults.removePersistentDomain(forName: "WhatsNewTests")
+        defer { defaults.removePersistentDomain(forName: "WhatsNewTests") }
+        XCTAssertFalse(WhatsNew.shows(in: defaults), "a new install sees the onboarding, not the card")
+        defaults.set(true, forKey: AppSettings.onboardingDoneKey)
+        XCTAssertTrue(WhatsNew.shows(in: defaults), "someone who used an earlier version sees it")
+        WhatsNew.dismiss(in: defaults)
+        XCTAssertFalse(WhatsNew.shows(in: defaults), "once put away it stays away")
+    }
+
+    func testWhatsNewNamesEveryChangeOnBothPlatforms() {
+        for mac in [false, true] {
+            let titles = WhatsNew.items(mac: mac).map(\.title)
+            XCTAssertEqual(titles.count, 7)
+            XCTAssertTrue(titles.contains("Three Places"))
+            XCTAssertTrue(titles.contains("Details"))
+            XCTAssertTrue(titles.contains("Search or Ask"))
+            XCTAssertTrue(titles.contains("Triage"))
+            XCTAssertTrue(titles.contains("Today Shows What Is Open"))
+            XCTAssertEqual(WhatsNew.places(mac: mac).map(\.symbol).count, 5)
+        }
+        let phone = WhatsNew.items(mac: false).map(\.text).joined(separator: " ")
+        XCTAssertTrue(phone.contains("Chat"), "the Chat tab is named")
+        XCTAssertTrue(phone.contains("Swipe"), "the Inbox swipes are named")
+        XCTAssertTrue(phone.contains("Move · Later · Done · More"), "the selection bar is named")
+        XCTAssertFalse(phone.contains("Bucket") || phone.contains("Project"), "the container is a Bowl")
+    }
 }

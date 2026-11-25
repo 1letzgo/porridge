@@ -38,7 +38,7 @@ final class AISettingsPane: SettingsPane {
     override func build() {
         form.header("Summary")
         form.row("", summarizeIncoming)
-        form.row("Templates", NSButton.push("Edit Custom Templates…") { [weak self] in
+        form.row("Summary Templates", NSButton.push("Edit Summary Templates…") { [weak self] in
             self?.presentSheet(TemplatesSheetController())
         })
         form.separator()

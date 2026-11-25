@@ -28,6 +28,8 @@ final class ListHeaderView: NSView {
     private let trailing = NSStackView()
     private var iconTint: NSColor = .brandSky
     private let hintRow = DailyHintRow()
+    /// The one-time "What's New" card (`WhatsNew`), in Today's head on today.
+    private let whatsNew = WhatsNewPanel()
     /// The keys of the Inbox's triage, while it is on.
     private let triageKeys = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor)
 
@@ -61,7 +63,7 @@ final class ListHeaderView: NSView {
         segment.setAccessibilityIdentifier("InboxSegment")
         segment.setAccessibilityLabel(String(localized: "Inbox"))
         dateLine.isHidden = true
-        let stack = NSStackView.vertical([titleRow, dateLine, segment, hintRow, triageKeys, filters, tags], spacing: 10)
+        let stack = NSStackView.vertical([titleRow, dateLine, segment, whatsNew, hintRow, triageKeys, filters, tags], spacing: 10)
         stack.setCustomSpacing(2, after: titleRow)
         hintRow.onOpen = { [weak self] hint in self?.onHint?(hint) }
         addSubview(stack)
@@ -72,6 +74,7 @@ final class ListHeaderView: NSView {
             icon.centerYAnchor.constraint(equalTo: iconBox.centerYAnchor),
             titleRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             hintRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            whatsNew.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 10),
@@ -169,6 +172,7 @@ final class ListHeaderView: NSView {
         // The hint of the day: in Today's head, on today.
         let hint = page == .today && state.todayDay == nil ? DailyHints.shared.current : nil
         hintRow.show(hint)
+        whatsNew.isHidden = !(page == .today && state.todayDay == nil && WhatsNew.shows())
         if page == .trash, library.notes.contains(where: \.isDeleted) {
             let button = NSButton(title: "Delete All…", target: self, action: #selector(emptyTrash))
             button.controlSize = .small
@@ -337,6 +341,88 @@ final class ListHeaderView: NSView {
 
     @objc private func emptyTrash() {
         onEmptyTrash?()
+    }
+}
+
+/// The one-time "What's New" card in Today's head: what moved with the three places, in the Mac's words. "Got It"
+/// or the cross puts it away for good (on this Mac).
+private final class WhatsNewPanel: NSView {
+    private var labels: [NSTextField] = []
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.cornerCurve = .continuous
+        let heading = NSTextField.label(WhatsNew.title, font: .systemFont(ofSize: NSFont.systemFontSize + 1, weight: .bold), color: .brandNavy)
+        let close = ActionButton(title: "", symbol: "xmark") { [weak self] in self?.dismiss() }
+        close.isBordered = false
+        close.contentTintColor = .secondaryLabelColor
+        close.toolTip = String(localized: "Close What’s New")
+        close.setAccessibilityLabel(String(localized: "Close What’s New"))
+        let head = NSStackView.horizontal([NSImageView(image: .symbol("sparkles", size: 13, weight: .semibold)), heading, NSView(), close], spacing: 6)
+        var rows: [NSView] = [head]
+        for item in WhatsNew.items(mac: true) {
+            let icon = NSImageView(image: .symbol(item.symbol, size: 12, weight: .semibold))
+            icon.contentTintColor = .brandSkyText
+            icon.widthAnchor.constraint(equalToConstant: 18).isActive = true
+            let text = NSTextField(wrappingLabelWithString: "")
+            let line = NSMutableAttributedString(string: item.title + "  ", attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .semibold), .foregroundColor: NSColor.labelColor])
+            line.append(NSAttributedString(string: item.text, attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize + 1), .foregroundColor: NSColor.secondaryLabelColor]))
+            text.attributedStringValue = line
+            text.isSelectable = false
+            text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            labels.append(text)
+            let row = NSStackView.horizontal([icon, text], spacing: 8)
+            row.alignment = .top
+            rows.append(row)
+        }
+        let done = ActionButton(title: String(localized: "Got It")) { [weak self] in self?.dismiss() }
+        done.controlSize = .small
+        done.bezelStyle = .push
+        done.setAccessibilityIdentifier("WhatsNewDone")
+        rows.append(done)
+        let stack = NSStackView.vertical(rows, spacing: 6)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            head.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(WhatsNew.title)
+        setAccessibilityIdentifier("WhatsNew")
+        isHidden = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = NSColor.brandSky.withAlphaComponent(0.1).resolved(for: self)
+    }
+
+    /// The lines wrap at the width the list column gives.
+    override func layout() {
+        let width = max(bounds.width - 10 - 8 - 18 - 8, 120)
+        var changed = false
+        for label in labels where label.preferredMaxLayoutWidth != width {
+            label.preferredMaxLayoutWidth = width
+            changed = true
+        }
+        super.layout()
+        if changed { invalidateIntrinsicContentSize(); needsLayout = true }
+    }
+
+    private func dismiss() {
+        WhatsNew.dismiss()
+        isHidden = true
     }
 }
 

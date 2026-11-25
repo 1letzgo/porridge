@@ -62,6 +62,9 @@ final class NoteEditorController {
 
     func blur() { coordinator?.blur() }
 
+    /// Link to Entry: "[[" at the cursor, which offers the entries to link.
+    func beginEntryLink() { coordinator?.type("[[") }
+
     func perform(_ command: NoteEditorCommand) { coordinator?.perform(command) }
 
     func bind(_ coordinator: NoteTextCoordinator) { self.coordinator = coordinator }

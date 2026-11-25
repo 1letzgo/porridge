@@ -8,6 +8,8 @@ enum Onboarding {
     static func showIfNeeded(in window: NSWindow?) {
         guard !UserDefaults.standard.bool(forKey: AppSettings.onboardingDoneKey) else { return }
         let controller = OnboardingController {
+            // The last step showed the places: no "What's New" card after it.
+            WhatsNew.dismiss()
             UserDefaults.standard.set(true, forKey: AppSettings.onboardingDoneKey)
         }
         if let content = window?.contentViewController {
@@ -144,8 +146,26 @@ final class OnboardingController: NSViewController {
                             text: "Choose the model that turns speech into text. It runs completely on your device and is downloaded once, preferably over Wi‑Fi.",
                             extra: extra)
         default:
+            // The places of the sidebar and what each is for.
+            let rows: [NSView] = WhatsNew.places(mac: true).map { place in
+                let icon = NSImageView(image: .symbol(place.symbol, size: 15, weight: .semibold))
+                icon.contentTintColor = .brandSkyText
+                icon.widthAnchor.constraint(equalToConstant: 24).isActive = true
+                let title = NSTextField.label(place.title, font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold))
+                let text = NSTextField(wrappingLabelWithString: place.text)
+                text.textColor = .secondaryLabelColor
+                text.isSelectable = false
+                text.preferredMaxLayoutWidth = 340
+                let texts = NSStackView.vertical([title, text], spacing: 1)
+                let row = NSStackView.horizontal([icon, texts], spacing: 10)
+                row.alignment = .top
+                row.widthAnchor.constraint(equalToConstant: 380).isActive = true
+                return row
+            }
+            let list = NSStackView.vertical(rows, spacing: 10)
             page = makePage(icon: "checkmark.seal.fill", title: "All Set",
-                            text: "Record a note or a meeting. Everything can be changed later in Settings.")
+                            text: "Porridge has three places in the sidebar, plus Chat and Search or Ask. Everything can be changed later in Settings.",
+                            extra: [list])
         }
         content.addSubview(page)
         NSLayoutConstraint.activate([

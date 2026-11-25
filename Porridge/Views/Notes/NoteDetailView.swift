@@ -153,7 +153,7 @@ struct NoteDetailView: View {
                     if editor.linkSearch != nil, !editor.linkResults.isEmpty {
                         EntryLinkSuggestions(controller: editor)
                     }
-                    NoteKeyboardBar(controller: editor)
+                    NoteKeyboardBar(controller: editor, dictate: canDictate ? { Task { await toggleDictation() } } : nil)
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 6)
@@ -188,7 +188,8 @@ struct NoteDetailView: View {
         }
         .toolbar(onBack == nil ? .automatic : .hidden, for: .navigationBar)
         .overlay(alignment: .bottomTrailing) {
-            if tab == .note, processing.stages[note.id] == nil, !isLocked {
+            // Dictation starts from the mic in the editor bar; while it runs (the keyboard is away) this button stops it.
+            if tab == .note, canDictate, dictation.phase != .idle {
                 DictationButton(dictation: dictation) {
                     Task { await toggleDictation() }
                 }
@@ -1168,6 +1169,9 @@ struct NoteDetailView: View {
             preview
         }
     }
+
+    /// The mic of the editor bar: a note that can be written to and has no job running.
+    private var canDictate: Bool { processing.stages[note.id] == nil && !isLocked }
 
     private func toggleDictation() async {
         switch dictation.phase {
