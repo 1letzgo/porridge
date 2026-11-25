@@ -27,12 +27,15 @@ struct InboxPlace: View {
         let links = AppointmentLinks.shared
         let appointments = calendar.status == .granted ? links.inboxAppointments(among: calendar.appointments, day: calendar.today) : []
         return VStack(spacing: 0) {
-            if isSelecting {
-                NoteSelectionHeader(notes: waiting, chosen: $chosen)
-            } else {
-                // Entries that belong together: one suggestion for a new bowl at a time (`InboxBundler`).
-                InboxBundleCard(notes: notes, projects: projects)
+            Group {
+                if isSelecting {
+                    NoteSelectionHeader(notes: waiting, chosen: $chosen)
+                } else {
+                    // Entries that belong together: one suggestion for a new bowl at a time (`InboxBundler`).
+                    InboxBundleCard(notes: notes, projects: projects)
+                }
             }
+            .emptyStateBar()
             Group {
                 if isSelecting {
                     List(selection: $chosen) { newRows(waiting) }

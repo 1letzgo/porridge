@@ -42,6 +42,7 @@ struct TodayPage: View {
             // The hint of the day ("1 to-do is overdue"), today only.
             if isToday, let hint = DailyHints.shared.current {
                 DailyHintBanner(hint: hint) { onHint(hint) }
+                    .emptyStateBar()
                     .transition(.opacity)
             }
             list(shown, isToday: isToday)

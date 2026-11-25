@@ -565,7 +565,9 @@ struct NotesView: View {
             }
             .padding(.bottom, Look.headerGap)
 
+            // The room of empty views: from here (the head's lower edge) to the tab bar, bars or not.
             pageContent(shown)
+                .emptyStateArea()
         }
         .background(Color.appBackground)
         .keepsTabBarRoom()
@@ -645,6 +647,7 @@ struct NotesView: View {
             ])
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
+            .emptyStateBar()
             .accessibilityIdentifier("BowlsSide")
             switch bowlsSide {
             case .bowls:
@@ -691,6 +694,7 @@ struct NotesView: View {
             ])
             .padding(.horizontal, 20)
             .padding(.bottom, 10)
+            .emptyStateBar()
             .accessibilityIdentifier("SearchSide")
             switch searchSide {
             case .search:

@@ -41,6 +41,8 @@ struct BowlPickerSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
         }
+        // A sheet: its empty view centers in the sheet, whatever page opened it.
+        .emptyStateSheet()
         .presentationDetents([.medium, .large])
     }
 

@@ -86,11 +86,15 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            empty.topAnchor.constraint(equalTo: header.bottomAnchor),
+            // The room of the empty message: from the head's title row (not below the segment, the filters or the
+            // hint) to the bottom, the same on every page; it stays below those bars (`keepBelow`) and lets clicks
+            // through to them.
+            empty.topAnchor.constraint(equalTo: header.titleRowBottomAnchor),
             empty.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             empty.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             empty.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
+        empty.keepBelow(bundleBanner.bottomAnchor)
         view = root
     }
 

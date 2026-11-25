@@ -40,10 +40,14 @@ struct EmptyStateLabel<Actions: View>: View {
     }
 }
 
-/// An empty view: the message in the middle of the room it is given, across and up and down (between the page's head
-/// or switch and the tab bar, whose room is the safe area's: `keepsTabBarRoom`). Laid over an empty list or in its
-/// place, never as a row of it. When the words need more than the room (the largest text sizes) it scrolls; with a
-/// refresh action (`refreshable`, Today) it can always be pulled.
+/// An empty view: the message in the middle of the page, across and up and down, laid over an empty list or in its
+/// place, never as a row of it. Up and down the middle is always that of the room between the page's head (the bar
+/// with title and pills) and the tab bar (its room is the safe area's: `keepsTabBarRoom`), whether bars stand between
+/// head and list or not (a switch, a bowl's chips, the search field, the week's head): their height comes as
+/// `emptyStateLift` (`emptyStateBar`, `emptyStateArea`) and the message moves up by it, so it stands at the same place on
+/// every page. It never goes up under such a bar: when the words need more than the room (the largest text sizes) it
+/// starts below it and scrolls. With a refresh action (`refreshable`, Today) it can always be pulled. A sheet centers
+/// in its own room (its root sets the lift to 0).
 struct EmptyStateView<Actions: View>: View {
     let title: String
     let message: String
@@ -52,6 +56,7 @@ struct EmptyStateView<Actions: View>: View {
     @ViewBuilder var actions: Actions
 
     @Environment(\.refresh) private var refresh
+    @Environment(\.emptyStateLift) private var lift
 
     init(title: String, message: String, systemImage: String = "tray", @ViewBuilder actions: () -> Actions) {
         self.title = title
@@ -63,7 +68,10 @@ struct EmptyStateView<Actions: View>: View {
     var body: some View {
         GeometryReader { room in
             ScrollView {
+                // The lift as room below the message: its middle moves up by half of it, to the middle of the room
+                // from the head on; a message too tall for that starts at the top of its own room.
                 EmptyStateLabel(title: title, message: message) { actions }
+                    .padding(.bottom, lift)
                     .frame(maxWidth: .infinity, minHeight: room.size.height)
             }
             .scrollBounceBehavior(refresh == nil ? .basedOnSize : .always)
@@ -74,5 +82,47 @@ struct EmptyStateView<Actions: View>: View {
 extension EmptyStateView where Actions == EmptyView {
     init(title: String, message: String, systemImage: String = "tray") {
         self.init(title: title, message: message, systemImage: systemImage) { EmptyView() }
+    }
+}
+
+extension EnvironmentValues {
+    /// The height of the bars between a page's head and its content (`emptyStateBar`), for `EmptyStateView`.
+    @Entry var emptyStateLift: CGFloat = 0
+}
+
+/// The bars of a page below its head, added up.
+private struct EmptyStateLiftKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value += nextValue() }
+}
+
+/// Reads the bars of the page inside it and hands their height to its empty views.
+private struct EmptyStateArea: ViewModifier {
+    @State private var lift: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.emptyStateLift, lift)
+            .onPreferenceChange(EmptyStateLiftKey.self) { lift = $0 }
+            // Not counted again by a page around it.
+            .transformPreference(EmptyStateLiftKey.self) { $0 = 0 }
+    }
+}
+
+extension View {
+    /// A bar between a page's head and its content (with its own spacing): an empty view below moves up by its height
+    /// (`EmptyStateView`).
+    func emptyStateBar() -> some View {
+        background(GeometryReader { Color.clear.preference(key: EmptyStateLiftKey.self, value: $0.size.height) })
+    }
+
+    /// The content of a page below its head: the bars in it lift its empty views.
+    func emptyStateArea() -> some View {
+        modifier(EmptyStateArea())
+    }
+
+    /// A sheet's root: its empty views center in the sheet, whatever page opened it.
+    func emptyStateSheet() -> some View {
+        environment(\.emptyStateLift, 0)
     }
 }

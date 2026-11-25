@@ -52,6 +52,8 @@ struct PlaudImportSheet: View {
             }
             .onDisappear { importer.disconnect() }
         }
+        // A sheet: its empty view centers in the sheet, whatever page opened it.
+        .emptyStateSheet()
         .interactiveDismissDisabled(importer.importingId != nil)
     }
 

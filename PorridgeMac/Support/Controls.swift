@@ -205,6 +205,7 @@ final class EmptyMessageView: NSView {
     private let image = NSImageView()
     private let title = NSTextField(wrappingLabelWithString: "")
     private let message = NSTextField(wrappingLabelWithString: "")
+    private let stack = NSStackView()
 
     init() {
         super.init(frame: .zero)
@@ -219,7 +220,7 @@ final class EmptyMessageView: NSView {
         message.textColor = .secondaryLabelColor
         message.alignment = .center
         message.preferredMaxLayoutWidth = 260
-        let stack = NSStackView(views: [image, title, message])
+        [image, title, message].forEach(stack.addArrangedSubview)
         stack.orientation = .vertical
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -240,6 +241,12 @@ final class EmptyMessageView: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The room reaches up over bars (a list's segment and filters) so the message stands at the same place on every
+    /// page; it never goes up under them.
+    func keepBelow(_ anchor: NSLayoutYAxisAnchor) {
+        stack.topAnchor.constraint(greaterThanOrEqualTo: anchor, constant: 8).isActive = true
+    }
 
     /// Only a message: clicks go through to what is below it (the empty Inbox's top card).
     override func hitTest(_ point: NSPoint) -> NSView? { nil }

@@ -25,8 +25,12 @@ struct WeeklyReviewView: View {
     var body: some View {
         let review = review
         VStack(spacing: 0) {
-            header(review)
-            Divider()
+            // The week's head: a bar for the empty week's message (`emptyStateBar`).
+            VStack(spacing: 0) {
+                header(review)
+                Divider()
+            }
+            .emptyStateBar()
             if review.isEmpty {
                 // An empty week: the line in the middle of the page, under the week's head (iPhone and Mac).
                 EmptyStateView(title: "", message: "Nothing came in this week.", systemImage: "calendar")

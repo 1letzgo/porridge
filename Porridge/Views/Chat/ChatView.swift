@@ -182,6 +182,10 @@ struct ChatView: View {
     @FocusState private var focused: Bool
     /// The scroll view's visible height, for the intro in its middle.
     @State private var visibleHeight: CGFloat = 0
+    @State private var headHeight: CGFloat = 0
+    @State private var introHeight: CGFloat = 0
+    /// The bars between the page's head and the chat (the Search | Chat switch).
+    @Environment(\.emptyStateLift) private var lift
 
     private var service: ChatService { ChatService.shared }
     private var entries: [ChatEntry] {
@@ -200,7 +204,7 @@ struct ChatView: View {
         SearchAsk.chatName(project, bowls: projects)
     }
 
-    /// The chat's start without recent chats: only the intro, in the middle of the room below the scope row.
+    /// The chat's start without recent chats: only the intro, in the middle of the page (`EmptyStateView`'s room).
     private var centersIntro: Bool { entries.isEmpty && recent.isEmpty && !isThinking }
 
     @ViewBuilder
@@ -219,18 +223,19 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 if centersIntro {
-                    // The visible height (between the switch and the field) at least, the intro in its middle; it
-                    // scrolls when the words need more (the largest text sizes).
+                    // The intro in the middle of the room from the page's head (above the Search | Chat switch,
+                    // `emptyStateLift`) to the field, where the empty views of every page stand; never up under the
+                    // scope row: below it, scrolling, when the words need more (the largest text sizes).
                     VStack(spacing: 14) {
-                        head
-                        Spacer(minLength: 0)
+                        VStack(spacing: 14) { head }
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headHeight = $0 }
                         intro
-                        Spacer(minLength: 0)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { introHeight = $0 }
+                            .padding(.top, max(0, (visibleHeight - lift - introHeight) / 2 - 12 - headHeight - 14))
                         Color.clear.frame(height: 4).id("end")
                     }
                     .padding(.horizontal)
                     .padding(.top, 12)
-                    .frame(minHeight: visibleHeight, alignment: .top)
                 } else {
                     LazyVStack(spacing: 14) {
                         head

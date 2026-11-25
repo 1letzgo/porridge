@@ -96,6 +96,8 @@ struct NoteTemplatesView: View {
                 }
             }
         }
+        // A sheet: its empty view centers in the sheet, whatever page opened it.
+        .emptyStateSheet()
     }
 
     private func row(_ template: NoteTemplate) -> some View {
@@ -367,6 +369,8 @@ struct NoteTemplatePicker: View {
                 Text("What is it about?")
             }
         }
+        // A sheet: its empty view centers in the sheet, whatever page opened it.
+        .emptyStateSheet()
         .presentationDetents([.medium, .large])
     }
 

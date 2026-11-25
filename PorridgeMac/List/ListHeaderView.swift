@@ -32,6 +32,11 @@ final class ListHeaderView: NSView {
     private let whatsNew = WhatsNewPanel()
     /// The keys of the Inbox's triage, while it is on.
     private let triageKeys = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor)
+    /// The row with the square, the title and the buttons: the head proper. What follows below it (date, segment,
+    /// hint, filters, tags) are bars; the list's empty message centers from here on, so it stands at the same place
+    /// on every page.
+    private var titleRow = NSStackView()
+    var titleRowBottomAnchor: NSLayoutYAxisAnchor { titleRow.bottomAnchor }
 
     init() {
         super.init(frame: .zero)
@@ -49,7 +54,7 @@ final class ListHeaderView: NSView {
         tags.spacing = 6
         trailing.orientation = .horizontal
         trailing.spacing = 6
-        let titleRow = NSStackView.horizontal([iconBox, title, NSView(), trailing], spacing: 8)
+        titleRow = NSStackView.horizontal([iconBox, title, NSView(), trailing], spacing: 8)
         triageKeys.stringValue = String(localized: "J / K  Next, Previous   ·   F  File   ·   D  Done   ·   ⌫  Delete   ·   Esc  End")
         triageKeys.lineBreakMode = .byTruncatingTail
         triageKeys.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

@@ -97,36 +97,41 @@ struct SearchPane<Results: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            field
-                .padding(.horizontal)
+        VStack(spacing: 0) {
+            // The field and its chips: a bar for the empty views below (`emptyStateBar`).
+            VStack(spacing: 10) {
+                field
+                    .padding(.horizontal)
 
-            if typeSize.isAccessibilitySize {
-                // The largest text sizes: two chips that wrap (the kinds in one menu), nothing cut off at the edge.
-                FlowLayout(spacing: 8) {
-                    scopeChip
-                    kindMenuChip
-                }
-                .padding(.horizontal)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                if typeSize.isAccessibilitySize {
+                    // The largest text sizes: two chips that wrap (the kinds in one menu), nothing cut off at the edge.
+                    FlowLayout(spacing: 8) {
                         scopeChip
-                        ForEach(SearchKind.allCases, id: \.self) { option in kindChip(option) }
+                        kindMenuChip
                     }
                     .padding(.horizontal)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            scopeChip
+                            ForEach(SearchKind.allCases, id: \.self) { option in kindChip(option) }
+                        }
+                        .padding(.horizontal)
+                    }
                 }
-            }
 
-            if !matchingTags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(matchingTags.prefix(20), id: \.key) { tag in chip(tag) }
+                if !matchingTags.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(matchingTags.prefix(20), id: \.key) { tag in chip(tag) }
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 2)
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 2)
                 }
             }
+            .padding(.bottom, 10)
+            .emptyStateBar()
 
             if hasQuery {
                 // The keyboard goes with a drag through the results (their list) or a tap in them.

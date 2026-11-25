@@ -58,6 +58,8 @@ struct MergeNotesSheet: View {
                 Text(errorMessage ?? "")
             }
         }
+        // A sheet: its empty view centers in the sheet, whatever page opened it.
+        .emptyStateSheet()
         .interactiveDismissDisabled(isMerging)
     }
 
