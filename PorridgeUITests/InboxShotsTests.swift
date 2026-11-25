@@ -55,7 +55,8 @@ final class InboxShotsTests: XCTestCase {
         shoot("inbox-swipe-file")
         link.swipeLeft()
         let gift = app.staticTexts["Gift ideas for Mum"]
-        if app.reveal(gift) {
+        // With the largest text sizes the list can still be settling after the swipes: only a row that stays is swiped.
+        if app.reveal(gift), gift.waitForExistence(timeout: 3), gift.isHittable {
             gift.swipeLeft()
             shoot("inbox-swipe-later")
             app.buttons["Later"].firstMatch.tap()
@@ -71,9 +72,16 @@ final class InboxShotsTests: XCTestCase {
         shoot("triage-other")
         app.buttons["Cancel"].tap()
         // On to the to-do (the oldest entry, the last one).
-        for _ in 0..<12 where !app.buttons["TriageDone"].exists && app.buttons["TriageSkip"].exists {
-            app.buttons["TriageSkip"].tap()
+        // With the largest text sizes a tall card can push the buttons below the fold: scrolled to first.
+        for _ in 0..<16 where !app.buttons["TriageDone"].exists {
+            let skip = app.buttons["TriageSkip"]
+            if !(skip.exists && skip.isHittable) {
+                app.scrollViews.firstMatch.swipeUp()
+                continue
+            }
+            skip.tap()
         }
+        if app.buttons["TriageDone"].exists, !app.buttons["TriageDone"].isHittable { app.scrollViews.firstMatch.swipeUp() }
         shoot("triage-todo")
         app.buttons["TriageDone"].tap()
         shoot("triage-finished")
@@ -81,8 +89,7 @@ final class InboxShotsTests: XCTestCase {
 
         app.buttons["Select"].tap()
         for title in ["Invoice INV-2026-1142", "Invoice INV-2026-1098", "Receipt, hardware store"] {
-            let row = app.staticTexts[title]
-            if app.reveal(row) { row.tap() }
+            app.revealAndTap(app.staticTexts[title].firstMatch)
         }
         shoot("selection-bar")
         app.buttons["SelectionMore"].tap()

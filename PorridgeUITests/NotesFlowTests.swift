@@ -214,8 +214,11 @@ final class NotesFlowTests: XCTestCase {
         for item in ["Select Entries", "Pin", "Rename…", "Ask About This Bowl", "Export Bowl…", "Archive", "Delete Bowl…"] {
             XCTAssertTrue(app.buttons[item].waitForExistence(timeout: 3), "bowl menu lacks \(item)")
         }
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.6)).tap()
-        app.addButton.tap()
+        // Closed by a tap below it (with the largest text sizes the menu reaches down to 60 % at the left edge),
+        // then "+" once the menu is gone and "+" can be pressed.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.8)).tap()
+        _ = app.buttons["Select Entries"].waitForNonExistence(timeout: 3)
+        XCTAssertTrue(app.tapAddWhenHittable(), "the Add sheet did not open")
         let into = app.buttons["AddInto"]
         XCTAssertTrue(into.waitForExistence(timeout: 5), "Add sheet has no Into")
         XCTAssertTrue(into.label.contains(name), "Into is not the open bowl: \(into.label)")

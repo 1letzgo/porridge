@@ -58,8 +58,7 @@ final class PlacesShotsTests: XCTestCase {
                 _ = app.buttons["Select Entries"].waitForNonExistence(timeout: 3)
                 sleep(1)
                 XCTAssertTrue(app.addButton.waitForExistence(timeout: 5), "PlaceAdd missing after the bowl menu")
-                app.addButton.tap()
-                if !app.buttons["Close"].waitForExistence(timeout: 3) { app.addButton.tap() }
+                app.tapAddWhenHittable()
                 shoot("add-sheet-bowl")
                 app.buttons["Close"].tap()
                 app.buttons["Back"].firstMatch.tap()

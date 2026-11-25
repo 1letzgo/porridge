@@ -1,6 +1,10 @@
 #if DEBUG
+import CoreGraphics
+import CoreText
 import Foundation
+import ImageIO
 import SwiftData
+import UniformTypeIdentifiers
 
 /// Data for the UI tests, only in debug builds: `-seedMeetingWithTasks <title>` adds a summarized meeting whose
 /// summary has three tasks (the user's, somebody else's with a date, nobody's), in a new bowl of the same name.
@@ -182,6 +186,7 @@ enum TestSeed {
             info.day = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: -3, to: now) ?? now)
             info.dueDay = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: 8, to: now) ?? now)
             note.attachments = [Attachment(fileName: "seed-invoice.pdf", name: "Invoice INV-2026-1142.pdf", kindRaw: Attachment.Kind.pdf.rawValue, document: info)]
+            SeedFiles.invoice("seed-invoice.pdf", number: "INV-2026-1142", from: "Telekom Deutschland")
             note.pageText = "Telekom bills 119,00 € for the November mobile plan, including a one-off roaming charge of 9,90 €."
             note.summary = "Telekom bills 119,00 € for the November mobile plan, including a one-off roaming charge of 9,90 €."
             note.suggestedProjectIDs = [bills]
@@ -199,6 +204,7 @@ enum TestSeed {
         add(KindID.image, "Whiteboard", in: "Q4 Planning") { note in
             note.source = .share
             note.attachments = [Attachment(fileName: "seed-whiteboard.jpg", name: "IMG_0042.jpg", kindRaw: Attachment.Kind.image.rawValue)]
+            SeedFiles.whiteboard("seed-whiteboard.jpg")
             note.pageText = "Roadmap Q1: Login, Payments, Export"
             note.statusRaw = ProcessingStatus.ready.rawValue
         }
@@ -249,6 +255,7 @@ enum TestSeed {
                 info.day = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: -days, to: now) ?? now)
                 info.dueDay = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: 8 - days, to: now) ?? now)
                 note.attachments = [Attachment(fileName: "seed-\(number).pdf", name: "Invoice \(number).pdf", kindRaw: Attachment.Kind.pdf.rawValue, document: info)]
+                SeedFiles.invoice("seed-\(number).pdf", number: number, from: "Telekom")
                 note.pageText = "Telekom bills 119,00 € for the mobile plan."
             }
         }
@@ -269,6 +276,7 @@ enum TestSeed {
             var info = DocumentInfo(kind: .receipt, correspondent: "Bauhaus")
             info.amount = "46.80 EUR"
             note.attachments = [Attachment(fileName: "seed-receipt.jpg", name: "Receipt.jpg", kindRaw: Attachment.Kind.image.rawValue, document: info)]
+            SeedFiles.receipt("seed-receipt.jpg")
         }
         add("Gift ideas for Mum", text: "A good teapot, the new Donna Leon, tulip bulbs")
         add("Call the insurance about the window") { note in
@@ -371,6 +379,96 @@ enum TestSeed {
         }
         add("Altes Rezept", text: "Pfannkuchen mit Milch, Mehl und Eiern.", created: day(1, month: 3))
         try? context.save()
+    }
+}
+/// The files the seeded entries point at, drawn here (a one-page invoice PDF, a receipt and a whiteboard photo) and
+/// written where the app keeps attachments, so their thumbnails and previews show something instead of a grey blank.
+/// Written once; a file that is there stays.
+enum SeedFiles {
+    private static let ink = CGColor(red: 0.12, green: 0.16, blue: 0.27, alpha: 1)
+    private static let grey = CGColor(red: 0.45, green: 0.47, blue: 0.52, alpha: 1)
+
+    static func invoice(_ fileName: String, number: String, from sender: String) {
+        guard let url = target(fileName) else { return }
+        var box = CGRect(x: 0, y: 0, width: 595, height: 842)
+        guard let context = CGContext(url as CFURL, mediaBox: &box, nil) else { return }
+        context.beginPDFPage(nil)
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(box)
+        context.setFillColor(CGColor(red: 0.89, green: 0.0, blue: 0.45, alpha: 1))
+        context.fill(CGRect(x: 48, y: 760, width: 40, height: 40))
+        text(sender, at: CGPoint(x: 100, y: 772), size: 18, bold: true, in: context)
+        text("Invoice \(number)", at: CGPoint(x: 48, y: 690), size: 26, bold: true, in: context)
+        let rows = [("Mobile plan, November", "109.10 EUR"), ("Roaming, one-off", "9.90 EUR"), ("Total", "119.00 EUR")]
+        for (index, row) in rows.enumerated() {
+            let y = 620 - CGFloat(index) * 34
+            text(row.0, at: CGPoint(x: 48, y: y), size: 14, bold: index == rows.count - 1, in: context)
+            text(row.1, at: CGPoint(x: 430, y: y), size: 14, bold: index == rows.count - 1, in: context)
+            context.setFillColor(grey)
+            context.fill(CGRect(x: 48, y: y - 10, width: 499, height: 0.5))
+        }
+        text("Please pay within 14 days.", at: CGPoint(x: 48, y: 480), size: 12, color: grey, in: context)
+        context.endPDFPage()
+        context.closePDF()
+    }
+
+    static func receipt(_ fileName: String) {
+        image(fileName, width: 600, height: 900, background: CGColor(red: 0.97, green: 0.96, blue: 0.93, alpha: 1)) { context in
+            text("BAUHAUS", at: CGPoint(x: 60, y: 800), size: 40, bold: true, in: context)
+            let rows = [("Screws 4x40", "6.90"), ("Wood glue", "8.40"), ("Sandpaper set", "11.50"), ("Brush 50 mm", "20.00"), ("TOTAL EUR", "46.80")]
+            for (index, row) in rows.enumerated() {
+                let y = 680 - CGFloat(index) * 60
+                text(row.0, at: CGPoint(x: 60, y: y), size: 28, bold: index == rows.count - 1, in: context)
+                text(row.1, at: CGPoint(x: 440, y: y), size: 28, bold: index == rows.count - 1, in: context)
+            }
+        }
+    }
+
+    static func whiteboard(_ fileName: String) {
+        image(fileName, width: 1200, height: 800, background: CGColor(red: 0.95, green: 0.96, blue: 0.97, alpha: 1)) { context in
+            text("Roadmap Q1", at: CGPoint(x: 80, y: 660), size: 72, bold: true, in: context)
+            let colors = [CGColor(red: 0.85, green: 0.2, blue: 0.2, alpha: 1), CGColor(red: 0.15, green: 0.45, blue: 0.8, alpha: 1), CGColor(red: 0.2, green: 0.6, blue: 0.3, alpha: 1)]
+            for (index, word) in ["Login", "Payments", "Export"].enumerated() {
+                let x = 80 + CGFloat(index) * 370
+                context.setStrokeColor(colors[index])
+                context.setLineWidth(8)
+                context.stroke(CGRect(x: x, y: 200, width: 320, height: 300))
+                text(word, at: CGPoint(x: x + 30, y: 330), size: 52, color: colors[index], in: context)
+            }
+        }
+    }
+
+    // MARK: Drawing
+
+    private static func target(_ fileName: String) -> URL? {
+        let url = AudioStore.url(for: fileName, kind: .attachment)
+        guard !FileManager.default.fileExists(atPath: url.path) else { return nil }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return url
+    }
+
+    private static func image(_ fileName: String, width: Int, height: Int, background: CGColor, draw: (CGContext) -> Void) {
+        guard let url = target(fileName),
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return }
+        context.setFillColor(background)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        draw(context)
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+        CGImageDestinationFinalize(destination)
+    }
+
+    private static func text(_ string: String, at point: CGPoint, size: CGFloat, bold: Bool = false, color: CGColor? = nil, in context: CGContext) {
+        let font = CTFontCreateWithName((bold ? "Helvetica-Bold" : "Helvetica") as CFString, size, nil)
+        let attributes: [NSAttributedString.Key: Any] = [
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): color ?? ink,
+        ]
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: string, attributes: attributes))
+        context.textPosition = point
+        CTLineDraw(line, context)
     }
 }
 #endif

@@ -34,7 +34,18 @@ final class Stage7ShotsTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Three Places"].exists)
         shoot("whats-new")
         let done = app.buttons["WhatsNewDone"]
-        for _ in 0..<4 where !done.isHittable { app.swipeUp() }
+        // Small steps: a swipe flings the list past the card on a small screen, and "Got It" must end up above the
+        // tab bar, not under it.
+        let tabBar = app.tabBars.firstMatch
+        func reachable() -> Bool {
+            guard done.exists, done.isHittable else { return false }
+            return !tabBar.exists || done.frame.maxY <= tabBar.frame.minY
+        }
+        for _ in 0..<12 where !reachable() {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+            start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)))
+        }
+        XCTAssertTrue(reachable(), "Got It cannot be reached above the tab bar")
         shoot("whats-new-end")
         done.tap()
         XCTAssertTrue(card.waitForNonExistence(timeout: 5), "Got It did not put the card away")
@@ -83,11 +94,30 @@ final class Stage7ShotsTests: XCTestCase {
         XCTAssertTrue(app.alerts["Select Text to Rewrite"].waitForExistence(timeout: 5), "✦ without a selection says what to do")
         shoot("editor-rewrite-no-selection")
         app.alerts.buttons["OK"].tap()
-        app.buttons["Insert"].firstMatch.tap()
-        let link = app.buttons["Link to Entry [["]
-        // With the largest text sizes the menu is taller than the room above the bar: its first row is scrolled to.
-        for _ in 0..<4 where !(link.waitForExistence(timeout: 2) && link.isHittable) {
-            app.buttons["Heading"].firstMatch.swipeDown()
+        _ = app.alerts.firstMatch.waitForNonExistence(timeout: 5)
+        let insert = app.buttons["Insert"].firstMatch
+        // The menu's rows carry their symbol's name as identifier: they are found by their label.
+        func button(_ label: String) -> XCUIElement { app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch }
+        let link = button("Link to Entry [[")
+        let rows = ["Link to Entry [[", "Heading", "Table", "Photo", "Image from Files", "Divider", "Quote", "Code Block"]
+        func menuRow() -> XCUIElement? {
+            rows.map(button).first { $0.exists && $0.isHittable }
+        }
+        insert.tap()
+        // A press while the alert was still going away opens nothing: once more (only when no row of the menu is up,
+        // a second press would close it).
+        var waited = 0
+        while menuRow() == nil, waited < 15 { usleep(200_000); waited += 1 }
+        if menuRow() == nil { insert.tap() }
+        // With the largest text sizes (or a small screen) the menu is taller than the room: Link to Entry is then
+        // scrolled out of the menu (above or below, the menu may open either way round). The menu is flicked fast
+        // (a slow drag that ends on a row chooses that row).
+        let menu = app.collectionViews.containing(NSPredicate(format: "label == %@", "Heading")).firstMatch
+        for direction in [true, false] {
+            for _ in 0..<3 where menu.exists && !(link.exists && link.isHittable) {
+                if direction { menu.swipeDown(velocity: .fast) } else { menu.swipeUp(velocity: .fast) }
+                usleep(500_000)
+            }
         }
         XCTAssertTrue(link.waitForExistence(timeout: 5), "no Link to Entry in Insert")
         shoot("editor-insert")

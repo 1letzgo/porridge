@@ -52,6 +52,19 @@ extension XCUIApplication {
             ?? buttons.matching(identifier: "PlaceAdd").firstMatch
     }
 
+    /// "+" once it can be pressed (a menu or sheet that is still going away covers it for a moment), pressed; a
+    /// press that came too early and opened nothing is repeated once. Returns whether the Add sheet is up.
+    @discardableResult
+    func tapAddWhenHittable(timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline, !(addButton.exists && addButton.isHittable) { usleep(200_000) }
+        XCTAssertTrue(addButton.isHittable, "PlaceAdd is not hittable")
+        addButton.tap()
+        if navigationBars["Add"].waitForExistence(timeout: 3) { return true }
+        if addButton.exists, addButton.isHittable { addButton.tap() }
+        return navigationBars["Add"].waitForExistence(timeout: 5)
+    }
+
     /// One of the places' tabs: Today, Inbox, Bowls, Search.
     func openTab(_ name: String) {
         let tab = tabBars.buttons[name].exists ? tabBars.buttons[name] : buttons[name].firstMatch
@@ -126,6 +139,21 @@ extension XCUIApplication {
         guard element.waitForExistence(timeout: 5) else { return false }
         for _ in 0..<4 where !element.isHittable { swipeUp() }
         return true
+    }
+
+    /// `reveal`, then a tap once the row stays put: with the largest text sizes a list can still be moving after the
+    /// swipes and the row found a moment ago is gone again. Tried three times; returns whether it was tapped.
+    @discardableResult
+    func revealAndTap(_ element: XCUIElement) -> Bool {
+        for _ in 0..<3 {
+            guard reveal(element) else { return false }
+            usleep(500_000)
+            if element.exists, element.isHittable {
+                element.tap()
+                return true
+            }
+        }
+        return false
     }
 
     /// Same upwards: for a row that moved to the top of the list.
