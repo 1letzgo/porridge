@@ -188,16 +188,54 @@ struct ProjectPage: View {
     @Binding var chosen: Set<UUID>
     /// Moves a note to the trash.
     var onRemove: (Note) -> Void
+    /// Records a meeting for one of the bowl's appointments, or starts a note for it.
+    var onRecord: (CalendarAppointment) -> Void = { _ in }
+    var onNewNote: (CalendarAppointment) -> Void = { _ in }
     @State private var filter = ProjectFilter.all
+    /// The appointment opened with a tap on its row.
+    @State private var opened: CalendarAppointment?
+    @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
+    @Environment(\.modelContext) private var context
 
     var body: some View {
         let content = ProjectContent(of: project, notes: notes)
         // One flat list without headers: pinned first, then by last change; the To-dos filter by due day.
         let list = content.list(filter)
-        let rows = Section {
-            ForEach(list) { note in
-                NoteListRow(note: note) { onRemove(note) }
-                    .lastInSection(note.id == list.last?.id)
+        // The appointments filed into the bowl, one row per series (`BowlAppointments`), above the entries; only
+        // with All and not while choosing entries.
+        let calendar = TodayCalendar.shared
+        let links = AppointmentLinks.shared
+        let appointments = filter == .all && !isSelecting && calendar.status == .granted
+            ? links.appointments(inBowl: Projects.key(project), among: calendar.windowAppointments()) : []
+        let rows = Group {
+            if !appointments.isEmpty {
+                Section {
+                    ForEach(appointments) { appointment in
+                        AppointmentRow(
+                            appointment: appointment, bowlName: nil,
+                            linked: TodayTodos.shown(links.notes(for: appointment, among: notes)).count,
+                            projects: projects,
+                            onBowl: { links.setBowl($0.map(Projects.key), for: appointment, notes: notes, in: context) },
+                            onRecord: { onRecord(appointment) },
+                            onNewNote: { onNewNote(appointment) },
+                            onOpen: { opened = appointment },
+                            showsDay: true
+                        )
+                        .lastInSection(appointment.id == appointments.last?.id)
+                    }
+                } header: {
+                    ListHeader(title: String(localized: "Appointments"), count: appointments.count, tint: .brandNavy, isFirst: true)
+                }
+            }
+            Section {
+                ForEach(list) { note in
+                    NoteListRow(note: note) { onRemove(note) }
+                        .lastInSection(note.id == list.last?.id)
+                }
+            } header: {
+                if !appointments.isEmpty, !list.isEmpty {
+                    ListHeader(title: String(localized: "Entries"), count: list.count, tint: .brandProject)
+                }
             }
         }
         VStack(spacing: 0) {
@@ -229,8 +267,14 @@ struct ProjectPage: View {
             // What others added or changed is seen as far as the bowl goes, on the way in and on the way out.
             .onAppear { BowlSharing.shared.markVisited(project.id) }
             .onDisappear { BowlSharing.shared.markVisited(project.id) }
+            .sheet(item: $opened) { appointment in
+                AppointmentSheet(
+                    appointment: appointment, notes: notes, projects: projects,
+                    onRecord: onRecord, onNewNote: onNewNote, onOpenNote: { selection = $0.id }
+                )
+            }
             .overlay {
-                if content.count(filter) == 0 {
+                if content.count(filter) == 0, appointments.isEmpty {
                     EmptyStateView(
                         title: "Nothing Here Yet",
                         message: "Add to the bowl with +, or move entries into it from their Details.",

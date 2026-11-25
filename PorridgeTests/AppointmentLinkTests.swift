@@ -85,6 +85,52 @@ final class AppointmentLinkTests: XCTestCase {
         XCTAssertEqual(later.projectIDs, [Projects.key(bowl)])
     }
 
+    /// Rule 2 and 4: a bowl shows the appointments of the series filed into it, one row per series (its next
+    /// occurrence that is not over, else its last one), upcoming first, then past ones; others never.
+    func testABowlShowsItsAppointmentsOncePerSeriesUpcomingFirst() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let day: TimeInterval = 86400
+        let weekly = (-2...3).map { appointment(id: "w\($0)", series: "weekly", title: "Jour fixe", start: now.addingTimeInterval(Double($0) * 7 * day)) }
+        let party = appointment(id: "p", series: "party", title: "Christmas Party", start: now.addingTimeInterval(2 * day))
+        let past = appointment(id: "old", series: "old", title: "Kick-off", start: now.addingTimeInterval(-30 * day))
+        let elsewhere = appointment(id: "x", series: "other", title: "Dentist", start: now.addingTimeInterval(day))
+        let loose = appointment(id: "l", series: "loose", title: "Lunch", start: now.addingTimeInterval(day))
+        let bowls: [String: AppointmentLedger.BowlLink] = [
+            "weekly": .init(bowl: "B", changedAt: now), "party": .init(bowl: "B", changedAt: now),
+            "old": .init(bowl: "B", changedAt: now), "other": .init(bowl: "C", changedAt: now),
+            "loose": .init(bowl: nil, changedAt: now),
+        ]
+        let rows = BowlAppointments.rows(weekly + [party, past, elsewhere, loose], bowl: "B", bowls: bowls, now: now.addingTimeInterval(1))
+        XCTAssertEqual(rows.map(\.title), ["Jour fixe", "Christmas Party", "Kick-off"], "soonest first, the past one last")
+        // The series once: the occurrence going on (it ends an hour after it started), not each one.
+        XCTAssertEqual(rows.filter { $0.seriesID == "weekly" }.count, 1)
+        XCTAssertEqual(rows.first { $0.seriesID == "weekly" }?.id, "w0", "not the next occurrence of the series")
+        // A series with every occurrence over: its last one, after the upcoming ones.
+        let over = BowlAppointments.rows(weekly, bowl: "B", bowls: bowls, now: now.addingTimeInterval(30 * day))
+        XCTAssertEqual(over.map(\.id), ["w3"])
+        XCTAssertTrue(BowlAppointments.rows(weekly + [party], bowl: "C", bowls: bowls, now: now).isEmpty)
+    }
+
+    /// Rule 3: appointments are no entries, so the Inbox never lists them; an entry linked to an appointment of a
+    /// bowl leaves the Inbox for the bowl, one linked to an appointment without a bowl stays (nothing else does).
+    func testAppointmentsNeverFillTheInbox() throws {
+        let context = try TestStore.context()
+        let links = links()
+        let bowl = NoteFolder(name: "SPD")
+        context.insert(bowl)
+        let filedSeries = appointment(series: "filed"), looseSeries = appointment(id: "e2", series: "loose")
+        links.setBowl(Projects.key(bowl), for: filedSeries, notes: [], in: context)
+        let forFiled = Note(), forLoose = Note()
+        [forFiled, forLoose].forEach(context.insert)
+        links.link(forFiled, to: filedSeries, in: context)
+        links.link(forLoose, to: looseSeries, in: context)
+        let inbox = Inbox.notes([forFiled, forLoose])
+        XCTAssertEqual(inbox.map(\.id), [forLoose.id], "the entry of an appointment of a bowl stays in the Inbox")
+        XCTAssertEqual(forFiled.projectIDs, [Projects.key(bowl)])
+        // The bowl lists the appointment itself.
+        XCTAssertEqual(links.appointments(inBowl: Projects.key(bowl), among: [filedSeries, looseSeries], now: filedSeries.start).map(\.seriesID), ["filed"])
+    }
+
     func testDevicesMergeLinkByLinkAndTheLaterChangeWins() {
         let early = Date(timeIntervalSince1970: 1_000), late = Date(timeIntervalSince1970: 2_000)
         let ref = AppointmentRef(appointment())

@@ -98,6 +98,26 @@ struct AppointmentLedger: Codable, Equatable {
     static let keepTombstones: TimeInterval = 90 * 86400
 }
 
+/// The appointments a bowl shows: those of the series filed into it (by hand, from an appointment's Bowl menu), one row
+/// per series, never each occurrence: its next occurrence that is not over, else its last one. Upcoming ones first
+/// (soonest first), then past ones (latest first). Appointments never show in the Inbox: they are no entries; what is
+/// linked to an appointment of a bowl goes into that bowl (`AppointmentLinks.setBowl`, `link`).
+enum BowlAppointments {
+    static func rows(_ appointments: [CalendarAppointment], bowl: String, bowls: [String: AppointmentLedger.BowlLink], now: Date = Date()) -> [CalendarAppointment] {
+        var bySeries: [String: [CalendarAppointment]] = [:]
+        for appointment in appointments where bowls[appointment.seriesID]?.bowl == bowl {
+            bySeries[appointment.seriesID, default: []].append(appointment)
+        }
+        let picked = bySeries.values.compactMap { occurrences -> CalendarAppointment? in
+            let sorted = occurrences.sorted { $0.start < $1.start }
+            return sorted.first { $0.end > now } ?? sorted.last
+        }
+        let upcoming = picked.filter { $0.end > now }.sorted { ($0.start, $0.title) < ($1.start, $1.title) }
+        let past = picked.filter { $0.end <= now }.sorted { ($0.start, $0.title) > ($1.start, $1.title) }
+        return upcoming + past
+    }
+}
+
 /// Entries linked to calendar appointments (a meeting recorded for one is linked by itself), and appointments
 /// filed into bowls: what is linked to an appointment of a bowl goes into that bowl while it is in the inbox.
 @MainActor
@@ -183,6 +203,11 @@ final class AppointmentLinks {
     /// The bowl (`Projects.key`) the appointment's series is filed into.
     func bowl(for appointment: CalendarAppointment) -> String? {
         ledger.bowls[appointment.seriesID]?.bowl
+    }
+
+    /// The bowl's appointments among these (`BowlAppointments`).
+    func appointments(inBowl bowl: String, among appointments: [CalendarAppointment], now: Date = Date()) -> [CalendarAppointment] {
+        BowlAppointments.rows(appointments, bowl: bowl, bowls: ledger.bowls, now: now)
     }
 
     func bowl(forSeries seriesID: String) -> String? {

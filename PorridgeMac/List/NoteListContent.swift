@@ -105,7 +105,16 @@ enum NoteListContent {
             }
             // One flat list without headers: pinned first, then by last change; the To-dos filter by due day.
             let sorted = Projects.ordered(shown, byDue: state.kindFilter == .todos)
-            let sections: [(ListSection, [ListItem])] = sorted.isEmpty ? [] : [(ListSection(id: "bucket", title: "", tint: .sky), sorted.map { .note($0.id) })]
+            var sections: [(ListSection, [ListItem])] = sorted.isEmpty ? [] : [(ListSection(id: "bucket", title: "", tint: .sky), sorted.map { .note($0.id) })]
+            // The appointments filed into the bowl, one row per series (`BowlAppointments`), above the entries.
+            let calendar = TodayCalendar.shared
+            if state.kindFilter == nil, calendar.status == .granted {
+                let appointments = AppointmentLinks.shared.appointments(inBowl: key, among: calendar.windowAppointments())
+                if !appointments.isEmpty {
+                    sections.insert((ListSection(id: "bowl-appointments", title: String(localized: "Appointments"), tint: .navy, count: appointments.count),
+                                     appointments.map { .appointment($0.key) }), at: 0)
+                }
+            }
             return Built(
                 sections: sections, emptyTitle: "Nothing Here Yet",
                 emptyMessage: "Add meetings, notes and links to the bowl, or drop them on it in the sidebar.",

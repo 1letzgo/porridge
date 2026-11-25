@@ -22,6 +22,12 @@ struct CalendarAppointment: Identifiable, Hashable, Codable {
     /// (falls back to the event's identifier here). Links to entries and bowls are kept by it (`AppointmentLinks`).
     /// Optional so that appointments remembered before it decode.
     var externalID: String?
+    /// Where it takes place (`EKEvent.location`), if it says.
+    var location: String?
+    /// One occurrence of a repeating appointment (optional so that appointments remembered before it decode).
+    var repeats: Bool?
+
+    var isRecurring: Bool { repeats == true }
 
     /// The series (or the single appointment), the same on every device.
     var seriesID: String { externalID.flatMap { $0.isEmpty ? nil : $0 } ?? id }
@@ -104,7 +110,9 @@ enum CalendarAccess {
             attendees: MeetingAlerts.unique(names),
             videoURL: MeetingAlerts.videoLink(in: [event.url?.absoluteString, event.location, event.notes]),
             isDeclined: me?.participantStatus == .declined,
-            externalID: event.calendarItemExternalIdentifier ?? event.eventIdentifier ?? ""
+            externalID: event.calendarItemExternalIdentifier ?? event.eventIdentifier ?? "",
+            location: event.location.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 },
+            repeats: event.hasRecurrenceRules
         )
     }
 }

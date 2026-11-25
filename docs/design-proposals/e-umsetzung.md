@@ -821,6 +821,15 @@ changes; the notes on the tab bar's "+", the Bowls place's last rows and the Cha
   gap as before Up Next (measured 42 pt vs 40 pt at 390 pt); unchanged. Mac: the appointment's line is one text
   ("18:00–22:00 · Bowl · 2 linked entries"), not affected. Debug: `-seedAppointment <bowl>` adds an appointment
   today 18:00–22:00 filed into a new bowl of that name (only in memory, shown as if the calendar were allowed).
+- **Appointments open and live in their bowl** (after the owner's look at 16715e9). A tap on an appointment row opens
+  it read only: iPhone `AppointmentSheet` (Today and a bowl), Mac a popover by the row (`AppointmentActions.popover`).
+  A bowl's page lists the appointments of the series filed into it (`BowlAppointments.rows`: one row per series, the
+  next occurrence not over, else the last; upcoming first, then past; read from `TodayCalendar.windowAppointments`,
+  180 days back to 365 ahead, cached per calendar change), with the day in the row and ↻ for a repeating one. Today
+  keeps the day's occurrence. The Inbox never listed appointments (they are no `Note`s); unchanged. No model field:
+  `CalendarAppointment` (Codable, not SwiftData) gains `location` and `repeats` (optional, old remembered ones decode).
+  Tests: `AppointmentLinkTests.testABowlShowsItsAppointmentsOncePerSeriesUpcomingFirst`,
+  `testAppointmentsNeverFillTheInbox`.
 
 ---
 

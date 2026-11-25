@@ -141,7 +141,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         libraryToken = library.observe { [weak self] in self?.reload() }
         // Today's appointments and the links to them (from other devices too).
         observers.append(Observing { [weak self] in
-            guard let self, self.state.page == .today else { return }
+            guard let self, self.state.page == .today || self.state.page.projectID != nil else { return }
             // The day paged to is read through `appointments(on:)`, which follows the calendar's changes.
             _ = (TodayCalendar.shared.appointments(on: self.state.todayShownDay), TodayCalendar.shared.status, AppointmentLinks.shared.ledger, self.state.todayDay)
             self.reload()
@@ -239,8 +239,9 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             return cell
         case .appointment(let key):
             let cell = table.makeView(withIdentifier: AppointmentCellView.identifier, owner: nil) as? AppointmentCellView ?? AppointmentCellView()
-            if let appointment = TodayCalendar.shared.appointments(on: state.todayShownDay).first(where: { $0.key == key }) {
-                cell.show(appointment, notes: library.notes)
+            if let appointment = TodayCalendar.shared.appointment(key: key, on: state.todayShownDay) {
+                // In a bowl the row is the series' next occurrence: with its day.
+                cell.show(appointment, notes: library.notes, showsDay: state.page != .today)
                 cell.menuProvider = { [weak self] appointment in
                     AppointmentActions.menu(for: appointment, in: self?.view.window?.windowController as? MainWindowController)
                 }
@@ -282,7 +283,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
         switch dataSource.itemIdentifier(forRow: row) {
         case .note?, .project?: true
-        // An appointment is not opened; its menu is at the end of its row. A fixed row acts on a click.
+        // An appointment opens as a popover on a click (`rowClicked`), its menu is at the end of its row; a fixed row
+        // acts on a click.
         case .appointment?, .link?, nil: false
         }
     }
@@ -322,7 +324,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             return
         }
         if clicked >= 0, case .appointment(let key)? = dataSource.itemIdentifier(forRow: clicked),
-           let appointment = TodayCalendar.shared.appointments(on: state.todayShownDay).first(where: { $0.key == key }) {
+           let appointment = TodayCalendar.shared.appointment(key: key, on: state.todayShownDay) {
             let built = AppointmentActions.menu(for: appointment, in: view.window?.windowController as? MainWindowController)
             for item in built.items {
                 built.removeItem(item)
@@ -474,8 +476,22 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
 
     /// A click on a fixed row (Open To-dos, Weekly Review, a smart filter, Archive, Recently Deleted, New Smart Filter…).
     @objc private func rowClicked(_ sender: Any?) {
-        guard table.clickedRow >= 0, case .link(let link)? = dataSource.itemIdentifier(forRow: table.clickedRow) else { return }
-        open(link)
+        let row = table.clickedRow
+        guard row >= 0 else { return }
+        switch dataSource.itemIdentifier(forRow: row) {
+        case .link(let link)?:
+            open(link)
+        case .appointment(let key)?:
+            // An appointment opens as a popover by its row (read only).
+            guard let appointment = TodayCalendar.shared.appointment(key: key, on: state.todayShownDay) else { return }
+            let state = state
+            let popover = AppointmentActions.popover(for: appointment, in: view.window?.windowController as? MainWindowController) { note in
+                state.selection = [note.id]
+            }
+            popover.show(relativeTo: table.rect(ofRow: row), of: table, preferredEdge: .maxX)
+        default:
+            break
+        }
     }
 
     func open(_ link: ListLink) {

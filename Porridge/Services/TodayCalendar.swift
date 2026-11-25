@@ -44,6 +44,7 @@ final class TodayCalendar {
         #endif
         if read != appointments { appointments = read }
         otherDays = [:]
+        window = nil
         version += 1
     }
 
@@ -56,6 +57,31 @@ final class TodayCalendar {
         let read = CalendarAccess.appointments(on: start, calendar: calendar).filter { !$0.isDeclined }
         otherDays[start] = read
         return read
+    }
+
+    /// The appointments from `windowDaysBack` days back to `windowDaysAhead` days ahead, for the bowls' Appointments
+    /// (`BowlAppointments`): read once per change of the calendar and per day, declined ones left out.
+    func windowAppointments() -> [CalendarAppointment] {
+        _ = version
+        if let window, window.day == today { return window.items }
+        let calendar = Calendar.current
+        let start = calendar.date(byAdding: .day, value: -Self.windowDaysBack, to: today) ?? today
+        let end = calendar.date(byAdding: .day, value: Self.windowDaysAhead, to: today) ?? today
+        var read = CalendarAccess.appointments(from: start, to: end).filter { !$0.isDeclined }
+        #if DEBUG
+        read += testing
+        #endif
+        window = (today, read)
+        return read
+    }
+
+    static let windowDaysBack = 180
+    static let windowDaysAhead = 365
+    @ObservationIgnored private var window: (day: Date, items: [CalendarAppointment])?
+
+    /// An appointment by its occurrence (`CalendarAppointment.key`): of the day shown, else of the bowls' window.
+    func appointment(key: String, on day: Date) -> CalendarAppointment? {
+        appointments(on: day).first { $0.key == key } ?? windowAppointments().first { $0.key == key }
     }
 
     #if DEBUG

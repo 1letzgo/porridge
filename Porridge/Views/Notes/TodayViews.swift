@@ -28,6 +28,8 @@ struct TodayPage: View {
     /// The one-time "What's New" card was put away (`WhatsNew`).
     @AppStorage(WhatsNew.seenKey) private var whatsNewSeen = false
     @AppStorage(AppSettings.onboardingDoneKey) private var onboardingDone = false
+    /// The appointment opened with a tap on its row.
+    @State private var opened: CalendarAppointment?
 
     /// Up Next shows this many rows at most.
     static let upNextLimit = 5
@@ -43,6 +45,12 @@ struct TodayPage: View {
                     .transition(.opacity)
             }
             list(shown, isToday: isToday)
+        }
+        .sheet(item: $opened) { appointment in
+            AppointmentSheet(
+                appointment: appointment, notes: notes, projects: projects,
+                onRecord: onRecord, onNewNote: onNewNote, onOpenNote: { selection = $0.id }
+            )
         }
         .task {
             calendar.refresh()
@@ -92,7 +100,8 @@ struct TodayPage: View {
                             projects: projects,
                             onBowl: { links.setBowl($0.map(Projects.key), for: appointment, notes: notes, in: context) },
                             onRecord: { onRecord(appointment) },
-                            onNewNote: { onNewNote(appointment) }
+                            onNewNote: { onNewNote(appointment) },
+                            onOpen: { opened = appointment }
                         )
                         .lastInSection(linked.isEmpty && appointment.id == appointments.last?.id)
                         // What belongs to it, moved in a little.
@@ -166,8 +175,9 @@ struct TodayPage: View {
     }
 }
 
-/// An appointment of the day: time, title, its bowl and how many entries are linked; its menu files it into a
-/// bowl, records a meeting for it or starts a note for it.
+/// An appointment of the day (or, in its bowl, the next occurrence of its series): time, title, its bowl and how
+/// many entries are linked; a tap opens it (`AppointmentSheet`), its menu files it into a bowl, records a meeting
+/// for it or starts a note for it.
 struct AppointmentRow: View {
     let appointment: CalendarAppointment
     let bowlName: String?
@@ -176,6 +186,9 @@ struct AppointmentRow: View {
     var onBowl: (NoteFolder?) -> Void
     var onRecord: () -> Void
     var onNewNote: () -> Void
+    var onOpen: () -> Void = {}
+    /// The day before the time ("Mon 24 Nov, 18:00–22:00"): in a bowl, where appointments of many days show.
+    var showsDay = false
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
@@ -190,6 +203,11 @@ struct AppointmentRow: View {
                     .lineLimit(2)
                 HStack(spacing: 6) {
                     Text(time)
+                    if appointment.isRecurring {
+                        Image(systemName: "repeat")
+                            .imageScale(.small)
+                            .accessibilityLabel("Repeats")
+                    }
                     if let bowlName {
                         Label(bowlName, systemImage: "folder.fill")
                             .labelStyle(.tight)
@@ -216,14 +234,15 @@ struct AppointmentRow: View {
             .accessibilityLabel("Appointment Actions")
         }
         .contentShape(Rectangle())
+        .onTapGesture(perform: onOpen)
         .contextMenu { menuItems }
+        .accessibilityAction(named: Text("Open"), onOpen)
+        .accessibilityIdentifier("AppointmentRow")
         .cardListRow()
     }
 
     private var time: String {
-        appointment.isAllDay
-            ? String(localized: "All Day")
-            : "\(appointment.start.formatted(date: .omitted, time: .shortened))–\(appointment.end.formatted(date: .omitted, time: .shortened))"
+        AppointmentSheet.time(appointment, showsDay: showsDay)
     }
 
     @ViewBuilder
@@ -233,6 +252,102 @@ struct AppointmentRow: View {
         }
         Button { onNewNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
         AppointmentBowlMenu(projects: projects, current: bowlName, onChoose: onBowl)
+    }
+}
+
+/// An appointment opened from Today or from its bowl, read only (the calendar is never changed): title, when, where,
+/// the calendar, its bowl (to change), the entries linked to it, and Record Meeting (while it is not over) and New Note.
+struct AppointmentSheet: View {
+    let appointment: CalendarAppointment
+    let notes: [Note]
+    let projects: [NoteFolder]
+    var onRecord: (CalendarAppointment) -> Void
+    var onNewNote: (CalendarAppointment) -> Void
+    var onOpenNote: (Note) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+
+    /// "18:00–22:00", "All Day"; with the day "Mon 24 Nov, 18:00–22:00" ("Today, …").
+    static func time(_ appointment: CalendarAppointment, showsDay: Bool) -> String {
+        let hours = "\(appointment.start.formatted(date: .omitted, time: .shortened))–\(appointment.end.formatted(date: .omitted, time: .shortened))"
+        guard showsDay else { return appointment.isAllDay ? String(localized: "All Day") : hours }
+        let day = AppointmentRef.when(start: appointment.start, isAllDay: true)
+        return appointment.isAllDay ? day : "\(day), \(hours)"
+    }
+
+    var body: some View {
+        let links = AppointmentLinks.shared
+        let bowlKey = links.bowl(for: appointment)
+        let bowl = projects.first { Projects.key($0) == bowlKey }
+        let linked = links.notes(for: appointment, among: notes)
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(appointment.title)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Group {
+                            Label(Self.time(appointment, showsDay: true), systemImage: "clock")
+                            if appointment.isRecurring {
+                                Label("Repeats", systemImage: "repeat")
+                            }
+                            if let location = appointment.location {
+                                Label(location, systemImage: "mappin.and.ellipse")
+                            }
+                            if !appointment.calendarName.isEmpty {
+                                Label(appointment.calendarName, systemImage: "calendar")
+                            }
+                        }
+                        .labelStyle(.tight)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                Section("Bowl") {
+                    Label(bowl?.name ?? String(localized: "None"), systemImage: "folder.fill")
+                        .labelStyle(.tight)
+                        .foregroundStyle(bowl == nil ? Color.secondary : Color.brandProject)
+                    AppointmentBowlMenu(projects: projects, current: bowl?.name) {
+                        links.setBowl($0.map(Projects.key), for: appointment, notes: notes, in: context)
+                    }
+                }
+                Section("Linked Entries") {
+                    if linked.isEmpty {
+                        Text("Nothing linked yet").foregroundStyle(.secondary)
+                    }
+                    ForEach(linked) { note in
+                        Button {
+                            dismiss()
+                            onOpenNote(note)
+                        } label: {
+                            Text(note.displayTitle).foregroundStyle(.primary).lineLimit(2)
+                        }
+                    }
+                }
+                Section {
+                    if appointment.end > Date() {
+                        Button {
+                            dismiss()
+                            onRecord(appointment)
+                        } label: { Label("Record Meeting", systemImage: "mic") }
+                    }
+                    Button {
+                        dismiss()
+                        onNewNote(appointment)
+                    } label: { Label("New Note", systemImage: "square.and.pencil") }
+                }
+            }
+            .navigationTitle("Appointment")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .accessibilityIdentifier("AppointmentSheet")
     }
 }
 

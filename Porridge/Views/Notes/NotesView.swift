@@ -594,7 +594,9 @@ struct NotesView: View {
             if let project = project(on: shown) {
                 ProjectPage(
                     project: project, notes: notes, selection: $selection, isSelecting: $isSelecting, chosen: $chosen,
-                    onRemove: { remove($0) }
+                    onRemove: { remove($0) },
+                    onRecord: { startRecording(for: $0) },
+                    onNewNote: { addNote(for: $0) }
                 )
                 .id(project.id)
             } else {

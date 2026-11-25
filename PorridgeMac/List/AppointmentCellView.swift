@@ -43,14 +43,12 @@ final class AppointmentCellView: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     @MainActor
-    func show(_ appointment: CalendarAppointment, notes: [Note]) {
+    func show(_ appointment: CalendarAppointment, notes: [Note], showsDay: Bool = false) {
         self.appointment = appointment
         let over = appointment.end < Date()
         name.stringValue = appointment.title
         name.textColor = over ? .secondaryLabelColor : .labelColor
-        var parts = [appointment.isAllDay
-            ? String(localized: "All Day")
-            : "\(appointment.start.formatted(date: .omitted, time: .shortened))–\(appointment.end.formatted(date: .omitted, time: .shortened))"]
+        var parts = [AppointmentActions.time(appointment, showsDay: showsDay) + (appointment.isRecurring ? " ↻" : "")]
         if let bowl = AppointmentLinks.shared.bowl(for: appointment), let project = Library.shared.project(key: bowl) {
             parts.append(project.name)
         }
@@ -69,6 +67,68 @@ final class AppointmentCellView: NSTableCellView {
 /// Menus about appointments: what to do with one of the day, and which one an entry belongs to.
 @MainActor
 enum AppointmentActions {
+    /// "18:00–22:00", "All Day"; with the day "Mon 24 Nov, 18:00–22:00" ("Today, …"), as in a bowl.
+    static func time(_ appointment: CalendarAppointment, showsDay: Bool) -> String {
+        let hours = "\(appointment.start.formatted(date: .omitted, time: .shortened))–\(appointment.end.formatted(date: .omitted, time: .shortened))"
+        guard showsDay else { return appointment.isAllDay ? String(localized: "All Day") : hours }
+        let day = AppointmentRef.when(start: appointment.start, isAllDay: true)
+        return appointment.isAllDay ? day : "\(day), \(hours)"
+    }
+
+    /// The appointment opened with a click on its row, read only (the calendar is never changed): title, when,
+    /// where, the calendar, its bowl, the entries linked to it (a click opens one), Record Meeting and New Note.
+    static func popover(for appointment: CalendarAppointment, in controller: MainWindowController?, onOpenNote: @escaping (Note) -> Void) -> NSPopover {
+        let popover = NSPopover()
+        popover.behavior = .transient
+        let links = AppointmentLinks.shared
+        var views: [NSView] = []
+        let title = NSTextField.label(appointment.title, font: .systemFont(ofSize: NSFont.systemFontSize + 2, weight: .semibold), lines: 3)
+        views.append(title)
+        var facts = [time(appointment, showsDay: true)]
+        if appointment.isRecurring { facts.append(String(localized: "Repeats")) }
+        if let location = appointment.location { facts.append(location) }
+        if !appointment.calendarName.isEmpty { facts.append(appointment.calendarName) }
+        if let bowl = links.bowl(for: appointment), let project = Library.shared.project(key: bowl) {
+            facts.append(String(localized: "Bowl: \(project.name)"))
+        }
+        for fact in facts { views.append(NSTextField.label(fact, color: .secondaryLabelColor, lines: 2)) }
+        let linked = links.notes(for: appointment, among: Library.shared.notes)
+        if !linked.isEmpty {
+            views.append(NSTextField.label(String(localized: "Linked Entries"), font: .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold), color: .secondaryLabelColor))
+            for note in linked.prefix(8) {
+                let button = ActionButton(title: note.displayTitle) { [weak popover] in
+                    popover?.close()
+                    onOpenNote(note)
+                }
+                button.bezelStyle = .inline
+                button.isBordered = false
+                button.contentTintColor = .linkColor
+                views.append(button)
+            }
+        }
+        var buttons: [NSView] = []
+        if appointment.end > Date() {
+            buttons.append(ActionButton(title: String(localized: "Record Meeting"), symbol: "mic") { [weak popover, weak controller] in
+                popover?.close()
+                guard let controller else { return }
+                Capture.startRecording(for: appointment, state: controller.state, in: controller)
+            })
+        }
+        buttons.append(ActionButton(title: String(localized: "New Note"), symbol: "square.and.pencil") { [weak popover, weak controller] in
+            popover?.close()
+            controller?.addNote(for: appointment)
+        })
+        views.append(NSStackView.horizontal(buttons, spacing: 8))
+        let stack = NSStackView.vertical(views, spacing: 6)
+        stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+        stack.setAccessibilityIdentifier("AppointmentPopover")
+        let content = NSViewController()
+        content.view = stack
+        stack.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        popover.contentViewController = content
+        return popover
+    }
+
     /// Record Meeting (while it is not over), New Note, and Bowl with the active bowls.
     static func menu(for appointment: CalendarAppointment, in controller: MainWindowController?) -> NSMenu {
         let menu = NSMenu()
