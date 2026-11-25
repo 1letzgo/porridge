@@ -41,7 +41,8 @@ final class MainSplitViewController: NSSplitViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.minimumThickness = 180
+        // Wide enough for "Recently Deleted" with its count.
+        sidebarItem.minimumThickness = 200
         sidebarItem.maximumThickness = 320
         sidebarItem.canCollapse = true
         let listItem = NSSplitViewItem(contentListWithViewController: content)

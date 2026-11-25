@@ -27,7 +27,7 @@ final class Stage7ShotsTests: XCTestCase {
 
     /// After the update: the card on top of Today, once; "Got It" puts it away.
     func testWhatsNewCardOnToday() throws {
-        let app = launch(["-onboardingDone", "YES", "-whatsNewSeen", "NO", "-seedTodos", "Garden"])
+        let app = launch(["-onboardingDone", "YES", "-resetWhatsNew", "YES", "-seedTodos", "Garden"])
         app.openTab("Today")
         let card = app.descendants(matching: .any)["WhatsNew"]
         XCTAssertTrue(card.waitForExistence(timeout: 10), "no What's New card on Today")
@@ -43,7 +43,7 @@ final class Stage7ShotsTests: XCTestCase {
 
     /// A new install: the onboarding ends on the places (and no card after it).
     func testOnboardingShowsThePlaces() throws {
-        let app = launch(["-onboardingDone", "NO", "-whatsNewSeen", "NO", "-emptyStore", "YES"])
+        let app = launch(["-onboardingDone", "NO", "-resetWhatsNew", "YES", "-emptyStore", "YES"])
         let start = app.buttons["Get Started"]
         XCTAssertTrue(start.waitForExistence(timeout: 15), "no onboarding")
         shoot("onboarding-welcome")
@@ -55,7 +55,8 @@ final class Stage7ShotsTests: XCTestCase {
         if cont.waitForExistence(timeout: 5) { cont.tap() }
         let later = app.buttons["Later"]
         if later.waitForExistence(timeout: 10) { later.tap() } else if cont.waitForExistence(timeout: 3) { cont.tap() }
-        XCTAssertTrue(app.staticTexts["All Set"].waitForExistence(timeout: 10), "the last page did not come")
+        // The speaker model may be downloading first (the switch is on).
+        XCTAssertTrue(app.staticTexts["All Set"].waitForExistence(timeout: 120), "the last page did not come")
         XCTAssertTrue(app.staticTexts["Bowls"].exists, "the last page names the places")
         shoot("onboarding-places")
         app.buttons["Done"].firstMatch.tap()

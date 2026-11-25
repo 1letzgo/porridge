@@ -9,6 +9,8 @@ import SwiftData
 enum TestSeed {
     @MainActor
     static func run(_ container: ModelContainer) {
+        // `-resetWhatsNew YES`: the What's New card shows again (a launch argument would override what "Got It" sets).
+        if UserDefaults.standard.bool(forKey: "resetWhatsNew") { UserDefaults.standard.removeObject(forKey: WhatsNew.seenKey) }
         seedTodos(container)
         if UserDefaults.standard.bool(forKey: "seedEntryKinds") { seedEntryKinds(container.mainContext) }
         // Only on the store in memory: added on every launch, it would pile up in a real one.

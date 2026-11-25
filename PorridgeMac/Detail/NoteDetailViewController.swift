@@ -1303,6 +1303,9 @@ final class PanelView: NSView {
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // Wrapping, not one truncated line (a truncating line break mode makes a text field single-line).
+        label.lineBreakMode = .byWordWrapping
+        detail.lineBreakMode = .byWordWrapping
         let text = NSStackView.vertical([label, detail], spacing: 2)
         let row = NSStackView.horizontal([icon, spinner, text, NSView(), button], spacing: 10)
         addSubview(row)
@@ -1316,6 +1319,23 @@ final class PanelView: NSView {
 
     override func updateLayer() {
         layer?.backgroundColor = tint.withAlphaComponent(0.12).resolved(for: self)
+    }
+
+    /// The text wraps at the width the panel leaves it (a narrow list column), instead of being cut off.
+    override func layout() {
+        super.layout()
+        guard bounds.width > 0 else { return }
+        // The panel's insets and the parts beside the text, each with the row's spacing.
+        var others: CGFloat = 12 + 12
+        for view in [icon, spinner, button] where !view.isHidden { others += view.fittingSize.width + 10 }
+        let width = max(bounds.width - others - 10, 80)
+        var changed = false
+        for field in [label, detail] where abs(field.preferredMaxLayoutWidth - width) > 0.5 {
+            field.preferredMaxLayoutWidth = width
+            field.invalidateIntrinsicContentSize()
+            changed = true
+        }
+        if changed { needsLayout = true }
     }
 
     func show(symbol: String?, spinning: Bool = false, text: String, detail: String? = nil, tint: NSColor, action: (String, () -> Void)?) {

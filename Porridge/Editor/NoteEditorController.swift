@@ -74,6 +74,15 @@ final class NoteEditorController {
     /// Whether there is a selection that can be rewritten (something selected, the note can be written to).
     var canRewrite: Bool { coordinator?.rewriteTarget() != nil }
 
+    /// ✦ was tapped without a selection: the editor says to select first (an alert on the editor itself, which stays
+    /// when the keyboard bar goes).
+    var rewriteNeedsSelection = false
+
+    /// ✦ of the keyboard bar: the rewrite sheet for the selection, or the word to select first.
+    func rewriteOrAsk() {
+        if canRewrite { beginRewrite() } else { rewriteNeedsSelection = true }
+    }
+
     /// Opens the rewrite sheet for the selection; nothing happens without one.
     func beginRewrite() {
         guard let target = coordinator?.rewriteTarget() else { return }

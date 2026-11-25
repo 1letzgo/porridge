@@ -40,8 +40,6 @@ struct NoteKeyboardBar: View {
     /// Starts dictating into the note (the note page); nil leaves the mic out.
     var dictate: (() -> Void)?
 
-    @State private var needsSelection = false
-
     var body: some View {
         let buttons = NoteFormatButtons(controller: controller)
         HStack(spacing: 0) {
@@ -49,7 +47,7 @@ struct NoteKeyboardBar: View {
             buttons.checklistButton.barSlot("Checklist", systemImage: "checklist")
             buttons.insertMenu.barSlot("Insert", systemImage: "plus.circle")
             Button {
-                if controller.canRewrite { controller.beginRewrite() } else { needsSelection = true }
+                controller.rewriteOrAsk()
             } label: {
                 Image(systemName: "sparkles")
             }
@@ -78,11 +76,6 @@ struct NoteKeyboardBar: View {
         .frame(height: 52)
         .modifier(BarBackground())
         .transition(Motion.slide(.move(edge: .bottom).combined(with: .opacity)))
-        .alert("Select Text to Rewrite", isPresented: $needsSelection) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Select the words or lines to rewrite, then tap ✦ again.")
-        }
     }
 }
 
@@ -191,6 +184,11 @@ private struct NoteEditorPresentations: ViewModifier {
                 } close: {
                     controller.rewriteRequest = nil
                 }
+            }
+            .alert("Select Text to Rewrite", isPresented: $controller.rewriteNeedsSelection) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Select the words or lines to rewrite, then tap ✦ again.")
             }
             .photosPicker(isPresented: picking(.photos), selection: $photo, matching: .images, preferredItemEncoding: .compatible)
             .fileImporter(isPresented: picking(.files), allowedContentTypes: [.image], allowsMultipleSelection: true) { result in

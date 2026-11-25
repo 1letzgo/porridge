@@ -634,6 +634,75 @@ Tests: `BrandContrastTests` for the final surfaces; `AppSettingsTests` for moved
 Verify on screen: editor on iPhone with keyboard, ✦ with and without a selection, [[ suggestions above the keyboard,
 small iPhone; Mac Settings window at every tab (Title Case everywhere); light, dark, Increased Contrast.
 
+**As built (stage 7):**
+
+- **Editor bar.** iPhone `NoteKeyboardBar`: fixed places Aa (format menu) · Checklist · ⊕ Insert (now with "Link to
+  Entry [[", which types "[[" so the entry suggestions come up as when typing it: `NoteEditorController.beginEntryLink`)
+  · ✦ Rewrite (violet; without a selection an alert on the editor says to select first) · Outdent · Indent · Mic · Done. Like a tab
+  bar its symbols stop at xxLarge and a long press shows the large content viewer. **Deviation:** the floating mic is
+  gone as a door, but while dictation runs (the keyboard and with it the bar are away) its red button stays as the
+  way to stop it. Mac `NoteEditorView`: the same order (Format · Checklist · Insert · ✦ · Outdent · Indent), ✦ is ⌘J and
+  asks for a selection the same way; Insert has Link to Entry [[ too.
+- **Settings.** iPhone General: You · Sync · Plaud · Bowls (Sort Bowls By) · Note Templates · Hints · Export · About;
+  **deviation:** the plan listed the iPhone's cards as You, Plaud, Sync, …; both platforms now use the Mac's order.
+  "Custom Templates" is "Summary Templates" on both. Mac: tabs General · Recording · AI · **Keyboard** · MCP Server;
+  `KeyboardSettingsPane` is the former Dictation pane with the other system-wide shortcuts (Record Meeting Now, Search
+  or Ask – the "Command Bar" shortcut is named so now) below it; the keys are unchanged, `show(tab: "dictation" |
+  "shortcuts")` lands on Keyboard. General: Your Name · iCloud Sync · Plaud · Sort Bowls By · Note Templates · Hints ·
+  Export · Version (no "You" heading). **Fixed:** the form's separators could come out taller than wide and draw as
+  short vertical lines with a gap (`SettingsForm.separator` now fills the row, 1 pt high).
+- **Status item:** while a meeting is recorded the menu bar symbol is a red `record.circle.fill`, and its menu starts
+  with "Recording a Meeting · 12:04" and Show Recording.
+- **Tokens.** Row icon: iPhone `ThingsRowIcon` 30 pt (grows with the text up to 42), corner 8, 15 % wash, no border,
+  symbol in the readable value; Mac `KindIconView` 26 pt, corner 7, the same wash, no border. **Deviation:** the grouped
+  backgrounds (`systemGroupedBackground` page with white inset cards) are not applied: every list is a plain list on
+  the white page with list headers as rows (`cardList`, `ListHeader`), so inset cards would mean rebuilding each page's
+  headers as real sections; DESIGN.md keeps "quiet white pages". The 17 % active-tab wash is the system tab bar's own
+  (Liquid Glass) and was left to it; `ChromeBar` unchanged at normal sizes.
+- **Onboarding.** iPhone: the last page lists the places (Today, Inbox, Bowls, Chat, Search; `WhatsNew.places`), every
+  page scrolls when the text does not fit. Mac: the last step lists them too ("Search or Ask (⌘K)").
+- **What's New** (`Porridge/Services/WhatsNew.swift`, shared): one card, shown when the onboarding was done before (an
+  earlier version ran here) and `whatsNewSeen` (UserDefaults, this device) is not set; finishing the onboarding sets it,
+  so a new install never sees the card. Items: Three Places (Settings = gear in Bowls), Details, Search or Ask (+ the
+  Chat tab), Triage, Inbox Swipes (Mac: Filing with "✦ Bowl"), Choosing Several (the selection bar; Mac: the inspector),
+  Today Shows What Is Open. iPhone: the first row of Today's list (scrolls away), "Got It" and ×. Mac: a panel in
+  Today's head above the hint (it does not scroll with the list). UI tests pass `-whatsNewSeen YES`; `-resetWhatsNew YES`
+  (Debug) shows it again.
+- **Large text (AX sizes, iPhone).** `NoteRow`'s footer was one line of parts that keep their width; with the largest
+  sizes it grew wider than the screen and the list centred the row, cutting the icon and the first letters off
+  ("nvoice NV-2026-1142") in Inbox, Today, search and bowls. Now the parts wrap (`WrapLayout`, nothing keeps a width
+  wider than the row) and the thumbnail is left out. `ChromeBar`: the title gets a row of its own under the pills (two
+  lines, at most 52 pt; at normal sizes the one-line title may shrink to 60 %, so "Meeting" fits beside three
+  pills), the pills grow to 56 × 46 and their symbols to accessibility 1 (no more "Meeti…" / "Kitchen…"
+  with tiny buttons). `TabSwitcher` (Summary/Transcript, Inbox New/Later, export) becomes capsules that wrap; Settings'
+  area pills wrap; `ListHeader`'s quiet word goes under the title; chat scope and model pills, Recent Chats' head, the
+  confirm buttons and the answer's source pills stack; the search field grows, its chips wrap and the kinds become one
+  menu ("All Kinds ⌄"); the selection bar's words stop at xxxLarge with the large content viewer; the selection header
+  and the Later sheet's rows stack (the sheet opens large); bowl rows take three lines; the subtask circles of the
+  editor grow with the body text (`NoteMarkdown.checkboxSize`, up to 40 pt). Triage's Later tile is a light sky wash
+  with the outlined clock (the navy one looked heavy).
+- **Search or Ask (findings).** Names now fit strictly (`FuzzyMatch.strictScore`): a word start, a run of four letters
+  or more inside a word, or the first letters of words; extra words only at word starts and from three letters. So
+  "cha" no longer finds "Kitchen Renovation", "bow" no longer "Go to Archive" / "Export Everything…", "design" no
+  longer Record Meeting. `SearchAsk.score` is shared by the iPhone's Go To rows and the Mac's commands. Return runs
+  `SearchAsk.best`: the closest fit by name (exact > starts with > every word starts a word > loose), among equals a
+  bowl/smart filter, an entry, a place, then an action; an action never by a loose fit and never over an entry or bowl
+  that fits as well; otherwise Show All Results. "design" → Design Review, "Chk" → the bowl, "bow" → Go to Bowls, "Q4" →
+  Q4 Planning. The Mac's search page lists "Bowls & Smart Filters" before the entries (Show All Results for "Q4"). The
+  empty detail says "No Entry Selected / Pick an entry from the list." (Mac and iPad).
+- **Mac narrow columns:** `PanelView` (the Inbox's bundle card, the entry's state panels) wraps its text at the width
+  it gets instead of cutting it; the sidebar's minimum is 200 pt (was 180), so "Recently Deleted" with its count fits.
+- **Tests and seeds.** `-seedTodos` and `-seedMeetingWithTasks` remove what an earlier launch made (by title; the bowl
+  when it is empty) before seeding again, so a full run has no second "Chk"/"Garden"; the screenshot tests write to
+  `SHOTS_DIR` (`TEST_RUNNER_SHOTS_DIR=…` for xcodebuild) else their stage folder. **Product bug fixed:** on a fresh
+  install `NLContextualEmbedding.requestAssets` can take minutes or never answer, and every question waited for it on
+  "Searching your notes…"; `TextEmbedder` now waits 4 s at most, the download goes on, and until it is there answers and
+  the index use words only. Tests: `SearchAskTests` (strict matching, command words, fit, the best row),
+  `PlacesTests` (What's New once / never after onboarding, its items on both platforms), UI `Stage7ShotsTests`
+  (What's New, onboarding's places, editor bar ✦ / Link to Entry, meeting, Settings), `PlacesShotsTests` closes the
+  bowl menu above it (at AX sizes the left-edge tap chose Select Entries and hid "+"), `InboxShotsTests.testToday`
+  scrolls to the to-do. Mac driver: `shot-settings <path>`.
+
 ---
 
 ## What gets removed (summary)

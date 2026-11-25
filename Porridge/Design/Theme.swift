@@ -371,7 +371,8 @@ struct ChromeBar<Actions: View>: View {
                 .tracking(-0.5)
                 .foregroundStyle(.primary)
                 .lineLimit(lineLimit)
-                .minimumScaleFactor(0.7)
+                // "Meeting" beside three pills on a 390 pt iPhone needs a little more than 70 %.
+                .minimumScaleFactor(0.6)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(onTitleTap == nil ? .isHeader : [.isHeader, .isButton])
