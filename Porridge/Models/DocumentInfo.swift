@@ -84,15 +84,6 @@ enum DocumentKind: String, CaseIterable, Codable, Identifiable {
         case .contract, .letter, .certificate, .other: false
         }
     }
-
-    /// Kinds that ask for a payment, so they can be open, overdue or paid: invoices (reminders are invoices too),
-    /// official notices (a tax demand) and insurance (a premium invoice).
-    var asksForPayment: Bool {
-        switch self {
-        case .invoice, .notice, .insurance: true
-        default: false
-        }
-    }
 }
 
 /// What a document is about, read out of it (on the device, and by the summary's model) or set by hand: its kind,
@@ -109,25 +100,18 @@ struct DocumentInfo: Codable, Hashable {
     var amount: String?
     /// Changed by hand: what is read automatically no longer replaces it.
     var isEdited: Bool?
-    /// The day it has to be paid by ("zahlbar bis"), "yyyy-MM-dd" like `day`. Read from the paper or set by hand.
+    // No longer used: the app keeps no payment status or payment deadline (owner decision). The keys stay so that
+    // documents stored and synced with them still decode; nothing reads, shows or writes them any more.
     var dueDay: String?
-    /// Marked as paid by hand. Nil is "not paid" (or never looked at): no reading sets it.
     var isPaid: Bool?
-    /// The day it was marked as paid, "yyyy-MM-dd".
     var paidDay: String?
 
-    init(
-        kind: DocumentKind? = nil, day: String? = nil, correspondent: String? = nil, amount: String? = nil, isEdited: Bool? = nil,
-        dueDay: String? = nil, isPaid: Bool? = nil, paidDay: String? = nil
-    ) {
+    init(kind: DocumentKind? = nil, day: String? = nil, correspondent: String? = nil, amount: String? = nil, isEdited: Bool? = nil) {
         kindRaw = kind?.rawValue
         self.day = day
         self.correspondent = correspondent
         self.amount = amount
         self.isEdited = isEdited
-        self.dueDay = dueDay
-        self.isPaid = isPaid
-        self.paidDay = paidDay
     }
 
     var kind: DocumentKind? {
@@ -138,7 +122,7 @@ struct DocumentInfo: Codable, Hashable {
     var edited: Bool { isEdited == true }
 
     /// Nothing known about the document.
-    var isEmpty: Bool { kind == nil && day == nil && correspondent == nil && amount == nil && dueDay == nil && !paid }
+    var isEmpty: Bool { kind == nil && day == nil && correspondent == nil && amount == nil }
 
     /// Says the paper is a document worth listing: a kind other than "other", or a sender.
     var isMeaningful: Bool { (kind != nil && kind != .other) || correspondent != nil }
@@ -154,113 +138,11 @@ struct DocumentInfo: Codable, Hashable {
         if let day = other.day { result.day = day }
         if let correspondent = other.correspondent { result.correspondent = correspondent }
         if let amount = other.amount { result.amount = amount }
-        if let dueDay = other.dueDay { result.dueDay = dueDay }
-        // Paid is only ever set by hand: what knows it keeps it.
-        if other.paid {
-            result.isPaid = true
-            result.paidDay = other.paidDay ?? result.paidDay
-        }
+        // The unused payment keys of either side stay as they were stored; nothing sets them.
+        result.dueDay = result.dueDay ?? other.dueDay
+        result.isPaid = result.isPaid ?? other.isPaid
+        result.paidDay = result.paidDay ?? other.paidDay
         return result
-    }
-
-    // MARK: Payment
-
-    /// Whether a document that asks for a payment is paid or still to be paid.
-    enum PaymentStatus: String, Codable, CaseIterable {
-        case open, overdue, paid
-    }
-
-    var paid: Bool { isPaid == true }
-
-    /// A paper that can be marked as paid: one of a kind that asks for payment, or one whose kind says nothing.
-    var canBePaid: Bool { kind.map { $0.asksForPayment || $0 == .other } ?? true }
-
-    /// The payment is followed: a paper that can be paid, with a due day or marked as paid. An old invoice with
-    /// neither has no state (most likely it was paid long ago), so nothing turns "open" by itself.
-    var tracksPayment: Bool { canBePaid && (dueDay != nil || paid) }
-
-    /// A single document's menu offers "Mark as Paid": a bill (or a paper of another kind whose payment is followed).
-    var offersPaid: Bool { kind?.asksForPayment == true || tracksPayment }
-
-    /// The due day as a date at noon.
-    var dueDate: Date? { DocumentInfo.date(fromDay: dueDay) }
-
-    /// Open, overdue (its due day has passed) or paid; nil for a document whose payment is not followed.
-    func paymentStatus(now: Date = Date(), calendar: Calendar = DocumentInfo.calendar) -> PaymentStatus? {
-        guard tracksPayment else { return nil }
-        if paid { return .paid }
-        if let dueDay, dueDay < DocumentInfo.dayKey(now, calendar: calendar) { return .overdue }
-        return .open
-    }
-
-    /// Still to be paid, due or overdue: for filters and questions.
-    var isOpen: Bool { tracksPayment && !paid }
-
-    /// Still to be paid and its due day has passed.
-    func isOverdue(now: Date = Date(), calendar: Calendar = DocumentInfo.calendar) -> Bool {
-        paymentStatus(now: now, calendar: calendar) == .overdue
-    }
-
-    /// Whether the payment is in the state a filter asks for; "open" takes overdue ones too.
-    func matches(_ filter: PaymentStatus, now: Date = Date(), calendar: Calendar = DocumentInfo.calendar) -> Bool {
-        guard let status = paymentStatus(now: now, calendar: calendar) else { return false }
-        return filter == .open ? status != .paid : status == filter
-    }
-
-    /// How long a due day read automatically may lie in the past: a paper due longer ago is from the archive (scanned
-    /// late, most likely paid), so it does not turn up as overdue.
-    static let staleDueDays = 30
-
-    /// Without a due day that was read automatically and is long past (`staleDueDays`). Not for what was set by hand.
-    func droppingStaleDueDay(now: Date = Date(), calendar: Calendar = DocumentInfo.calendar) -> DocumentInfo {
-        guard let dueDay, let limit = calendar.date(byAdding: .day, value: -DocumentInfo.staleDueDays, to: now),
-              dueDay < DocumentInfo.dayKey(limit, calendar: calendar) else { return self }
-        var copy = self
-        copy.dueDay = nil
-        return copy
-    }
-
-    /// Marks it as paid (on the day given, else the day it was marked before, else today) or as not paid.
-    mutating func setPaid(_ isPaid: Bool, on day: String? = nil, now: Date = Date()) {
-        self.isPaid = isPaid ? true : nil
-        paidDay = isPaid ? (day ?? paidDay ?? DocumentInfo.dayKey(now)) : nil
-    }
-
-    /// The state for the chip: "Open · due 12 Dec", "Overdue", "Paid"; nil without one.
-    func paymentLabel(now: Date = Date()) -> String? {
-        switch paymentStatus(now: now) {
-        case .open:
-            guard let dueDate else { return String(localized: "Open") }
-            return String(localized: "Open · due \(dueDate.formatted(.dateTime.day().month(.abbreviated)))")
-        case .overdue: return String(localized: "Overdue")
-        case .paid: return String(localized: "Paid")
-        case nil: return nil
-        }
-    }
-
-    /// The words of a search or a question that ask for a state of payment, German and English. The "open" and
-    /// "overdue" words are shared with to-dos (`ChatQuery` tells them apart by a document kind beside them).
-    static let paymentWords: [String: PaymentStatus] = {
-        let lists: [(PaymentStatus, [String])] = [
-            (.open, ["offen", "offene", "offenen", "offener", "offenes", "open", "unbezahlt", "unbezahlte", "unbezahlten", "unbezahlter",
-                     "unbezahltes", "unpaid", "outstanding", "ausstehend", "ausstehende", "ausstehenden"]),
-            (.overdue, ["überfällig", "überfällige", "überfälligen", "überfälliger", "überfälliges", "ueberfaellig", "overdue"]),
-            (.paid, ["bezahlt", "bezahlte", "bezahlten", "bezahlter", "bezahltes", "beglichen", "beglichene", "beglichenen", "paid", "settled"]),
-        ]
-        var words: [String: PaymentStatus] = [:]
-        for (status, list) in lists { for word in list { words[word] = status } }
-        return words
-    }()
-
-    /// Words that only ever mean a payment ("unbezahlt", "paid"), never the state of a to-do.
-    static let strictPaymentWords: Set<String> = [
-        "unbezahlt", "unbezahlte", "unbezahlten", "unbezahlter", "unbezahltes", "unpaid", "outstanding",
-        "bezahlt", "bezahlte", "bezahlten", "bezahlter", "bezahltes", "beglichen", "beglichene", "beglichenen", "paid", "settled",
-    ]
-
-    /// The state of payment a word asks for ("unbezahlte", "Overdue"); nil for any other word.
-    static func paymentStatus(named word: String) -> PaymentStatus? {
-        paymentWords[word.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))]
     }
 
     // MARK: Days
@@ -330,7 +212,6 @@ struct DocumentInfo: Codable, Hashable {
         if let correspondent { parts.append(correspondent) }
         if let amountText, kind?.hasAmount ?? true { parts.append(amountText) }
         if let dayText { parts.append(dayText) }
-        if let paymentLabel = paymentLabel() { parts.append(paymentLabel) }
         return parts.joined(separator: " · ")
     }
 
@@ -346,8 +227,6 @@ struct DocumentInfo: Codable, Hashable {
         if let correspondent { text += " from " + correspondent }
         if let dayText { text += ", dated " + dayText }
         if let amountText { text += ", amount " + amountText }
-        if tracksPayment, let dueDate { text += ", payable by " + dueDate.formatted(date: .abbreviated, time: .omitted) }
-        if paid { text += ", paid" + (DocumentInfo.date(fromDay: paidDay).map { " on " + $0.formatted(date: .abbreviated, time: .omitted) } ?? "") }
         return text
     }
 

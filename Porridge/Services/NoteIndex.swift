@@ -219,12 +219,8 @@ extension Note {
         // The names of its files are a passage too.
         if let attachmentsData { hasher.update(data: attachmentsData) }
         // Documents got their kind, sender, date and amount in the chat's entry: they are cut again once.
-        // "-2": the entry got the due day and the paid mark. Whether an open document is overdue changes at midnight, so
-        // that is in the hash too (its header says it).
-        if attachmentsData != nil, isDocument {
-            hasher.update(data: Data("chat-doc-document-2".utf8))
-            if documentInfo?.isOverdue() == true { hasher.update(data: Data("document-overdue".utf8)) }
-        }
+        // "-3": the payment status is gone from the header again (documents keep none).
+        if attachmentsData != nil, isDocument { hasher.update(data: Data("chat-doc-document-3".utf8)) }
         // Links got a passage of their own (their address): their passages are cut again once.
         if url != nil { hasher.update(data: Data("link-passage".utf8)) }
         // A to-do's passage says its state, due day and whether it is late (that changes at midnight).

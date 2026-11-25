@@ -314,18 +314,17 @@ struct EntryDetailsSheet: View {
                 .disabled(locked)
                 .accessibilityLabel("Document Kind")
             }
-        case .sender, .dated, .amount, .payBy:
+        case .sender, .dated, .amount:
             let info = note.documentInfo ?? DocumentInfo()
             let value: String? = switch row.kind {
             case .sender: info.correspondent
             case .dated: info.dayText
-            case .amount: info.amountText
-            default: info.dueDate?.formatted(date: .abbreviated, time: .omitted)
+            default: info.amountText
             }
             Button { editingDocument = true } label: {
                 DetailsRow(label: label, width: labelWidth) {
                     Text(value ?? String(localized: "None"))
-                        .foregroundStyle(value == nil ? Color.secondary : row.kind == .payBy && info.isOverdue() ? Color.brandDangerText : Color.primary)
+                        .foregroundStyle(value == nil ? Color.secondary : Color.primary)
                         .lineLimit(2)
                     Spacer(minLength: 4)
                     if !locked {
@@ -337,21 +336,8 @@ struct EntryDetailsSheet: View {
             .buttonStyle(.plain)
             .disabled(locked)
             .accessibilityHint("Edit Document Details")
-        case .paid:
-            let info = note.documentInfo ?? DocumentInfo()
-            DetailsRow(label: label, width: labelWidth) {
-                Text(info.paid ? String(localized: "Paid") : String(localized: "Not yet"))
-                    .foregroundStyle(info.paid ? Color.brandTaskText : Color.secondary)
-                Spacer(minLength: 8)
-                Toggle("Paid", isOn: Binding(
-                    get: { info.paid },
-                    set: { value in withAnimation(.snappy) { Undoable.apply(.paid(value), to: [note], in: context) } }
-                ))
-                .labelsHidden()
-                .tint(.brandTask)
-                .disabled(locked)
-            }
-            if !info.isEmpty, !locked {
+            // Under the section's last row (the amount, or the date for a kind without one).
+            if row.kind == (info.kind?.hasAmount ?? true ? .amount : .dated), !info.isEmpty, !locked {
                 Button(role: .destructive) {
                     withAnimation(.snappy) { Undoable.clearDocument(note, in: context) }
                 } label: {

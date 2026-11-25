@@ -32,7 +32,7 @@ struct NoteSelectionHeader: View {
 
 /// Changes several entries of the Inbox or a bowl at once: the bar that takes the tab bar's place while choosing. Four
 /// fixed buttons, nothing scrolls: Move (into a bowl or back to the Inbox), Later (Inbox only), Done (to-dos) and More
-/// (Document Kind, Set Sender…, Mark as Paid, Merge PDFs…, Delete). What does not apply to the chosen entries is dimmed.
+/// (Document Kind, Set Sender…, Merge PDFs…, Delete). What does not apply to the chosen entries is dimmed.
 struct NoteSelectionBar: View {
     /// The entries of the list, in its order.
     let notes: [Note]
@@ -112,8 +112,6 @@ struct NoteSelectionBar: View {
                     Label("Set Sender…", systemImage: "person.crop.square")
                 }
                 .disabled(!allDocuments)
-                // Bills of the selection marked as paid at once (other papers are left alone).
-                PaidButton(notes: picked)
                 Button { choosingMergeTarget = true } label: {
                     Label(canMerge ? "Merge \(DocumentFiles.mergeable(picked).count) PDFs…" : "Merge PDFs…", systemImage: "arrow.triangle.merge")
                 }
@@ -237,24 +235,6 @@ private struct SelectionBarItem: View {
     }
 }
 
-/// "Mark as Paid" for documents that can be paid, or "Mark as Unpaid" when all of them are paid already. For a
-/// row's or a chip's context menu and the selection bar.
-struct PaidButton: View {
-    let notes: [Note]
-    @Environment(\.modelContext) private var context
-
-    var body: some View {
-        let payable = Documents.payable(notes)
-        let allPaid = !payable.isEmpty && payable.allSatisfy { $0.documentInfo?.paid == true }
-        Button {
-            withAnimation(.snappy) { Undoable.apply(.paid(!allPaid), to: payable, in: context) }
-        } label: {
-            Label(allPaid ? "Mark as Unpaid" : "Mark as Paid", systemImage: allPaid ? "creditcard" : "checkmark.circle")
-        }
-        .disabled(payable.isEmpty)
-    }
-}
-
 /// Sets what a document is by hand; from then on it is kept as set.
 struct DocumentInfoSheet: View {
     let note: Note
@@ -267,10 +247,6 @@ struct DocumentInfoSheet: View {
     @State private var sender = ""
     @State private var amount = ""
     @State private var currency: String?
-    @State private var hasDue = false
-    @State private var due = Date()
-    @State private var isPaid = false
-    @State private var paidDate = Date()
 
     static let currencies = ["EUR", "USD", "GBP", "CHF"]
 
@@ -310,21 +286,6 @@ struct DocumentInfoSheet: View {
                         Text("Not a number.").foregroundStyle(Color.brandDangerText)
                     }
                 }
-                // Only for a paper that asks for payment (or whose kind says nothing): the day to pay by, and paid.
-                if DocumentInfo(kind: kind).canBePaid {
-                    Section {
-                        Toggle("Due Date", isOn: $hasDue.animation())
-                        if hasDue {
-                            DatePicker("Pay By", selection: $due, displayedComponents: .date)
-                        }
-                        Toggle("Paid", isOn: $isPaid.animation())
-                        if isPaid {
-                            DatePicker("Paid On", selection: $paidDate, displayedComponents: .date)
-                        }
-                    } header: {
-                        Text("Payment")
-                    }
-                }
             }
             .brandNavigationTitle("Document")
             .toolbar {
@@ -358,24 +319,14 @@ struct DocumentInfoSheet: View {
         } else {
             currency = Locale.current.currency?.identifier ?? "EUR"
         }
-        if let dueDate = info.dueDate {
-            hasDue = true
-            due = dueDate
-        }
-        isPaid = info.paid
-        paidDate = DocumentInfo.date(fromDay: info.paidDay) ?? Date()
     }
 
     private func save() {
-        let payable = DocumentInfo(kind: kind).canBePaid
         let info = DocumentInfo(
             kind: kind,
             day: hasDate ? DocumentInfo.dayKey(date) : nil,
             correspondent: sender,
-            amount: DocumentExtractor.typedAmount(amount, currency: currency),
-            dueDay: payable && hasDue ? DocumentInfo.dayKey(due) : nil,
-            isPaid: payable && isPaid ? true : nil,
-            paidDay: payable && isPaid ? DocumentInfo.dayKey(paidDate) : nil
+            amount: DocumentExtractor.typedAmount(amount, currency: currency)
         )
         Documents.set(info, on: note, in: context)
     }

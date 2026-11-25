@@ -278,8 +278,6 @@ enum Undoable {
             message = kind.map { String(localized: "Kind set to \($0.title)") } ?? String(localized: "Kind removed")
         case .sender(let sender):
             message = (sender?.isEmpty ?? true) ? String(localized: "Sender removed") : String(localized: "Sender set")
-        case .paid(let paid):
-            message = paid ? String(localized: "Marked as paid") : String(localized: "Marked as unpaid")
         }
         run(message, systemImage: "doc", notes: notes, in: context) {
             Documents.apply(change, to: notes, in: context)

@@ -114,20 +114,10 @@ struct TriageView: View {
                     .lineLimit(typeSize.isAccessibilitySize ? 3 : 6)
             }
             if let document {
-                HStack(spacing: 8) {
-                    Text(document.line)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color.brandNavy.readable)
-                        .lineLimit(1)
-                    if document.offersPaid {
-                        Text(document.paid ? "Paid" : "Unpaid")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(document.paid ? Color.brandTaskText : Color.brandDangerText)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background((document.paid ? Color.brandTask : Color.red).opacity(0.12), in: Capsule())
-                    }
-                }
+                Text(document.line)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.brandNavy.readable)
+                    .lineLimit(1)
             }
             if note.isTodo, let due = note.todoDue {
                 Label("Due \(Todos.dueLabel(due))", systemImage: "calendar")

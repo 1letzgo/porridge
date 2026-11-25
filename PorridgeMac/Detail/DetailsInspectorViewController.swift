@@ -266,7 +266,7 @@ final class DetailsInspectorViewController: NSViewController {
         }
     }
 
-    /// The views of one row (the paid row also brings "Clear Document Details").
+    /// The views of one row (the document's last row also brings "Clear Document Details").
     private func rowViews(_ row: EntryDetails.Row, note: Note, context: EntryContext) -> [NSView] {
         let label = EntryDetails.label(row.kind, for: note)
         let locked = row.isLocked
@@ -377,31 +377,22 @@ final class DetailsInspectorViewController: NSViewController {
             }
             button.setAccessibilityLabel(String(localized: "Document Kind"))
             return [Self.row(label, button)]
-        case .sender, .dated, .amount, .payBy:
+        case .sender, .dated, .amount:
             let info = note.documentInfo ?? DocumentInfo()
             let value: String? = switch row.kind {
             case .sender: info.correspondent
             case .dated: info.dayText
-            case .amount: info.amountText
-            default: info.dueDate?.formatted(date: .abbreviated, time: .omitted)
+            default: info.amountText
             }
-            let color: NSColor = value == nil ? .secondaryLabelColor : row.kind == .payBy && info.isOverdue() ? .brandDangerText : .labelColor
+            let color: NSColor = value == nil ? .secondaryLabelColor : .labelColor
             if locked { return [Self.row(label, Self.value(value ?? String(localized: "None"), color: color, lines: 2))] }
             let button = LinkButton(title: value ?? String(localized: "None"), color: color, font: Self.valueFont) { [weak self] _ in
                 DocumentInfoSheet.edit(note, in: self?.window)
             }
             button.toolTip = String(localized: "Edit Document Details…")
-            return [Self.row(label, button)]
-        case .paid:
-            let info = note.documentInfo ?? DocumentInfo()
-            let word = Self.value(info.paid ? String(localized: "Paid") : String(localized: "Not yet"), color: info.paid ? .brandTaskText : .secondaryLabelColor)
-            let toggle = SwitchControl(isOn: info.paid) { on in
-                Undoable.apply(.paid(on), to: [note], in: Library.shared.context)
-            }
-            toggle.isEnabled = !locked
-            toggle.setAccessibilityLabel(String(localized: "Paid"))
-            var views = [Self.row(label, NSStackView.horizontal([word, NSView(), toggle], spacing: 6))]
-            if !info.isEmpty, !locked {
+            var views = [Self.row(label, button)]
+            // Under the section's last row (the amount, or the date for a kind without one).
+            if row.kind == (info.kind?.hasAmount ?? true ? .amount : .dated), !info.isEmpty {
                 let clear = LinkButton(title: String(localized: "Clear Document Details"), color: .brandDangerText) { _ in
                     Undoable.clearDocument(note, in: Library.shared.context)
                 }
@@ -577,11 +568,6 @@ final class DetailsInspectorViewController: NSViewController {
                     ) { sender in
                         Undoable.apply(.sender(sender), to: changeable, in: context)
                     }
-                }))
-            case .paid(let count, let allPaid):
-                let title = allPaid ? String(localized: "Mark as Unpaid") : String(localized: "Mark \(count) as Paid")
-                views.append(Self.row("", LinkButton(title: title) { _ in
-                    Undoable.apply(.paid(!allPaid), to: Documents.payable(changeable), in: context)
                 }))
             case .mergePDFs(let count):
                 views.append(Self.row("", LinkButton(title: String(localized: "Merge \(count) PDFs…")) { [weak self] _ in

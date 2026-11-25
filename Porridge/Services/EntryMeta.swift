@@ -9,20 +9,20 @@ enum EntryMeta {
     /// One set value of the line.
     struct Value: Identifiable, Equatable {
         enum Kind: String, Equatable {
-            case bowl, due, `repeat`, appointment, document, payment, speakers, tag, activity
+            case bowl, due, `repeat`, appointment, document, speakers, tag, activity
         }
 
         /// The colour of the word; the views map it to their brand colours.
         enum Tone: Equatable {
             /// Violet (`BrandProjectText`): bowls, who changed what.
             case bowl
-            /// Green (`BrandTaskText`): due, repeat, paid.
+            /// Green (`BrandTaskText`): due, repeat.
             case task
             /// Red (`BrandDangerText`): overdue.
             case danger
             /// Navy (`BrandNavy`): appointment, document, speakers.
             case navy
-            /// Grey: tags, a document not paid yet.
+            /// Grey: tags.
             case secondary
         }
 
@@ -33,7 +33,7 @@ enum EntryMeta {
         let tone: Tone
         /// The Details section a tap opens.
         let section: EntryDetails.Section.Kind
-        /// A to-do's due day or a document's payment is past.
+        /// A to-do's due day is past.
         var isOverdue = false
 
         var id: String { kind.rawValue + ":" + text }
@@ -43,7 +43,7 @@ enum EntryMeta {
     static let bowlImage = "Bowl"
 
     /// The facts and the set values of an entry, in the line's order: bowl, due, repeat, appointment, document,
-    /// payment, speakers, tags, activity.
+    /// speakers, tags, activity.
     static func items(for note: Note, context: EntryContext) -> (facts: String, values: [Value]) {
         (facts(for: note, context: context), values(for: note, context: context))
     }
@@ -133,18 +133,6 @@ enum EntryMeta {
                     kind: .document, text: parts.joined(separator: " · "), symbol: info.kind?.symbol ?? "doc", tone: .navy, section: .document
                 ))
             }
-        }
-        if let status = note.paymentStatus(now: context.now) {
-            let value: Value
-            switch status {
-            case .open:
-                value = Value(kind: .payment, text: String(localized: "Unpaid"), symbol: "creditcard", tone: .secondary, section: .document)
-            case .overdue:
-                value = Value(kind: .payment, text: String(localized: "Overdue"), symbol: "exclamationmark.circle", tone: .danger, section: .document, isOverdue: true)
-            case .paid:
-                value = Value(kind: .payment, text: String(localized: "Paid"), symbol: "checkmark.circle", tone: .task, section: .document)
-            }
-            values.append(value)
         }
         if note.isRecording, !note.speakers.isEmpty {
             values.append(Value(kind: .speakers, text: speakersText(note.speakers), symbol: "person.2", tone: .navy, section: .speakers))

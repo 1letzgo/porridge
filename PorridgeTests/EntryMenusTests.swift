@@ -84,11 +84,11 @@ final class EntryMenusTests: XCTestCase {
         XCTAssertEqual(ai(image), [[.summarize(again: false)]])
         XCTAssertEqual(EntryMenus.share(for: image), .image)
         XCTAssertEqual(more(image), [[.pin, .later], [.delete]])
-        // A photographed bill: Mark as Paid.
+        // A photographed bill offers no paid mark: documents keep no payment status.
         var list = image.attachments
         list[0].document = DocumentInfo(kind: .invoice, correspondent: "Bakery", isEdited: true)
         image.attachments = list
-        XCTAssertEqual(more(image).first, [.pin, .markPaid, .later])
+        XCTAssertEqual(more(image).first, [.pin, .later])
     }
 
     func testDocument() throws {
@@ -96,11 +96,10 @@ final class EntryMenusTests: XCTestCase {
         let bill = F.pdf(document: DocumentInfo(kind: .invoice), in: context)
         XCTAssertEqual(ai(bill), [[.summarize(again: false)]])
         XCTAssertEqual(EntryMenus.share(for: bill), .file)
-        XCTAssertEqual(more(bill), [[.pin, .markPaid, .editPages, .scanMorePages, .later], [.delete]])
+        XCTAssertEqual(more(bill), [[.pin, .editPages, .scanMorePages, .later], [.delete]])
         // Scan More Pages is the iPhone's; the Mac has Open in New Window.
-        XCTAssertEqual(more(bill, on: .mac), [[.pin, .markPaid, .editPages, .later], [.openInNewWindow], [.delete]])
-        XCTAssertEqual(EntryMenus.MoreItem.markPaid.title(for: bill), "Mark as Paid")
-        // A letter asks for no payment.
+        XCTAssertEqual(more(bill, on: .mac), [[.pin, .editPages, .later], [.openInNewWindow], [.delete]])
+        // A letter has the same items.
         let letter = F.pdf(document: DocumentInfo(kind: .letter), in: context)
         XCTAssertEqual(more(letter).first, [.pin, .editPages, .scanMorePages, .later])
     }
@@ -133,7 +132,7 @@ final class EntryMenusTests: XCTestCase {
         let context = try TestStore.context()
         let note = F.note(in: context)
         let items: [EntryMenus.MoreItem] = [
-            .pin, .markDone, .convertToTodo, .convertToNote, .later, .markPaid, .editPages, .scanMorePages, .openInBrowser, .copyLink,
+            .pin, .markDone, .convertToTodo, .convertToNote, .later, .editPages, .scanMorePages, .openInBrowser, .copyLink,
             .loadPageAgain, .continueRecording, .transcribeAgain, .mergeWith, .copyTranscript, .deleteRecording, .saveAsTemplate, .copy,
             .openInNewWindow, .delete, .recover, .deleteNow,
         ]

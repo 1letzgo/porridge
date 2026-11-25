@@ -33,10 +33,9 @@ enum NoteCommand: Int, CaseIterable {
     case removeAppointment
     /// Document › Set Sender…
     case setSender
-    /// Document › Mark as Paid / Unpaid (also ⋯ More).
-    case markPaid
+    // 26 was Document › Mark as Paid (removed: documents keep no payment status).
     /// Document › Edit Details…
-    case editDocument
+    case editDocument = 27
     /// Pages › Edit Pages… (also ⋯ More).
     case editPages
     /// Pages › Add Pages › From a File…

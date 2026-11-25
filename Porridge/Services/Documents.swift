@@ -47,13 +47,6 @@ extension Note {
     /// The date on the document, or when it came in.
     var documentDate: Date { documentInfo?.date ?? createdAt }
 
-    /// Open, overdue or paid for a document whose payment is followed (`DocumentInfo.paymentStatus`); nil otherwise.
-    /// For filters: `note.paymentStatus() == .overdue`.
-    func paymentStatus(now: Date = Date()) -> DocumentInfo.PaymentStatus? {
-        guard attachmentsData != nil, isDocument else { return nil }
-        return documentInfo?.paymentStatus(now: now)
-    }
-
     /// Takes a file off the note. What the document is lives on the first file: when that one goes, it moves to the
     /// file that is first now, so nothing read or set by hand is lost.
     func removeAttachment(id: String) {
@@ -82,17 +75,10 @@ enum Documents {
 
     /// The search's words name the document's kind ("Rechnung", "Verträge") and the other words are in it: found
     /// even when the kind's word is not in its text. At least one word has to name the kind.
-    /// A word naming a state of payment ("offene", "unbezahlt", "überfällig", "paid") counts like a kind's word: the
-    /// document has to be in that state.
-    static func matches(_ note: Note, query: String, now: Date = Date()) -> Bool {
+    static func matches(_ note: Note, query: String) -> Bool {
         let words = query.split(separator: " ").map(String.init).filter { !$0.isEmpty }
-        guard note.isStored, words.contains(where: { note.isDocument(named: $0) || DocumentInfo.paymentStatus(named: $0) != nil }) else { return false }
-        return words.allSatisfy { word in
-            if let status = DocumentInfo.paymentStatus(named: word) {
-                return note.isDocument && (note.documentInfo?.matches(status, now: now) ?? false)
-            }
-            return note.isDocument(named: word) || note.matches(word)
-        }
+        guard note.isStored, words.contains(where: note.isDocument(named:)) else { return false }
+        return words.allSatisfy { note.isDocument(named: $0) || note.matches($0) }
     }
 
     // MARK: Reading
@@ -116,14 +102,11 @@ enum Documents {
 
     /// What the summary's model found (`DocumentLine`): it replaces the device's guess where it knows something.
     /// Nothing changes what the user set by hand.
-    static func apply(_ found: DocumentInfo, to note: Note, now: Date = Date()) {
+    static func apply(_ found: DocumentInfo, to note: Note) {
         guard note.isStored, !note.attachments.isEmpty else { return }
         let current = note.documentInfo ?? DocumentInfo()
         guard !current.edited else { return }
-        var merged = current.merged(with: found.droppingStaleDueDay(now: now))
-        // A kind the model corrected to one that is not paid (a contract) has no due day.
-        if !merged.canBePaid { merged.dueDay = nil }
-        note.documentInfo = merged
+        note.documentInfo = current.merged(with: found)
     }
 
     /// Set by hand on the document's page: kept from now on.
@@ -132,6 +115,8 @@ enum Documents {
         info.correspondent = info.correspondent?.trimmingCharacters(in: .whitespacesAndNewlines)
         if info.correspondent?.isEmpty == true { info.correspondent = nil }
         info.isEdited = true
+        // The unused payment keys stay as they were stored (`DocumentInfo.dueDay`).
+        if let old = note.documentInfo { (info.dueDay, info.isPaid, info.paidDay) = (old.dueDay, old.isPaid, old.paidDay) }
         note.documentInfo = info
         note.updatedAt = Date()
         // A sender filed before somewhere: the document in the inbox is offered that bowl.
@@ -178,14 +163,6 @@ enum Documents {
         case kind(DocumentKind?)
         /// The sender; nil or empty takes it away. Only documents change.
         case sender(String?)
-        /// Marked as paid (today) or as not paid. Only documents that can be paid change (`DocumentInfo.canBePaid`);
-        /// it is not a correction of what was read, so reading the document later still fills what is missing.
-        case paid(Bool)
-    }
-
-    /// The documents among `notes` that the paid mark applies to.
-    static func payable(_ notes: [Note]) -> [Note] {
-        notes.filter { !$0.isDeleted && $0.isStored && !$0.attachments.isEmpty && ($0.documentInfo ?? DocumentInfo()).canBePaid }
     }
 
     /// Applies the change to every note and saves once. A kind or sender set this way counts as set by hand
@@ -219,12 +196,6 @@ enum Documents {
                 info.correspondent = clean?.isEmpty == false ? clean : nil
                 info.isEdited = true
                 guard info != note.documentInfo else { continue }
-                note.documentInfo = info
-            case .paid(let paid):
-                guard note.isStored, !note.attachments.isEmpty else { continue }
-                var info = note.documentInfo ?? DocumentInfo()
-                guard info.canBePaid, info.paid != paid else { continue }
-                info.setPaid(paid, now: now)
                 note.documentInfo = info
             }
             note.updatedAt = now

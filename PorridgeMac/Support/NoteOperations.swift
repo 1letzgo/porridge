@@ -192,15 +192,6 @@ enum NoteOperations {
                 Undoable.apply(.sender(sender), to: documents, in: context)
             }
         }
-        // Bills: paid or not, one or all selected at once (other papers are left alone). One document only when it is a bill.
-        let payable = Documents.payable(documents)
-        if documents.count > 1 ? !payable.isEmpty : documents.first?.documentInfo?.offersPaid == true {
-            let allPaid = payable.allSatisfy { $0.documentInfo?.paid == true }
-            let title = allPaid ? "Mark as Unpaid" : (payable.count == 1 ? "Mark as Paid" : "Mark \(payable.count) as Paid")
-            menu.add(title, symbol: allPaid ? "creditcard" : "checkmark.circle") {
-                Undoable.apply(.paid(!allPaid), to: payable, in: context)
-            }
-        }
         if documents.count == 1, let note = documents.first, DocumentFiles.pdf(of: note) != nil {
             menu.add("Edit Pages…", symbol: "doc.on.doc") { PDFPageEditorController.open(note, in: window) }
         }

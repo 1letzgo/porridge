@@ -74,7 +74,7 @@ final class IntakeFlowTests: XCTestCase {
         app.buttons["ChatSend"].tap()
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 20), "question missing in the chat")
         // The index is brought up to date first: on the first launch after an update that cuts the entries again
-        // (documents got their payment state), that takes a while on a simulator full of earlier test entries.
+        // (documents lost their payment state), that takes a while on a simulator full of earlier test entries.
         XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 90), "answer missing")
 
         // Asking about a bowl opens the Chat tab.
@@ -172,8 +172,8 @@ final class IntakeFlowTests: XCTestCase {
     }
 
     /// Choosing three entries: "3 Selected" is the first row, the selection bar takes the tab bar's place, and More
-    /// marks the invoices among them as paid.
-    func testSelectThreeAndMarkAsPaid() throws {
+    /// sets the kind of all of them (no paid mark: documents keep no payment status).
+    func testSelectThreeAndSetTheirKind() throws {
         let app = launchSeededInbox()
         let select = app.buttons["Select"]
         XCTAssertTrue(select.waitForExistence(timeout: 10))
@@ -188,12 +188,17 @@ final class IntakeFlowTests: XCTestCase {
         XCTAssertFalse(app.tabBars.firstMatch.isHittable, "the tab bar still shows while selecting")
         screenshot("inbox-selection-bar", app)
         app.buttons["SelectionMore"].tap()
-        let paid = app.buttons["Mark as Paid"]
-        XCTAssertTrue(paid.waitForExistence(timeout: 5), "no Mark as Paid in More")
+        let kind = app.buttons["Document Kind"]
+        XCTAssertTrue(kind.waitForExistence(timeout: 5), "no Document Kind in More")
         XCTAssertTrue(app.buttons["Delete 3 Entries"].exists, "no Delete 3 Entries in More")
+        XCTAssertFalse(app.buttons["Mark as Paid"].exists, "Mark as Paid is still in More")
+        XCTAssertFalse(app.buttons["Mark as Unpaid"].exists, "Mark as Unpaid is still in More")
         screenshot("inbox-selection-more", app)
-        paid.tap()
-        XCTAssertTrue(app.staticTexts["Marked as paid"].waitForExistence(timeout: 5), "marking as paid offers no Undo toast")
+        kind.tap()
+        let receipt = app.buttons["Receipt"]
+        XCTAssertTrue(receipt.waitForExistence(timeout: 5), "no kinds in Document Kind")
+        receipt.tap()
+        XCTAssertTrue(app.staticTexts["Kind set to Receipt"].waitForExistence(timeout: 5), "setting the kind offers no Undo toast")
         app.buttons["Done"].firstMatch.tap()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5) && app.tabBars.firstMatch.isHittable, "the tab bar did not come back")
     }

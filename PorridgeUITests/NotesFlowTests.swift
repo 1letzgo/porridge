@@ -329,7 +329,7 @@ final class NotesFlowTests: XCTestCase {
              ["Pin", "Open in Browser", "Copy Link", "Load Page Again", "Delete"], ["Convert to To-do", "Save as Template…"]),
             ("image", "Whiteboard", ["Ask About This Bowl"], ["Suggest To-dos"], ["Pin", "Delete"], ["Save as Template…"]),
             ("pdf", "Invoice INV-2026-1142", [], ["Suggest To-dos", "Ask About This Bowl"],
-             ["Pin", "Mark as Paid", "Edit Pages…", "Later", "Delete"], ["Save as Template…"]),
+             ["Pin", "Edit Pages…", "Later", "Delete"], ["Save as Template…", "Mark as Paid", "Mark as Unpaid"]),
         ]
         let shots = shotsFolder(default: "/tmp/porridge-s3-shots")
         func shoot(_ name: String) {
@@ -366,6 +366,18 @@ final class NotesFlowTests: XCTestCase {
             for title in kind.notMore { XCTAssertFalse(app.buttons[title].exists, "\(kind.name): More has \(title)") }
             shoot("\(kind.name)-more")
             dismissMenu()
+            if kind.name == "pdf" {
+                // Details of a bill: kind, sender, date and amount, no payment rows (documents keep no payment status).
+                app.openDetails()
+                let amount = app.staticTexts["Amount"]
+                for _ in 0..<4 where !amount.isHittable { app.swipeUp() }
+                XCTAssertTrue(amount.exists, "pdf: Details lacks Amount")
+                for title in ["Pay By", "Paid", "Not yet", "Unpaid", "Overdue"] {
+                    XCTAssertFalse(app.staticTexts[title].exists, "pdf: Details shows \(title)")
+                }
+                shoot("pdf-details")
+                app.closeDetails()
+            }
             let back = app.buttons["Back"].firstMatch
             if !back.waitForHittable(timeout: 5) { shoot("\(kind.name)-stuck") }
             back.tap()

@@ -607,7 +607,7 @@ triage on a to-do (Done), undo after each step; Mac multi-select with mixed kind
   after a change; they are reloaded with the list now.
 - Tests: `InboxTests` (triage order, passing over and coming back, file into the suggestion + Undo, bundle line, Go-To
   "Triage Inbox"), `InboxSnoozeTests` (Later from a swipe/triage + Undo); UI `IntakeFlowTests`
-  (`testSwipesFileIntoTheSuggestionAndPutAwayForLater`, `testTriageTwoEntries`, `testSelectThreeAndMarkAsPaid`),
+  (`testSwipesFileIntoTheSuggestionAndPutAwayForLater`, `testTriageTwoEntries`, `testSelectThreeAndMarkAsPaid`, now `testSelectThreeAndSetTheirKind`),
   `InboxShotsTests` → /tmp/porridge-s6-shots (`TEST_RUNNER_SHOTS_SUFFIX=-dark` for dark). Seeds: `-seedInbox YES`
   (with `-emptyStore YES`; Mac driver `seed-inbox`, test data only), `-quietNotifications YES` (no notification prompt
   when putting away). Mac driver: `triage`, `triage-key f|l|d|j|k|delete|escape`, `tick <title>`.
@@ -702,6 +702,11 @@ small iPhone; Mac Settings window at every tab (Title Case everywhere); light, d
   (What's New, onboarding's places, editor bar ✦ / Link to Entry, meeting, Settings), `PlacesShotsTests` closes the
   bowl menu above it (at AX sizes the left-edge tap chose Select Entries and hid "+"), `InboxShotsTests.testToday`
   scrolls to the to-do. Mac driver: `shot-settings <path>`.
+
+**As built (later, owner decision):** documents keep no payment status and no payment deadline. Paid/Unpaid/Overdue,
+Pay By, Mark as Paid/Unpaid (rows, chips, Details, inspector, Entry and ⋯ menus, selection More, triage card), the
+payment words of search and chat, the due day the device and the model read, and the export's due/paid keys are gone;
+the notes on "paid" in the stages above are historical. `DocumentInfo.dueDay`/`isPaid`/`paidDay` stay stored, unused.
 
 ---
 

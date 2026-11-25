@@ -1155,8 +1155,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
                 guard let self else { return }
                 Undoable.apply(.sender(sender), to: [self.note], in: self.library.context)
             }
-        case .markPaid:
-            Undoable.apply(.paid(note.documentInfo?.paid != true), to: [note], in: library.context)
         case .editDocument:
             DocumentInfoSheet.edit(note, in: view.window)
         case .editPages:
@@ -1235,9 +1233,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
             return !deleted && AppointmentLinks.shared.appointment(for: note.id) != nil
         case .setSender, .editDocument:
             return !deleted && note.isStored && !note.attachments.isEmpty
-        case .markPaid:
-            item.title = note.documentInfo?.paid == true ? "Mark as Unpaid" : "Mark as Paid"
-            return !deleted && note.isDocument && note.documentInfo?.offersPaid == true
         case .editPages, .addPagesFromFile:
             return !deleted && stage == nil && DocumentFiles.pdf(of: note) != nil
         case .openInBrowser, .copyLink:

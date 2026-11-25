@@ -124,8 +124,6 @@ enum EntryDetails {
             case sender
             case dated
             case amount
-            case payBy
-            case paid
             // Speakers
             case speakers
             // Connections
@@ -166,7 +164,6 @@ enum EntryDetails {
             var document: [Row.Kind] = [.documentKind, .sender, .dated]
             let info = note.documentInfo ?? DocumentInfo()
             if info.kind?.hasAmount ?? true { document.append(.amount) }
-            if info.canBePaid { document += [.payBy, .paid] }
             let pages = !locked && DocumentFiles.pdf(of: note) != nil
             result.append(Section(kind: .document, rows: rows(document), action: pages ? .editPages : nil))
         }
@@ -212,8 +209,6 @@ enum EntryDetails {
         case .sender: String(localized: "Sender")
         case .dated: String(localized: "Dated")
         case .amount: String(localized: "Amount")
-        case .payBy: String(localized: "Pay By")
-        case .paid: String(localized: "Paid")
         case .speakers: String(localized: "Speakers")
         case .linkedFrom: String(localized: "Linked From")
         case .similar: String(localized: "Similar")
@@ -294,8 +289,6 @@ enum EntryDetails {
         case documentKind
         /// "Set Sender of N…" (`Documents.BulkChange.sender`).
         case sender(count: Int)
-        /// "Mark N as Paid" or, when all are paid, "Mark as Unpaid" (`Documents.BulkChange.paid`).
-        case paid(count: Int, allPaid: Bool)
         /// "Merge N PDFs…", for two PDFs or more.
         case mergePDFs(count: Int)
         /// "Delete N".
@@ -313,10 +306,6 @@ enum EntryDetails {
         if notes.allSatisfy(\.isTodo) { fields.append(.due) }
         if notes.allSatisfy(\.isStored) {
             fields += [.documentKind, .sender(count: notes.count)]
-            let payable = Documents.payable(notes)
-            if !payable.isEmpty {
-                fields.append(.paid(count: payable.count, allPaid: payable.allSatisfy { $0.documentInfo?.paid == true }))
-            }
         }
         let pdfs = DocumentFiles.mergeable(notes)
         if pdfs.count >= 2 { fields.append(.mergePDFs(count: pdfs.count)) }

@@ -95,7 +95,6 @@ final class EntryToolbarMenu: NSObject, NSMenuDelegate {
                 later.add("Back to Inbox Now", symbol: "tray.and.arrow.down") { InboxSnooze.unsnooze([note], in: Library.shared.context) }
             }
             row.submenu = later
-        case .markPaid: row = entry(title, symbol: symbol, command, command: .markPaid)
         case .editPages: row = entry(title, symbol: symbol, command, command: .editPages)
         case .scanMorePages: return nil
         case .openInBrowser: row = entry(title, symbol: symbol, command, command: .openInBrowser)

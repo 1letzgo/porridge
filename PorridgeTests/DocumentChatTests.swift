@@ -45,6 +45,24 @@ final class DocumentChatTests: XCTestCase {
         XCTAssertNil(ChatQuery.parse("mehr als 3 Tage", now: now).minAmount, "no currency, no amount")
     }
 
+    /// Documents keep no payment status: "offene Rechnungen" asks for the invoices, not for to-dos or a state.
+    func testNoPaymentStateInAQuestion() {
+        for question in ["offene Rechnungen", "fällige Rechnungen", "überfällige Rechnungen"] {
+            let query = ChatQuery.parse(question, now: now)
+            XCTAssertEqual(query.documentKinds, [.invoice], question)
+            XCTAssertNil(query.todo, question)
+            XCTAssertTrue(query.kinds.isEmpty, question)
+            XCTAssertEqual(query.dateField, .auto, question)
+            XCTAssertFalse(query.describe(bucketNames: [:]).contains("pa"), question)
+        }
+        // Without a kind of document the state words are a to-do's, as always.
+        XCTAssertEqual(ChatQuery.parse("offene Aufgaben", now: now).todo, .open)
+        // The model's line: a fifth field (a payment day, from older prompts) is not read.
+        XCTAssertNil(DocumentLine.parse("invoice | 2026-03-02 | Telekom | 119.00 EUR | 2026-03-16")?.dueDay)
+        XCTAssertFalse(DocumentLine.prompt.contains("paid"))
+        XCTAssertNil(DocumentExtractor.extract(from: "Rechnung\nTelekom\n02.03.2026\nZahlbar bis 16.03.2026", now: now).dueDay)
+    }
+
     // MARK: Matching and the context
 
     func testTheContextListsTheMatchingDocumentsByTheirDate() {

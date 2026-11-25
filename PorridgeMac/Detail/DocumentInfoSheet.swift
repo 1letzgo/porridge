@@ -48,37 +48,11 @@ enum DocumentInfoSheet {
             currency.selectItem(withTitle: Locale.current.currency?.identifier ?? "EUR")
         }
 
-        // Payment, for bills (and papers whose kind says nothing): the day to pay by, and paid on a day.
-        let hasDue = NSButton(checkboxWithTitle: "", target: nil, action: nil)
-        hasDue.state = info.dueDate == nil ? .off : .on
-        hasDue.setAccessibilityLabel("Has a Due Date")
-        let due = NSDatePicker()
-        due.datePickerStyle = .textFieldAndStepper
-        due.datePickerElements = .yearMonthDay
-        due.dateValue = info.dueDate ?? Date()
-        due.isEnabled = info.dueDate != nil
-        let dueToggle = DateToggle(picker: due)
-        hasDue.target = dueToggle
-        hasDue.action = #selector(DateToggle.toggled(_:))
-
-        let isPaid = NSButton(checkboxWithTitle: "Paid on", target: nil, action: nil)
-        isPaid.state = info.paid ? .on : .off
-        let paidOn = NSDatePicker()
-        paidOn.datePickerStyle = .textFieldAndStepper
-        paidOn.datePickerElements = .yearMonthDay
-        paidOn.dateValue = DocumentInfo.date(fromDay: info.paidDay) ?? Date()
-        paidOn.isEnabled = info.paid
-        let paidToggle = DateToggle(picker: paidOn)
-        isPaid.target = paidToggle
-        isPaid.action = #selector(DateToggle.toggled(_:))
-
         let grid = NSGridView(views: [
             [NSTextField(labelWithString: "Kind:"), kind],
             [NSTextField(labelWithString: "Sender:"), sender],
             [NSTextField(labelWithString: "Date:"), NSStackView.horizontal([hasDate, date], spacing: 6)],
             [NSTextField(labelWithString: "Amount:"), NSStackView.horizontal([amount, currency], spacing: 6)],
-            [NSTextField(labelWithString: "Pay By:"), NSStackView.horizontal([hasDue, due], spacing: 6)],
-            [NSTextField(labelWithString: "Payment:"), NSStackView.horizontal([isPaid, paidOn], spacing: 6)],
         ])
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
@@ -100,23 +74,17 @@ enum DocumentInfoSheet {
         alert.window.initialFirstResponder = sender
 
         let finish: (NSApplication.ModalResponse) -> Void = { response in
-            _ = (toggle, dueToggle, paidToggle)
+            _ = toggle
             guard response == .alertFirstButtonReturn, let context = note.modelContext else { return }
             let code = currency.titleOfSelectedItem.flatMap { $0 == "None" ? nil : $0 }
             let typed = amount.stringValue.trimmingCharacters(in: .whitespaces)
             let chosenKind = (kind.selectedItem?.representedObject as? String).flatMap(DocumentKind.init(rawValue:))
-            // A kind that is never paid (a contract) has no due day and no paid mark.
-            let payable = DocumentInfo(kind: chosenKind).canBePaid
-            let paid = payable && isPaid.state == .on
             let edited = DocumentInfo(
                 kind: chosenKind,
                 day: hasDate.state == .on ? DocumentInfo.dayKey(date.dateValue) : nil,
                 correspondent: sender.stringValue,
                 // A typo in the amount keeps the one there was.
-                amount: typed.isEmpty ? nil : DocumentExtractor.typedAmount(typed, currency: code) ?? info.amount,
-                dueDay: payable && hasDue.state == .on ? DocumentInfo.dayKey(due.dateValue) : nil,
-                isPaid: paid ? true : nil,
-                paidDay: paid ? DocumentInfo.dayKey(paidOn.dateValue) : nil
+                amount: typed.isEmpty ? nil : DocumentExtractor.typedAmount(typed, currency: code) ?? info.amount
             )
             Documents.set(edited, on: note, in: context)
         }

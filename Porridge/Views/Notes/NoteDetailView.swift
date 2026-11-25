@@ -692,7 +692,7 @@ struct NoteDetailView: View {
         case .copyTranscript: return !note.segments.isEmpty
         case .deleteRecording: return note.hasAudio
         case .openInBrowser, .copyLink: return note.linkURL != nil
-        case .pin, .markDone, .convertToTodo, .convertToNote, .later, .markPaid, .saveAsTemplate, .copy, .openInNewWindow,
+        case .pin, .markDone, .convertToTodo, .convertToNote, .later, .saveAsTemplate, .copy, .openInNewWindow,
              .delete, .recover, .deleteNow:
             return true
         }
@@ -741,8 +741,6 @@ struct NoteDetailView: View {
             withAnimation(.snappy) { Todos.setTodo(item == .convertToTodo, note, in: context) }
         case .later:
             pickingLater = true
-        case .markPaid:
-            Undoable.apply(.paid(note.documentInfo?.paid != true), to: [note], in: context)
         case .editPages:
             scansPages = false
             showPages = true

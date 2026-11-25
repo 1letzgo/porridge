@@ -332,7 +332,7 @@ enum SearchAsk {
             defaults.stringArray(forKey: key) ?? []
         }
 
-        /// Keeps a search: what was typed with its tags ("#bills unpaid"). Blank ones are not kept.
+        /// Keeps a search: what was typed with its tags ("#bills telekom"). Blank ones are not kept.
         static func add(_ text: String, tags: [String] = [], in defaults: UserDefaults = .standard) {
             let line = (tags.map { "#" + $0 } + [text.trimmingCharacters(in: .whitespacesAndNewlines)])
                 .filter { !$0.isEmpty }

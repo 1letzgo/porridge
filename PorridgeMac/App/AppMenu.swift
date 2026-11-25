@@ -234,7 +234,7 @@ enum AppMenu {
         }
         item(appointment, "Remove Appointment", command, symbol: "calendar.badge.minus", tag: NoteCommand.removeAppointment.rawValue)
         item(menu, "Appointment", #selector(MainWindowController.entrySubmenu(_:)), symbol: "calendar", tag: EntrySubmenu.appointment.rawValue).submenu = appointment
-        // A stored document: its kind, sender, payment and the rest of its details.
+        // A stored document: its kind, sender and the rest of its details.
         let document = NSMenu(title: "Document")
         let kind = item(document, "Kind", #selector(MainWindowController.entrySubmenu(_:)), symbol: "tag", tag: EntrySubmenu.documentKind.rawValue)
         kind.submenu = DynamicMenu.make("Kind") { menu, controller in
@@ -250,7 +250,6 @@ enum AppMenu {
             }
         }
         item(document, "Set Sender…", command, symbol: "person.crop.square", tag: NoteCommand.setSender.rawValue)
-        item(document, "Mark as Paid", command, symbol: "checkmark.circle", tag: NoteCommand.markPaid.rawValue)
         item(document, "Edit Details…", command, symbol: "doc.text", tag: NoteCommand.editDocument.rawValue)
         item(menu, "Document", #selector(MainWindowController.entrySubmenu(_:)), symbol: "doc.text", tag: EntrySubmenu.document.rawValue).submenu = document
         // A meeting's recording.

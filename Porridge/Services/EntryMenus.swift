@@ -78,8 +78,6 @@ enum EntryMenus {
         case convertToNote
         /// Later ▸, for an entry in the Inbox.
         case later
-        /// "Mark as Paid" or "Mark as Unpaid", for a document that asks for payment.
-        case markPaid
         case editPages
         /// iPhone only: the scanner adds pages to the PDF.
         case scanMorePages
@@ -102,7 +100,7 @@ enum EntryMenus {
         case recover
         case deleteNow
 
-        /// The title for this note's state (Pin / Unpin, Mark as Done / Not Done, Mark as Paid / Unpaid).
+        /// The title for this note's state (Pin / Unpin, Mark as Done / Not Done).
         func title(for note: Note) -> String {
             switch self {
             case .pin: note.isPinned ? String(localized: "Unpin") : String(localized: "Pin")
@@ -110,7 +108,6 @@ enum EntryMenus {
             case .convertToTodo: String(localized: "Convert to To-do")
             case .convertToNote: String(localized: "Convert to Note")
             case .later: String(localized: "Later")
-            case .markPaid: note.documentInfo?.paid == true ? String(localized: "Mark as Unpaid") : String(localized: "Mark as Paid")
             case .editPages: String(localized: "Edit Pages…")
             case .scanMorePages: String(localized: "Scan More Pages")
             case .openInBrowser: String(localized: "Open in Browser")
@@ -138,7 +135,6 @@ enum EntryMenus {
             case .convertToTodo: "checklist"
             case .convertToNote: "text.alignleft"
             case .later: "clock"
-            case .markPaid: note.documentInfo?.paid == true ? "creditcard" : "checkmark.circle"
             case .editPages: "doc.on.doc"
             case .scanMorePages: "doc.viewfinder"
             case .openInBrowser: "safari"
@@ -226,15 +222,12 @@ enum EntryMenus {
         switch kind {
         case .link:
             organize += [.openInBrowser, .copyLink, .loadPageAgain]
-        case .image:
-            if offersPaid(note) { organize.append(.markPaid) }
         case .document:
-            if offersPaid(note) { organize.append(.markPaid) }
             if DocumentFiles.pdf(of: note) != nil {
                 organize.append(.editPages)
                 if platform == .iPhone { organize.append(.scanMorePages) }
             }
-        case .note, .todo, .meeting:
+        case .note, .todo, .meeting, .image:
             break
         }
         // Into a to-do and back where the entry may be one (`Note.canBeTodo`).
@@ -283,9 +276,4 @@ enum EntryMenus {
 
     /// In a bowl (not the Inbox): it can be asked about.
     private static func isInBowl(_ note: Note) -> Bool { !note.projectIDs.isEmpty }
-
-    /// A document that asks for payment, or whose payment is followed (`DocumentInfo.offersPaid`).
-    private static func offersPaid(_ note: Note) -> Bool {
-        note.isDocument && note.documentInfo?.offersPaid == true
-    }
 }

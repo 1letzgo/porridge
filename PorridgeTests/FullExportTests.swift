@@ -226,8 +226,10 @@ final class FullExportTests: XCTestCase {
         let paper = Note()
         paper.title = "Invoice"
         paper.source = .share
-        paper.attachments = [Attachment(fileName: "B.pdf", name: "B.pdf", kindRaw: "pdf", bytes: 5,
-                                        document: DocumentInfo(kind: .invoice, dueDay: "2026-12-01", isPaid: true, paidDay: "2026-11-20"))]
+        // Stored with the payment keys of before: the export leaves them out (documents keep no payment status).
+        var info = DocumentInfo(kind: .invoice, correspondent: "Telekom")
+        (info.dueDay, info.isPaid, info.paidDay) = ("2026-12-01", true, "2026-11-20")
+        paper.attachments = [Attachment(fileName: "B.pdf", name: "B.pdf", kindRaw: "pdf", bytes: 5, document: info)]
         let todo = Note()
         todo.title = "Water plants"
         todo.todoState = .open
@@ -235,17 +237,16 @@ final class FullExportTests: XCTestCase {
         todo.todoRepeat = TodoRepeat(unit: .week, interval: 1, anchorDay: nil)
         let plan = FullExport.plan(.everything, notes: [paper, todo], bowls: [])
         let bill = plan.archive.entries.first { $0.title == "Invoice" }
-        XCTAssertEqual(bill?.document?.dueDay, "2026-12-01")
-        XCTAssertEqual(bill?.document?.isPaid, true)
-        XCTAssertEqual(bill?.document?.paidDay, "2026-11-20")
+        XCTAssertEqual(bill?.document?.kind, "invoice")
+        XCTAssertEqual(bill?.document?.sender, "Telekom")
         let task = plan.archive.entries.first { $0.title == "Water plants" }
         XCTAssertNotNil(task?.todo?.repeatRule)
         XCTAssertNotNil(task?.todo?.repeats)
         if let bill {
             let markdown = FullExport.markdown(for: bill)
-            XCTAssertTrue(markdown.contains("  due: 2026-12-01"))
-            XCTAssertTrue(markdown.contains("  paid: true"))
-            XCTAssertTrue(markdown.contains("  paid_on: 2026-11-20"))
+            XCTAssertTrue(markdown.contains("  kind: invoice"))
+            XCTAssertFalse(markdown.contains("2026-12-01"))
+            XCTAssertFalse(markdown.contains("paid"))
         }
         if let task { XCTAssertTrue(FullExport.markdown(for: task).contains("  repeats: ")) }
     }

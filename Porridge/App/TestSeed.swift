@@ -184,7 +184,6 @@ enum TestSeed {
             var info = DocumentInfo(kind: .invoice, correspondent: "Telekom Deutschland")
             info.amount = "119.00 EUR"
             info.day = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: -3, to: now) ?? now)
-            info.dueDay = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: 8, to: now) ?? now)
             note.attachments = [Attachment(fileName: "seed-invoice.pdf", name: "Invoice INV-2026-1142.pdf", kindRaw: Attachment.Kind.pdf.rawValue, document: info)]
             SeedFiles.invoice("seed-invoice.pdf", number: "INV-2026-1142", from: "Telekom Deutschland")
             note.pageText = "Telekom bills 119,00 € for the November mobile plan, including a one-off roaming charge of 9,90 €."
@@ -253,7 +252,6 @@ enum TestSeed {
                 var info = DocumentInfo(kind: .invoice, correspondent: "Telekom")
                 info.amount = "119.00 EUR"
                 info.day = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: -days, to: now) ?? now)
-                info.dueDay = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: 8 - days, to: now) ?? now)
                 note.attachments = [Attachment(fileName: "seed-\(number).pdf", name: "Invoice \(number).pdf", kindRaw: Attachment.Kind.pdf.rawValue, document: info)]
                 SeedFiles.invoice("seed-\(number).pdf", number: number, from: "Telekom")
                 note.pageText = "Telekom bills 119,00 € for the mobile plan."

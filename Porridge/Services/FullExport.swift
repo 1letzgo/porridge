@@ -106,12 +106,6 @@ enum FullExport {
         /// "119.00 EUR".
         var amount: String?
         var setByHand: Bool
-        /// The day it has to be paid by, "yyyy-MM-dd".
-        var dueDay: String?
-        /// Marked as paid; nil when it was never marked.
-        var isPaid: Bool?
-        /// The day it was marked as paid, "yyyy-MM-dd".
-        var paidDay: String?
     }
 
     struct Meeting: Codable, Equatable, Sendable {
@@ -289,8 +283,7 @@ enum FullExport {
             ) : nil,
             document: info.flatMap { info in
                 info.isEmpty ? nil : Document(
-                    kind: info.kindRaw, date: info.day, sender: info.correspondent, amount: info.amount, setByHand: info.edited,
-                    dueDay: info.dueDay, isPaid: info.isPaid, paidDay: info.paidDay
+                    kind: info.kindRaw, date: info.day, sender: info.correspondent, amount: info.amount, setByHand: info.edited
                 )
             },
             meeting: note.isRecording ? Meeting(
@@ -407,9 +400,6 @@ enum FullExport {
             if let date = document.date { front.append("  date: \(date)") }
             if let sender = document.sender { front.append("  sender: \(yaml(sender))") }
             if let amount = document.amount { front.append("  amount: \(yaml(amount))") }
-            if let dueDay = document.dueDay { front.append("  due: \(dueDay)") }
-            if let isPaid = document.isPaid { front.append("  paid: \(isPaid)") }
-            if let paidDay = document.paidDay { front.append("  paid_on: \(paidDay)") }
             if document.setByHand { front.append("  set_by_hand: true") }
         }
         if let meeting = entry.meeting {

@@ -59,30 +59,30 @@ final class EntryMetaTests: XCTestCase {
         XCTAssertEqual(soon.text, "Due Tomorrow")
         XCTAssertFalse(soon.isOverdue)
 
-        // A bill past its day.
+        // A bill stored with a payment day long past (from before payment status was removed): only kind, sender
+        // and amount, never "Overdue".
         var info = DocumentInfo(kind: .invoice, correspondent: "Telekom")
         info.amount = "119.00 EUR"
         info.dueDay = DocumentInfo.dayKey(Calendar.current.date(byAdding: .day, value: -3, to: Date()) ?? Date())
         let bill = F.pdf(document: info, in: context)
         let values = EntryMeta.values(for: bill, context: EntryContext())
-        XCTAssertEqual(values.map(\.kind), [.document, .payment])
+        XCTAssertEqual(values.map(\.kind), [.document])
         XCTAssertTrue(values[0].text.hasPrefix("Invoice · Telekom · "), values[0].text)
         XCTAssertEqual(values[0].section, .document)
-        XCTAssertEqual(values[1].text, "Overdue")
-        XCTAssertTrue(values[1].isOverdue)
+        XCTAssertFalse(values[0].isOverdue)
     }
 
-    func testPaymentWords() throws {
+    func testNoPaymentWords() throws {
         let context = try TestStore.context()
+        // Old stored payment keys show nowhere: no "Unpaid", no "Paid" in the line, the document line or the chat.
         var info = DocumentInfo(kind: .invoice, correspondent: "Telekom")
         info.dueDay = F.day(9)
+        info.isPaid = true
+        info.paidDay = F.day(1)
         let bill = F.pdf(document: info, in: context)
-        XCTAssertEqual(EntryMeta.values(for: bill, context: EntryContext()).last?.text, "Unpaid")
-        info.setPaid(true)
-        bill.documentInfo = info
-        let paid = try XCTUnwrap(EntryMeta.values(for: bill, context: EntryContext()).last)
-        XCTAssertEqual(paid.text, "Paid")
-        XCTAssertEqual(paid.tone, .task)
+        XCTAssertEqual(EntryMeta.values(for: bill, context: EntryContext()).map(\.text), ["Invoice · Telekom"])
+        XCTAssertEqual(info.line, "Invoice · Telekom")
+        XCTAssertEqual(info.sentence, "Invoice from Telekom")
         // A PDF nobody read yet: no document value at all.
         XCTAssertEqual(EntryMeta.values(for: F.pdf(in: context), context: EntryContext()), [])
         XCTAssertTrue(EntryMeta.facts(for: F.pdf(in: context), context: EntryContext(pageCount: 3)).hasSuffix("3 pages"))
@@ -158,7 +158,7 @@ final class EntryMetaTests: XCTestCase {
         XCTAssertEqual(EntryDetails.label(.origin, for: meeting), "Recorded")
     }
 
-    /// "PDF · 23 Nov · 2 pages  ✦ File into House & Bills  Invoice · Telekom · 119,00 €  Unpaid".
+    /// "PDF · 23 Nov · 2 pages  ✦ File into House & Bills  Invoice · Telekom · 119,00 €".
     func testMockupPDFInInbox() throws {
         let context = try TestStore.context()
         let bills = F.bowl("House & Bills", in: context)
@@ -171,8 +171,8 @@ final class EntryMetaTests: XCTestCase {
         let (facts, values) = EntryMeta.items(for: pdf, context: state)
         XCTAssertTrue(facts.hasPrefix("PDF · Today "), facts)
         XCTAssertTrue(facts.hasSuffix(" · 2 pages"), facts)
-        XCTAssertEqual(values.map(\.kind), [.document, .payment])
-        XCTAssertEqual(values.map(\.text).last, "Unpaid")
+        XCTAssertEqual(values.map(\.kind), [.document])
+        XCTAssertFalse(values.contains { $0.text == "Unpaid" })
         XCTAssertEqual(EntryMeta.suggestion(for: pdf, context: state)?.name, "House & Bills")
         let organize = try XCTUnwrap(EntryDetails.sections(for: pdf, context: state).first)
         XCTAssertEqual(organize.rows.map(\.kind), [.type, .bowl, .suggestedBowl, .tags])
@@ -202,7 +202,6 @@ final class EntryMetaTests: XCTestCase {
         XCTAssertTrue(EntryDetails.showsTodoSwitch(todo))
         XCTAssertTrue(EntryDetails.canSwitchTodo(todo, context: state))
         XCTAssertEqual(EntryDetails.sections(for: todo, context: state).first?.rows.map(\.kind), [.type, .bowl, .due, .repeat, .tags])
-        XCTAssertEqual(EntryDetails.label(.payBy, for: todo), "Pay By")
         XCTAssertEqual(EntryDetails.origin(for: todo).label, "Created")
     }
 }

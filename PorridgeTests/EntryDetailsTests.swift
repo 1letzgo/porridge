@@ -46,11 +46,11 @@ final class EntryDetailsTests: XCTestCase {
         XCTAssertEqual(EntryDetails.sections(for: pdf, context: EntryContext()).first { $0.kind == .document }?.action, .editPages)
         XCTAssertNil(EntryDetails.sections(for: F.image(in: context), context: EntryContext()).first { $0.kind == .document }?.action)
 
-        // Amount only for kinds that have one, Pay By and Paid only for papers that can be paid.
+        // Amount only for kinds that have one; no payment rows (documents keep no payment status).
         let letter = F.pdf(document: DocumentInfo(kind: .letter), in: context)
         XCTAssertEqual(rows(letter, .document), [.documentKind, .sender, .dated])
         let invoice = F.pdf(document: DocumentInfo(kind: .invoice), in: context)
-        XCTAssertEqual(rows(invoice, .document), [.documentKind, .sender, .dated, .amount, .payBy, .paid])
+        XCTAssertEqual(rows(invoice, .document), [.documentKind, .sender, .dated, .amount])
     }
 
     func testDueAndRepeatOnlyForTodos() throws {
@@ -121,9 +121,9 @@ final class EntryDetailsTests: XCTestCase {
         let a = F.pdf("A", document: DocumentInfo(kind: .invoice), in: context)
         let b = F.pdf("B", document: DocumentInfo(kind: .letter), in: context)
         let c = F.pdf("C", in: context)
-        // Three PDFs in the Inbox: bowl, later, the document fields, paid for the payable ones, merge, delete.
+        // Three PDFs in the Inbox: bowl, later, the document fields, merge, delete (no paid mark).
         XCTAssertEqual(EntryDetails.commonFields(for: [a, b, c], isReadOnly: { _ in false }), [
-            .bowl, .later, .documentKind, .sender(count: 3), .paid(count: 2, allPaid: false), .mergePDFs(count: 3), .delete(count: 3),
+            .bowl, .later, .documentKind, .sender(count: 3), .mergePDFs(count: 3), .delete(count: 3),
         ])
         // With a note among them: no document fields, no merge; filed, no later.
         let note = F.note(in: context)
