@@ -667,8 +667,26 @@ final class CommandBarController: NSObject, NSTextFieldDelegate, NSTableViewData
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         if case .header = rows[row] { return PlainGroupRowView() }
-        return nil
+        return ResultRowView()
     }
+}
+
+/// A result row whose selection is a soft accent wash under the normal text: readable in light and dark, whether the
+/// panel is key or not (the table never takes the keyboard), and the same in the debug driver's pictures.
+private final class ResultRowView: NSTableRowView {
+    override var isEmphasized: Bool {
+        get { false }
+        set {}
+    }
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard selectionHighlightStyle != .none else { return }
+        NSColor.controlAccentColor.withAlphaComponent(0.22).setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 1), xRadius: 6, yRadius: 6).fill()
+    }
+
+    /// The cells keep their own colours on the wash.
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
 }
 
 /// A heading row without the group row's floating bar.

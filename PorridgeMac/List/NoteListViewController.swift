@@ -337,7 +337,11 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         state.isTriaging.toggle()
         guard state.isTriaging else { return }
         focusList()
-        if state.selection.isEmpty, let first = triageIDs.first { state.selection = [first] }
+        // Triage always works on an Inbox entry: a selection from elsewhere (an entry of a bowl, say)
+        // gives way to the first one of the Inbox, so F / ⌫ act on what the bar shows.
+        let ids = triageIDs
+        if let current = state.selection.first, state.selection.count == 1, ids.contains(current) { return }
+        if let first = ids.first { state.selection = [first] } else { state.selection = [] }
     }
 
     /// The entries of the Inbox in the order of the list (those back from later included, the "Later" section not).

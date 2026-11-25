@@ -136,6 +136,16 @@ class SettingsPane: NSViewController {
         }
     }
 
+    /// The size the tab needs: the form at its smallest height with the margins. Measured on the form itself, not on
+    /// the root view, whose fitting size would keep the window's current height and stretch the form's rows into
+    /// gaps (a separator with empty space around it).
+    var fittingContentSize: NSSize {
+        let inset = SettingsMetrics.inset
+        let grid = form.grid.fittingSize
+        let width = max(grid.width + inset * 2, SettingsMetrics.labelWidth + SettingsMetrics.controlWidth + 8 + inset * 2)
+        return NSSize(width: width, height: grid.height + inset - 6 + inset)
+    }
+
     /// Adds the rows to `form`; called once.
     func build() {}
 

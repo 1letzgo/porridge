@@ -34,7 +34,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
 
     // Head
     private let todoBox = TodoCheckboxButton()
-    private let titleField = NSTextField()
+    private let titleField = WrappingTitleField()
     private let sourcePill = PillButton(title: "", symbol: "arrow.turn.up.left", tint: .brandSky, target: nil, action: nil)
     private let linkButton = NSButton()
     /// Facts and set values; a click on a value opens Details at its section.
@@ -548,6 +548,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         todoBox.isEnabled = !isLocked
         titleField.placeholderString = isTodo ? "To-do" : "Title"
         if titleField.currentEditor() == nil, titleField.stringValue != note.title { titleField.stringValue = note.title }
+        titleField.toolTip = note.title.isEmpty ? nil : note.title
         titleField.isEditable = !isLocked
         titleField.textColor = isDone ? .secondaryLabelColor : .brandNavy
         if let source = TodoBridge.source(of: note) {
@@ -855,6 +856,7 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         guard (obj.object as? NSTextField) === titleField else { return }
         note.title = titleField.stringValue
+        titleField.invalidateIntrinsicContentSize()
         note.titleIsCustom = true
         note.updatedAt = Date()
         saveIfFilled()
@@ -1265,6 +1267,9 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         suggestedTodos.debug(command)
     }
 
+    /// ✦ of the format bar as a click on it does; what it showed (`DebugDriver`, `rewrite-bar`).
+    func debugRewriteFromBar() -> String { editor.performRewriteFromBar() }
+
     func debugType(title: String? = nil, body: String? = nil) {
         if let title {
             titleField.stringValue = title
@@ -1420,5 +1425,28 @@ final class MicButton: NSButton {
         guard phase != .polishing else { return }
         let symbol = NSImage.symbol(recording ? "stop.fill" : "mic.fill", size: 19, weight: .semibold).tinted(recording ? .white : .brandOnFill)
         symbol.draw(in: NSRect(x: center.x - symbol.size.width / 2, y: center.y - symbol.size.height / 2, width: symbol.size.width, height: symbol.size.height))
+    }
+}
+
+/// The entry's title in the head: wraps at the width the column gives it (a narrow window), instead of losing its end.
+final class WrappingTitleField: NSTextField {
+    /// An editable field reports one line by itself; its height here is that of the wrapped text at its width.
+    override var intrinsicContentSize: NSSize {
+        guard let cell, preferredMaxLayoutWidth > 0 else { return super.intrinsicContentSize }
+        let size = cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: preferredMaxLayoutWidth, height: .greatestFiniteMagnitude))
+        return NSSize(width: super.intrinsicContentSize.width, height: ceil(size.height))
+    }
+
+    override func textDidChange(_ notification: Notification) {
+        super.textDidChange(notification)
+        invalidateIntrinsicContentSize()
+    }
+
+    override func layout() {
+        super.layout()
+        if abs(preferredMaxLayoutWidth - bounds.width) > 0.5 {
+            preferredMaxLayoutWidth = bounds.width
+            invalidateIntrinsicContentSize()
+        }
     }
 }

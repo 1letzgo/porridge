@@ -200,15 +200,29 @@ final class NoteEditorView: NSView {
 
     /// ✦ in the format bar: the selection, or a word on what to select first.
     @objc private func rewriteFromBar(_ sender: Any?) {
-        guard isEditable else { return NSSound.beep() }
+        _ = performRewriteFromBar()
+    }
+
+    /// What ✦ of the format bar does, the same as the iPhone's ✦: the rewrite sheet for the selection; without one
+    /// the notice "Select Text to Rewrite" as a sheet on the window (never an app-modal alert or a menu, so the window
+    /// and the debug driver go on). Returns what it did, for the driver (`rewrite-bar`).
+    @discardableResult
+    func performRewriteFromBar() -> String {
+        guard isEditable else {
+            NSSound.beep()
+            return "beep: not editable"
+        }
         guard controller.canRewrite else {
             let alert = NSAlert()
             alert.messageText = String(localized: "Select Text to Rewrite")
-            alert.informativeText = String(localized: "Select the words or lines to rewrite, then click ✦ or press ⌘J.")
-            if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
-            return
+            alert.informativeText = String(localized: "Select the words or lines to rewrite, then click ✦ again or press ⌘J.")
+            alert.addButton(withTitle: String(localized: "OK"))
+            guard let window else { return "ask: no window" }
+            alert.beginSheetModal(for: window)
+            return "ask: \(alert.messageText) · \(alert.informativeText)"
         }
         controller.beginRewrite()
+        return "rewrite sheet"
     }
 
     private func presentRewrite(_ request: RewriteRequest) {

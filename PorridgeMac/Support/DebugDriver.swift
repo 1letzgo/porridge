@@ -8,7 +8,8 @@ import SwiftData
 /// Commands: `page today|inbox|bowls|later|todos|chat|archive|trash|search`, `search-ask <text>`, `search-ask-key …`,
 /// `shot-ask <path.png>`, `shot-settings <path.png>`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
 /// `search <text>`, `dump`, `shot <path.png>`, `key <window title>` (orders a window front), `title <text>` / `body <text>` (types
-/// into the open note), `settings <tab>`.
+/// into the open note), `settings <tab>`, `settings-rows` (the open Settings tab's rows), `rewrite-bar` (✦ of the format bar,
+/// logging what it showed), `dismiss`. Commands also run while a menu or a modal alert is open.
 @MainActor
 enum DebugDriver {
     /// The file the commands are read from (one per line), and the file answers go to.
@@ -19,13 +20,17 @@ enum DebugDriver {
     static func start() {
         guard ProcessInfo.processInfo.environment["PORRIDGE_DEBUG_DRIVER"] != nil else { return }
         try? FileManager.default.removeItem(at: commandFile)
-        timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { _ in
+        let timer = Timer(timeInterval: 0.3, repeats: true) { _ in
             MainActor.assumeIsolated {
                 guard let text = try? String(contentsOf: commandFile, encoding: .utf8), !text.isEmpty else { return }
                 try? FileManager.default.removeItem(at: commandFile)
                 for line in text.split(separator: "\n") { run(String(line)) }
             }
         }
+        // In the common modes: commands still run while a menu is open or an alert runs modally (`dismiss`
+        // closes them), instead of waiting until someone clicks it away.
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     /// The window and its child panels (the results of Search or Ask, the toast) in one picture.
@@ -56,6 +61,14 @@ enum DebugDriver {
         } catch {
             log("shot: \(error.localizedDescription)")
         }
+    }
+
+    /// The visible texts of a view tree, in order.
+    static func texts(_ view: NSView) -> [String] {
+        var found: [String] = []
+        if let field = view as? NSTextField, !field.isHidden, !field.stringValue.isEmpty { found.append(field.stringValue) }
+        for sub in view.subviews where !sub.isHidden { found += texts(sub) }
+        return found
     }
 
     static func log(_ text: String) {
@@ -290,6 +303,19 @@ enum DebugDriver {
             content.cacheDisplay(in: content.bounds, to: bitmap)
             try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
             log("shot-settings: \(argument)")
+        case "settings-rows":
+            // The open Settings tab's form: every row's frame (hidden ones marked), to check its spacing.
+            guard let pane = (SettingsWindowController.shared.contentViewController as? NSTabViewController).flatMap({
+                $0.selectedTabViewItemIndex >= 0 ? $0.tabViewItems[$0.selectedTabViewItemIndex].viewController as? SettingsPane : nil
+            }) else { log("settings-rows: none"); break }
+            let grid = pane.form.grid
+            log("settings-rows: grid=\(grid.frame) fitting=\(grid.fittingSize) ambiguous=\(grid.hasAmbiguousLayout)")
+            for index in 0..<grid.numberOfRows {
+                let row = grid.row(at: index)
+                let views = (0..<grid.numberOfColumns).compactMap { row.cell(at: $0).contentView }
+                let text = views.flatMap(texts).first ?? String(describing: type(of: views.last ?? NSView()))
+                log("  \(index)\(row.isHidden ? " (hidden)" : "") \(text): \(views.map { "\($0.frame.integral)" }.joined(separator: " "))")
+            }
         case "search-ask":
             // `search-ask <text>`: ⌘K, then the text typed into the toolbar's field; the results hang below it.
             controller.debugSearchAsk(argument)
@@ -452,8 +478,20 @@ enum DebugDriver {
             all[index].performClick(nil)
             DispatchQueue.main.async { log("page=\(state.page) open=\(state.openNoteID.flatMap { library.note($0)?.title } ?? "none")") }
         case "dismiss":
-            // Closes the sheet on the window (a notice) with its first button.
-            if let window = controller.window, let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertFirstButtonReturn) }
+            // Closes the sheet on the window (a notice) with its first button, and an alert running modally.
+            if let window = controller.window, let sheet = window.attachedSheet {
+                log("dismiss: \(sheet.title.isEmpty ? (sheet.contentView.map(texts).map { $0.prefix(3).joined(separator: " · ") } ?? "sheet") : sheet.title)")
+                window.endSheet(sheet, returnCode: .alertFirstButtonReturn)
+            }
+            if NSApp.modalWindow != nil {
+                log("dismiss: modal \(NSApp.modalWindow?.title ?? "")")
+                NSApp.stopModal(withCode: .alertFirstButtonReturn)
+            }
+        case "rewrite-bar":
+            // ✦ of the open entry's format bar, as a click on it does; logs what it showed ("ask: …" is a sheet on
+            // the window, closed with `dismiss`).
+            guard let detail = controller.split.detail.noteDetail else { log("rewrite-bar: no entry"); return }
+            log("rewrite-bar: \(detail.debugRewriteFromBar())")
         case "seed-kinds":
             // One entry of every kind (`TestSeed.seedEntryKinds`); only on test data.
             guard DataLocation.testFolder != nil else { log("seed-kinds: test data only"); return }

@@ -85,10 +85,13 @@ final class SettingsTabController: NSTabViewController {
 
     func fitWindow(animated: Bool) {
         guard let window = view.window, selectedTabViewItemIndex >= 0,
-              let content = tabViewItems[selectedTabViewItemIndex].viewController?.view else { return }
+              let controller = tabViewItems[selectedTabViewItemIndex].viewController else { return }
+        let content = controller.view
         content.layoutSubtreeIfNeeded()
-        let size = content.fittingSize
+        let size = (controller as? SettingsPane)?.fittingContentSize ?? content.fittingSize
         guard size.height > 0 else { return }
+        // The tab controller sizes the window to this itself when a tab is chosen.
+        controller.preferredContentSize = size
         let target = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
         guard abs(target.height - window.frame.height) > 0.5 || abs(target.width - window.frame.width) > 0.5 else { return }
         var frame = window.frame
