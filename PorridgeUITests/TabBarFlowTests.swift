@@ -2,6 +2,7 @@ import XCTest
 
 /// Owner revision 5: "+" in the middle of the tab bar, Search | Chat in one tab, Open To-dos and the Weekly Review at
 /// the end of the Inbox, the gear in Today, the app always starting on Today, and a chat keyboard that goes away.
+/// Owner revision 6: "+" raised and bigger, in a middle slot of its own (`PlaceTabBar`).
 final class TabBarFlowTests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -21,44 +22,69 @@ final class TabBarFlowTests: XCTestCase {
         add(attachment)
     }
 
-    /// The big "+" lies on the tab bar's middle slot, and the bar is Today · Inbox · + · Bowls · Search.
+    /// The big "+" is the middle of the tab bar (Today · Inbox · + · Bowls · Search), taller than the bar and rising
+    /// above its top edge (owner revision 6); the tabs beside it end before it.
     func testPlusSitsOnTheMiddleOfTheTabBar() {
         let app = launch()
-        let slot = app.tabBars.buttons["Add"]
-        XCTAssertTrue(slot.waitForExistence(timeout: 30), "the middle slot is missing")
         let plus = app.addButton
-        XCTAssertTrue(plus.waitForExistence(timeout: 5) && plus.isHittable, "+ is not on screen")
-        let tabs = ["Today", "Inbox", "Add", "Bowls", "Search"].map { app.tabBars.buttons[$0] }
+        XCTAssertTrue(plus.waitForExistence(timeout: 30) && plus.isHittable, "+ is not on screen")
+        let tabs = ["Today", "Inbox", "Add", "Bowls", "Search"].map { app.tab($0) }
         XCTAssertTrue(tabs.allSatisfy(\.exists), "a tab is missing")
         let order = tabs.map(\.frame.midX)
         XCTAssertEqual(order, order.sorted(), "the tabs are not Today · Inbox · + · Bowls · Search")
-        XCTAssertEqual(plus.frame.midX, slot.frame.midX, accuracy: 3, "+ is not over the middle slot")
-        XCTAssertEqual(plus.frame.midY, slot.frame.midY, accuracy: 4, "+ is not on the bar's middle")
-        XCTAssertEqual(plus.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 3, "+ is not in the middle of the screen")
-        XCTAssertGreaterThanOrEqual(plus.frame.width, 44, "+ is no full touch target")
+        XCTAssertEqual(plus.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 2, "+ is not in the middle of the screen")
+        let inbox = app.tab("Inbox").frame
+        let bowls = app.tab("Bowls").frame
+        XCTAssertGreaterThanOrEqual(plus.frame.width, 56, "+ is not clearly the bar's biggest element")
+        XCTAssertGreaterThan(plus.frame.height, inbox.height, "+ is not taller than the bar's tabs")
+        XCTAssertLessThan(plus.frame.minY, inbox.minY - 6, "+ does not rise above the bar")
+        XCTAssertLessThan(plus.frame.maxY, app.windows.firstMatch.frame.maxY - 20, "+ reaches down to the screen's edge")
+        // The tabs (each as wide as its selection capsule) end before the circle.
+        XCTAssertLessThanOrEqual(inbox.maxX, plus.frame.minX - 4, "the Inbox's slot reaches under +")
+        XCTAssertGreaterThanOrEqual(bowls.minX, plus.frame.maxX + 4, "the Bowls slot reaches under +")
         // "+" is no tab: the place in front stays.
         app.openTab("Bowls")
         XCTAssertTrue(app.tapAddWhenHittable(), "+ did not open the Add sheet")
         app.buttons["Close"].tap()
         XCTAssertTrue(app.navigationBars["Add"].waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["Bowls"].isSelected, "+ changed the tab")
+        XCTAssertTrue(app.tab("Bowls").isSelected, "+ changed the tab")
     }
 
-    /// With a badge of three digits on the Inbox (and the Inbox chosen, its selection capsule drawn) "+" still sits
-    /// clear of them: a picture of the bar to look at (`SHOTS_DIR`).
+    /// With a badge of three digits on the Inbox (and each tab chosen once, its selection capsule drawn) "+" still
+    /// sits clear of them: pictures of the bar to look at (`SHOTS_DIR`).
     func testPlusLeavesRoomForAThreeDigitBadge() {
         let app = launch(["-emptyStore", "YES", "-seedInboxCount", "120"])
         app.openTab("Inbox")
-        XCTAssertTrue(app.tabBars.buttons["Inbox"].waitForExistence(timeout: 30))
-        let badge = app.tabBars.buttons["Inbox"].value as? String ?? ""
+        XCTAssertTrue(app.tab("Inbox").waitForExistence(timeout: 30))
+        let badge = app.tab("Inbox").value as? String ?? ""
         XCTAssertTrue(badge.contains("120"), "the Inbox has no three-digit badge: \(badge)")
         XCTAssertTrue(app.addButton.isHittable)
-        sleep(1)
-        let folder = shotsFolder(default: "/tmp/porridge-s10-shots")
-        if FileManager.default.fileExists(atPath: folder.path) {
-            let width = Int(app.windows.firstMatch.frame.width)
-            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: folder.appendingPathComponent("ios-tabbar-badge-120-\(width).png"))
+        XCTAssertLessThanOrEqual(app.tab("Inbox").frame.maxX, app.addButton.frame.minX - 4, "the Inbox's capsule reaches under +")
+        let folder = shotsFolder(default: "/tmp/porridge-s11-shots")
+        let suffix = ProcessInfo.processInfo.environment["SHOTS_SUFFIX"] ?? ""
+        for tab in ["Today", "Inbox", "Bowls", "Search"] {
+            app.openTab(tab)
+            XCTAssertTrue(app.tab(tab).isSelected, "\(tab) is not chosen")
+            sleep(1)
+            if FileManager.default.fileExists(atPath: folder.path) {
+                let width = Int(app.windows.firstMatch.frame.width)
+                try? XCUIScreen.main.screenshot().pngRepresentation
+                    .write(to: folder.appendingPathComponent("ios-tabbar-120-\(tab.lowercased())-\(width)\(suffix).png"))
+            }
         }
+    }
+
+    /// The last rows of a list stay reachable above the raised "+": the Inbox's end card scrolls clear of it.
+    func testTheInboxEndCardClearsThePlus() {
+        let app = launch(["-emptyStore", "YES", "-seedInboxCount", "30"])
+        app.openTab("Inbox")
+        let review = app.buttons["InboxWeeklyReview"]
+        for _ in 0..<20 where !(review.exists && review.isHittable) { app.swipeUp() }
+        app.swipeUp()
+        XCTAssertTrue(review.waitForExistence(timeout: 5) && review.isHittable, "the end card is not reachable")
+        XCTAssertLessThanOrEqual(review.frame.maxY, app.addButton.frame.minY, "the end card stays under +")
+        review.tap()
+        XCTAssertTrue(app.staticTexts["Weekly Review"].waitForExistence(timeout: 5), "Weekly Review did not open")
     }
 
     /// "+" of the tab bar opens the Add sheet into the Inbox from the Inbox, into the bowl from a bowl.
@@ -100,7 +126,7 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["TodayNextDay"].exists, "the gear pushed the day pager out of the bar")
         gear.tap()
         XCTAssertTrue(app.staticTexts["Settings"].waitForExistence(timeout: 5), "Settings did not open")
-        XCTAssertTrue(app.tabBars.buttons["Today"].isSelected, "Settings did not open on Today")
+        XCTAssertTrue(app.tab("Today").isSelected, "Settings did not open on Today")
         app.buttons["Back"].firstMatch.tap()
         XCTAssertTrue(app.buttons["TodayNextDay"].waitForExistence(timeout: 5), "back is not Today")
     }
@@ -115,12 +141,12 @@ final class TabBarFlowTests: XCTestCase {
         sleep(2)
         app.activate()
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 10), "coming back from the background left Bowls")
-        XCTAssertTrue(app.tabBars.buttons["Bowls"].isSelected)
+        XCTAssertTrue(app.tab("Bowls").isSelected)
         // A new launch: Today.
         app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["TodayNextDay"].waitForExistence(timeout: 30), "the app did not start on Today")
-        XCTAssertTrue(app.tabBars.buttons["Today"].isSelected, "the app did not start on Today")
+        XCTAssertTrue(app.tab("Today").isSelected, "the app did not start on Today")
         // A link still moves on from Today.
         app.open(URL(string: "porridge://bowls")!)
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 10), "a link did not win over Today")
@@ -144,7 +170,7 @@ final class TabBarFlowTests: XCTestCase {
         screenshot("inbox-end-card", app)
         todos.tap()
         XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "Open To-dos did not open")
-        XCTAssertTrue(app.tabBars.buttons["Inbox"].isSelected, "Open To-dos left the Inbox tab")
+        XCTAssertTrue(app.tab("Inbox").isSelected, "Open To-dos left the Inbox tab")
         app.buttons["Back"].firstMatch.tap()
         XCTAssertTrue(app.reveal(review), "Weekly Review missing after going back")
         review.tap()
@@ -195,7 +221,7 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
         let question = "worktop colour \(UUID().uuidString.prefix(4))"
         field.typeText(question)
-        app.buttons["ChatSend"].tap()
+        app.tapSendWhenAboveTheKeyboard()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), "sending left the keyboard over the answer")
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 10), "the question is not in the chat")
         _ = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'From your notes' OR label BEGINSWITH 'I found nothing'")).firstMatch.waitForExistence(timeout: 90)

@@ -58,7 +58,7 @@ final class SearchAskShotsTests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Confirm All'")).firstMatch.tap()
         shoot("chat-confirmed-toast")
 
-        app.buttons["All Chats"].firstMatch.tap()
+        app.openAllChats()
         shoot("chat-all-chats")
 
         app.openTab("Bowls")

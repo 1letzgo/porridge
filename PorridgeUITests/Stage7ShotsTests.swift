@@ -36,7 +36,7 @@ final class Stage7ShotsTests: XCTestCase {
         let done = app.buttons["WhatsNewDone"]
         // Small steps: a swipe flings the list past the card on a small screen, and "Got It" must end up above the
         // tab bar, not under it.
-        let tabBar = app.tabBars.firstMatch
+        let tabBar = app.placeTabBar
         func reachable() -> Bool {
             guard done.exists, done.isHittable else { return false }
             return !tabBar.exists || done.frame.maxY <= tabBar.frame.minY

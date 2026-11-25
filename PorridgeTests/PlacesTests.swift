@@ -115,19 +115,58 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(SearchSide(rawValue: "chat"), .chat, "the side kept in UserDefaults reads back")
     }
 
-    /// "+" fits the floating tab bar: whole on screen, inside the bar's height (its slots are 54 pt), and clear of the
-    /// neighbours' badges and selection capsule (about 21 pt from the middle at 375 pt), yet a full touch target and
-    /// clearly bigger than a tab symbol (about 26 pt).
+    /// The raised "+" (owner revision 6): about 64 pt (58 pt below 390 pt), taller than the bar (from 390 pt on) and
+    /// rising above its top edge, whole on screen, in a middle slot of its own, so the Inbox's selection capsule and a badge "120"
+    /// end before it, with the four tabs still wide enough for their names.
     func testTheTabBarPlusFitsTheBar() {
-        // The badge "120" ends 21 pt from the middle at 375 pt, 24 pt at 390 pt (measured): 3 pt or more stay free.
-        for (width, badge) in [(CGFloat(375), CGFloat(21)), (390, 24), (440, 24)] {
-            let diameter = TabBarAddButton.diameter(screenWidth: width)
-            XCTAssertGreaterThan(TabBarAddButton.centerFromBottom, diameter / 2, "the circle stays on screen")
-            XCTAssertLessThanOrEqual(diameter, 54, "taller than the bar")
-            XCTAssertLessThanOrEqual(diameter / 2 + 3, badge, "at \(width) pt it reaches under the Inbox's badge")
-            XCTAssertGreaterThanOrEqual(diameter, 26 * 1.38, "at \(width) pt it is not clearly bigger than a tab symbol")
+        for width in [CGFloat(375), 390, 402, 440] {
+            let layout = TabBarLayout(width: width)
+            let radius = layout.diameter / 2
+            XCTAssertEqual(layout.diameter, width < 390 ? 58 : 64, "at \(width) pt")
+            // Taller than the bar from 390 pt on; on the iPhone SE (58 pt) it still reaches above the bar's top edge.
+            if width >= 390 { XCTAssertGreaterThan(layout.diameter, TabBarLayout.height, "at \(width) pt it is not taller than the bar") }
+            XCTAssertGreaterThan(layout.circleTopFromBottom, TabBarLayout.bottomGap + TabBarLayout.height + 6, "at \(width) pt it does not rise above the bar")
+            XCTAssertGreaterThan(layout.circleCenterFromBottom - radius, 20, "at \(width) pt it reaches the screen's edge")
+            XCTAssertGreaterThanOrEqual(layout.capsuleEndFromCenter, radius + 8, "at \(width) pt the Inbox's capsule reaches under it")
+            XCTAssertGreaterThanOrEqual(layout.inboxBadgeEnd(width: TabBarLayout.threeDigitBadge), radius + 4, "at \(width) pt a badge 120 reaches under it")
+            XCTAssertGreaterThanOrEqual(layout.tabWidth, 60, "at \(width) pt the tabs are too narrow")
+            XCTAssertEqual(layout.slotCenter(2), 0)
+            XCTAssertEqual(layout.slotCenter(1), -layout.slotCenter(3), "the bar is not symmetric")
+            XCTAssertLessThanOrEqual(abs(layout.slotCenter(0)) + layout.tabWidth / 2 + TabBarLayout.padding, layout.barWidth / 2 + 0.5, "at \(width) pt the tabs leave the bar")
+            XCTAssertLessThanOrEqual(layout.barWidth + 2 * layout.margin, width + 0.5, "at \(width) pt the bar leaves the screen")
+            // The pages keep the bar and the circle free: the last rows stay reachable above it.
+            XCTAssertGreaterThanOrEqual(layout.contentInset, layout.circleTopFromBottom)
         }
-        XCTAssertGreaterThanOrEqual(TabBarAddButton.touchSize, 44, "not a full touch target")
+    }
+
+    /// The Bowls tab's three sides (owner revision 6), Bowls first.
+    func testTheBowlsTabHasThreeSides() {
+        XCTAssertEqual(BowlsSide.allCases, [.bowls, .archive, .deleted])
+        XCTAssertEqual(ListPage.archive.place, .bowls)
+        XCTAssertEqual(ListPage.trash.place, .bowls)
+    }
+
+    /// The Chat side's back pill: from a chat picked in All Chats back to the list, from any other chat and from All
+    /// Chats to the chat's start; New Chat starts an empty chat about the bowl it was opened from.
+    @MainActor
+    func testTheChatSideGoesBack() {
+        let navigation = ChatNavigation()
+        let id = UUID()
+        navigation.showsList = true
+        navigation.openFromList(id)
+        XCTAssertEqual(navigation.openID, id)
+        XCTAssertFalse(navigation.showsList)
+        navigation.back()
+        XCTAssertTrue(navigation.showsList, "back from a chat picked in All Chats is not the list")
+        navigation.back()
+        XCTAssertFalse(navigation.showsList)
+        XCTAssertNil(navigation.openID, "back from All Chats is not the chat's start")
+        navigation.open(from: "bowl-a", threads: [])
+        navigation.openID = id
+        navigation.back()
+        XCTAssertNil(navigation.openID, "back from a chat is not the chat's start")
+        XCTAssertFalse(navigation.showsList)
+        XCTAssertEqual(navigation.newScope, "bowl-a", "the new chat is not about the bowl")
     }
 
     func testTheChatLinkOpensTheChat() {

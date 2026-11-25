@@ -78,18 +78,25 @@ final class IntakeFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 90), "answer missing")
 
         // Asking about a bowl opens the Search tab on its Chat side.
-        XCTAssertTrue(app.tabBars.buttons["Search"].isSelected, "the chat did not open in the Search tab")
+        XCTAssertTrue(app.tab("Search").isSelected, "the chat did not open in the Search tab")
         XCTAssertEqual(app.searchSideShown, "Chat", "the chat did not open on the Chat side")
         // Kept: it is in the list of chats, and asking about the bowl again shows it.
-        app.buttons["All Chats"].tap()
+        // The bar: no list pill; New Chat while the conversation is open, the back pill to the chat's start.
+        XCTAssertFalse(app.buttons["All Chats"].exists, "the bar still has an All Chats pill")
+        XCTAssertTrue(app.buttons["ChatNewChat"].exists, "no New Chat while a conversation is open")
+        app.openAllChats()
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 5), "chat missing in the list of chats")
-        app.buttons["New Chat"].tap()
-        XCTAssertTrue(app.staticTexts["Ask Your Bowls"].waitForExistence(timeout: 5), "New Chat did not start an empty chat")
+        XCTAssertEqual(app.searchSideShown, "Chat", "All Chats left the Chat side")
+        app.buttons["Back"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Ask Your Bowls"].waitForExistence(timeout: 5), "back from All Chats did not go to the chat's start")
+        XCTAssertEqual(app.searchSideShown, "Chat", "back from All Chats left the Chat side")
         XCTAssertTrue(app.buttons.matching(identifier: "RecentChat").firstMatch.exists, "a new chat offers no recent chats")
         app.openTab("Bowls")
         askAboutTheBowl()
         XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 10), "the chat was not taken up again")
-        XCTAssertTrue(app.buttons["New Chat"].exists, "no way to start another chat")
+        XCTAssertTrue(app.buttons["ChatNewChat"].exists, "no way to start another chat")
+        app.buttons["ChatNewChat"].tap()
+        XCTAssertTrue(app.staticTexts["Ask Your Bowls"].waitForExistence(timeout: 5), "New Chat did not start an empty chat")
     }
 
     // MARK: Inbox work (stage 6)
@@ -156,7 +163,7 @@ final class IntakeFlowTests: XCTestCase {
         let counter = app.staticTexts["TriageCounter"]
         XCTAssertTrue(counter.waitForExistence(timeout: 5), "Triage did not open")
         XCTAssertTrue(counter.label.hasPrefix("Entry 1 of 10"), counter.label)
-        XCTAssertFalse(app.tabBars.firstMatch.isHittable, "the tab bar shows in Triage")
+        XCTAssertFalse(app.placeTabBar.exists && app.placeTabBar.isHittable, "the tab bar shows in Triage")
         XCTAssertFalse(app.addButton.exists && app.addButton.isHittable, "+ of the tab bar shows in Triage")
         XCTAssertTrue(app.staticTexts["Suggested bowl: Reading"].exists, "the suggestion is not named")
         screenshot("triage-first", app)
@@ -187,7 +194,7 @@ final class IntakeFlowTests: XCTestCase {
         }
         XCTAssertEqual(app.staticTexts["SelectionCount"].label, "3 Selected")
         XCTAssertTrue(app.buttons["SelectionMove"].exists, "no selection bar")
-        XCTAssertFalse(app.tabBars.firstMatch.isHittable, "the tab bar still shows while selecting")
+        XCTAssertFalse(app.placeTabBar.exists && app.placeTabBar.isHittable, "the tab bar still shows while selecting")
         XCTAssertFalse(app.addButton.exists && app.addButton.isHittable, "+ of the tab bar still shows while selecting")
         screenshot("inbox-selection-bar", app)
         app.buttons["SelectionMore"].tap()
@@ -203,7 +210,7 @@ final class IntakeFlowTests: XCTestCase {
         receipt.tap()
         XCTAssertTrue(app.staticTexts["Kind set to Receipt"].waitForExistence(timeout: 5), "setting the kind offers no Undo toast")
         app.buttons["Done"].firstMatch.tap()
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5) && app.tabBars.firstMatch.isHittable, "the tab bar did not come back")
+        XCTAssertTrue(app.placeTabBar.waitForExistence(timeout: 5) && app.placeTabBar.isHittable, "the tab bar did not come back")
         XCTAssertTrue(app.addButton.waitForExistence(timeout: 5) && app.addButton.isHittable, "+ did not come back with the tab bar")
     }
 }

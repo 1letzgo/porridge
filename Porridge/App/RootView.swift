@@ -9,10 +9,10 @@ struct RootView: View {
     var body: some View {
         // The three places as tabs (iPhone) or a split view (iPad); Settings is a page of the Bowls place.
         NotesView()
-            // The undo toast after deleting, moving or clearing something; above the tab bar.
+            // The undo toast after deleting, moving or clearing something; above the tab bar and its raised "+".
             .overlay(alignment: .bottom) {
                 UndoToastView()
-                    .padding(.bottom, sizeClass == .compact ? 62 : 16)
+                    .padding(.bottom, sizeClass == .compact ? 70 : 16)
             }
             // The progress of an export and what to do with the archive.
             .modifier(ExportSheetHost())

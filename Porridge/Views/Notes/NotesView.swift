@@ -92,6 +92,13 @@ struct NotesView: View {
     @State private var filterName = ""
     /// A long press on "+" made a note: the tap that ends it opens no Add sheet.
     @State private var plusLongPressed = false
+    /// The phone's tab bar (`PlaceTabBar`): the screen's width, its bottom safe area (the home indicator), and
+    /// whether a software keyboard is up.
+    @State private var screenWidth: CGFloat = 390
+    @State private var bottomSafeArea: CGFloat = 34
+    @State private var keyboardShown = false
+    /// The Bowls tab's side: Bowls, Archive or Deleted. Not kept: every launch starts on Bowls.
+    @State private var bowlsSide = BowlsSide.bowls
 
     /// The note that is open, a new one not saved yet included.
     private var selectedNote: Note? {
@@ -124,44 +131,68 @@ struct NotesView: View {
     }
 
     /// The places and the search as tabs, "+" in the middle: Today · Inbox · + · Bowls · Search. Each place has its own
-    /// stack, so it keeps where it was. "+" is no tab: choosing its slot opens the Add sheet and the tab in front stays;
-    /// a big round button (`TabBarAddButton`) is drawn over the slot.
+    /// stack, so it keeps where it was. "+" is no tab: it opens the Add sheet and the tab in front stays.
     private var tabs: some View {
-        TabView(selection: tabSelection) {
-            Tab("Today", systemImage: "calendar", value: TabSlot.place(.today)) { placeStack(.today) }
-                .badge(Places.todayCount(notes))
-                .accessibilityIdentifier("TabToday")
-            Tab("Inbox", systemImage: "tray.fill", value: TabSlot.place(.inbox)) { placeStack(.inbox) }
-                .badge(inboxCount)
-                .accessibilityIdentifier("TabInbox")
-            // No title: the circle drawn over the slot covers only its symbol, a title would show under it.
-            Tab("", systemImage: "plus", value: TabSlot.add) { Color.appBackground }
-                .accessibilityLabel("Add")
-                .accessibilityIdentifier("TabAdd")
-            Tab("Bowls", systemImage: "folder.fill", value: TabSlot.place(.bowls)) { placeStack(.bowls) }
-                .accessibilityIdentifier("TabBowls")
-            // A tab like the others (not the search role, which iOS sets apart at the edge): five even slots keep "+"
-            // in the middle of the bar.
-            Tab("Search", systemImage: "magnifyingglass", value: TabSlot.place(.search)) { placeStack(.search) }
-                .accessibilityIdentifier("TabSearch")
+        // The system's tab bar is hidden: its five even slots left no room for a big "+" (owner revision 6). The
+        // app's own bar (`PlaceTabBar`) lies over the bottom, and the pages keep its height free (lists scroll under
+        // it). While choosing several the selection bar takes its place; with the keyboard up the pages lose the
+        // room, and the keyboard covers the bar.
+        let layout = TabBarLayout(width: screenWidth)
+        let showsBar = !isSelecting
+        let room = showsBar && !keyboardShown ? max(0, layout.contentInset - bottomSafeArea) : 0
+        let selected = place
+        let badges: [Place: Int] = [.today: Places.todayCount(notes), .inbox: inboxCount]
+        return TabView(selection: $place) {
+            ForEach(Place.allCases, id: \.self) { shown in
+                Tab(shown.tabTitle, systemImage: shown.tabSymbol, value: shown) {
+                    placeStack(shown)
+                        .toolbar(.hidden, for: .tabBar)
+                }
+            }
+        }
+        // Each page of the stacks keeps it free (`keepsTabBarRoom`): a padding of the whole stack does not reach
+        // the pages of a `NavigationStack`.
+        .environment(\.tabBarRoom, room)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { screenWidth = $0 }
+        // The home indicator's room (the pages' own room for the bar is added inside the tabs, so it is not in here);
+        // a keyboard's height is not taken.
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { inset in
+            if inset < 60 { bottomSafeArea = inset }
         }
         .overlay(alignment: .bottom) {
-            // Hidden with the tab bar (the selection bar takes its place); Triage and the sheets cover it anyway.
-            if !isSelecting {
-                TabBarAddButton(onTap: { tapAdd() }, onLongPress: { longPressAdd() })
-                    .transition(.opacity)
+            // Counted from the screen's bottom edge; the keyboard covers the bar instead of lifting it.
+            if showsBar {
+                PlaceTabBar(
+                    layout: layout, selection: selected, badges: badges,
+                    onSelect: { chooseTab($0) },
+                    onAdd: { tapAdd() },
+                    onAddLongPress: { longPressAdd() }
+                )
+                .padding(.bottom, TabBarLayout.bottomGap)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .ignoresSafeArea()
+                .transition(.opacity)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let screen = UIScreen.main.bounds
+            // A software keyboard on screen; a hardware keyboard's shortcut bar alone does not count.
+            keyboardShown = frame.minY < screen.maxY - 120 && frame.height > 120
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardShown = false
         }
     }
 
-    /// The tab bar's choice: a place, or the slot of "+", which opens the Add sheet and keeps the place in front.
-    private var tabSelection: Binding<TabSlot> {
-        Binding(get: { .place(place) }, set: { slot in
-            switch slot {
-            case .place(let chosen): place = chosen
-            case .add: tapAdd()
-            }
-        })
+    /// A tab of the bar: its place comes to the front; the one in front goes back to its start (as with the system's
+    /// tab bar).
+    private func chooseTab(_ chosen: Place) {
+        if chosen == place {
+            if !(paths[chosen] ?? []).isEmpty { paths[chosen] = [] }
+        } else {
+            place = chosen
+        }
     }
 
     private var inboxCount: Int {
@@ -192,6 +223,7 @@ struct NotesView: View {
     private func noteView(_ note: Note, onBack: (() -> Void)?) -> some View {
         NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id, onBack: onBack)
             .id(note.id)
+            .keepsTabBarRoom()
             .environment(\.openNote, { openNote($0) })
             .environment(\.askAboutBowl, { askAbout($0) })
             .environment(\.allNotes, notes)
@@ -205,15 +237,27 @@ struct NotesView: View {
     }
 
     /// Goes to a page: a place's own page brings its tab to the front at its start; the chat is the Search tab on its
-    /// Chat side; any other page is pushed onto the stack it belongs to (Open To-dos onto the Inbox, a bowl, a smart
-    /// filter, Archive, Recently Deleted and Settings onto Bowls; Settings onto Today when Today is in front, from its
-    /// gear), or the stack is taken back to it when it is on it already.
+    /// Chat side, Archive and Recently Deleted the Bowls tab on its Archive or Deleted side; any other page is pushed
+    /// onto the stack it belongs to (Open To-dos onto the Inbox, a bowl, a smart filter and Settings onto Bowls;
+    /// Settings onto Today when Today is in front, from its gear), or the stack is taken back to it when it is on it
+    /// already.
     private func go(_ target: ListPage) {
-        // Search and Chat are the two sides of one place.
+        // Search and Chat are the two sides of one place; Bowls, Archive and Recently Deleted the three of another.
         var target = target
-        if target == .chat || target == .search {
+        switch target {
+        case .chat, .search:
             searchSide = target == .chat ? .chat : .search
             target = .search
+        case .bowls:
+            bowlsSide = .bowls
+        case .archive:
+            bowlsSide = .archive
+            target = .bowls
+        case .trash:
+            bowlsSide = .deleted
+            target = .bowls
+        default:
+            break
         }
         if sizeClass != .compact {
             // iPad: one stack in the sidebar with the Bowls place at its root.
@@ -535,39 +579,17 @@ struct NotesView: View {
             pageContent(shown)
         }
         .background(Color.appBackground)
+        .keepsTabBarRoom()
         .navigationTitle(listTitle(shown))
         // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
         .toolbar(.hidden, for: .navigationBar)
-        // While choosing several entries the selection bar takes the tab bar's place.
-        .toolbar(isSelecting && shown == page ? .hidden : .automatic, for: .tabBar)
     }
 
     @ViewBuilder
     private func pageContent(_ shown: ListPage) -> some View {
         switch shown {
         case .bowls:
-            BowlsPlace(
-                notes: notes, projects: projects, order: bowlOrder, showsPlaces: sizeClass != .compact,
-                onOpen: { go($0) },
-                onNewBowl: { showNewProject = true },
-                onRename: { project in
-                    projectName = project.name
-                    renamingProject = project
-                },
-                onDelete: { deletingProject = $0 },
-                onSelect: { project in
-                    go(.project(project.id))
-                    Task { withAnimation(.snappy) { isSelecting = true } }
-                },
-                onAsk: { askAbout(Projects.key($0)) },
-                onNewSmartFilter: { smartFilterDraft = .new(from: SmartFilterCriteria()) },
-                onEditFilter: { smartFilterDraft = .edit($0) },
-                onRenameFilter: { filter in
-                    filterName = filter.name
-                    renamingFilter = filter
-                },
-                onDeleteFilter: { deletingFilter = $0 }
-            )
+            bowlsPlace
         case .project:
             if let project = project(on: shown) {
                 ProjectPage(
@@ -618,6 +640,57 @@ struct NotesView: View {
         case .acknowledgements:
             AcknowledgementsView()
         }
+    }
+
+    /// The Bowls tab: a switch "Bowls · Archive · Deleted" on top (like the Inbox's New / Later, with counts), then
+    /// the bowls with the smart filters, the archived bowls, or Recently Deleted. Every launch starts on Bowls.
+    private var bowlsPlace: some View {
+        let active = HomeList.bowls(projects, notes: notes, order: bowlOrder).count
+        let archived = HomeList.archivedProjects(projects).count
+        let deleted = notes.lazy.filter(\.isDeleted).count
+        return VStack(spacing: 0) {
+            TabSwitcher(selection: $bowlsSide, options: [
+                (value: BowlsSide.bowls, title: String(localized: "Bowls \(active)")),
+                (value: BowlsSide.archive, title: String(localized: "Archive \(archived)")),
+                (value: BowlsSide.deleted, title: String(localized: "Deleted \(deleted)")),
+            ])
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+            .accessibilityIdentifier("BowlsSide")
+            switch bowlsSide {
+            case .bowls:
+                bowlsList
+            case .archive:
+                archive
+            case .deleted:
+                trash
+            }
+        }
+    }
+
+    private var bowlsList: some View {
+        BowlsPlace(
+            notes: notes, projects: projects, order: bowlOrder, showsPlaces: sizeClass != .compact,
+            onOpen: { go($0) },
+            onNewBowl: { showNewProject = true },
+            onRename: { project in
+                projectName = project.name
+                renamingProject = project
+            },
+            onDelete: { deletingProject = $0 },
+            onSelect: { project in
+                go(.project(project.id))
+                Task { withAnimation(.snappy) { isSelecting = true } }
+            },
+            onAsk: { askAbout(Projects.key($0)) },
+            onNewSmartFilter: { smartFilterDraft = .new(from: SmartFilterCriteria()) },
+            onEditFilter: { smartFilterDraft = .edit($0) },
+            onRenameFilter: { filter in
+                filterName = filter.name
+                renamingFilter = filter
+            },
+            onDeleteFilter: { deletingFilter = $0 }
+        )
     }
 
     /// The last tab: a switch "Search | Chat" on top (like the Inbox's New / Later; it keeps the side last chosen),
@@ -1001,7 +1074,12 @@ struct NotesView: View {
                 barAddButton
             }
         case .bowls:
-            bowlSortMenu
+            // Sort applies to the bowls; Recently Deleted has Delete All.
+            switch bowlsSide {
+            case .bowls: bowlSortMenu
+            case .archive: EmptyView()
+            case .deleted: deleteAllButton
+            }
             settingsButton
             barAddButton
         case .project:
@@ -1040,14 +1118,17 @@ struct NotesView: View {
             .help("New To-do")
             .accessibilityIdentifier("TodosAdd")
         case .trash:
-            if notes.contains(where: \.isDeleted) {
-                Button(role: .destructive) { confirmEmptyTrash = true } label: {
-                    Label("Delete All", systemImage: "trash")
-                }
-            }
+            deleteAllButton
         case .search, .chat:
             if searchSide == .chat {
-                ChatBarActions(navigation: chatNavigation)
+                // While a conversation is open: a new chat (back to the chat's start is the back pill).
+                if chatNavigation.openID != nil, !chatNavigation.showsList {
+                    Button { withAnimation(.snappy) { chatNavigation.startNew() } } label: {
+                        Label("New Chat", systemImage: "square.and.pencil")
+                    }
+                    .help("New Chat")
+                    .accessibilityIdentifier("ChatNewChat")
+                }
             } else if hasQuery {
                 // What was searched for, kept as a smart filter.
                 Button {
@@ -1121,6 +1202,18 @@ struct NotesView: View {
             .help("Add")
             .accessibilityIdentifier("PlaceAdd")
             .accessibilityAction(named: "New Note") { addNote() }
+        }
+    }
+
+    /// Recently Deleted (the Bowls tab's Deleted side): everything in it goes for good, after asking.
+    @ViewBuilder
+    private var deleteAllButton: some View {
+        if notes.contains(where: \.isDeleted) {
+            Button(role: .destructive) { confirmEmptyTrash = true } label: {
+                Label("Delete All", systemImage: "trash")
+            }
+            .help("Delete All")
+            .accessibilityIdentifier("TrashDeleteAll")
         }
     }
 
@@ -1244,7 +1337,7 @@ struct NotesView: View {
         case .todos: "Open To-dos"
         case .today: todayDay.map { TodayDay.title($0) } ?? "Today"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Smart Filter"
-        case .chat, .search: searchSide == .chat ? "Chat" : "Search"
+        case .chat, .search: "Search"
         case .archive: "Archive"
         case .trash: "Recently Deleted"
         case .settings: "Settings"
@@ -1267,7 +1360,12 @@ struct NotesView: View {
     }
 
     /// The back pill of the bar: on every page above the place's own (on an iPad above the Bowls place).
+    /// On the Chat side an open conversation and All Chats have one too: back to All Chats when the conversation was
+    /// opened from it, else to the chat's start.
     private func barBack(_ shown: ListPage) -> (() -> Void)? {
+        if shown == .search || shown == .chat, searchSide == .chat, chatNavigation.openID != nil || chatNavigation.showsList {
+            return { withAnimation(.snappy) { chatNavigation.back() } }
+        }
         let isRoot = sizeClass == .compact ? Place(root: shown) != nil : shown == .bowls
         guard !isRoot else { return nil }
         return { if !currentPath.isEmpty { paths[activePlace]?.removeLast() } }
@@ -1282,7 +1380,7 @@ struct NotesView: View {
         case .todos: "checklist"
         case .today: "calendar"
         case .smartFilter: "line.3.horizontal.decrease"
-        case .chat, .search: searchSide == .chat ? "bubble.left.and.bubble.right.fill" : "magnifyingglass"
+        case .chat, .search: "magnifyingglass"
         case .archive: "archivebox.fill"
         case .trash: "trash.fill"
         case .settings: "gearshape.fill"
@@ -1767,6 +1865,11 @@ enum SearchSide: String, CaseIterable {
     static let key = "searchSide"
 }
 
+/// The three sides of the Bowls tab, switched at its top; every launch starts on Bowls.
+enum BowlsSide: String, CaseIterable {
+    case bowls, archive, deleted
+}
+
 /// What the list column shows.
 enum ListPage: Hashable {
     /// Today: the day's appointments with their entries and the to-dos due (`TodayPage`). A place.
@@ -1813,6 +1916,9 @@ enum ListPage: Hashable {
 }
 
 extension EnvironmentValues {
+    /// What the phone's tab bar (`PlaceTabBar`) and its raised "+" take at the bottom of a page, above the home
+    /// indicator; 0 where there is no such bar, while choosing several and with the keyboard up.
+    @Entry var tabBarRoom: CGFloat = 0
     /// Goes to another page of the list column; for the subpages of Settings.
     @Entry var openListPage: (ListPage) -> Void = { _ in }
     /// Opens a note by its id; for the way from a to-do back to the note it was made from.
@@ -1823,6 +1929,22 @@ extension EnvironmentValues {
     @Entry var allNotes: [Note] = []
     /// The list shows only open to-dos (Today): a to-do ticked done leaves it, so the tick offers Undo.
     @Entry var ticksLeaveList = false
+}
+
+extension View {
+    /// Keeps the room of the phone's tab bar free at the bottom of a page: lists and scroll views scroll under the
+    /// bar, their last rows (and the chat's field) end above it.
+    func keepsTabBarRoom() -> some View {
+        modifier(TabBarRoomPadding())
+    }
+}
+
+private struct TabBarRoomPadding: ViewModifier {
+    @Environment(\.tabBarRoom) private var room
+
+    func body(content: Content) -> some View {
+        content.safeAreaPadding(.bottom, room)
+    }
 }
 
 /// Opens the entry of a `porridge://entry/<UUID>` link (`EntryLinkRouter`), now or once the list is on screen.

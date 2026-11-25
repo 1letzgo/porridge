@@ -1,9 +1,9 @@
 import SwiftData
 import SwiftUI
 
-/// Bowls, the third place: every bowl (pinned first, then "All Bowls" in the order of Sort Bowls By, no limit),
-/// then the smart filters with "New Smart Filter…", then Archive and Recently Deleted. The last three are always
-/// there, "Empty" when they are. On an iPad (the sidebar has no tab bar) the other places come first.
+/// Bowls, the third place, on the Bowls side of its switch (Bowls · Archive · Deleted, `BowlsSide`): every bowl
+/// (pinned first, then "All Bowls" in the order of Sort Bowls By, no limit), then the smart filters with "New Smart
+/// Filter…", always there. On an iPad (the sidebar has no tab bar) the other places come first.
 struct BowlsPlace: View {
     let notes: [Note]
     let projects: [NoteFolder]
@@ -27,8 +27,6 @@ struct BowlsPlace: View {
         let pinned = bowls.filter(\.isPinned)
         let others = bowls.filter { !$0.isPinned }
         let contents = ProjectContent.byProject(notes)
-        let archived = HomeList.archivedProjects(projects).count
-        let deleted = notes.lazy.filter(\.isDeleted).count
         let filters = SmartFilterStore.shared.filters
         List {
             if showsPlaces {
@@ -97,26 +95,6 @@ struct BowlsPlace: View {
             } header: {
                 ListHeader(title: String(localized: "Smart Filters"), tint: .brandNavy)
             }
-            Section {
-                PlaceLinkRow(
-                    title: String(localized: "Archive"),
-                    subtitle: archived == 0 ? String(localized: "Empty") : archived == 1 ? String(localized: "1 bowl") : String(localized: "\(archived) bowls"),
-                    systemImage: "archivebox.fill", tint: .brandNavy, count: archived
-                ) { onOpen(.archive) }
-                .accessibilityIdentifier("BowlsArchive")
-                PlaceLinkRow(
-                    title: String(localized: "Recently Deleted"),
-                    subtitle: deleted == 0 ? String(localized: "Empty")
-                        : deleted == 1 ? String(localized: "1 entry · deleted after \(NoteStore.trashDays) days")
-                        : String(localized: "\(deleted) entries · deleted after \(NoteStore.trashDays) days"),
-                    systemImage: "trash.fill", tint: .red, count: deleted
-                ) { onOpen(.trash) }
-                .lastInSection(true)
-                .accessibilityIdentifier("BowlsRecentlyDeleted")
-            } header: {
-                Rectangle().fill(Look.hairline).frame(height: 0.5)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 4, trailing: 20))
-            }
         }
         .cardList()
     }
@@ -137,7 +115,7 @@ struct BowlsPlace: View {
     }
 }
 
-/// A fixed row that leads somewhere (Archive, Recently Deleted, Open To-dos, Weekly Review, New Smart Filter…): a
+/// A fixed row that leads somewhere (the places on an iPad, New Smart Filter…): a
 /// symbol in its color, the name, a line about what is there and how many.
 struct PlaceLinkRow: View {
     let title: String

@@ -757,6 +757,54 @@ the tab bar, the Chat tab, Today's fixed rows and "+" in the bars in the stages 
   row now use the Search tab's side, "+" of the tab bar and the Inbox card. `Revision5ShotsTests` →
   /tmp/porridge-s10-shots.
 
+**As built (owner revision 6, 2026-11-25, after the owner looked at revision 5 on his iPhone):** three iPhone
+changes; the notes on the tab bar's "+", the Bowls place's last rows and the Chat side's bar above are historical.
+
+- **The raised "+".** The system's floating tab bar gives its five slots the same width and draws the selection
+  capsule wider than a slot (the Inbox's capsule ended 25 pt from the middle at 390 pt, a badge "120" 24 pt), and it
+  ignores `itemPositioning`/`itemWidth` (tried). So the bar is drawn by the app now: `PlaceTabBar` (a glass capsule
+  on iOS 26 and later, `.bar` material before) over the bottom of the `TabView`, whose own bar is hidden
+  (`.toolbar(.hidden, for: .tabBar)` on each tab's stack). `TabBarLayout` sets it out: bar 62 pt high, 21 pt above
+  the screen's bottom edge, 20 pt from the sides (14 pt below 390 pt, at most 420 pt wide); the middle slot is the
+  circle and 14 pt (13 pt) on each side, the four tabs share the rest (63 pt at 390 pt, 64 pt at 375 pt). The circle
+  (`TabBarAddButton`) is 64 pt (58 pt below 390 pt), rises 12 pt (10 pt) above the bar's top edge, sky to a deeper
+  sky (`#0D99DB`) top to bottom, navy "+" at 42 % of the circle, a white 35 % rim and a soft blue shadow. A badge
+  starts 2 pt right of its symbol's middle and grows toward the middle slot; "120" ends 8 pt before the circle at
+  390 and 375 pt, the Inbox's capsule (as wide as its slot) 14 pt (13 pt) before it. Tabs: symbol 22 pt, name 10 pt
+  semibold, chosen tab in the accent color on a soft capsule; fixed at every text size (`.dynamicTypeSize(.large)`),
+  large content viewer for each tab and "+"; VoiceOver: "Today"/"Inbox" with the badge as value, selected trait,
+  ids `TabToday`… and `PlaceAdd` as before, the bar `PlaceTabBar` (the `isTabBar` trait does not make it an
+  `XCUIElement` tab bar, so the UI tests use `app.tab(_:)` and `app.placeTabBar`). Tapping the tab in front takes
+  its stack back to its start (as the system bar did). The pages keep 101 pt (99 pt) from the screen's bottom edge
+  free (`safeAreaPadding`, the window's own safe area subtracted), so lists scroll under the bar and the last rows
+  and the Inbox's end card are reachable above the circle; with a software keyboard up (`keyboardWillChangeFrame`)
+  that room goes and the keyboard covers the bar, as before. While choosing several the bar is gone (the selection
+  bar takes its place); Triage, sheets cover it. Deviation: on the iPhone SE the 58 pt circle is 4 pt lower than the
+  62 pt bar; it is "taller" in that it reaches 10 pt above the bar's top edge.
+- **Bowls · Archive · Deleted.** A `TabSwitcher` (the Inbox's component: segments, capsules at AX sizes) on top of
+  the Bowls tab, `BowlsSide` as `@State` (every launch on Bowls; kept while the app runs), counts in every segment
+  ("Bowls 8", "Archive 1", "Deleted 11"). Bowls: Pinned, All Bowls, Smart Filters as before (`BowlsPlace` lost its
+  Archive and Recently Deleted rows). Archive: the archived bowls ("Nothing Archived" when empty). Deleted: Recently
+  Deleted with "Notes are deleted after 30 days.", its rows' actions, "Delete All" in the bar (`TrashDeleteAll`).
+  The bar: Sort only on Bowls, the gear on all three. `go(.archive)` / `go(.trash)` select the Bowls tab and that side
+  (the Go To rows of the search), `go(.bowls)` the Bowls side. "+" there adds to the Inbox (no bowl is
+  open). The iPad's sidebar has the same switch.
+- **Search tab, Chat side.** The bar's title and square stay "Search" on both sides. The list pill (All Chats / Back
+  to Chat) and `ChatBarActions` are gone. While a conversation is open the bar has a back pill and "New Chat"
+  (`ChatNewChat`); back goes to All Chats when the chat was picked there (`ChatNavigation.returnsToList`), else to the
+  chat's start; All Chats has a back pill to the start. All Chats is reached from the Recent Chats card (shown at the
+  start whenever a chat is stored) and the Go To row; the tab stays on its Chat side all the way.
+- Texts: the onboarding's Bowls line (iPhone) says "the switch on top shows the Archive and Recently Deleted"; What's
+  New names nothing removed and is unchanged; DESIGN.md. Mac: no change.
+- Tests: unit `PlacesTests` (`testTheTabBarPlusFitsTheBar` on `TabBarLayout` at 375/390/402/440 pt: size, rise, on
+  screen, capsule and badge "120" clear of the circle, tabs at least 60 pt; `testTheBowlsTabHasThreeSides`,
+  `testTheChatSideGoesBack`); UI `TabBarFlowTests` (`testPlusSitsOnTheMiddleOfTheTabBar`: order, centred, taller than
+  the tabs and above them, Inbox and Bowls slots end before it; `testPlusLeavesRoomForAThreeDigitBadge`: each tab
+  chosen with "120", pictures; `testTheInboxEndCardClearsThePlus`), `Revision6FlowTests` (the three sides, Sort and
+  Delete All, "+" into the Inbox, kept while running and Bowls after a cold launch; Go To Archive / Recently Deleted;
+  the Chat side's back, All Chats and New Chat), `Revision6ShotsTests` → /tmp/porridge-s11-shots. Tests that tapped
+  the Archive / Recently Deleted rows or the bar's All Chats now use `app.bowlsSide(_:)` and `app.openAllChats()`.
+
 ---
 
 ## What gets removed (summary)

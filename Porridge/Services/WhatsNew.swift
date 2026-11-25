@@ -69,7 +69,7 @@ enum WhatsNew {
                          text: String(localized: "Everything new lands here first, until it is filed into a bowl. At its end: Open To-dos and the Weekly Review."))
         let bowls = Item(symbol: "folder.fill", title: String(localized: "Bowls"), text: mac
             ? String(localized: "One bowl per topic, the smart filters, Archive and Recently Deleted.")
-            : String(localized: "One bowl per topic, the smart filters, Archive, Recently Deleted and Settings."))
+            : String(localized: "One bowl per topic and the smart filters; the switch on top shows the Archive and Recently Deleted."))
         if mac {
             return [
                 today, inbox, bowls,

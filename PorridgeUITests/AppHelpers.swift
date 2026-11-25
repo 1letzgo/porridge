@@ -72,9 +72,55 @@ extension XCUIApplication {
             searchSide("Chat")
             return
         }
-        let tab = tabBars.buttons[name].exists ? tabBars.buttons[name] : buttons[name].firstMatch
-        XCTAssertTrue(tab.waitForExistence(timeout: 30), "tab \(name) missing")
-        tab.tap()
+        let button = tab(name)
+        XCTAssertTrue(button.waitForExistence(timeout: 30), "tab \(name) missing")
+        button.tap()
+    }
+
+    /// The app's tab bar (`PlaceTabBar`: drawn by the app since owner revision 6, not a system tab bar).
+    var placeTabBar: XCUIElement {
+        descendants(matching: .any).matching(identifier: "PlaceTabBar").firstMatch
+    }
+
+    /// A tab of the app's tab bar by its name: Today, Inbox, Bowls, Search ("Add" is "+" in its middle).
+    func tab(_ name: String) -> XCUIElement {
+        name == "Add" ? buttons["PlaceAdd"] : buttons["Tab" + name]
+    }
+
+    /// The chat's Send, once the field has risen above the keyboard (it moves while the keyboard comes in).
+    func tapSendWhenAboveTheKeyboard() {
+        let send = buttons["ChatSend"]
+        let keyboard = keyboards.firstMatch
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline, keyboard.exists, send.exists, send.frame.maxY > keyboard.frame.minY + 1 { usleep(200_000) }
+        send.tap()
+    }
+
+    /// All Chats on the Chat side: from an open conversation the bar's back pill goes to the chat's start, whose
+    /// Recent Chats card leads to All Chats (owner revision 6: no list pill in the bar any more).
+    func openAllChats() {
+        let all = buttons["RecentAllChats"]
+        for _ in 0..<2 where !all.waitForExistence(timeout: 2) {
+            let back = buttons["Back"].firstMatch
+            if back.exists { back.tap() }
+        }
+        XCTAssertTrue(all.waitForExistence(timeout: 5), "All Chats missing in Recent Chats")
+        all.tap()
+    }
+
+    /// The side of the Bowls tab's switch (Bowls, Archive or Deleted; their labels carry a count): a segmented
+    /// control, or capsules with the largest text sizes. Returns the segment.
+    @discardableResult
+    func bowlsSide(_ name: String) -> XCUIElement {
+        let predicate = NSPredicate(format: "label BEGINSWITH %@", name + " ")
+        let control = segmentedControls["BowlsSide"]
+        let barTop = placeTabBar.exists ? placeTabBar.frame.minY : .greatestFiniteMagnitude
+        let side = control.waitForExistence(timeout: 5) ? control.buttons.matching(predicate).firstMatch
+            : buttons.matching(predicate).allElementsBoundByIndex.first { $0.exists && $0.isHittable && $0.frame.maxY < barTop }
+                ?? buttons.matching(predicate).firstMatch
+        XCTAssertTrue(side.waitForExistence(timeout: 10), "Bowls · Archive · Deleted has no \(name)")
+        if !side.isSelected { side.tap() }
+        return side
     }
 
     /// The side of the Search tab's switch (Search or Chat): a segmented control, or capsules with the largest text
@@ -82,7 +128,7 @@ extension XCUIApplication {
     func searchSide(_ name: String) {
         let control = segmentedControls["SearchSide"]
         // With the largest text sizes: capsules, above the tab bar (whose "Search" has the same label).
-        let barTop = tabBars.firstMatch.exists ? tabBars.firstMatch.frame.minY : .greatestFiniteMagnitude
+        let barTop = placeTabBar.exists ? placeTabBar.frame.minY : .greatestFiniteMagnitude
         let side = control.waitForExistence(timeout: 5) ? control.buttons[name]
             : buttons.matching(NSPredicate(format: "label == %@", name)).allElementsBoundByIndex
                 .first { $0.exists && $0.isHittable && $0.frame.maxY < barTop }

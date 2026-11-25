@@ -9,6 +9,8 @@ final class ChatNavigation {
     /// The chat that shows; nil is a new one that is not kept until its first question.
     var openID: UUID?
     var showsList = false
+    /// The open chat was picked in All Chats: going back returns there.
+    var returnsToList = false
     /// What a new chat is about (`Projects.key`); nil is all notes.
     var newScope: String?
     /// The bowl the chat was opened from: a new chat is about it.
@@ -19,6 +21,7 @@ final class ChatNavigation {
         self.project = project
         newScope = project
         showsList = false
+        returnsToList = false
         openID = threads.first { $0.projectID == project }?.id
     }
 
@@ -26,6 +29,25 @@ final class ChatNavigation {
         openID = nil
         newScope = project
         showsList = false
+        returnsToList = false
+    }
+
+    /// All Chats, picked: that chat opens; going back returns to the list.
+    func openFromList(_ id: UUID) {
+        openID = id
+        showsList = false
+        returnsToList = true
+    }
+
+    /// The back pill on the Chat side: from a chat picked in All Chats back to the list, from any other chat and
+    /// from All Chats to the chat's start (a new chat with the recent ones).
+    func back() {
+        if openID != nil, !showsList, returnsToList {
+            returnsToList = false
+            showsList = true
+        } else {
+            startNew()
+        }
     }
 }
 
@@ -49,8 +71,7 @@ struct ChatPage: View {
         Group {
             if navigation.showsList {
                 ChatList(threads: threads, projects: projects, openID: navigation.openID) { thread in
-                    navigation.openID = thread.id
-                    navigation.showsList = false
+                    navigation.openFromList(thread.id)
                 } onDelete: { thread in
                     deleting = thread
                 }
@@ -86,29 +107,6 @@ struct ChatPage: View {
         ChatDeletion.delete(thread, in: context)
         if navigation.openID == id { navigation.openID = nil }
         deleting = nil
-    }
-}
-
-/// The buttons of the chat page's bar: the list of all chats and a new chat.
-struct ChatBarActions: View {
-    @Bindable var navigation: ChatNavigation
-    @Query private var threads: [ChatThread]
-
-    var body: some View {
-        if !threads.isEmpty {
-            Button { withAnimation(.snappy) { navigation.showsList.toggle() } } label: {
-                Label(navigation.showsList ? "Back to Chat" : "All Chats", systemImage: navigation.showsList ? "bubble.left.and.text.bubble.right" : "list.bullet")
-            }
-            .accessibilityLabel(navigation.showsList ? "Back to Chat" : "All Chats")
-            .help(navigation.showsList ? "Back to Chat" : "All Chats")
-        }
-        if navigation.openID != nil || navigation.showsList {
-            Button { navigation.startNew() } label: {
-                Label("New Chat", systemImage: "square.and.pencil")
-            }
-            .accessibilityLabel("New Chat")
-            .help("New Chat")
-        }
     }
 }
 
