@@ -5,7 +5,7 @@ import SwiftData
 /// Lets a developer drive the app from the command line in a debug build, for checking the interface without
 /// clicking: with PORRIDGE_DEBUG_DRIVER set, commands written to `commandFile` are run. Not part of release builds.
 ///
-/// Commands: `page today|inbox|bowls|later|todos|chat|archive|trash|search`, `search-ask <text>`, `search-ask-key …`,
+/// Commands: `page today|inbox|bowls|todos|chat|archive|trash|search`, `search-ask <text>`, `search-ask-key …`,
 /// `shot-ask <path.png>`, `shot-settings <path.png>`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
 /// `search <text>`, `dump`, `shot <path.png>`, `key <window title>` (orders a window front), `title <text>` / `body <text>` (types
 /// into the open note), `settings <tab>`, `settings-rows` (the open Settings tab's rows), `rewrite-bar` (✦ of the format bar,
@@ -95,7 +95,6 @@ enum DebugDriver {
             case "todos": state.page = .todos
             case "today": state.page = .today
             case "bowls": state.page = .bowls
-            case "later": state.page = .inbox; state.showsLater = true
             case "archive": state.page = .archive
             case "trash": state.page = .trash
             case "search": state.page = .search

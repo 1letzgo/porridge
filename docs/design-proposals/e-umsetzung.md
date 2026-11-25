@@ -865,6 +865,30 @@ einem Termin ein anderer Eintrag verknüpft ist, rücke ihn ein, analog der Logi
   pages have no search of their own. Inbox and Today unchanged. Test:
   `AppointmentLinkTests.testABowlListsItsAppointmentsAmongTheEntriesWithTheirEntriesUnderThem`.
 
+**As built (owner revision 9, 2026-11-25):** owner: "zeige in den reitern kein 0 an. nur wenn wert vorhanden. wir
+brauchen kein later in inbox. dinge bleiben solange dort bis zugeordnet", then "packe stattdessen open todos als todos
+in das register. weekly reviews als button auf home in navbar".
+
+- **No "0" on a switch, segment or chip** (`Places.countedTitle`): Bowls · Archive · Deleted ("Archive", "Deleted
+  27"), the Inbox's New · To-dos (iPhone and Mac), a bowl's filter chips (iPhone `ProjectPage.chip`, Mac
+  `ListHeaderView.filterPill`). The tab bar's badges and the Mac sidebar's counts already left out 0.
+- **No Later.** "Later" was the dated snooze of stage 6 (`InboxSnooze`): an Inbox entry hidden until a time, listed
+  on the Later side, then back with a notification and "Back from Later" for a day. It is gone with every way to it:
+  the Later side and the switch New / Later, the swipe, the long press and VoiceOver action, Triage's tile and the
+  Mac's L, the selection bar's button (now Move · Done · More), ⋯ More › Later, Entry › Later and Details' Later
+  (Mac), "Back to Inbox Now", the notifications and their scheduler, the widgets' Later timeline. The Inbox lists
+  every entry in no bowl (`Inbox.notes`, `Places.inboxCount`, triage, badge, widgets, hint, bundles). The stored keys
+  (`@snooze`, `@snoozeBy`, `@unoffered` in `todoSuggestionsRaw`) are no longer read or written: entries put away
+  before are in the Inbox again at once; `@unoffered` still means "no suggestions offered" and the keys go with the
+  next change of the suggestions. Notifications planned before are removed when the app becomes active.
+- **To-dos in the Inbox's switch.** The Inbox's switch is New · To-dos; To-dos is the former page Open To-dos (same
+  groups, rows and green "+"), every launch starts on New. The card at the top of the Inbox is gone (iPhone and Mac);
+  today's appointments in no bowl lead New. Every way to Open To-dos (Go To, the overdue hint, quick action, widgets,
+  `porridge://todos`, Mac View › Open To-dos and the command bar) opens the To-dos side; on the Mac it is the page
+  `.todos` shown under the Inbox's head and sidebar row.
+- **Weekly Review in Today's bar:** iPhone a pill (`calendar.badge.checkmark`, "Weekly Review") between ‹ › and the
+  gear; Mac a button in Today's head; Go To, View › Weekly Review and the command bar stay.
+
 ---
 
 ## What gets removed (summary)

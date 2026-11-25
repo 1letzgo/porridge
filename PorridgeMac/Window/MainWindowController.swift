@@ -137,7 +137,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case .today: "Today"
         case .inbox: "Inbox"
         case .bowls: "Bowls"
-        case .todos: "Open To-dos"
+        case .todos: "Inbox"
         case .chat: "Chat"
         case .project(let id): library.project(id)?.name ?? "Porridge"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Porridge"
@@ -833,7 +833,6 @@ extension MainWindowController {
         switch EntrySubmenu(rawValue: item.tag) {
         case .bowl: return !live.isEmpty
         case .due, .repeatRule: return !todos.isEmpty && todos.count == live.count
-        case .later: return !live.isEmpty && live.allSatisfy(\.isInInbox)
         case .appointment, .linkAppointment: return one != nil
         case .documentKind, .document: return live.contains { $0.isStored && !$0.attachments.isEmpty }
         case .recording:

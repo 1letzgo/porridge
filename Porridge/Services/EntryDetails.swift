@@ -281,8 +281,6 @@ enum EntryDetails {
     enum CommonField: Equatable {
         /// One bowl for all, or the Inbox (`Documents.BulkChange.move`).
         case bowl
-        /// Later ▸, when all are in the Inbox.
-        case later
         /// One due day, when all are to-dos.
         case due
         /// When all are stored files (`Documents.BulkChange.kind`).
@@ -302,7 +300,6 @@ enum EntryDetails {
         let notes = notes.filter { !$0.isDeleted && !isReadOnly($0) }
         guard !notes.isEmpty else { return [] }
         var fields: [CommonField] = [.bowl]
-        if notes.allSatisfy(\.isInInbox) { fields.append(.later) }
         if notes.allSatisfy(\.isTodo) { fields.append(.due) }
         if notes.allSatisfy(\.isStored) {
             fields += [.documentKind, .sender(count: notes.count)]

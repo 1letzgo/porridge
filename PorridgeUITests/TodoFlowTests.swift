@@ -131,12 +131,10 @@ final class TodoFlowTests: XCTestCase {
         app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
         app.launch()
 
-        // Open To-dos is the card at the end of the Inbox.
+        // Open To-dos is the Inbox's To-dos side (owner revision 9).
         app.openTab("Inbox")
-        app.inboxSegment(0).tap()
-        let entry = app.buttons["InboxOpenTodos"]
-        XCTAssertTrue(app.reveal(entry), "Open To-dos missing at the end of the Inbox")
-        XCTAssertTrue(entry.label.contains("overdue"), "the row does not say that to-dos are late: \(entry.label)")
+        let entry = app.inboxSegment(1)
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "no To-dos side in the Inbox")
         screenshot("inbox-todos-folder-home", app)
         entry.tap()
 

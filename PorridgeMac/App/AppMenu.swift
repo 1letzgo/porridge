@@ -205,18 +205,6 @@ enum AppMenu {
         due.addItem(.separator())
         item(due, "Clear Due Date", dueAction, "\u{8}", [.command, .control], symbol: "calendar.badge.minus", tag: 4)
         item(menu, "Due Date", #selector(MainWindowController.entrySubmenu(_:)), symbol: "calendar", tag: EntrySubmenu.due.rawValue).submenu = due
-        // Inbox entries: away until later, or back now.
-        let later = item(menu, "Later", #selector(MainWindowController.entrySubmenu(_:)), symbol: "clock", tag: EntrySubmenu.later.rawValue)
-        later.submenu = DynamicMenu.make("Later") { menu, controller in
-            let notes = controller.selectedNotes.filter { $0.modelContext != nil && !$0.isDeleted && $0.isInInbox }
-            guard !notes.isEmpty else { return }
-            DynamicMenu.move(NoteOperations.laterMenu(for: notes, window: controller.window), into: menu)
-            let snoozed = notes.filter { $0.isSnoozed() }
-            if !snoozed.isEmpty {
-                menu.addItem(.separator())
-                menu.add("Back to Inbox Now", symbol: "tray.and.arrow.down") { InboxSnooze.unsnooze(snoozed, in: Library.shared.context) }
-            }
-        }
         item(menu, "Add Tag…", command, "t", [.command, .shift], symbol: "number", tag: NoteCommand.addTag.rawValue)
         menu.addItem(.separator())
         // The appointment the entry belongs to.
@@ -318,10 +306,10 @@ enum AppMenu {
 
 /// The submenus of the Entry and AI menus: their row is dimmed when nothing in them applies to the selection.
 enum EntrySubmenu: Int {
-    case bowl = 1, due, repeatRule, later, linkAppointment, appointment, documentKind, document, recording, addPages, pages, summary
+    case bowl = 1, due, repeatRule, linkAppointment, appointment, documentKind, document, recording, addPages, pages, summary
 }
 
-/// A submenu filled when it opens, for the entries selected in the window in front (Entry › Later, Repeat, …).
+/// A submenu filled when it opens, for the entries selected in the window in front (Entry › Repeat, …).
 @MainActor
 final class DynamicMenu: NSObject, NSMenuDelegate {
     /// Every menu keeps its own delegate; they stay alive here.

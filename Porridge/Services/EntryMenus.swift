@@ -76,8 +76,6 @@ enum EntryMenus {
         case markDone
         case convertToTodo
         case convertToNote
-        /// Later ▸, for an entry in the Inbox.
-        case later
         case editPages
         /// iPhone only: the scanner adds pages to the PDF.
         case scanMorePages
@@ -107,7 +105,6 @@ enum EntryMenus {
             case .markDone: note.isDone ? String(localized: "Mark as Not Done") : String(localized: "Mark as Done")
             case .convertToTodo: String(localized: "Convert to To-do")
             case .convertToNote: String(localized: "Convert to Note")
-            case .later: String(localized: "Later")
             case .editPages: String(localized: "Edit Pages…")
             case .scanMorePages: String(localized: "Scan More Pages")
             case .openInBrowser: String(localized: "Open in Browser")
@@ -134,7 +131,6 @@ enum EntryMenus {
             case .markDone: note.isDone ? "square" : "checkmark.square"
             case .convertToTodo: "checklist"
             case .convertToNote: "text.alignleft"
-            case .later: "clock"
             case .editPages: "doc.on.doc"
             case .scanMorePages: "doc.viewfinder"
             case .openInBrowser: "safari"
@@ -236,7 +232,6 @@ enum EntryMenus {
         } else if note.canBeTodo {
             organize.append(.convertToTodo)
         }
-        if note.isInInbox { organize.append(.later) }
 
         var groups = [organize]
         if kind == .meeting {

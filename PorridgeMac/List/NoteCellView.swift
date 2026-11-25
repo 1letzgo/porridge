@@ -243,12 +243,8 @@ final class NoteCellView: NSTableCellView {
             if !(bucketNames(note).isEmpty == false && note.isTodo) {
                 add(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
             }
-            // Put away for later, back from it, or, in the Inbox, how long it has been waiting there.
-            if note.isSnoozed(), let until = note.snoozedUntil {
-                add(String(localized: "Later: back \(InboxSnooze.timeLabel(until))"), symbol: "clock", color: .brandNavy)
-            } else if note.isBackFromLater() {
-                add(String(localized: "Back from Later"), symbol: "clock.arrow.circlepath", color: .brandSkyText, bold: true)
-            } else if inInbox, note.isInInbox, let waiting = InboxSnooze.waitingLabel(since: note.createdAt) {
+            // In the Inbox, how long it has been waiting there.
+            if inInbox, note.isInInbox, let waiting = Inbox.waitingLabel(since: note.createdAt) {
                 add(waiting, symbol: "hourglass")
             }
         }

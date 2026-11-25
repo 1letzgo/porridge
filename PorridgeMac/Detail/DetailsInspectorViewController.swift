@@ -541,11 +541,6 @@ final class DetailsInspectorViewController: NSViewController {
                     NoteOperations.bucketMenu(for: changeable, window: self?.window)
                 }
                 views.append(Self.row(String(localized: "Bowl"), button))
-            case .later:
-                let button = MenuValueButton(title: String(localized: "Later…"), symbol: "clock", color: .labelColor) { [weak self] in
-                    NoteOperations.laterMenu(for: changeable, window: self?.window)
-                }
-                views.append(Self.row(String(localized: "Later"), button))
             case .due:
                 let days = Set(changeable.map(\.todoDue))
                 let title = days.count == 1 ? (days.first.flatMap { $0 }.map { Todos.dueLabel($0) } ?? String(localized: "None")) : String(localized: "Several")

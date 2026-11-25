@@ -9,9 +9,9 @@ final class ListHeaderView: NSView {
     var onEmptyTrash: (() -> Void)?
     /// A click on the hint of the day (in Today's head).
     var onHint: ((DailyHint) -> Void)?
-    /// The Inbox's triage switched on or off, and its segment New / Later (true: Later).
+    /// The Inbox's triage switched on or off, and its segment New · To-dos (true: To-dos).
     var onTriage: (() -> Void)?
-    var onShowLater: ((Bool) -> Void)?
+    var onInboxSide: ((Bool) -> Void)?
     /// Today paged a day back (-1) or on (1), and back to today.
     var onStepDay: ((Int) -> Void)?
     var onToday: (() -> Void)?
@@ -21,7 +21,7 @@ final class ListHeaderView: NSView {
     private let title = NSTextField.label(font: .systemFont(ofSize: 17, weight: .bold))
     /// Today's date under its title.
     private let dateLine = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize + 1), color: .secondaryLabelColor)
-    /// The Inbox's New / Later.
+    /// The Inbox's New · To-dos.
     private let segment = NSSegmentedControl()
     private let filters = NSStackView()
     private let tags = NSStackView()
@@ -50,7 +50,7 @@ final class ListHeaderView: NSView {
         trailing.orientation = .horizontal
         trailing.spacing = 6
         let titleRow = NSStackView.horizontal([iconBox, title, NSView(), trailing], spacing: 8)
-        triageKeys.stringValue = String(localized: "J / K  Next, Previous   ·   F  File   ·   L  Later   ·   D  Done   ·   ⌫  Delete   ·   Esc  End")
+        triageKeys.stringValue = String(localized: "J / K  Next, Previous   ·   F  File   ·   D  Done   ·   ⌫  Delete   ·   Esc  End")
         triageKeys.lineBreakMode = .byTruncatingTail
         triageKeys.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         triageKeys.isHidden = true
@@ -103,7 +103,8 @@ final class ListHeaderView: NSView {
         case .today: (TodayDay.title(state.todayShownDay), "calendar", .brandNavy)
         case .inbox: ("Inbox", "tray.fill", .brandSky)
         case .bowls: ("Bowls", Places.bowlsSymbol, .brandProject)
-        case .todos: ("Open To-dos", "checklist", .brandTask)
+        // The Inbox's To-dos side (owner revision 9): the head stays the Inbox's.
+        case .todos: ("Inbox", "tray.fill", .brandSky)
         case .chat: ("Chat", "bubble.left.and.bubble.right.fill", .brandNavy)
         case .project(let id): (library.project(id)?.name ?? "Bowl", "folder.fill", .brandProject)
         case .smartFilter(let id): (SmartFilterStore.shared.filter(id)?.name ?? String(localized: "Smart Filter"), "line.3.horizontal.decrease", .brandNavy)
@@ -136,6 +137,16 @@ final class ListHeaderView: NSView {
             today.setAccessibilityIdentifier("TodayBackToToday")
             next.setAccessibilityIdentifier("TodayNextDay")
             [previous, today, next].forEach(trailing.addArrangedSubview)
+            // The Weekly Review (owner revision 9; before, a row of the Inbox's top card), also View › Weekly Review.
+            let review = ActionButton(title: "", symbol: "calendar.badge.checkmark") { [weak self] in
+                (self?.window?.windowController as? MainWindowController)?.showWeeklyReview(nil)
+            }
+            review.controlSize = .small
+            review.bezelStyle = .push
+            review.toolTip = String(localized: "Weekly Review")
+            review.setAccessibilityLabel(String(localized: "Weekly Review"))
+            review.setAccessibilityIdentifier("TodayWeeklyReview")
+            trailing.addArrangedSubview(review)
         }
         dateLine.stringValue = page == .today ? TodayDay.fullDate(state.todayShownDay) : ""
         dateLine.isHidden = page != .today
@@ -153,20 +164,24 @@ final class ListHeaderView: NSView {
             sort.setAccessibilityIdentifier("BowlSort")
             trailing.addArrangedSubview(sort)
         }
-        // The Inbox: its segment New / Later in the second row, and its triage.
-        segment.isHidden = page != .inbox || state.isTriaging
+        // The Inbox: its segment New · To-dos in the second row (the counts only where there is something), and on New
+        // its triage.
+        segment.isHidden = !(page == .inbox || page == .todos) || state.isTriaging
+        if page == .inbox || page == .todos {
+            let waiting = Inbox.notes(library.notes).count
+            let open = Todos.folder(library.notes).open
+            segment.setLabel(Places.countedTitle(String(localized: "New"), waiting, gap: "  "), forSegment: 0)
+            segment.setLabel(Places.countedTitle(String(localized: "To-dos"), open, gap: "  "), forSegment: 1)
+            segment.selectedSegment = page == .todos ? 1 : 0
+        }
         if page == .inbox {
             let waiting = Inbox.notes(library.notes).count
-            let later = InboxSnooze.snoozed(library.notes).count
-            segment.setLabel(String(localized: "New  \(waiting)"), forSegment: 0)
-            segment.setLabel(String(localized: "Later  \(later)"), forSegment: 1)
-            segment.selectedSegment = state.showsLater ? 1 : 0
             let triage = ActionButton(title: state.isTriaging ? String(localized: "End Triage") : String(localized: "Triage"), symbol: "keyboard") { [weak self] in self?.onTriage?() }
             triage.controlSize = .small
             triage.bezelStyle = .push
             triage.toolTip = String(localized: "Go through the Inbox with the keyboard")
             triage.setAccessibilityIdentifier("InboxTriage")
-            triage.isEnabled = !state.showsLater && waiting > 0 || state.isTriaging
+            triage.isEnabled = waiting > 0 || state.isTriaging
             trailing.addArrangedSubview(triage)
         }
         triageKeys.isHidden = !(page == .inbox && state.isTriaging)
@@ -302,7 +317,8 @@ final class ListHeaderView: NSView {
     }
 
     private func filterPill(title: String, count: Int?, kind: KindFilter?, isOn: Bool, tint: NSColor) -> PillButton {
-        let text = count.map { "\(title)  \($0)" } ?? title
+        // The count only where there is one (owner revision 9: no "0" on a chip).
+        let text = count.map { Places.countedTitle(title, $0, gap: "  ") } ?? title
         let pill = PillButton(title: text, tint: tint, target: self, action: #selector(filterChosen(_:)))
         pill.isFilled = isOn
         pill.identifier = .init(kind?.rawValue ?? "all")
@@ -330,7 +346,7 @@ final class ListHeaderView: NSView {
     }
 
     @objc private func segmentChanged() {
-        onShowLater?(segment.selectedSegment == 1)
+        onInboxSide?(segment.selectedSegment == 1)
     }
 
     @objc private func sortChanged(_ sender: NSPopUpButton) {

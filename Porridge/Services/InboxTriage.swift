@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 /// Going through the Inbox one entry at a time (iPhone Triage, the Mac's triage keys): what is new, in the Inbox's
-/// order, taken when triage starts. An entry that left the Inbox meanwhile (filed, later, deleted, on another device)
+/// order, taken when triage starts. An entry that left the Inbox meanwhile (filed, deleted, on another device)
 /// is passed over; one that stays (skipped, a to-do done) is passed by moving on. Pure, so it is testable.
 @MainActor
 struct InboxTriage {
@@ -11,47 +11,47 @@ struct InboxTriage {
     /// Where triage stands in `ids`.
     private(set) var position = 0
 
-    init(notes: [Note], now: Date = Date()) {
-        ids = Inbox.notes(notes, now: now).map(\.id)
+    init(notes: [Note]) {
+        ids = Inbox.notes(notes).map(\.id)
     }
 
     var total: Int { ids.count }
 
     /// The entry in front: the first from `position` on that still waits in the Inbox, with its index; nil when all
     /// are through.
-    func current(in notes: [Note], now: Date = Date()) -> (note: Note, index: Int)? {
+    func current(in notes: [Note]) -> (note: Note, index: Int)? {
         let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var index = position
         while index < ids.count {
-            if let note = byID[ids[index]], note.isWaitingInInbox(now: now) { return (note, index) }
+            if let note = byID[ids[index]], note.isInInbox { return (note, index) }
             index += 1
         }
         return nil
     }
 
     /// The next entries after the one in front ("Next" under the card).
-    func upcoming(in notes: [Note], count: Int = 2, now: Date = Date()) -> [Note] {
-        guard let current = current(in: notes, now: now) else { return [] }
+    func upcoming(in notes: [Note], count: Int = 2) -> [Note] {
+        guard let current = current(in: notes) else { return [] }
         let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        return ids[(current.index + 1)...].lazy.compactMap { byID[$0] }.filter { $0.isWaitingInInbox(now: now) }.prefix(count).map { $0 }
+        return ids[(current.index + 1)...].lazy.compactMap { byID[$0] }.filter { $0.isInInbox }.prefix(count).map { $0 }
     }
 
     /// "Entry 2 of 12": the number of the entry in front (counted from 1).
-    func number(in notes: [Note], now: Date = Date()) -> Int? {
-        current(in: notes, now: now).map { $0.index + 1 }
+    func number(in notes: [Note]) -> Int? {
+        current(in: notes).map { $0.index + 1 }
     }
 
     /// On to the entry after the one in front (Skip, a to-do done, or after it was filed, put away or deleted).
-    mutating func advance(in notes: [Note], now: Date = Date()) {
-        if let current = current(in: notes, now: now) {
+    mutating func advance(in notes: [Note]) {
+        if let current = current(in: notes) {
             position = current.index + 1
         } else {
             position = ids.count
         }
     }
 
-    func isFinished(in notes: [Note], now: Date = Date()) -> Bool {
-        current(in: notes, now: now) == nil
+    func isFinished(in notes: [Note]) -> Bool {
+        current(in: notes) == nil
     }
 
     // MARK: Actions

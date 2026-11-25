@@ -1,7 +1,7 @@
 import XCTest
 
 /// Pictures of stage 6 to look at: Today with a to-do being ticked and on another day, the Inbox with "✦ Bowl" and
-/// the one-line bundle card, both swipes, the Later sheet, Triage (also on a to-do) and the selection bar. They go to
+/// the one-line bundle card, both swipes, Triage (also on a to-do) and the selection bar. They go to
 /// /tmp/porridge-s6-shots (or `SHOTS_DIR`, `TEST_RUNNER_SHOTS_DIR` for xcodebuild) when that folder exists (simulator only); dark mode is switched from outside
 /// (`xcrun simctl ui … appearance dark`) and named by `TEST_RUNNER_SHOTS_SUFFIX=-dark`.
 final class InboxShotsTests: XCTestCase {
@@ -58,10 +58,8 @@ final class InboxShotsTests: XCTestCase {
         // With the largest text sizes the list can still be settling after the swipes: only a row that stays is swiped.
         if app.reveal(gift), gift.waitForExistence(timeout: 3), gift.isHittable {
             gift.swipeLeft()
-            shoot("inbox-swipe-later")
-            app.buttons["Later"].firstMatch.tap()
-            shoot("inbox-later-sheet")
-            app.buttons["Cancel"].tap()
+            shoot("inbox-swipe-delete")
+            gift.swipeRight()
         }
         app.swipeDown()
         app.swipeDown()

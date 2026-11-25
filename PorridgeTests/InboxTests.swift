@@ -104,16 +104,15 @@ final class InboxTests: XCTestCase {
         let context = try TestStore.context()
         let bowl = NoteFolder(name: "Reading")
         context.insert(bowl)
-        let first = Note(), second = Note(), third = Note(), filed = Note(), later = Note()
-        for (index, note) in [third, second, first, later].enumerated() {
+        let first = Note(), second = Note(), third = Note(), filed = Note()
+        for (index, note) in [third, second, first].enumerated() {
             note.createdAt = Date(timeIntervalSince1970: Double(1_000_000 * (index + 1)))
         }
         filed.projectIDs = [Projects.key(bowl)]
-        later.snoozedUntil = Date().addingTimeInterval(3600)
-        let all = [first, second, third, filed, later]
+        let all = [first, second, third, filed]
         all.forEach(context.insert)
 
-        // Newest first, only what waits (not what is filed or put away for later).
+        // Newest first, only what waits (not what is filed).
         var triage = InboxTriage(notes: all)
         XCTAssertEqual(triage.total, 3)
         XCTAssertEqual(triage.current(in: all)?.note.id, first.id)
@@ -124,7 +123,7 @@ final class InboxTests: XCTestCase {
         triage.advance(in: all)
         XCTAssertEqual(triage.current(in: all)?.note.id, second.id)
         XCTAssertEqual(triage.number(in: all), 2)
-        XCTAssertTrue(first.isWaitingInInbox())
+        XCTAssertTrue(first.isInInbox)
 
         // An entry that left the Inbox (filed here or on another device) is passed over without a step.
         Inbox.file(second, into: Projects.key(bowl), in: context)

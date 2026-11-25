@@ -1,7 +1,6 @@
 import AppKit
 import CloudKit
 import SwiftData
-import UserNotifications
 
 /// The app: the menu bar, the main windows, Settings and the dictation in the menu bar.
 /// Updates come through TestFlight.
@@ -9,7 +8,6 @@ import UserNotifications
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
-    private let notificationPresenter = SnoozeNotificationPresenter()
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         setvbuf(stdout, nil, _IONBF, 0)
@@ -36,8 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainWindowController.open()
         }
         statusItem = StatusItemController()
-        // "Back from Later" shows while Porridge is in front too.
-        if UNUserNotificationCenter.current().delegate == nil { UNUserNotificationCenter.current().delegate = notificationPresenter }
         // The alert a minute before a meeting, and the countdown in the menu bar.
         MeetingAlertController.shared.onTick = { [weak self] in self?.statusItem?.refreshCountdown() }
         MeetingAlertController.shared.start()
@@ -76,8 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DictationController.shared.reloadShortcut()
         }
         if !GlobalShortcuts.shared.unavailable.isEmpty { GlobalShortcuts.shared.reload() }
-        // Notifications may have been allowed or turned off in System Settings: "Later" plans them again then.
-        InboxSnoozeScheduler.shared.recheckPermission()
+        // "Back from Later" notifications planned before "Later" was taken away do not ring.
+        InboxSnooze.removePlannedNotifications()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -194,12 +190,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func newNote(_ sender: Any?) {
         showMainWindow(nil)
         MainWindowController.front.newNote(sender)
-    }
-}
-
-/// Shows the notifications of entries back from Later as banners while the app is in front.
-private final class SnoozeNotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        notification.request.identifier.hasPrefix(InboxSnoozeScheduler.prefix) ? [.banner, .sound] : []
     }
 }

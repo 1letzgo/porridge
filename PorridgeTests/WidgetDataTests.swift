@@ -95,37 +95,24 @@ final class WidgetDataTests: XCTestCase {
         XCTAssertEqual(snapshot.inbox.first { $0.title == "Overdue" }?.symbol, "checklist")
     }
 
-    func testEntriesPutAwayForLaterAreNotCountedUntilTheyComeBack() throws {
+    func testEntriesPutAwayForLaterBeforeAreCountedInTheInbox() throws {
         let context = try TestStore.context()
         let now = date("2026-11-22")
         let waiting = Note()
         waiting.title = "Waiting"
         waiting.createdAt = now.addingTimeInterval(-300)
         context.insert(waiting)
+        // Put away by an older version: the mark is not read, the entry waits in the Inbox.
         let snoozed = Note()
         snoozed.title = "Snoozed"
         snoozed.createdAt = now.addingTimeInterval(-60)
-        snoozed.snoozedUntil = now.addingTimeInterval(3600)
+        snoozed.todoSuggestionsRaw = TodoSuggestions.encode([InboxSnooze.storageKey: "4102444800", InboxSnooze.unofferedKey: "1"])
         context.insert(snoozed)
-        let back = Note()
-        back.title = "Back"
-        back.createdAt = now.addingTimeInterval(-600)
-        back.snoozedUntil = now.addingTimeInterval(-60)
-        context.insert(back)
         try context.save()
 
         let snapshot = WidgetSync.snapshot(try context.fetch(FetchDescriptor<Note>()), isReadOnly: { _ in false }, now: now)
         XCTAssertEqual(snapshot.inboxCount, 2)
-        XCTAssertEqual(snapshot.inbox.map(\.title), ["Waiting", "Back"])
-        XCTAssertEqual(snapshot.later.map(\.entry.title), ["Snoozed"])
-        XCTAssertEqual(snapshot.laterReturns(after: now), [now.addingTimeInterval(3600)])
-        // Before its time nothing changes; from then on it is counted, in its place by creation.
-        XCTAssertEqual(snapshot.at(now.addingTimeInterval(3599)), snapshot)
-        let later = snapshot.at(now.addingTimeInterval(3600))
-        XCTAssertEqual(later.inboxCount, 3)
-        XCTAssertEqual(later.inbox.map(\.title), ["Snoozed", "Waiting", "Back"])
-        XCTAssertTrue(later.later.isEmpty)
-        XCTAssertTrue(later.laterReturns(after: now).isEmpty)
+        XCTAssertEqual(snapshot.inbox.map(\.title), ["Snoozed", "Waiting"])
     }
 
     func testDueTodayPutsOverdueFirstAndLeavesOutLaterAndUndated() {

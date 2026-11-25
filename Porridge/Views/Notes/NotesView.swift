@@ -78,9 +78,9 @@ struct NotesView: View {
     @State private var chosen = Set<UUID>()
     /// A note in Recently Deleted that is about to go for good.
     @State private var deletingNow: Note?
-    /// The Inbox shows what was put away for later (its segment New / Later).
-    @State private var inboxShowsLater = false
-    /// The weekly review (from Today's row).
+    /// The Inbox's side: New or To-dos (`InboxSide`). Not kept: every launch starts on New.
+    @State private var inboxSide = InboxSide.new
+    /// The weekly review (the button in Today's bar).
     @State private var showReview = false
     /// Triage: the Inbox one entry at a time, full screen (`TriageView`).
     @State private var showTriage = false
@@ -203,11 +203,7 @@ struct NotesView: View {
         }
     }
 
-    private var inboxCount: Int {
-        // Read so that an entry coming back from later is counted again.
-        _ = InboxSnoozeScheduler.shared.tick
-        return Places.inboxCount(notes)
-    }
+    private var inboxCount: Int { Places.inboxCount(notes) }
 
     /// Every page is a real page of the system's stack: it slides in, the swipe from the edge follows the finger,
     /// and what lies below keeps its scroll position.
@@ -246,7 +242,7 @@ struct NotesView: View {
 
     /// Goes to a page: a place's own page brings its tab to the front at its start; the chat is the Search tab on its
     /// Chat side, Archive and Recently Deleted the Bowls tab on its Archive or Deleted side; any other page is pushed
-    /// onto the stack it belongs to (Open To-dos onto the Inbox, a bowl, a smart filter and Settings onto Bowls;
+    /// onto the stack it belongs to (a bowl, a smart filter and Settings onto Bowls;
     /// Settings onto Today when Today is in front, from its gear), or the stack is taken back to it when it is on it
     /// already.
     private func go(_ target: ListPage) {
@@ -258,6 +254,8 @@ struct NotesView: View {
             target = .search
         case .bowls:
             bowlsSide = .bowls
+        case .inbox:
+            inboxSide = .new
         case .archive:
             bowlsSide = .archive
             target = .bowls
@@ -431,8 +429,6 @@ struct NotesView: View {
         }
         // The share sheet offers the bowls: it reads this list, it cannot open the store.
         .task(id: shareProjects) { ShareInbox.writeProjects(shareProjects) }
-        // Entries put away for later: their notifications planned here, and a tick when one comes back.
-        .task(id: snoozeSignature) { InboxSnoozeScheduler.shared.refresh(notes) }
         // The search index follows the notes: only what changed is cut again.
         .task(id: indexSignature) {
             try? await Task.sleep(for: .milliseconds(800))
@@ -614,15 +610,11 @@ struct NotesView: View {
         case .inbox:
             InboxPlace(
                 notes: notes, projects: projects, selection: $selection, isSelecting: $isSelecting, chosen: $chosen,
-                showsLater: $inboxShowsLater,
+                side: $inboxSide,
                 onRemove: { remove($0) },
-                onOpenTodos: { go(.todos) },
-                onReview: { showReview = true },
                 onRecord: { startRecording(for: $0) },
                 onNewNote: { addNote(for: $0) }
             )
-        case .todos:
-            todosPage
         case .today:
             TodayPage(
                 notes: notes, day: $todayDay, selection: $selection, onRemove: { remove($0) },
@@ -654,7 +646,8 @@ struct NotesView: View {
         }
     }
 
-    /// The Bowls tab: a switch "Bowls · Archive · Deleted" on top (like the Inbox's New / Later, with counts), then
+    /// The Bowls tab: a switch "Bowls · Archive · Deleted" on top (like the Inbox's New · To-dos, with counts
+    /// where there is something), then
     /// the bowls with the smart filters, the archived bowls, or Recently Deleted. Every launch starts on Bowls.
     private var bowlsPlace: some View {
         let active = HomeList.bowls(projects, notes: notes, order: bowlOrder).count
@@ -662,9 +655,9 @@ struct NotesView: View {
         let deleted = notes.lazy.filter(\.isDeleted).count
         return VStack(spacing: 0) {
             TabSwitcher(selection: $bowlsSide, options: [
-                (value: BowlsSide.bowls, title: String(localized: "Bowls \(active)")),
-                (value: BowlsSide.archive, title: String(localized: "Archive \(archived)")),
-                (value: BowlsSide.deleted, title: String(localized: "Deleted \(deleted)")),
+                (value: BowlsSide.bowls, title: Places.countedTitle(String(localized: "Bowls"), active)),
+                (value: BowlsSide.archive, title: Places.countedTitle(String(localized: "Archive"), archived)),
+                (value: BowlsSide.deleted, title: Places.countedTitle(String(localized: "Deleted"), deleted)),
             ])
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
@@ -705,7 +698,8 @@ struct NotesView: View {
         )
     }
 
-    /// The last tab: a switch "Search | Chat" on top (like the Inbox's New / Later; it keeps the side last chosen),
+    /// The last tab: a switch "Search | Chat" on top (like the Inbox's New · To-dos; it keeps the side last
+    /// chosen),
     /// then Search & Ask or the chat.
     private var searchPlace: some View {
         VStack(spacing: 0) {
@@ -787,11 +781,10 @@ struct NotesView: View {
         case .today: go(.today)
         case .inbox: go(.inbox)
         case .bowls: go(.bowls)
-        case .openTodos: go(.todos)
+        case .openTodos: goToTodos()
         case .weeklyReview: showReview = true
         case .triage:
             go(.inbox)
-            inboxShowsLater = false
             showTriage = !Inbox.notes(notes).isEmpty
         case .archive: go(.archive)
         case .trash: go(.trash)
@@ -804,50 +797,18 @@ struct NotesView: View {
         }
     }
 
-    /// Open To-dos (the Inbox's end card): every open to-do by due day, grouped as the search's "Open To-dos", then those
-    /// done today. Each row names its bowls. Only a view: the to-dos stay where they are.
-    private var todosPage: some View {
-        let folder = Todos.folder(notes)
-        let names = Dictionary(projects.map { (Projects.key($0), $0.name) }, uniquingKeysWith: { a, _ in a })
-        func buckets(_ note: Note) -> [String] { note.projectIDs.compactMap { names[$0] } }
-        return List(selection: $selection) {
-            ForEach(Array(folder.groups.enumerated()), id: \.element.title) { index, group in
-                Section {
-                    ForEach(group.notes) { note in
-                        NoteListRow(note: note, buckets: buckets(note)) { remove(note) }
-                            .lastInSection(note.id == group.notes.last?.id)
-                    }
-                } header: {
-                    ListHeader(
-                        title: group.title, count: group.notes.count,
-                        tint: group.title == String(localized: "Overdue") ? .red : .brandTask, isFirst: index == 0
-                    )
-                }
-            }
-            if !folder.doneToday.isEmpty {
-                Section {
-                    ForEach(folder.doneToday) { note in
-                        NoteListRow(note: note, buckets: buckets(note)) { remove(note) }
-                            .lastInSection(note.id == folder.doneToday.last?.id)
-                    }
-                } header: {
-                    ListHeader(title: String(localized: "Done Today"), count: folder.doneToday.count, tint: .brandNavy, isFirst: folder.groups.isEmpty)
-                }
-            }
-        }
-        .cardList()
-        .overlay {
-            if folder.isEmpty {
-                EmptyStateView(title: "Nothing to Do", message: "Open to-dos from the inbox and every bowl show up here.", systemImage: "checklist")
-            }
-        }
+    /// Every open to-do: the Inbox's To-dos side (until owner revision 9 a page of its own, Open To-dos). Search's Go
+    /// To, the hint about overdue to-dos, the quick action and the widgets come here.
+    private func goToTodos() {
+        go(.inbox)
+        inboxSide = .todos
     }
 
     /// The hint of the day was tapped: what it is about opens.
     private func openHint(_ hint: DailyHint) {
         switch hint.kind {
         case .meetingTodos: if let id = hint.noteID { openNote(id) }
-        case .overdue: go(.todos)
+        case .overdue: goToTodos()
         case .inbox: go(.inbox)
         }
     }
@@ -1015,18 +976,6 @@ struct NotesView: View {
     /// Changes when a note's content changed (the index compares hashes, this only wakes it up).
     /// A number, not a text: this is asked at every redraw of the list, and a string of every note's id and date
     /// was built and thrown away each time.
-    private var snoozeSignature: Int {
-        var hasher = Hasher()
-        hasher.combine(InboxSnoozeScheduler.shared.tick)
-        for note in notes where note.snoozedUntil != nil {
-            hasher.combine(note.id)
-            hasher.combine(note.snoozedUntil)
-            hasher.combine(note.isInInbox)
-            hasher.combine(note.title)
-        }
-        return hasher.finalize()
-    }
-
     private var indexSignature: Int {
         var hasher = Hasher()
         for note in notes {
@@ -1055,29 +1004,40 @@ struct NotesView: View {
     // MARK: - The bar
 
     /// The actions of the one-row bar of each page (iOS), "+" last: what does not fit the row is the first row of
-    /// the content (the Inbox's New / Later, a bowl's sharing line) or in a menu (a bowl's ⋯).
+    /// the content (the Inbox's New · To-dos, a bowl's sharing line) or in a menu (a bowl's ⋯).
     @ViewBuilder
     private func listActions(_ shown: ListPage) -> some View {
         switch shown {
         case .today:
-            // Today pages a day back and on; a tap on the title (another day) goes back to today. The gear opens
-            // Settings on Today's own stack.
+            // Today pages a day back and on; a tap on the title (another day) goes back to today. The Weekly Review
+            // (owner revision 9; before, the card at the top of the Inbox). The gear opens Settings on Today's own
+            // stack.
             todayPager
+            weeklyReviewButton
             settingsButton
             barAddButton
         case .inbox:
             if isSelecting {
                 doneSelectingButton
+            } else if inboxSide == .todos {
+                // A new to-do at once, in no bowl (the "+" of the tab bar opens the Add sheet).
+                Button { addNote(todo: true) } label: {
+                    Label("New To-do", systemImage: "plus")
+                        .fontWeight(.semibold)
+                }
+                .buttonStyle(ChromePillButtonStyle(fill: .brandTask))
+                .help("New To-do")
+                .accessibilityIdentifier("TodosAdd")
             } else {
-                let isEmpty = inboxShowsLater || Inbox.notes(notes).isEmpty
-                // One entry at a time, full screen: File, Later, Skip, Delete (Done for to-dos).
+                let isEmpty = Inbox.notes(notes).isEmpty
+                // One entry at a time, full screen: File, Skip, Delete (Done for to-dos).
                 Button { showTriage = true } label: {
                     Label("Triage", systemImage: "bolt.fill")
                 }
                 .help("Triage")
                 .disabled(isEmpty)
                 .accessibilityIdentifier("InboxTriage")
-                // Several entries of the Inbox at once: into a bowl, later, done, their kind or sender, merged.
+                // Several entries of the Inbox at once: into a bowl, done, their kind or sender, merged.
                 Button { withAnimation(.snappy) { isSelecting = true } } label: {
                     Label("Select", systemImage: "checkmark.circle")
                 }
@@ -1120,15 +1080,6 @@ struct NotesView: View {
                 .help("Bowl")
                 barAddButton
             }
-        case .todos:
-            // A new to-do at once, in no bowl (the "+" of the tab bar opens the Add sheet).
-            Button { addNote(todo: true) } label: {
-                Label("New To-do", systemImage: "plus")
-                    .fontWeight(.semibold)
-            }
-            .buttonStyle(ChromePillButtonStyle(fill: .brandTask))
-            .help("New To-do")
-            .accessibilityIdentifier("TodosAdd")
         case .trash:
             deleteAllButton
         case .search, .chat:
@@ -1227,6 +1178,16 @@ struct NotesView: View {
             .help("Delete All")
             .accessibilityIdentifier("TrashDeleteAll")
         }
+    }
+
+    /// The Weekly Review, in Today's bar: the week's new entries, open to-dos and bowls (`WeeklyReviewView`).
+    private var weeklyReviewButton: some View {
+        Button { showReview = true } label: {
+            Label("Weekly Review", systemImage: "calendar.badge.checkmark")
+        }
+        .help("Weekly Review")
+        .accessibilityLabel("Weekly Review")
+        .accessibilityIdentifier("TodayWeeklyReview")
     }
 
     /// The gear: Settings (Today and Bowls).
@@ -1346,7 +1307,6 @@ struct NotesView: View {
         case .bowls: "Bowls"
         case .project: project(on: shown)?.name ?? "Bowl"
         case .inbox: "Inbox"
-        case .todos: "Open To-dos"
         case .today: todayDay.map { TodayDay.title($0) } ?? "Today"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Smart Filter"
         case .chat, .search: "Search"
@@ -1365,7 +1325,6 @@ struct NotesView: View {
         case .bowls: .brandProject
         case .archive, .chat, .search, .smartFilter: .brandNavy
         case .trash: .red
-        case .todos: .brandTask
         case .today: .brandNavy
         default: .brandSky
         }
@@ -1389,7 +1348,6 @@ struct NotesView: View {
         case .bowls: Places.bowlsSymbol
         case .project: "folder.fill"
         case .inbox: "tray.fill"
-        case .todos: "checklist"
         case .today: "calendar"
         case .smartFilter: "line.3.horizontal.decrease"
         case .chat, .search: "magnifyingglass"
@@ -1541,7 +1499,7 @@ struct NotesView: View {
             go(.chat)
         case .openTodos:
             selection = nil
-            go(.todos)
+            goToTodos()
         case .search(let query):
             selection = nil
             go(.search)
@@ -1747,19 +1705,8 @@ struct NoteRow: View {
                 Text(note.updatedAt.formatted(.dateTime.day().month(.abbreviated)) + " " + note.updatedAt.formatted(.dateTime.hour().minute()))
                     .keepsWidth(!wraps)
             }
-            // Put away for later, back from it, or, in the Inbox, how long it has been waiting there.
-            if note.isSnoozed(), let until = note.snoozedUntil {
-                Label("Later: back \(InboxSnooze.timeLabel(until))", systemImage: "clock")
-                    .labelStyle(.tight)
-                    .foregroundStyle(Color.brandNavy)
-                    .keepsWidth(!wraps)
-            } else if note.isBackFromLater() {
-                Label("Back from Later", systemImage: "clock.arrow.circlepath")
-                    .labelStyle(.tight)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Color.brandSkyText)
-                    .keepsWidth(!wraps)
-            } else if showsInboxAge, !compact, note.isInInbox, let waiting = InboxSnooze.waitingLabel(since: note.createdAt) {
+            // In the Inbox, how long it has been waiting there.
+            if showsInboxAge, !compact, note.isInInbox, let waiting = Inbox.waitingLabel(since: note.createdAt) {
                 Label(waiting, systemImage: "hourglass")
                     .labelStyle(.tight)
             }
@@ -1896,9 +1843,6 @@ enum ListPage: Hashable {
     case search
     /// One project with everything in it.
     case project(UUID)
-    /// Open To-dos: every open to-do by due day (`Todos.folder`), from the card at the end of the Inbox; a view, not
-    /// a place.
-    case todos
     /// A saved search (`SmartFilter`): the entries that fit it, wherever they are.
     case smartFilter(UUID)
     /// The chat with the notes: the Search tab on its Chat side (`SearchSide`), also reached by Ask About This Bowl
@@ -1914,7 +1858,7 @@ enum ListPage: Hashable {
     var place: Place {
         switch self {
         case .today: .today
-        case .inbox, .todos: .inbox
+        case .inbox: .inbox
         case .chat, .search: .search
         case .bowls, .project, .smartFilter, .archive, .trash, .settings, .voices, .acknowledgements: .bowls
         }

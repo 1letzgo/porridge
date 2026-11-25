@@ -56,7 +56,7 @@ final class Revision6FlowTests: XCTestCase {
         app.openTab("Bowls")
         let deleted = app.bowlsSide("Deleted")
         XCTAssertTrue(deleted.isSelected, "Deleted did not open")
-        XCTAssertFalse(deleted.label == "Deleted 0", "the Deleted side does not count its entries: \(deleted.label)")
+        XCTAssertFalse(deleted.label == "Deleted", "the Deleted side does not count its entries: \(deleted.label)")
         XCTAssertTrue(app.staticTexts.matching(deletedPredicate).firstMatch.waitForExistence(timeout: 5), "no 30-days hint")
         XCTAssertTrue(app.reveal(app.staticTexts[name]), "the deleted note is not on the Deleted side")
         XCTAssertTrue(app.buttons["TrashDeleteAll"].exists, "no Delete All on the Deleted side")

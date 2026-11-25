@@ -35,8 +35,8 @@ final class Revision6ShotsTests: XCTestCase {
             shoot("tabbar-120-\(tab.lowercased())")
         }
         app.openTab("Inbox")
-        _ = app.buttons["InboxWeeklyReview"].waitForExistence(timeout: 10)
-        shoot("inbox-top-card")
+        app.inboxSegment(0).tap()
+        shoot("inbox-top")
     }
 
     func testRevision6Screens() throws {
@@ -62,7 +62,7 @@ final class Revision6ShotsTests: XCTestCase {
                 if app.buttons["Back"].firstMatch.exists { app.buttons["Back"].firstMatch.tap() }
             }
         }
-        if app.bowlsSide("Deleted").label == "Deleted 0" {
+        if app.bowlsSide("Deleted").label == "Deleted" {
             let name = unique("Old draft")
             app.newNote(title: name)
             app.goBack()

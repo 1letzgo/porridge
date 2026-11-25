@@ -181,7 +181,7 @@ enum BowlListing {
 /// The appointments the Inbox shows (New, under its card): those of the day not filed into a bowl, each series once
 /// (its occurrence of the day; the first one if it repeats within the day), all-day ones first, then by start. Never
 /// another day's, never a filed one (that one is in its bowl and in Today). They are no entries: not counted in the
-/// Inbox's badge, not part of Triage, Later or choosing several.
+/// Inbox's badge, not part of Triage or choosing several.
 enum InboxAppointments {
     static func rows(_ appointments: [CalendarAppointment], bowls: [String: AppointmentLedger.BowlLink], day: Date, calendar: Calendar = .current) -> [CalendarAppointment] {
         let start = calendar.startOfDay(for: day)

@@ -39,11 +39,11 @@ extension XCUIApplication {
         XCTAssertFalse(alert.exists, "alert did not close")
     }
 
-    /// New (0) or Later (1) of the Inbox: a segmented control, or capsules with the largest text sizes.
+    /// New (0) or To-dos (1) of the Inbox: a segmented control, or capsules with the largest text sizes.
     func inboxSegment(_ index: Int) -> XCUIElement {
         let control = segmentedControls["InboxSegment"]
         if control.exists { return control.buttons.element(boundBy: index) }
-        return buttons.matching(NSPredicate(format: "label BEGINSWITH %@", index == 0 ? "New " : "Later ")).firstMatch
+        return buttons.matching(NSPredicate(format: "label BEGINSWITH %@", index == 0 ? "New" : "To-dos")).firstMatch
     }
 
     /// "+" in the middle of the tab bar (on an iPad the last pill of the bar).
@@ -128,7 +128,8 @@ extension XCUIApplication {
     /// control, or capsules with the largest text sizes. Returns the segment.
     @discardableResult
     func bowlsSide(_ name: String) -> XCUIElement {
-        let predicate = NSPredicate(format: "label BEGINSWITH %@", name + " ")
+        // "Archive" without a count when it is empty (no "0"), "Deleted 27" with one.
+        let predicate = NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + " ")
         let control = segmentedControls["BowlsSide"]
         let barTop = placeTabBar.exists ? placeTabBar.frame.minY : .greatestFiniteMagnitude
         let side = control.waitForExistence(timeout: 5) ? control.buttons.matching(predicate).firstMatch

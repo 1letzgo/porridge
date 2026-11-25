@@ -1143,8 +1143,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         case .showNote: show(.note)
         case .showTranscript: show(.transcript)
         case .showArticle: show(.article)
-        case .backToInbox:
-            InboxSnooze.unsnooze([note], in: library.context)
         case .removeAppointment:
             AppointmentLinks.shared.link(note, to: nil, in: nil)
         case .setSender:
@@ -1227,8 +1225,6 @@ final class NoteDetailViewController: NSViewController, NSTextFieldDelegate {
         case .showNote: return computeTabs().contains { $0.0 == .note }
         case .showTranscript: return computeTabs().contains { $0.0 == .transcript }
         case .showArticle: return computeTabs().contains { $0.0 == .article }
-        case .backToInbox:
-            return !deleted && note.isInInbox && note.isSnoozed()
         case .removeAppointment:
             return !deleted && AppointmentLinks.shared.appointment(for: note.id) != nil
         case .setSender, .editDocument:

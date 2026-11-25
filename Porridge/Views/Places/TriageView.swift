@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 /// Triage (iPhone): the Inbox one entry at a time, full screen without the tab bar. File (into the suggested bowl;
-/// "Other…" picks one), Later, Skip, Delete, and Done for a to-do: the Mac's F, L, J, ⌫ and D. Every step offers the
+/// "Other…" picks one), Skip, Delete, and Done for a to-do: the Mac's F, J, ⌫ and D. Every step offers the
 /// one undo toast; an entry brought back by Undo is in front again. The bar's "Done" ends it.
 struct TriageView: View {
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
@@ -13,7 +13,6 @@ struct TriageView: View {
 
     /// Taken once the entries are there (the Inbox's order at the start).
     @State private var triage: InboxTriage?
-    @State private var laterNote: Note?
     @State private var bowlNote: Note?
 
     var body: some View {
@@ -80,7 +79,6 @@ struct TriageView: View {
         .onAppear {
             if triage == nil { triage = InboxTriage(notes: notes) }
         }
-        .sheet(item: $laterNote) { note in LaterSheet(notes: [note]) }
         .sheet(item: $bowlNote) { note in BowlPickerSheet(notes: [note]) }
     }
 
@@ -110,7 +108,7 @@ struct TriageView: View {
                 Text(text)
                     .font(.subheadline)
                     .foregroundStyle(.primary.opacity(0.85))
-                    // With the largest text sizes six lines would push File, Later and Skip off the screen.
+                    // With the largest text sizes six lines would push File and Skip off the screen.
                     .lineLimit(typeSize.isAccessibilitySize ? 3 : 6)
             }
             if let document {
@@ -172,12 +170,9 @@ struct TriageView: View {
     private func buttons(for note: Note) -> some View {
         let readOnly = BowlSharing.shared.isReadOnly(note)
         let canBeDone = note.isTodo && !note.isDone && !readOnly
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: canBeDone ? 5 : 4)
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: canBeDone ? 4 : 3)
         return LazyVGrid(columns: columns, spacing: 8) {
             tile("File", systemImage: "tray.and.arrow.down.fill", tint: .brandProject, id: "TriageFile") { file(note) }
-                .disabled(readOnly)
-            // A light sky wash with the outlined clock: navy here weighed more than the other tiles.
-            tile("Later", systemImage: "clock", tint: .brandSky, id: "TriageLater") { laterNote = note }
                 .disabled(readOnly)
             tile("Skip", systemImage: "arrow.right", tint: .secondary, id: "TriageSkip") { skip() }
             tile("Delete", systemImage: "trash.fill", tint: .red, id: "TriageDelete") {

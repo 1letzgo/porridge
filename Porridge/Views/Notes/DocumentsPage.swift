@@ -30,15 +30,13 @@ struct NoteSelectionHeader: View {
     }
 }
 
-/// Changes several entries of the Inbox or a bowl at once: the bar that takes the tab bar's place while choosing. Four
-/// fixed buttons, nothing scrolls: Move (into a bowl or back to the Inbox), Later (Inbox only), Done (to-dos) and More
+/// Changes several entries of the Inbox or a bowl at once: the bar that takes the tab bar's place while choosing. Three
+/// fixed buttons, nothing scrolls: Move (into a bowl or back to the Inbox), Done (to-dos) and More
 /// (Document Kind, Set Sender…, Merge PDFs…, Delete). What does not apply to the chosen entries is dimmed.
 struct NoteSelectionBar: View {
     /// The entries of the list, in its order.
     let notes: [Note]
     @Binding var chosen: Set<UUID>
-    /// The Inbox: the chosen entries can be put away for later.
-    var offersLater = false
 
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
     @Environment(\.modelContext) private var context
@@ -51,7 +49,6 @@ struct NoteSelectionBar: View {
     @State private var error: String?
     /// A merge is running: the bar waits.
     @State private var isWorking = false
-    @State private var pickingLater = false
 
     /// The chosen entries, in the order of the list.
     private var chosenNotes: [Note] { notes.filter { chosen.contains($0.id) } }
@@ -80,13 +77,6 @@ struct NoteSelectionBar: View {
             }
             .disabled(picked.isEmpty)
             .accessibilityIdentifier("SelectionMove")
-            Menu {
-                LaterMenuItems(notes: picked) { pickingLater = true }
-            } label: {
-                item("Later", systemImage: "clock")
-            }
-            .disabled(!offersLater || picked.isEmpty)
-            .accessibilityIdentifier("SelectionLater")
             Button {
                 withAnimation(.snappy) { Undoable.done(openTodos, in: context) }
             } label: {
@@ -145,7 +135,6 @@ struct NoteSelectionBar: View {
             let visible = chosen.intersection(ids)
             if visible != chosen { chosen = visible }
         }
-        .sheet(isPresented: $pickingLater) { LaterPickerSheet(notes: chosenNotes) }
         .alert("Sender", isPresented: $askingSender) {
             TextField("Company, office or person", text: $senderText)
             Button("Cancel", role: .cancel) {}
@@ -181,7 +170,7 @@ struct NoteSelectionBar: View {
         }
     }
 
-    /// One of the four buttons: symbol over word, navy; dimmed while it does not apply.
+    /// One of the three buttons: symbol over word, navy; dimmed while it does not apply.
     private func item(_ title: LocalizedStringKey, systemImage: String) -> some View {
         SelectionBarItem(title: title, systemImage: systemImage)
     }

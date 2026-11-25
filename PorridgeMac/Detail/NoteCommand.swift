@@ -26,11 +26,10 @@ enum NoteCommand: Int, CaseIterable {
     case showArticle
     case suggestTodos
     case splitIntoBowl
-    // Stage 3: Entry › Later, Appointment, Document, Pages; the toolbar's short More.
-    /// Later › Back to Inbox Now.
-    case backToInbox
+    // Stage 3: Entry › Appointment, Document, Pages; the toolbar's short More.
+    // 23 was Later › Back to Inbox Now (removed with Later, owner revision 9).
     /// Appointment › Remove Appointment.
-    case removeAppointment
+    case removeAppointment = 24
     /// Document › Set Sender…
     case setSender
     // 26 was Document › Mark as Paid (removed: documents keep no payment status).

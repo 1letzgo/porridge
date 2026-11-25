@@ -11,9 +11,8 @@ struct WidgetSyncModifier: ViewModifier {
     @Environment(ProcessingService.self) private var processing
 
     /// Changes with everything the widgets show; a number, as it is asked at every redraw of the list. Only the
-    /// entries a widget can show count (in the inbox or put away from it, open to-dos), and only what it shows of
-    /// them: the title (or first line), the due day, the repeat rule and the "Later" time (`todoSuggestionsRaw`), whether it may be
-    /// ticked (view-only bowls).
+    /// entries a widget can show count (in the inbox, open to-dos), and only what it shows of them: the title (or
+    /// first line), the due day, the repeat rule, whether it may be ticked (view-only bowls).
     private var signature: Int {
         var hasher = Hasher()
         for note in notes where !note.isDeleted && (note.isInInbox || (note.isTodo && !note.isDone)) {
@@ -24,7 +23,6 @@ struct WidgetSyncModifier: ViewModifier {
             hasher.combine(note.isInInbox)
             hasher.combine(note.todoStateRaw)
             hasher.combine(note.todoDueDay)
-            hasher.combine(note.todoSuggestionsRaw)
             if note.isTodo, !note.isInInbox { hasher.combine(BowlSharing.shared.isReadOnly(note)) }
         }
         return hasher.finalize()

@@ -101,7 +101,7 @@ final class IntakeFlowTests: XCTestCase {
 
     // MARK: Inbox work (stage 6)
 
-    /// The Inbox of the mockups on a store in memory (`-seedInbox`), without a notification prompt for Later.
+    /// The Inbox of the mockups on a store in memory (`-seedInbox`).
     private func launchSeededInbox() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO",
@@ -119,8 +119,8 @@ final class IntakeFlowTests: XCTestCase {
     }
 
     /// A row names its suggested bowl ("✦ Reading"); a swipe to the right files it there (with Undo), a swipe to the
-    /// left offers Later with the times at once.
-    func testSwipesFileIntoTheSuggestionAndPutAwayForLater() throws {
+    /// left offers Delete and no Later (owner revision 9).
+    func testSwipesFileIntoTheSuggestion() throws {
         let app = launchSeededInbox()
         let link = app.staticTexts["The Case for Slow Software"]
         XCTAssertTrue(link.waitForExistence(timeout: 10), "seeded Inbox missing")
@@ -142,16 +142,9 @@ final class IntakeFlowTests: XCTestCase {
         let gift = app.staticTexts["Gift ideas for Mum"]
         XCTAssertTrue(app.reveal(gift))
         gift.swipeLeft()
-        let later = app.buttons["Later"].firstMatch
-        XCTAssertTrue(later.waitForExistence(timeout: 5), "no Later in the swipe")
-        screenshot("inbox-swipe-later", app)
-        later.tap()
-        XCTAssertTrue(app.navigationBars["Later"].waitForExistence(timeout: 5), "Later did not open its times")
-        XCTAssertTrue(app.buttons["Pick Date & Time…"].exists, "no Pick Date & Time… in the Later sheet")
-        screenshot("inbox-later-sheet", app)
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'Later-'")).firstMatch.tap()
-        XCTAssertTrue(gift.waitForNonExistence(timeout: 5), "the entry did not go away for later")
-        XCTAssertTrue(app.buttons["Undo"].waitForExistence(timeout: 5), "Later offers no Undo")
+        XCTAssertTrue(app.buttons["Delete"].firstMatch.waitForExistence(timeout: 5), "no Delete in the swipe")
+        XCTAssertFalse(app.buttons["Later"].exists, "Later is still in the swipe")
+        screenshot("inbox-swipe-delete", app)
     }
 
     /// Triage goes through the Inbox one entry at a time: File into the suggestion, then Skip; the counter follows.

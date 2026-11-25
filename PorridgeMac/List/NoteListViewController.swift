@@ -106,13 +106,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             return cell
         }
         dataSource.rowViewProvider = { table, row, item in
-            if item.base is ListSection { return GroupRowView() }
-            // The Inbox's top card: Open To-dos on top, the Weekly Review below (only the Inbox has these rows).
-            switch item.base as? ListItem {
-            case .link(.openTodos)?: return CardRowView(edge: .top)
-            case .link(.weeklyReview)?: return CardRowView(edge: .bottom)
-            default: return NSTableRowView()
-            }
+            item.base is ListSection ? GroupRowView() : NSTableRowView()
         }
         header.onFilter = { [weak self] kind in self?.state.kindFilter = kind }
         header.onTag = { [weak self] tag in
@@ -124,11 +118,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             DailyHintFeed.open(hint, in: self?.view.window?.windowController as? MainWindowController)
         }
         header.onTriage = { [weak self] in self?.toggleTriage() }
-        header.onShowLater = { [weak self] later in
-            guard let self else { return }
-            self.state.showsLater = later
-            if later { self.state.isTriaging = false }
-        }
+        // The Inbox's segment New · To-dos: the To-dos side is the page `.todos` (it ends triage).
+        header.onInboxSide = { [weak self] todos in self?.state.page = todos ? .todos : .inbox }
         header.onStepDay = { [weak self] days in self?.state.stepToday(by: days) }
         header.onToday = { [weak self] in self?.state.todayDay = nil }
         table.onKey = { [weak self] event in
@@ -157,7 +148,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         observers.append(Observing { [weak self] in
             guard let self else { return }
             // Read what the list depends on, so a change of it rebuilds the list.
-            _ = (self.state.page, self.state.kindFilter, self.state.searchText, self.state.searchTags, self.state.showsLater, self.state.isTriaging)
+            _ = (self.state.page, self.state.kindFilter, self.state.searchText, self.state.searchTags, self.state.isTriaging)
             // A smart filter changed (here or on another device), and the index while it loads.
             if self.state.page.smartFilterID != nil { _ = (SmartFilterStore.shared.filters, NoteIndex.shared.version) }
             self.reload()
@@ -222,11 +213,9 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         bundleBanner.host = self
         bundleBanner.refresh(isInbox: state.page == .inbox && state.searchText.isEmpty)
         let isEmpty = built.sections.isEmpty
-        // The empty Inbox keeps its top card: the message shows over the list, which stays.
-        let showsMessage = isEmpty || built.showsEmptyMessage
-        empty.isHidden = !showsMessage || state.page == .chat
+        empty.isHidden = !isEmpty || state.page == .chat
         scroll.isHidden = isEmpty
-        if showsMessage { empty.show(title: built.emptyTitle, message: built.emptyMessage, symbol: built.emptySymbol) }
+        if isEmpty { empty.show(title: built.emptyTitle, message: built.emptyMessage, symbol: built.emptySymbol) }
         syncSelection()
         if pageChanged { table.scrollRowToVisible(0) }
     }
@@ -371,8 +360,6 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     /// Triage on or off; on, the list takes the keys and the first entry is chosen when none is.
     func toggleTriage() {
         guard state.page == .inbox else { return }
-        // Triage goes through what is new.
-        state.showsLater = false
         state.isTriaging.toggle()
         guard state.isTriaging else { return }
         focusList()
@@ -383,7 +370,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         if let first = ids.first { state.selection = [first] } else { state.selection = [] }
     }
 
-    /// The entries of the Inbox in the order of the list (those back from later included, the "Later" section not).
+    /// The entries of the Inbox in the order of the list.
     private var triageIDs: [UUID] {
         let snapshot = dataSource.snapshot()
         guard let section = snapshot.sectionIdentifiers.first(where: { $0.id == "inbox" }) else { return [] }
@@ -393,7 +380,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         }
     }
 
-    /// J/K, L, F, D, ⌫ and Esc while the Inbox is in triage. Returns whether the key was taken.
+    /// J/K, F, D, ⌫ and Esc while the Inbox is in triage. Returns whether the key was taken.
     private func handleTriageKey(_ event: NSEvent) -> Bool {
         guard state.isTriaging, state.page == .inbox else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
@@ -410,7 +397,6 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "j": step(1)
         case "k": step(-1)
-        case "l": triageLater()
         case "f": triageFile()
         case "d": triageDone()
         default: return false
@@ -460,16 +446,6 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         guard let row = dataSource.row(forItemIdentifier: .note(note.id)), row >= 0 else { return }
         let rect = table.rect(ofRow: row)
         menu.popUp(positioning: nil, at: NSPoint(x: rect.minX + 44, y: rect.minY + 30), in: table)
-    }
-
-    /// L: the "Later" choices; the next entry is chosen when it went.
-    private func triageLater() {
-        guard let note = triageNote, !BowlSharing.shared.isReadOnly(note) else { return NSSound.beep() }
-        let next = neighbor(of: note.id)
-        let menu = NoteOperations.laterMenu(for: [note], window: view.window) { [weak self] in
-            self?.state.selection = next.map { [$0] } ?? []
-        }
-        popUp(menu, for: note)
     }
 
     /// F: into the suggested bowl ("✦ Bowl" of the row) at once, else the bowls as in the context menu; the next
@@ -526,8 +502,6 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     func open(_ link: ListLink) {
         let controller = view.window?.windowController as? MainWindowController
         switch link {
-        case .openTodos: state.page = .todos
-        case .weeklyReview: controller?.showWeeklyReview(nil)
         case .archive: state.page = .archive
         case .trash: state.page = .trash
         case .smartFilter(let id): state.page = .smartFilter(id)
@@ -626,52 +600,6 @@ private final class GroupRowView: NSTableRowView {
     override func drawBackground(in dirtyRect: NSRect) {}
 }
 
-/// A row of the Inbox's top card: a soft fill with the card's rounded corners on its outer edge; the table's spacing
-/// between the two rows is the line between the targets.
-private final class CardRowView: NSTableRowView {
-    enum Edge { case top, bottom }
-    private let edge: Edge
-
-    init(edge: Edge) {
-        self.edge = edge
-        super.init(frame: .zero)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func drawBackground(in dirtyRect: NSRect) {
-        let rect = bounds.insetBy(dx: 10, dy: 0)
-        let radius: CGFloat = 10
-        let path = NSBezierPath()
-        let (minX, maxX, minY, maxY) = (rect.minX, rect.maxX, rect.minY, rect.maxY)
-        // Flipped: minY is the top of the row.
-        let roundTop = edge == .top
-        path.move(to: NSPoint(x: minX, y: roundTop ? minY + radius : minY))
-        if roundTop {
-            path.appendArc(from: NSPoint(x: minX, y: minY), to: NSPoint(x: minX + radius, y: minY), radius: radius)
-            path.line(to: NSPoint(x: maxX - radius, y: minY))
-            path.appendArc(from: NSPoint(x: maxX, y: minY), to: NSPoint(x: maxX, y: minY + radius), radius: radius)
-        } else {
-            path.line(to: NSPoint(x: maxX, y: minY))
-        }
-        if roundTop {
-            path.line(to: NSPoint(x: maxX, y: maxY))
-            path.line(to: NSPoint(x: minX, y: maxY))
-        } else {
-            path.line(to: NSPoint(x: maxX, y: maxY - radius))
-            path.appendArc(from: NSPoint(x: maxX, y: maxY), to: NSPoint(x: maxX - radius, y: maxY), radius: radius)
-            path.line(to: NSPoint(x: minX + radius, y: maxY))
-            path.appendArc(from: NSPoint(x: minX, y: maxY), to: NSPoint(x: minX, y: maxY - radius), radius: radius)
-        }
-        path.close()
-        NSColor.quaternarySystemFill.setFill()
-        path.fill()
-    }
-
-    override var isFlipped: Bool { true }
-}
-
 /// A fixed row that leads somewhere: a symbol in its color, the name, a line about what is there, a count.
 final class LinkCellView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("link")
@@ -711,15 +639,6 @@ final class LinkCellView: NSTableCellView {
         var number = 0
         var detail: String?
         switch link {
-        case .openTodos:
-            let folder = Todos.folder(notes)
-            number = folder.open
-            detail = folder.open == 0 ? String(localized: "None open")
-                : folder.overdue > 0 ? String(localized: "\(folder.open) open · \(folder.overdue) overdue") : String(localized: "\(folder.open) open")
-            set("Open To-dos", symbol: "checklist", tint: .brandTask)
-        case .weeklyReview:
-            detail = String(localized: "This Week · \(Places.newThisWeek(notes)) new entries")
-            set("Weekly Review", symbol: "calendar.badge.checkmark", tint: .brandNavy)
         case .archive:
             number = HomeList.archivedProjects(library.projects).count
             detail = number == 0 ? String(localized: "Empty") : number == 1 ? String(localized: "1 bowl") : String(localized: "\(number) bowls")

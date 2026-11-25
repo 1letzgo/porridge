@@ -178,15 +178,13 @@ final class NotesFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["PlaceSettings"].exists, "Today has no Settings gear")
         XCTAssertFalse(app.buttons["TodayOpenTodos"].exists, "Open To-dos still hangs at the end of Today")
         app.openTab("Inbox")
-        XCTAssertTrue(app.inboxSegment(0).waitForExistence(timeout: 5), "Inbox has no New / Later")
+        XCTAssertTrue(app.inboxSegment(0).waitForExistence(timeout: 5), "Inbox has no New · To-dos")
+        XCTAssertTrue(app.inboxSegment(1).exists, "Inbox has no To-dos side")
         XCTAssertTrue(app.buttons["Select"].exists, "Inbox has no Select")
-        let todos = app.buttons["InboxOpenTodos"]
-        XCTAssertTrue(app.reveal(todos), "Open To-dos missing at the top of the Inbox")
-        XCTAssertTrue(app.buttons["InboxWeeklyReview"].exists, "Weekly Review missing at the top of the Inbox")
-        todos.tap()
-        XCTAssertTrue(app.staticTexts["Open To-dos"].waitForExistence(timeout: 5), "Open To-dos did not open")
-        XCTAssertTrue(app.tab("Inbox").isSelected, "Open To-dos did not open on the Inbox")
-        app.buttons["Back"].firstMatch.tap()
+        app.inboxSegment(1).tap()
+        XCTAssertTrue(app.buttons["TodosAdd"].waitForExistence(timeout: 5), "the To-dos side has no New To-do")
+        XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox")
+        app.inboxSegment(0).tap()
         app.openTab("Bowls")
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 5), "Bowls has no sort menu")
         XCTAssertTrue(app.buttons["PlaceSettings"].exists, "Bowls has no Settings gear")
@@ -342,7 +340,7 @@ final class NotesFlowTests: XCTestCase {
              ["Pin", "Open in Browser", "Copy Link", "Load Page Again", "Delete"], ["Convert to To-do", "Save as Template…"]),
             ("image", "Whiteboard", ["Ask About This Bowl"], ["Suggest To-dos"], ["Pin", "Delete"], ["Save as Template…"]),
             ("pdf", "Invoice INV-2026-1142", [], ["Suggest To-dos", "Ask About This Bowl"],
-             ["Pin", "Edit Pages…", "Later", "Delete"], ["Save as Template…", "Mark as Paid", "Mark as Unpaid"]),
+             ["Pin", "Edit Pages…", "Delete"], ["Later", "Save as Template…", "Mark as Paid", "Mark as Unpaid"]),
         ]
         let shots = shotsFolder(default: "/tmp/porridge-s3-shots")
         func shoot(_ name: String) {

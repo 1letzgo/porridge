@@ -119,9 +119,9 @@ enum SearchAsk {
         let place = String(localized: "Place"), view = String(localized: "View")
         return [
             Target(destination: .today, title: String(localized: "Today"), subtitle: place, symbol: "calendar", keywords: "day due appointments"),
-            Target(destination: .inbox, title: String(localized: "Inbox"), subtitle: place, symbol: "tray.fill", keywords: "new later"),
+            Target(destination: .inbox, title: String(localized: "Inbox"), subtitle: place, symbol: "tray.fill", keywords: "new unfiled"),
             Target(destination: .bowls, title: String(localized: "Bowls"), subtitle: place, symbol: Places.bowlsSymbol, keywords: "all"),
-            Target(destination: .openTodos, title: String(localized: "Open To-dos"), subtitle: view, symbol: "checklist", keywords: "tasks todo"),
+            Target(destination: .openTodos, title: String(localized: "Open To-dos"), subtitle: view, symbol: "checklist", keywords: "tasks todo inbox"),
             Target(destination: .weeklyReview, title: String(localized: "Weekly Review"), subtitle: view, symbol: "calendar.badge.checkmark", keywords: "week summary"),
             Target(destination: .triage, title: String(localized: "Triage Inbox"), subtitle: String(localized: "Command"), symbol: "bolt.fill", keywords: "file sort one by one"),
             Target(destination: .archive, title: String(localized: "Archive"), subtitle: view, symbol: "archivebox.fill", keywords: "archived bowls"),

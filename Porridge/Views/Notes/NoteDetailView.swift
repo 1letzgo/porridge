@@ -61,8 +61,6 @@ struct NoteDetailView: View {
     @State private var showVoices = false
     /// Pages of the document's PDF, once counted (for the meta line).
     @State private var pageCount: Int?
-    /// "Pick Date & Time…" of Later.
-    @State private var pickingLater = false
     /// The page editor opens with the scanner (More › Scan More Pages).
     @State private var scansPages = false
     /// Rewrite Selection… was chosen with nothing selected.
@@ -294,7 +292,6 @@ struct NoteDetailView: View {
             SummaryEditorSheet(text: Binding(get: { note.summary ?? "" }, set: { note.summary = $0 }), onFinish: finishEditingSummary)
         }
         .sheet(isPresented: $showPages) { PDFPageEditor(note: note, startsScanning: scansPages) }
-        .sheet(isPresented: $pickingLater) { LaterPickerSheet(notes: [note], onDone: onClose) }
         .alert("Select Text to Rewrite", isPresented: $rewriteNeedsSelection) {
             Button("OK") {}
         } message: {
@@ -646,26 +643,11 @@ struct NoteDetailView: View {
         .help("More")
     }
 
-    @ViewBuilder
     private func moreItem(_ item: EntryMenus.MoreItem) -> some View {
-        if item == .later {
-            Menu {
-                LaterMenuItems(notes: [note], onPick: { pickingLater = true }, onDone: onClose)
-                if note.isSnoozed() {
-                    Divider()
-                    Button { withAnimation(.snappy) { InboxSnooze.unsnooze([note], in: context) } } label: {
-                        Label("Back to Inbox Now", systemImage: "tray.and.arrow.down")
-                    }
-                }
-            } label: {
-                Label(item.title(for: note), systemImage: item.systemImage(for: note))
-            }
-        } else {
-            Button(role: item.isDestructive ? .destructive : nil) { run(item) } label: {
-                Label(item.title(for: note), systemImage: item.systemImage(for: note))
-            }
-            .disabled(!isEnabled(item))
+        Button(role: item.isDestructive ? .destructive : nil) { run(item) } label: {
+            Label(item.title(for: note), systemImage: item.systemImage(for: note))
         }
+        .disabled(!isEnabled(item))
     }
 
     /// Whether an AI item can be used right now (a model, no job running, a selection for Rewrite).
@@ -692,7 +674,7 @@ struct NoteDetailView: View {
         case .copyTranscript: return !note.segments.isEmpty
         case .deleteRecording: return note.hasAudio
         case .openInBrowser, .copyLink: return note.linkURL != nil
-        case .pin, .markDone, .convertToTodo, .convertToNote, .later, .saveAsTemplate, .copy, .openInNewWindow,
+        case .pin, .markDone, .convertToTodo, .convertToNote, .saveAsTemplate, .copy, .openInNewWindow,
              .delete, .recover, .deleteNow:
             return true
         }
@@ -739,8 +721,6 @@ struct NoteDetailView: View {
         case .convertToTodo, .convertToNote:
             commitTyping()
             withAnimation(.snappy) { Todos.setTodo(item == .convertToTodo, note, in: context) }
-        case .later:
-            pickingLater = true
         case .editPages:
             scansPages = false
             showPages = true

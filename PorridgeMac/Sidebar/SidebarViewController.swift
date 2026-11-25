@@ -173,7 +173,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private func syncSelection() {
         isSyncingSelection = true
         defer { isSyncingSelection = false }
-        if let node = node(for: state.page) {
+        // The Inbox's To-dos side is the Inbox's row.
+        if let node = node(for: state.page == .todos ? .inbox : state.page) {
             let row = outline.row(forItem: node)
             if row >= 0, outline.selectedRow != row { outline.selectRowIndexes([row], byExtendingSelection: false) }
         } else {
@@ -305,14 +306,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         case .today:
             // The to-dos due today or before, as on the iPhone's tab (`Places`).
             cell.configure(title: "Today", symbol: "calendar", tint: .brandNavy, badge: cellBadge(for: page) ?? 0)
-        case .inbox:
-            cell.configure(title: "Inbox", symbol: "tray.fill", tint: .brandSky, badge: cellBadge(for: page) ?? 0)
+        case .inbox, .todos:
+            cell.configure(title: "Inbox", symbol: "tray.fill", tint: .brandSky, badge: cellBadge(for: .inbox) ?? 0)
         case .bowls:
             // A bowl of the app's own (SF Symbols has none); single bowls keep the folder.
             cell.configure(title: "Bowls", symbol: Places.bowlsSymbol, tint: .brandProject, badge: 0)
-        case .todos:
-            let folder = Todos.folder(notes)
-            cell.configure(title: "Open To-dos", symbol: "checklist", tint: .brandTask, badge: folder.open, alert: folder.overdue)
         case .chat:
             cell.configure(title: "Chat", symbol: "bubble.left.and.bubble.right.fill", tint: .brandNavy, badge: 0)
         case .project(let id):

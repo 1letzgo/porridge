@@ -297,7 +297,10 @@ struct ProjectPage: View {
         return Button { withAnimation(.snappy) { filter = kind } } label: {
             HStack(spacing: 4) {
                 Text(kind.title)
-                Text("\(count)").foregroundStyle(isOn ? .white.opacity(0.8) : .secondary)
+                // The count only where there is one (owner revision 9: no "0" on a chip).
+                if count > 0 {
+                    Text("\(count)").foregroundStyle(isOn ? .white.opacity(0.8) : .secondary)
+                }
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(isOn ? .white : .primary)

@@ -74,25 +74,19 @@ final class TabBarFlowTests: XCTestCase {
         }
     }
 
-    /// The card with Open To-dos and Weekly Review is the first thing of the Inbox, above its entries (owner
-    /// revision 7), and the last rows of the list still scroll clear of the raised "+".
-    func testTheInboxCardIsOnTopAndTheLastRowClearsThePlus() {
+    /// The Inbox's entries are right under its switch New · To-dos (owner revision 9: no card), and the last rows of
+    /// the list still scroll clear of the raised "+".
+    func testTheInboxEntriesAreOnTopAndTheLastRowClearsThePlus() {
         let app = launch(["-emptyStore", "YES", "-seedInboxCount", "30"])
         app.openTab("Inbox")
         app.inboxSegment(0).tap()
-        let review = app.buttons["InboxWeeklyReview"]
-        let todos = app.buttons["InboxOpenTodos"]
-        XCTAssertTrue(review.waitForExistence(timeout: 10) && review.isHittable, "the card is not on top of the Inbox")
-        XCTAssertGreaterThan(todos.frame.minY, app.inboxSegment(0).frame.maxY, "the card is not under New / Later")
+        XCTAssertFalse(app.buttons["InboxWeeklyReview"].exists, "the card is still in the Inbox")
         let first = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Inbox note '")).firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 5), "no entries")
-        XCTAssertGreaterThan(first.frame.minY, review.frame.maxY, "the entries are not under the card")
+        XCTAssertGreaterThan(first.frame.minY, app.inboxSegment(0).frame.maxY, "the entries are not under New · To-dos")
         let last = app.staticTexts["Inbox note 1"]
         for _ in 0..<20 where !(last.exists && last.isHittable && last.frame.maxY <= app.addButton.frame.minY) { app.swipeUp() }
         XCTAssertLessThanOrEqual(last.frame.maxY, app.addButton.frame.minY, "the last entry stays under +")
-        for _ in 0..<20 where !(review.exists && review.isHittable) { app.swipeDown() }
-        review.tap()
-        XCTAssertTrue(app.staticTexts["Weekly Review"].waitForExistence(timeout: 5), "Weekly Review did not open")
     }
 
     /// "+" of the tab bar opens the Add sheet into the Inbox from the Inbox, into the bowl from a bowl.
@@ -160,48 +154,34 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 10), "a link did not win over Today")
     }
 
-    /// The top of the Inbox: one card with Open To-dos and Weekly Review, also when the Inbox is empty.
-    func testInboxCardOpensOpenTodosAndWeeklyReview() {
+    /// The Inbox's To-dos side lists the open to-dos (owner revision 9; before, the page Open To-dos), and the Weekly
+    /// Review is a button in Today's bar.
+    func testInboxToDosSideAndWeeklyReviewInToday() {
         let app = launch(["-seedTodos", unique("Card")])
         app.openTab("Inbox")
+        app.inboxSegment(1).tap()
+        XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "the To-dos side shows no open to-dos")
+        XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox tab")
+        screenshot("inbox-todos-side", app)
         app.inboxSegment(0).tap()
-        let card = app.descendants(matching: .any)["InboxEndCard"]
-        let todos = app.buttons["InboxOpenTodos"]
-        XCTAssertTrue(app.reveal(todos), "Open To-dos missing at the top of the Inbox")
-        XCTAssertTrue(card.exists, "Open To-dos is not on a card")
-        XCTAssertTrue(todos.label.contains("open"), "the card does not count the open to-dos: \(todos.label)")
-        XCTAssertTrue(todos.label.contains("overdue"), "the card does not say that to-dos are late: \(todos.label)")
-        let review = app.buttons["InboxWeeklyReview"]
-        XCTAssertTrue(review.exists, "Weekly Review missing at the top of the Inbox")
-        XCTAssertTrue(review.label.contains("This Week"), "Weekly Review says nothing about the week: \(review.label)")
-        XCTAssertGreaterThan(review.frame.minY, todos.frame.minY, "Weekly Review is not under Open To-dos")
-        screenshot("inbox-top-card", app)
-        todos.tap()
-        XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "Open To-dos did not open")
-        XCTAssertTrue(app.tab("Inbox").isSelected, "Open To-dos left the Inbox tab")
-        app.buttons["Back"].firstMatch.tap()
-        XCTAssertTrue(app.reveal(review), "Weekly Review missing after going back")
+
+        app.openTab("Today")
+        let review = app.buttons["TodayWeeklyReview"]
+        XCTAssertTrue(review.waitForExistence(timeout: 10), "no Weekly Review in Today's bar")
         review.tap()
         XCTAssertTrue(app.staticTexts["This Week"].waitForExistence(timeout: 5), "the Weekly Review did not open")
         app.buttons["Done"].firstMatch.tap()
-
-        // Not on Today any more.
-        app.openTab("Today")
-        XCTAssertFalse(app.buttons["TodayOpenTodos"].exists, "Open To-dos still hangs at the end of Today")
-        XCTAssertFalse(app.buttons["TodayWeeklyReview"].exists, "Weekly Review still hangs at the end of Today")
     }
 
-    /// An empty Inbox shows the card too, above its message.
-    func testEmptyInboxShowsTheCard() {
+    /// An empty Inbox says so, under its switch.
+    func testEmptyInboxSaysSo() {
         let app = launch(["-emptyStore", "YES"])
         app.openTab("Inbox")
         app.inboxSegment(0).tap()
         XCTAssertTrue(app.staticTexts["Inbox Empty"].waitForExistence(timeout: 10), "the empty Inbox says nothing")
-        let todos = app.buttons["InboxOpenTodos"]
-        XCTAssertTrue(app.reveal(todos), "the empty Inbox has no card")
-        XCTAssertLessThan(app.buttons["InboxWeeklyReview"].frame.maxY, app.staticTexts["Inbox Empty"].frame.minY, "the card is not above the message")
-        XCTAssertTrue(app.buttons["InboxWeeklyReview"].exists)
-        screenshot("inbox-empty-card", app)
+        XCTAssertTrue(app.inboxSegment(0).label.hasPrefix("New"), "no New side")
+        XCTAssertFalse(app.inboxSegment(0).label.contains("0"), "a 0 on the switch")
+        screenshot("inbox-empty", app)
     }
 
     /// The chat's keyboard goes away: with a tap in the conversation, with a drag down through it, and after sending.

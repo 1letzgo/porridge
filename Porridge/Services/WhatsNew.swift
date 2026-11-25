@@ -39,24 +39,26 @@ enum WhatsNew {
             Item(
                 symbol: "bolt.fill", title: String(localized: "Triage"),
                 text: mac
-                    ? String(localized: "Go through the Inbox one entry at a time: F files, L puts away for later, ⌫ deletes.")
-                    : String(localized: "The bolt in the Inbox goes through new entries one at a time: File, Later, Skip, Delete.")
+                    ? String(localized: "Go through the Inbox one entry at a time: F files, J skips, ⌫ deletes.")
+                    : String(localized: "The bolt in the Inbox goes through new entries one at a time: File, Skip, Delete.")
             ),
             Item(
                 symbol: "hand.draw", title: mac ? String(localized: "Filing") : String(localized: "Inbox Swipes"),
                 text: mac
                     ? String(localized: "“✦ Bowl” after an Inbox entry files it into the suggested bowl in one click.")
-                    : String(localized: "Swipe right to file into the suggested bowl, left for Later or Delete.")
+                    : String(localized: "Swipe right to file into the suggested bowl, left to delete.")
             ),
             Item(
                 symbol: "checkmark.circle", title: String(localized: "Choosing Several"),
                 text: mac
                     ? String(localized: "Select several entries and the inspector changes what they have in common.")
-                    : String(localized: "Select turns the tab bar into Move · Later · Done · More.")
+                    : String(localized: "Select turns the tab bar into Move · Done · More.")
             ),
             Item(
                 symbol: "calendar", title: String(localized: "Today Shows What Is Open"),
-                text: String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Open To-dos and the Weekly Review are at the top of the Inbox.")
+                text: mac
+                    ? String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is on the Inbox’s To-dos side; the Weekly Review is a button in Today’s head.")
+                    : String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is on the Inbox’s To-dos side; the Weekly Review is a button in Today’s bar.")
             ),
         ]
     }
@@ -66,7 +68,7 @@ enum WhatsNew {
     static func places(mac: Bool) -> [Item] {
         let today = Item(symbol: "calendar", title: String(localized: "Today"), text: String(localized: "Appointments and the to-dos that are due."))
         let inbox = Item(symbol: "tray.fill", title: String(localized: "Inbox"),
-                         text: String(localized: "Everything new lands here first, until it is filed into a bowl. On top: Open To-dos and the Weekly Review."))
+                         text: String(localized: "Everything new lands here first and stays until it is filed into a bowl. Its To-dos side lists every open to-do."))
         let bowls = Item(symbol: Places.bowlsSymbol, title: String(localized: "Bowls"), text: mac
             ? String(localized: "One bowl per topic, the smart filters, Archive and Recently Deleted.")
             : String(localized: "One bowl per topic and the smart filters; the switch on top shows the Archive and Recently Deleted."))

@@ -121,18 +121,18 @@ final class EntryDetailsTests: XCTestCase {
         let a = F.pdf("A", document: DocumentInfo(kind: .invoice), in: context)
         let b = F.pdf("B", document: DocumentInfo(kind: .letter), in: context)
         let c = F.pdf("C", in: context)
-        // Three PDFs in the Inbox: bowl, later, the document fields, merge, delete (no paid mark).
+        // Three PDFs in the Inbox: bowl, the document fields, merge, delete (no paid mark).
         XCTAssertEqual(EntryDetails.commonFields(for: [a, b, c], isReadOnly: { _ in false }), [
-            .bowl, .later, .documentKind, .sender(count: 3), .mergePDFs(count: 3), .delete(count: 3),
+            .bowl, .documentKind, .sender(count: 3), .mergePDFs(count: 3), .delete(count: 3),
         ])
-        // With a note among them: no document fields, no merge; filed, no later.
+        // With a note among them: no document fields, no merge; filed.
         let note = F.note(in: context)
         let work = F.bowl("Work", in: context)
         F.file(note, into: work)
         XCTAssertEqual(EntryDetails.commonFields(for: [a, note], isReadOnly: { _ in false }), [.bowl, .delete(count: 2)])
         // Two to-dos share a due day.
         let t1 = F.todo(in: context), t2 = F.todo(in: context)
-        XCTAssertEqual(EntryDetails.commonFields(for: [t1, t2], isReadOnly: { _ in false }), [.bowl, .later, .due, .delete(count: 2)])
+        XCTAssertEqual(EntryDetails.commonFields(for: [t1, t2], isReadOnly: { _ in false }), [.bowl, .due, .delete(count: 2)])
         // Entries that cannot change leave nothing.
         NoteStore.trash(t1, in: context)
         XCTAssertEqual(EntryDetails.commonFields(for: [t1], isReadOnly: { _ in false }), [])

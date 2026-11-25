@@ -6,14 +6,13 @@ enum ListItem: Hashable {
     case project(UUID)
     /// An appointment of the day (Today), by `CalendarAppointment.key`.
     case appointment(String)
-    /// A fixed row that leads somewhere (the Inbox's top card: Open To-dos and Weekly Review; the Bowls place's smart
-    /// filters, Archive and Recently Deleted).
+    /// A fixed row that leads somewhere (the Bowls place's smart filters, Archive and Recently Deleted).
     case link(ListLink)
 }
 
 /// Where a fixed row of the list leads.
 enum ListLink: Hashable {
-    case openTodos, weeklyReview, archive, trash, newSmartFilter, newBowl
+    case archive, trash, newSmartFilter, newBowl
     case smartFilter(UUID)
 }
 
@@ -38,8 +37,6 @@ enum NoteListContent {
         var emptyTitle: String
         var emptyMessage: String
         var emptySymbol: String
-        /// The empty message shows over the list although it has sections (the empty Inbox keeps its top card).
-        var showsEmptyMessage = false
         /// The kinds a bowl holds, for its filter; empty elsewhere.
         var kindCounts: [KindFilter: Int] = [:]
         /// The appointments of a bowl (rows of All, counted in it).
@@ -48,44 +45,28 @@ enum NoteListContent {
         var indented: Set<UUID> = []
     }
 
-    /// The section of the Inbox's top card (Open To-dos, Weekly Review): its rows are drawn as one card.
-    static let inboxCardID = "inbox-card"
-
     static func build(for state: WindowState, library: Library) -> Built {
         let notes = library.notes
         switch state.page {
         case .today:
             return today(notes, day: state.todayShownDay)
         case .inbox:
-            // The segment New / Later of the header: what waits, or what was put away for later.
-            if state.showsLater {
-                let later = InboxSnooze.snoozed(notes)
-                return Built(
-                    sections: later.isEmpty ? [] : [(ListSection(id: "inbox-later", title: "", tint: .navy), later.map { .note($0.id) })],
-                    emptyTitle: "Nothing for Later", emptyMessage: "Put an entry away with Entry › Later or L in triage: it comes back at the time you choose.",
-                    emptySymbol: "clock"
-                )
-            }
+            // The New side of the header's segment: everything in no bowl, until it is filed (owner revision 9).
             let waiting = Inbox.notes(notes)
-            let later = InboxSnooze.snoozed(notes)
-            let next = later.compactMap(\.snoozedUntil).min().map { " " + String(localized: "\(later.count) come back from Later · next \(InboxSnooze.timeLabel($0)).") } ?? ""
-            // At the top, above the entries, also when nothing waits: the card with Open To-dos and the Weekly Review.
-            let card = (ListSection(id: Self.inboxCardID, title: "", tint: .navy), [ListItem.link(.openTodos), .link(.weeklyReview)])
-            // Under the card: today's appointments not filed into a bowl (`InboxAppointments`).
+            // On top: today's appointments not filed into a bowl (`InboxAppointments`).
             let calendar = TodayCalendar.shared
             let appointments = calendar.status == .granted ? AppointmentLinks.shared.inboxAppointments(among: calendar.appointments, day: calendar.today) : []
             let appointmentSection: [(ListSection, [ListItem])] = appointments.isEmpty ? [] : [
                 (ListSection(id: "inbox-appointments", title: String(localized: "Appointments"), tint: .navy, count: appointments.count), appointments.map { .appointment($0.key) }),
             ]
             return Built(
-                sections: [card] + appointmentSection + (waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]),
-                emptyTitle: "Inbox Empty", emptyMessage: "Everything is filed. Drop files, mails or links here, or press ⌘N." + next, emptySymbol: "tray",
-                showsEmptyMessage: waiting.isEmpty && appointments.isEmpty
+                sections: appointmentSection + (waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]),
+                emptyTitle: "Inbox Empty", emptyMessage: "Everything is filed. Drop files, mails or links here, or press ⌘N.", emptySymbol: "tray"
             )
         case .bowls:
             return bowls(notes, library: library)
         case .todos:
-            // Exactly the groups of the search's "Open To-dos", then those done today (`Todos.folder`).
+            // The To-dos side of the Inbox's segment (owner revision 9; before, the page Open To-dos): exactly the groups of the search's "Open To-dos", then those done today (`Todos.folder`).
             let folder = Todos.folder(notes)
             var sections = folder.groups.enumerated().map { index, group -> (ListSection, [ListItem]) in
                 let late = group.notes.first.flatMap { TodoBridge.dueStatus(of: $0) } == .overdue

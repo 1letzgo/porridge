@@ -2,14 +2,13 @@ import SwiftData
 import SwiftUI
 
 /// A note, meeting or link in a list, with its swipes and long press: pin, projects, share, delete. Notes are never
-/// archived, only bowls are. In the Inbox the swipes file and put away: right "File" (into the suggested bowl, a full
-/// swipe files) and "Bowl…", left "Delete" and "Later" (the times at once); each is also a VoiceOver action and in
-/// the long press.
+/// archived, only bowls are. In the Inbox the swipes file: right "File" (into the suggested bowl, a full swipe files)
+/// and "Bowl…", left "Delete"; each is also a VoiceOver action and in the long press.
 struct NoteListRow: View {
     let note: Note
     /// The names of the note's bowls, shown in its row where a list mixes bowls (the to-dos folder).
     var buckets: [String] = []
-    /// The row is in the Inbox's list: it says how long it has been waiting, and swipes to file or put away.
+    /// The row is in the Inbox's list: it says how long it has been waiting, and swipes to file.
     var inInbox = false
     /// The bowl suggested for an Inbox entry (`EntryMeta.suggestion`): "✦ Bowl" in the row, "File" in the swipe.
     var suggestion: NoteFolder?
@@ -20,14 +19,12 @@ struct NoteListRow: View {
     @Environment(\.ticksLeaveList) private var ticksLeaveList
     @Environment(ProcessingService.self) private var processing
     @State private var pickingDue = false
-    @State private var choosingLater = false
-    @State private var pickingLater = false
     @State private var choosingBowl = false
 
     var body: some View {
         // In a bowl shared with me to view only: the pin (my own) and sharing the text, nothing that changes it.
         let readOnly = !note.isDeleted && BowlSharing.shared.isReadOnly(note)
-        let files = inInbox && offersLater
+        let files = inInbox && canFile
         ListRowLink(value: note.id) {
             NoteRow(
                 note: note, stage: processing.stages[note.id], buckets: buckets, showsInboxAge: inInbox,
@@ -60,11 +57,6 @@ struct NoteListRow: View {
                 Button(role: .destructive, action: onRemove) {
                     Label(note.isDeleted ? "Delete Now" : "Delete", systemImage: "trash")
                 }
-                // An Inbox entry away until later (`InboxSnooze`).
-                if offersLater {
-                    Button { choosingLater = true } label: { Label("Later", systemImage: "clock") }
-                        .tint(.brandNavy)
-                }
             }
         }
         .accessibilityActions {
@@ -73,7 +65,6 @@ struct NoteListRow: View {
                     Button("File into \(suggestion.name)", action: fileIntoSuggestion)
                 }
                 Button("Bowl…") { choosingBowl = true }
-                Button("Later…") { choosingLater = true }
                 Button("Delete", action: onRemove)
             }
         }
@@ -96,18 +87,6 @@ struct NoteListRow: View {
                     }
                 }
                 Button { togglePin() } label: { Label(note.isPinned ? "Unpin" : "Pin", systemImage: note.isPinned ? "pin.slash" : "pin") }
-                if offersLater {
-                    Menu {
-                        LaterMenuItems(notes: [note]) { pickingLater = true }
-                    } label: {
-                        Label("Later", systemImage: "clock")
-                    }
-                    if note.isSnoozed() {
-                        Button { withAnimation(.snappy) { InboxSnooze.unsnooze([note], in: context) } } label: {
-                            Label("Back to Inbox Now", systemImage: "tray.and.arrow.down")
-                        }
-                    }
-                }
                 if files, let suggestion {
                     Button(action: fileIntoSuggestion) { Label("File into \(suggestion.name)", systemImage: "sparkles") }
                     Button { withAnimation(.snappy) { Inbox.dismissSuggestions(note, in: context) } } label: {
@@ -128,8 +107,6 @@ struct NoteListRow: View {
             }
         }
         .sheet(isPresented: $pickingDue) { DueDatePickerSheet(note: note) }
-        .sheet(isPresented: $pickingLater) { LaterPickerSheet(notes: [note]) }
-        .sheet(isPresented: $choosingLater) { LaterSheet(notes: [note]) }
         .sheet(isPresented: $choosingBowl) { BowlPickerSheet(notes: [note]) }
     }
 
@@ -139,8 +116,8 @@ struct NoteListRow: View {
         withAnimation(.snappy) { Undoable.move([note], toBowl: Projects.key(suggestion), named: suggestion.name, in: context) }
     }
 
-    /// "Later" is for entries of the Inbox.
-    private var offersLater: Bool {
+    /// Filing from the row is for entries of the Inbox that can be changed.
+    private var canFile: Bool {
         note.isInInbox && !note.isDeleted && !BowlSharing.shared.isReadOnly(note)
     }
 

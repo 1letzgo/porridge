@@ -35,7 +35,7 @@ final class PlacesShotsTests: XCTestCase {
             app.openTab("Inbox")
             shoot("inbox\(suffix)")
             app.inboxSegment(1).tap()
-            shoot("inbox-later\(suffix)")
+            shoot("inbox-todos\(suffix)")
             app.inboxSegment(0).tap()
             app.openTab("Bowls")
             shoot("bowls\(suffix)")

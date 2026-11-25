@@ -27,13 +27,11 @@ struct NotesProvider: TimelineProvider {
         completion(context.isPreview && entry.isEmptyStore ? .sample : entry)
     }
 
-    /// One entry now and one at midnight: what is due today and what is overdue moves on with the day. One more for
-    /// each time before then that something comes back from Later into the inbox.
+    /// One entry now and one at midnight: what is due today and what is overdue moves on with the day.
     func getTimeline(in context: Context, completion: @escaping (Timeline<NotesEntry>) -> Void) {
         let now = Date.now
         let midnight = Calendar.current.startOfDay(for: now.addingTimeInterval(86_400))
-        let returns = (WidgetStore.snapshot()?.laterReturns(after: now) ?? []).filter { $0 < midnight }
-        completion(Timeline(entries: ([now] + returns + [midnight]).map(load(at:)), policy: .atEnd))
+        completion(Timeline(entries: [now, midnight].map(load(at:)), policy: .atEnd))
     }
 
     private func load(at date: Date) -> NotesEntry {
@@ -41,7 +39,7 @@ struct NotesProvider: TimelineProvider {
             return NotesEntry(date: date, snapshot: WidgetSnapshot(), waitingShares: ShareInbox.pending().count, isEmptyStore: true)
         }
         return NotesEntry(
-            date: date, snapshot: stored.at(date).applying(WidgetStore.pendingCompletions()), waitingShares: ShareInbox.pending().count
+            date: date, snapshot: stored.applying(WidgetStore.pendingCompletions()), waitingShares: ShareInbox.pending().count
         )
     }
 }

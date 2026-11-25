@@ -75,7 +75,7 @@ enum HomeList {
 }
 
 /// The counts on the three places: Today's tab and sidebar row show the to-dos due today or overdue, the Inbox's
-/// what waits in it (not put away for later). The same numbers on iPhone and Mac.
+/// every entry in no bowl. The same numbers on iPhone and Mac.
 enum Places {
     /// The place Bowls as a whole (tab, page head, Go To, onboarding, Mac sidebar and menus): a bowl of the app's own
     /// (template images `BowlPlaceFill`, `BowlPlace` outlined; SF Symbols has no bowl). A single bowl keeps the folder.
@@ -85,8 +85,16 @@ enum Places {
         TodayTodos.open(notes, now: now).count
     }
 
-    static func inboxCount(_ notes: [Note], now: Date = Date()) -> Int {
-        notes.lazy.filter { $0.isWaitingInInbox(now: now) }.count
+    /// Every entry in no bowl: nothing is put away, things stay in the Inbox until they are filed (owner revision 9).
+    static func inboxCount(_ notes: [Note]) -> Int {
+        notes.lazy.filter(\.isInInbox).count
+    }
+
+    /// The title of a switch's side, a segment or a filter chip with its count, the count only when there is one:
+    /// "Archive", "Deleted 27" (owner revision 9: no "0" in tabs). `gap` is what stands between (two spaces on the
+    /// Mac's pills).
+    static func countedTitle(_ title: String, _ count: Int, gap: String = " ") -> String {
+        count > 0 ? title + gap + "\(count)" : title
     }
 
     /// Entries that came in during the week of `now` (Weekly Review's row in Today).

@@ -11,14 +11,6 @@ struct WidgetSnapshot: Codable, Equatable {
         var title: String
         /// The SF Symbol of the entry's kind (`Note.kindSymbol`).
         var symbol: String
-        /// When it was made: where it goes in the list once it is back from Later.
-        var createdAt: Date?
-    }
-
-    /// An inbox entry put away for later (`InboxSnooze`): not counted until `until`, then it is back in the inbox.
-    struct Later: Codable, Equatable {
-        var entry: Entry
-        var until: Date
     }
 
     /// One open to-do.
@@ -38,9 +30,6 @@ struct WidgetSnapshot: Codable, Equatable {
     var inboxCount = 0
     /// The newest entries of the inbox, newest first (a few).
     var inbox: [Entry] = []
-    /// What comes back into the inbox from Later, the next first (capped): the widgets count it from its time on,
-    /// also while the app does not run.
-    var later: [Later] = []
     /// Every open to-do.
     var openTodoCount = 0
     /// Open to-dos by due day, earliest first, those without a due day last (capped).
@@ -48,32 +37,12 @@ struct WidgetSnapshot: Codable, Equatable {
 
     /// How many inbox entries and to-dos the snapshot carries at most.
     static let inboxLimit = 8
-    static let laterLimit = 60
     static let todoLimit = 60
 
     /// The day as it is stored in `Note.todoDueDay`: "yyyy-MM-dd" in the calendar's time zone.
     static func dayKey(_ date: Date, calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
-    }
-
-    /// The snapshot as it is at `date`: what has come back from Later by then is in the inbox again.
-    func at(_ date: Date) -> WidgetSnapshot {
-        let back = later.filter { $0.until <= date }
-        guard !back.isEmpty else { return self }
-        var copy = self
-        copy.later.removeAll { $0.until <= date }
-        copy.inboxCount += back.count
-        copy.inbox = Array((inbox + back.map(\.entry)).enumerated().sorted { a, b in
-            let x = a.element.createdAt ?? .distantPast, y = b.element.createdAt ?? .distantPast
-            return x != y ? x > y : a.offset < b.offset
-        }.map(\.element).prefix(Self.inboxLimit))
-        return copy
-    }
-
-    /// The times after `date` when something comes back from Later, the next first (a few: each is a timeline entry).
-    func laterReturns(after date: Date, limit: Int = 12) -> [Date] {
-        Array(Set(later.map(\.until).filter { $0 > date }).sorted().prefix(limit))
     }
 
     /// The snapshot with to-dos ticked in a widget that the app has not taken in yet (`WidgetStore.pendingCompletions`):

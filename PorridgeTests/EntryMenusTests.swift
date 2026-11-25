@@ -25,9 +25,9 @@ final class EntryMenusTests: XCTestCase {
         // A note summarized earlier keeps Summarize Again and Suggest To-dos (both were in the old More menus).
         XCTAssertEqual(ai(note, enhanced), [[.enhance, .undoEnhance, .summarize(again: true), .suggestTodos, .rewriteSelection, .splitIntoBowl]])
         XCTAssertEqual(EntryMenus.share(for: note), .markdown)
-        XCTAssertEqual(more(note), [[.pin, .convertToTodo, .later], [.saveAsTemplate], [.delete]])
+        XCTAssertEqual(more(note), [[.pin, .convertToTodo], [.saveAsTemplate], [.delete]])
 
-        // In a bowl: Ask About This Bowl, no Later.
+        // In a bowl: Ask About This Bowl.
         let work = F.bowl("Work", in: context)
         F.file(note, into: work)
         XCTAssertEqual(ai(note).last, [.askAboutBowl])
@@ -39,7 +39,7 @@ final class EntryMenusTests: XCTestCase {
         let todo = F.todo(text: "- [ ] One", in: context)
         XCTAssertEqual(ai(todo), [[.enhance, .rewriteSelection, .splitIntoBowl]], "a to-do is enhanced, not summarized")
         XCTAssertEqual(EntryMenus.share(for: todo), .todoText)
-        XCTAssertEqual(more(todo), [[.pin, .markDone, .convertToNote, .later], [.saveAsTemplate], [.delete]])
+        XCTAssertEqual(more(todo), [[.pin, .markDone, .convertToNote], [.saveAsTemplate], [.delete]])
         XCTAssertEqual(EntryMenus.MoreItem.markDone.title(for: todo), "Mark as Done")
         // A to-do never offers the tasks of a summary as to-dos.
         todo.summary = "Old summary"
@@ -56,7 +56,7 @@ final class EntryMenusTests: XCTestCase {
         XCTAssertEqual(ai(meeting).first?.first, .summarize(again: true))
         XCTAssertEqual(EntryMenus.share(for: meeting), .exportSheet)
         XCTAssertEqual(more(meeting), [
-            [.pin, .later],
+            [.pin],
             [.continueRecording, .transcribeAgain, .mergeWith, .copyTranscript, .deleteRecording],
             [.saveAsTemplate],
             [.delete],
@@ -83,12 +83,12 @@ final class EntryMenusTests: XCTestCase {
         let image = F.image(in: context)
         XCTAssertEqual(ai(image), [[.summarize(again: false)]])
         XCTAssertEqual(EntryMenus.share(for: image), .image)
-        XCTAssertEqual(more(image), [[.pin, .later], [.delete]])
+        XCTAssertEqual(more(image), [[.pin], [.delete]])
         // A photographed bill offers no paid mark: documents keep no payment status.
         var list = image.attachments
         list[0].document = DocumentInfo(kind: .invoice, correspondent: "Bakery", isEdited: true)
         image.attachments = list
-        XCTAssertEqual(more(image).first, [.pin, .later])
+        XCTAssertEqual(more(image).first, [.pin])
     }
 
     func testDocument() throws {
@@ -96,12 +96,12 @@ final class EntryMenusTests: XCTestCase {
         let bill = F.pdf(document: DocumentInfo(kind: .invoice), in: context)
         XCTAssertEqual(ai(bill), [[.summarize(again: false)]])
         XCTAssertEqual(EntryMenus.share(for: bill), .file)
-        XCTAssertEqual(more(bill), [[.pin, .editPages, .scanMorePages, .later], [.delete]])
+        XCTAssertEqual(more(bill), [[.pin, .editPages, .scanMorePages], [.delete]])
         // Scan More Pages is the iPhone's; the Mac has Open in New Window.
-        XCTAssertEqual(more(bill, on: .mac), [[.pin, .editPages, .later], [.openInNewWindow], [.delete]])
+        XCTAssertEqual(more(bill, on: .mac), [[.pin, .editPages], [.openInNewWindow], [.delete]])
         // A letter has the same items.
         let letter = F.pdf(document: DocumentInfo(kind: .letter), in: context)
-        XCTAssertEqual(more(letter).first, [.pin, .editPages, .scanMorePages, .later])
+        XCTAssertEqual(more(letter).first, [.pin, .editPages, .scanMorePages])
     }
 
     func testRecentlyDeleted() throws {
@@ -132,7 +132,7 @@ final class EntryMenusTests: XCTestCase {
         let context = try TestStore.context()
         let note = F.note(in: context)
         let items: [EntryMenus.MoreItem] = [
-            .pin, .markDone, .convertToTodo, .convertToNote, .later, .editPages, .scanMorePages, .openInBrowser, .copyLink,
+            .pin, .markDone, .convertToTodo, .convertToNote, .editPages, .scanMorePages, .openInBrowser, .copyLink,
             .loadPageAgain, .continueRecording, .transcribeAgain, .mergeWith, .copyTranscript, .deleteRecording, .saveAsTemplate, .copy,
             .openInNewWindow, .delete, .recover, .deleteNow,
         ]
@@ -151,10 +151,10 @@ final class EntryMenusTests: XCTestCase {
     func testEveryKindOnTheMac() throws {
         let context = try TestStore.context()
         let kinds: [(Note, [[EntryMenus.MoreItem]])] = [
-            (F.note(text: "Text", in: context), [[.pin, .convertToTodo, .later], [.saveAsTemplate], [.openInNewWindow], [.delete]]),
-            (F.todo(text: "- [ ] One", in: context), [[.pin, .markDone, .convertToNote, .later], [.saveAsTemplate], [.openInNewWindow], [.delete]]),
-            (F.link(in: context), [[.pin, .openInBrowser, .copyLink, .loadPageAgain, .later], [.openInNewWindow], [.delete]]),
-            (F.image(in: context), [[.pin, .later], [.openInNewWindow], [.delete]]),
+            (F.note(text: "Text", in: context), [[.pin, .convertToTodo], [.saveAsTemplate], [.openInNewWindow], [.delete]]),
+            (F.todo(text: "- [ ] One", in: context), [[.pin, .markDone, .convertToNote], [.saveAsTemplate], [.openInNewWindow], [.delete]]),
+            (F.link(in: context), [[.pin, .openInBrowser, .copyLink, .loadPageAgain], [.openInNewWindow], [.delete]]),
+            (F.image(in: context), [[.pin], [.openInNewWindow], [.delete]]),
         ]
         for (note, expected) in kinds {
             XCTAssertEqual(more(note, on: .mac), expected, "\(EntryKind(note))")

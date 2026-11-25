@@ -273,7 +273,7 @@ extension Note {
     /// file), and it was summarized since there are suggestions or the user asked for them ("Suggest To-dos").
     var offersTodoSuggestions: Bool {
         guard let raw = todoSuggestionsRaw else { return false }
-        // Only a "Later" in it (`InboxSnooze.unofferedKey`): nothing was offered.
+        // Only the leftover of a "Later" in it (`InboxSnooze.unofferedKey`): nothing was offered.
         return !raw.contains(InboxSnooze.unofferedKey) && !isSaved && !isTodo && summary != nil && !isDeleted
     }
 

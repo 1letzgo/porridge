@@ -33,15 +33,13 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(Places.todayCount(notes, now: now), 2)
     }
 
-    func testInboxCountsWhatWaitsNotWhatIsLaterOrFiled() {
+    func testInboxCountsEverythingInNoBowl() {
         let waiting = Note()
         let filed = Note()
         filed.projectIDs = ["bowl"]
-        let later = Note()
-        later.snoozedUntil = now.addingTimeInterval(3600)
         let deleted = Note()
         deleted.deletedAt = now
-        XCTAssertEqual(Places.inboxCount([waiting, filed, later, deleted], now: now), 1)
+        XCTAssertEqual(Places.inboxCount([waiting, filed, deleted]), 1)
     }
 
     func testUpNextIsTheNextSevenDaysByDue() {
@@ -77,10 +75,9 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(QuickAction.openBowls.url.absoluteString, "porridge://bowls")
     }
 
-    /// Each page opened from elsewhere lands on its place's stack: Open To-dos on the Inbox (its top card), the bowls'
-    /// pages and Settings on Bowls, the chat on the search (its Chat side).
+    /// Each page opened from elsewhere lands on its place's stack: the bowls' pages and Settings on Bowls, the chat
+    /// on the search (its Chat side). Open To-dos is the Inbox's To-dos side, no page.
     func testPagesBelongToTheirPlace() {
-        XCTAssertEqual(ListPage.todos.place, .inbox)
         XCTAssertEqual(ListPage.project(UUID()).place, .bowls)
         XCTAssertEqual(ListPage.smartFilter(UUID()).place, .bowls)
         XCTAssertEqual(ListPage.archive.place, .bowls)
@@ -88,7 +85,6 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(ListPage.settings.place, .bowls)
         XCTAssertEqual(ListPage.chat.place, .search)
         XCTAssertEqual(Place(root: .inbox), .inbox)
-        XCTAssertNil(Place(root: .todos))
         XCTAssertNil(Place(root: .chat), "the chat is a side of the Search tab, not a place")
         XCTAssertEqual(Place.allCases.map(\.root), [.today, .inbox, .bowls, .search])
     }
@@ -205,13 +201,14 @@ final class PlacesTests: XCTestCase {
         XCTAssertTrue(phone.contains("Chat"), "the Chat side is named")
         XCTAssertTrue(phone.contains("“+” in the middle"), "the + of the tab bar is named")
         XCTAssertTrue(phone.contains("gear in Today"), "the gear in Today is named")
-        XCTAssertTrue(phone.contains("top of the Inbox"), "the Inbox's card is named")
+        XCTAssertTrue(phone.contains("To-dos side"), "the Inbox's To-dos side is named")
         XCTAssertFalse(phone.contains("Chat tab"), "Chat has no tab of its own any more")
         // The onboarding's last page: the tab bar from left to right.
         XCTAssertEqual(WhatsNew.places(mac: false).map(\.title), ["Today", "Inbox", "Add", "Bowls", "Search and Chat"])
         XCTAssertEqual(WhatsNew.places(mac: true).map(\.title), ["Today", "Inbox", "Bowls", "Chat", "Search or Ask (⌘K)"])
         XCTAssertTrue(phone.contains("Swipe"), "the Inbox swipes are named")
-        XCTAssertTrue(phone.contains("Move · Later · Done · More"), "the selection bar is named")
+        XCTAssertTrue(phone.contains("Move · Done · More"), "the selection bar is named")
+        XCTAssertFalse(phone.contains("Later"), "there is no Later any more")
         XCTAssertFalse(phone.contains("Bucket") || phone.contains("Project"), "the container is a Bowl")
     }
 }

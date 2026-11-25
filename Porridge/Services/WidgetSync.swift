@@ -14,17 +14,12 @@ enum WidgetSync {
     ) -> WidgetSnapshot {
         let isReadOnly = custom ?? { BowlSharing.shared.isReadOnly($0) }
         let live = notes.filter { !$0.isDeleted }
-        // Put away for later: not in the inbox now (`Inbox.notes`), but the widgets bring it back on time.
-        let waiting = Inbox.notes(live, now: now)
-        let later = InboxSnooze.snoozed(live, now: now)
+        let waiting = Inbox.notes(live)
         let open = Todos.byDue(notes.filter { $0.isTodo && !$0.isDone && !$0.isDeleted })
         return WidgetSnapshot(
             generatedAt: now,
             inboxCount: waiting.count,
             inbox: waiting.prefix(WidgetSnapshot.inboxLimit).map(entry),
-            later: later.prefix(WidgetSnapshot.laterLimit).compactMap { note in
-                note.snoozedUntil.map { WidgetSnapshot.Later(entry: entry(note), until: $0) }
-            },
             openTodoCount: open.count,
             todos: open.prefix(WidgetSnapshot.todoLimit).map {
                 WidgetSnapshot.Todo(
@@ -36,7 +31,7 @@ enum WidgetSync {
     }
 
     private static func entry(_ note: Note) -> WidgetSnapshot.Entry {
-        WidgetSnapshot.Entry(id: note.id.uuidString, title: note.displayTitle, symbol: note.kindSymbol, createdAt: note.createdAt)
+        WidgetSnapshot.Entry(id: note.id.uuidString, title: note.displayTitle, symbol: note.kindSymbol)
     }
 
     /// Writes the snapshot and reloads the widgets when it changed.

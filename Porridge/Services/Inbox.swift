@@ -6,9 +6,23 @@ import SwiftData
 /// a suggestion on or drops it.
 @MainActor
 enum Inbox {
-    /// What waits in the inbox, newest first; entries put away for later (`InboxSnooze`) wait outside it.
-    static func notes(_ all: [Note], now: Date = Date()) -> [Note] {
-        all.filter { $0.isWaitingInInbox(now: now) }.sorted { $0.createdAt > $1.createdAt }
+    /// What waits in the inbox, newest first: every entry in no bowl. Nothing is put away; an entry stays until it is
+    /// filed (owner revision 9; an older "Later" mark is not read, `InboxSnooze`).
+    static func notes(_ all: [Note]) -> [Note] {
+        all.filter(\.isInInbox).sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// How long an entry has been waiting in the Inbox, quiet: nil under a day, then "1 day", "5 days", "3 weeks",
+    /// "4 months".
+    nonisolated static func waitingLabel(since start: Date, now: Date = Date(), calendar: Calendar = .current) -> String? {
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: start), to: calendar.startOfDay(for: now)).day ?? 0
+        switch days {
+        case ..<1: return nil
+        case 1: return String(localized: "1 day")
+        case 2..<14: return String(localized: "\(days) days")
+        case 14..<60: return String(localized: "\(days / 7) weeks")
+        default: return String(localized: "\(days / 30) months")
+        }
     }
 
     /// Files the note into a bowl, in place of the one it was in (an entry is in one bowl at most); it leaves the

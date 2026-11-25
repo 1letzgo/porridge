@@ -62,17 +62,6 @@ enum NoteOperations {
         }
         let pinned = notes.allSatisfy(\.isPinned)
         menu.add(pinned ? "Unpin" : "Pin", symbol: pinned ? "pin.slash" : "pin") { setPinned(!pinned, notes) }
-        // Inbox entries: away until later, or back now.
-        if notes.allSatisfy(\.isInInbox) {
-            let later = NSMenuItem(title: "Later", action: nil, keyEquivalent: "")
-            later.image = NSImage(systemSymbolName: "clock", accessibilityDescription: nil)
-            later.submenu = laterMenu(for: notes, window: window)
-            menu.addItem(later)
-            let snoozed = notes.filter { $0.isSnoozed() }
-            if !snoozed.isEmpty {
-                menu.add("Back to Inbox Now", symbol: "tray.and.arrow.down") { InboxSnooze.unsnooze(snoozed, in: context) }
-            }
-        }
         // The suggested bowl of an Inbox entry ("✦ Bowl" in its row): file there, or drop the suggestion.
         if notes.count == 1, let note = notes.first, let bowl = EntryMeta.suggestion(for: note, bowls: library.activeProjects) {
             menu.add("File into “\(bowl.name)”", symbol: "sparkles") {
@@ -125,47 +114,6 @@ enum NoteOperations {
             }
         }
         return menu
-    }
-
-    /// "Later": the quick choices with when they come back, and a date and time of one's own.
-    static func laterMenu(for notes: [Note], window: NSWindow?, after: (() -> Void)? = nil) -> NSMenu {
-        let menu = NSMenu()
-        for (choice, date) in InboxSnooze.choices() {
-            let item = menu.add(choice.title, symbol: choice.systemImage) {
-                InboxSnooze.snooze(notes, until: date, in: context)
-                after?()
-            }
-            item.subtitle = InboxSnooze.timeLabel(date)
-        }
-        menu.addSeparator()
-        menu.add("Pick Date & Time…", symbol: "calendar.badge.clock") {
-            pickLaterDate(for: notes, in: window, after: after)
-        }
-        return menu
-    }
-
-    /// A date and time of one's own for "Later", in a small dialog.
-    static func pickLaterDate(for notes: [Note], in window: NSWindow?, after: (() -> Void)? = nil) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = notes.count == 1 ? "Later" : "Later: \(notes.count) Entries"
-        alert.informativeText = "Back in the Inbox at this time, with a notification."
-        let picker = NSDatePicker()
-        picker.datePickerStyle = .textFieldAndStepper
-        picker.datePickerElements = [.yearMonthDay, .hourMinute]
-        picker.minDate = Date()
-        let start = InboxSnooze.date(for: .tomorrow) ?? Date().addingTimeInterval(24 * 3600)
-        picker.dateValue = notes.first?.snoozedUntil.flatMap { $0 > Date() ? $0 : nil } ?? start
-        picker.sizeToFit()
-        alert.accessoryView = picker
-        alert.addButton(withTitle: "Later")
-        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
-        let run: (NSApplication.ModalResponse) -> Void = { response in
-            guard response == .alertFirstButtonReturn, picker.dateValue > Date() else { return }
-            InboxSnooze.snooze(notes, until: picker.dateValue, in: context)
-            after?()
-        }
-        if let window, window.attachedSheet == nil { alert.beginSheetModal(for: window, completionHandler: run) } else { run(alert.runModal()) }
     }
 
     /// For documents: their kind and sender (all selected at once), their pages, merging several PDFs.

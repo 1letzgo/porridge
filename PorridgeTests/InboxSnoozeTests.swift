@@ -2,8 +2,9 @@ import SwiftData
 import XCTest
 @testable import Porridge
 
-/// "Later" for Inbox entries: how it is stored, what the Inbox shows, when an entry comes back and when its
-/// notification is shown.
+/// What is left of "Later" (owner revision 9 took it away): entries that were put away are in the Inbox like every
+/// other entry in no bowl, the old keys keep meaning "nothing offered" and go with the next change of the
+/// suggestions; and how long an entry has been waiting.
 @MainActor
 final class InboxSnoozeTests: XCTestCase {
     private var calendar: Calendar {
@@ -17,232 +18,61 @@ final class InboxSnoozeTests: XCTestCase {
         calendar.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))!
     }
 
-    override func setUp() async throws {
-        // No permission dialog and no notifications from the test host.
-        InboxSnoozeScheduler.shared.usesNotifications = false
+    /// A note as an older version left it after "Later": the time far ahead, the device, and `@unoffered`.
+    private func putAwayBefore(_ note: Note) {
+        note.todoSuggestionsRaw = TodoSuggestions.encode([
+            InboxSnooze.storageKey: "4102444800", InboxSnooze.deviceKey: "another device", InboxSnooze.unofferedKey: "1",
+        ])
     }
 
-    // MARK: Stored form
-
-    func testSnoozeIsStoredUnderAReservedKeyAndGoesAwayWithoutATrace() {
-        let note = Note()
-        let until = Date(timeIntervalSince1970: 1_795_000_000)
-        note.snoozedUntil = until
-        XCTAssertEqual(note.snoozedUntil, until)
-        XCTAssertEqual(TodoSuggestions.states(note.todoSuggestionsRaw)[InboxSnooze.storageKey], "1795000000")
-        // A note that had no suggestion states is not one with suggestions offered because of it.
-        XCTAssertEqual(TodoSuggestions.states(note.todoSuggestionsRaw)[InboxSnooze.unofferedKey], "1")
-        note.summary = "Tasks:\n- Call Anna"
-        XCTAssertFalse(note.offersTodoSuggestions)
-
-        note.snoozedUntil = nil
-        XCTAssertNil(note.todoSuggestionsRaw)
-        XCTAssertNil(note.snoozedUntil)
-    }
-
-    func testSnoozeKeepsSuggestionStatesAndTheRepeatRule() {
-        let note = Note()
-        note.todoSuggestionsRaw = TodoSuggestions.encode(["call anna": TodoSuggestions.taken])
-        note.summary = "Tasks:\n- Call Anna"
-        XCTAssertTrue(note.offersTodoSuggestions)
-        note.snoozedUntil = Date(timeIntervalSince1970: 1_800_000_000)
-        XCTAssertTrue(note.offersTodoSuggestions)
-        XCTAssertEqual(TodoSuggestions.states(note.todoSuggestionsRaw)["call anna"], TodoSuggestions.taken)
-        XCTAssertNil(TodoSuggestions.states(note.todoSuggestionsRaw)[InboxSnooze.unofferedKey])
-
-        note.snoozedUntil = nil
-        XCTAssertEqual(TodoSuggestions.states(note.todoSuggestionsRaw), ["call anna": TodoSuggestions.taken])
-
-        let todo = Note()
-        todo.todoState = .open
-        todo.todoRepeat = .weekly
-        todo.snoozedUntil = Date(timeIntervalSince1970: 1_800_000_000)
-        XCTAssertEqual(todo.todoRepeat, .weekly)
-        todo.snoozedUntil = nil
-        XCTAssertEqual(todo.todoRepeat, .weekly)
-        XCTAssertNil(todo.snoozedUntil)
-    }
-
-    func testASummaryWrittenWhileSnoozedOffersItsTasks() {
-        let note = Note()
-        note.snoozedUntil = Date(timeIntervalSince1970: 1_800_000_000)
-        note.summary = "Tasks:\n- Call Anna"
-        TodoSuggestions.offer(note)
-        XCTAssertTrue(note.offersTodoSuggestions)
-        XCTAssertNotNil(note.snoozedUntil)
-        note.snoozedUntil = nil
-        XCTAssertEqual(note.todoSuggestionsRaw, "{}")
-    }
-
-    func testGarbageIsNoSnooze() {
-        let note = Note()
-        note.todoSuggestionsRaw = #"{"@snooze":"soon"}"#
-        XCTAssertNil(note.snoozedUntil)
-        XCTAssertFalse(note.isSnoozed())
-    }
-
-    // MARK: The Inbox
-
-    func testASnoozedEntryLeavesTheInboxUntilItsTimeAndIsMarkedForADay() throws {
+    func testEntriesPutAwayBeforeAreInTheInboxAndCounted() throws {
         let context = try TestStore.context()
-        let now = date(2026, 11, 22, 10)
         let a = Note(), b = Note(), filed = Note()
-        a.createdAt = now.addingTimeInterval(-3600)
-        b.createdAt = now.addingTimeInterval(-7200)
+        a.createdAt = Date().addingTimeInterval(-3600)
+        b.createdAt = Date().addingTimeInterval(-7200)
         filed.projectIDs = ["X"]
         [a, b, filed].forEach(context.insert)
-        a.snoozedUntil = date(2026, 11, 23, 9)
-        filed.snoozedUntil = date(2026, 11, 23, 9)
-
-        XCTAssertEqual(Inbox.notes([a, b, filed], now: now).map(\.id), [b.id])
-        XCTAssertTrue(a.isSnoozed(now: now))
-        XCTAssertTrue(a.isInInbox)
-        // Snooze is for the Inbox: in a bowl the entry is there as always.
-        XCTAssertFalse(filed.isSnoozed(now: now))
-        XCTAssertEqual(InboxSnooze.snoozed([a, b, filed], now: now).map(\.id), [a.id])
-
-        let back = date(2026, 11, 23, 9, 30)
-        XCTAssertEqual(Inbox.notes([a, b, filed], now: back).map(\.id), [a.id, b.id])
-        XCTAssertTrue(a.isBackFromLater(now: back))
-        XCTAssertFalse(a.isBackFromLater(now: date(2026, 11, 24, 9, 30)))
-        XCTAssertFalse(b.isBackFromLater(now: back))
+        putAwayBefore(a)
+        XCTAssertEqual(Inbox.notes([a, b, filed]).map(\.id), [a.id, b.id])
+        XCTAssertEqual(Places.inboxCount([a, b, filed]), 2)
+        var triage = InboxTriage(notes: [a, b, filed])
+        XCTAssertEqual(triage.current(in: [a, b, filed])?.note.id, a.id)
+        triage.advance(in: [a, b, filed])
+        XCTAssertEqual(triage.current(in: [a, b, filed])?.note.id, b.id)
     }
 
-    func testOnlyTheDeviceThatSnoozedRings() {
-        let note = Note()
-        note.snoozedUntil = Date(timeIntervalSince1970: 1_800_000_000)
-        XCTAssertEqual(TodoSuggestions.states(note.todoSuggestionsRaw)[InboxSnooze.deviceKey], InboxSnooze.deviceID)
-        XCTAssertTrue(note.isSnoozedOnThisDevice)
-        var states = TodoSuggestions.states(note.todoSuggestionsRaw)
-        states[InboxSnooze.deviceKey] = "another device"
-        note.todoSuggestionsRaw = TodoSuggestions.encode(states)
-        XCTAssertFalse(note.isSnoozedOnThisDevice)
-        XCTAssertNotNil(note.snoozedUntil, "still put away on every device")
-        note.snoozedUntil = nil
-        XCTAssertNil(note.todoSuggestionsRaw, "no trace of the device either")
-    }
-
-    func testSuggestAgainOffersAfterALaterAndOldSnoozeKeysGo() throws {
+    func testTheOldKeysStillSayNothingWasOfferedAndGoWithSuggestAgain() throws {
         let context = try TestStore.context()
         let note = Note()
         note.summary = "Tasks:\n- Call Anna"
         context.insert(note)
-        note.snoozedUntil = Date().addingTimeInterval(-2 * InboxSnooze.backWindow)
-        XCTAssertFalse(note.offersTodoSuggestions, "the object is only there for the Later")
+        putAwayBefore(note)
+        XCTAssertFalse(note.offersTodoSuggestions, "the object was only there for the Later")
         TodoSuggestions.suggestAgain(note, in: context)
         XCTAssertTrue(note.offersTodoSuggestions)
-        // The day of "Back from Later" is over: the keys went with this write.
-        XCTAssertNil(note.snoozedUntil)
-        XCTAssertNil(TodoSuggestions.states(note.todoSuggestionsRaw)[InboxSnooze.deviceKey])
-
-        // Still within the day: kept.
-        let recent = Date().addingTimeInterval(-3600)
-        let states = [InboxSnooze.storageKey: InboxSnooze.raw(recent), "call anna": TodoSuggestions.taken]
-        XCTAssertEqual(InboxSnooze.pruned(states), states)
+        let states = TodoSuggestions.states(note.todoSuggestionsRaw)
+        XCTAssertNil(states[InboxSnooze.storageKey])
+        XCTAssertNil(states[InboxSnooze.deviceKey])
+        XCTAssertNil(states[InboxSnooze.unofferedKey])
     }
 
-    func testSnoozingKeepsTheDateOfTheEntry() throws {
-        let context = try TestStore.context()
-        let note = Note()
-        let changed = Date(timeIntervalSince1970: 1_700_000_000)
-        note.updatedAt = changed
-        context.insert(note)
-        InboxSnooze.snooze([note], until: Date().addingTimeInterval(3600), in: context)
-        XCTAssertEqual(note.updatedAt, changed)
-        InboxSnooze.unsnooze([note], in: context)
-        XCTAssertEqual(note.updatedAt, changed)
-    }
-
-    func testSnoozeAndUnsnoozeCanBeUndone() throws {
-        let context = try TestStore.context()
-        let note = Note()
-        context.insert(note)
-        let toast = UndoToast.shared
-        let until = Date().addingTimeInterval(3600)
-        InboxSnooze.snooze([note], until: until, in: context)
-        XCTAssertTrue(note.isSnoozed())
-        XCTAssertNotNil(toast.current)
-        toast.undo()
-        XCTAssertFalse(note.isSnoozed())
-        XCTAssertNil(note.todoSuggestionsRaw)
-
-        InboxSnooze.snooze([note], until: until, in: context)
-        InboxSnooze.unsnooze([note], in: context)
-        XCTAssertFalse(note.isSnoozed())
-        XCTAssertTrue(Inbox.notes([note]).contains { $0.id == note.id })
-    }
-
-    func testOnlyInboxEntriesAreSnoozed() throws {
-        let context = try TestStore.context()
-        let filed = Note()
-        filed.projectIDs = ["X"]
-        context.insert(filed)
-        InboxSnooze.snooze([filed], until: Date().addingTimeInterval(3600), in: context)
-        XCTAssertNil(filed.snoozedUntil)
-    }
-
-    // MARK: Times
-
-    func testQuickChoices() {
-        // Sunday 22 Nov 2026, 10:20.
-        let sunday = date(2026, 11, 22, 10, 20)
-        XCTAssertEqual(InboxSnooze.date(for: .laterToday, now: sunday, calendar: calendar), date(2026, 11, 22, 14))
-        XCTAssertEqual(InboxSnooze.date(for: .thisEvening, now: sunday, calendar: calendar), date(2026, 11, 22, 18))
-        XCTAssertEqual(InboxSnooze.date(for: .tomorrow, now: sunday, calendar: calendar), date(2026, 11, 23, 9))
-        // On the weekend there is no "This Weekend".
-        XCTAssertNil(InboxSnooze.date(for: .thisWeekend, now: sunday, calendar: calendar))
-        XCTAssertEqual(InboxSnooze.date(for: .nextWeek, now: sunday, calendar: calendar), date(2026, 11, 23, 9))
-
-        // Wednesday 25 Nov 2026, 19:00: the evening is gone, later today too.
-        let wednesday = date(2026, 11, 25, 19)
-        XCTAssertNil(InboxSnooze.date(for: .laterToday, now: wednesday, calendar: calendar))
-        XCTAssertNil(InboxSnooze.date(for: .thisEvening, now: wednesday, calendar: calendar))
-        XCTAssertEqual(InboxSnooze.date(for: .thisWeekend, now: wednesday, calendar: calendar), date(2026, 11, 28, 9))
-        XCTAssertEqual(InboxSnooze.date(for: .nextWeek, now: wednesday, calendar: calendar), date(2026, 11, 30, 9))
-        XCTAssertEqual(InboxSnooze.choices(now: wednesday, calendar: calendar).map(\.choice), [.tomorrow, .thisWeekend, .nextWeek])
-
-        // Later today on the full hour.
-        XCTAssertEqual(InboxSnooze.date(for: .laterToday, now: date(2026, 11, 25, 9), calendar: calendar), date(2026, 11, 25, 12))
-    }
-
-    func testNotificationsWaitForTheEndOfQuietHours() {
-        XCTAssertEqual(InboxSnooze.notificationDate(for: date(2026, 11, 23, 9), calendar: calendar), date(2026, 11, 23, 9))
-        XCTAssertEqual(InboxSnooze.notificationDate(for: date(2026, 11, 23, 21, 59), calendar: calendar), date(2026, 11, 23, 21, 59))
-        XCTAssertEqual(InboxSnooze.notificationDate(for: date(2026, 11, 23, 22), calendar: calendar), date(2026, 11, 24, 8))
-        XCTAssertEqual(InboxSnooze.notificationDate(for: date(2026, 11, 23, 23, 30), calendar: calendar), date(2026, 11, 24, 8))
-        XCTAssertEqual(InboxSnooze.notificationDate(for: date(2026, 11, 24, 3), calendar: calendar), date(2026, 11, 24, 8))
-        XCTAssertEqual(InboxSnooze.notificationDate(for: date(2026, 11, 24, 8), calendar: calendar), date(2026, 11, 24, 8))
-        // Across the end of a month.
-        XCTAssertEqual(InboxSnooze.notificationDate(for: date(2026, 11, 30, 23), calendar: calendar), date(2026, 12, 1, 8))
+    func testPrunedKeepsTheTaskStates() {
+        let states = [InboxSnooze.storageKey: "1795000000", InboxSnooze.deviceKey: "x", "call anna": TodoSuggestions.taken]
+        XCTAssertEqual(InboxSnooze.pruned(states), ["call anna": TodoSuggestions.taken])
     }
 
     func testWaitingLabel() {
         let now = date(2026, 11, 22, 10)
-        XCTAssertNil(InboxSnooze.waitingLabel(since: date(2026, 11, 22, 1), now: now, calendar: calendar))
-        XCTAssertEqual(InboxSnooze.waitingLabel(since: date(2026, 11, 21, 23), now: now, calendar: calendar), "1 day")
-        XCTAssertEqual(InboxSnooze.waitingLabel(since: date(2026, 11, 17, 10), now: now, calendar: calendar), "5 days")
-        XCTAssertEqual(InboxSnooze.waitingLabel(since: date(2026, 11, 1, 10), now: now, calendar: calendar), "3 weeks")
-        XCTAssertEqual(InboxSnooze.waitingLabel(since: date(2026, 7, 1, 10), now: now, calendar: calendar), "4 months")
+        XCTAssertNil(Inbox.waitingLabel(since: date(2026, 11, 22, 1), now: now, calendar: calendar))
+        XCTAssertEqual(Inbox.waitingLabel(since: date(2026, 11, 21, 23), now: now, calendar: calendar), "1 day")
+        XCTAssertEqual(Inbox.waitingLabel(since: date(2026, 11, 17, 10), now: now, calendar: calendar), "5 days")
+        XCTAssertEqual(Inbox.waitingLabel(since: date(2026, 11, 1, 10), now: now, calendar: calendar), "3 weeks")
+        XCTAssertEqual(Inbox.waitingLabel(since: date(2026, 7, 1, 10), now: now, calendar: calendar), "4 months")
     }
 
-    func testLaterFromASwipeOrTriageLeavesTheInboxWithUndo() throws {
-        let context = try TestStore.context()
-        let note = Note()
-        note.title = "Invoice"
-        context.insert(note)
-        try context.save()
-        var triage = InboxTriage(notes: [note])
-        XCTAssertEqual(triage.current(in: [note])?.note.id, note.id)
-
-        let back = Date().addingTimeInterval(3 * 3600)
-        InboxSnooze.snooze([note], until: back, in: context)
-        XCTAssertFalse(note.isWaitingInInbox())
-        XCTAssertTrue(triage.isFinished(in: [note]), "put away, triage passes it")
-        XCTAssertTrue(UndoToast.shared.current?.message.hasPrefix("Later: back") == true)
-        UndoToast.shared.undo()
-        XCTAssertTrue(note.isWaitingInInbox())
-        XCTAssertEqual(triage.current(in: [note])?.note.id, note.id, "back from Undo, it is in front again")
-        triage.advance(in: [note])
-        XCTAssertTrue(triage.isFinished(in: [note]))
+    func testCountedTitlesLeaveOutZero() {
+        XCTAssertEqual(Places.countedTitle("Archive", 0), "Archive")
+        XCTAssertEqual(Places.countedTitle("Deleted", 27), "Deleted 27")
+        XCTAssertEqual(Places.countedTitle("All", 3, gap: "  "), "All  3")
     }
 }

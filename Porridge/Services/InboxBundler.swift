@@ -191,7 +191,7 @@ enum InboxBundler {
     /// The entries that may be grouped: in the inbox, the user's or saved, with something in them, and no bowl
     /// suggested for them already.
     static func eligible(_ notes: [Note]) -> [Note] {
-        Array(notes.filter { $0.isWaitingInInbox() && $0.suggestedProjectIDs.isEmpty && !$0.isEmptyLeftover }
+        Array(notes.filter { $0.isInInbox && $0.suggestedProjectIDs.isEmpty && !$0.isEmptyLeftover }
             .sorted { $0.createdAt > $1.createdAt }
             .prefix(maximumLookedAt))
     }

@@ -86,15 +86,6 @@ final class EntryToolbarMenu: NSObject, NSMenuDelegate {
         case .pin: row = entry(title, symbol: symbol, #selector(MainWindowController.togglePin(_:)), key: "p", modifiers: [.command, .shift])
         case .markDone: row = entry(title, symbol: symbol, command, key: "d", modifiers: [.command, .shift], command: .toggleTodo)
         case .convertToTodo, .convertToNote: row = entry(title, symbol: symbol, command, command: .convertTodo)
-        case .later:
-            row = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            row.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-            let later = NoteOperations.laterMenu(for: [note], window: controller.window)
-            if note.isSnoozed() {
-                later.addItem(.separator())
-                later.add("Back to Inbox Now", symbol: "tray.and.arrow.down") { InboxSnooze.unsnooze([note], in: Library.shared.context) }
-            }
-            row.submenu = later
         case .editPages: row = entry(title, symbol: symbol, command, command: .editPages)
         case .scanMorePages: return nil
         case .openInBrowser: row = entry(title, symbol: symbol, command, command: .openInBrowser)
