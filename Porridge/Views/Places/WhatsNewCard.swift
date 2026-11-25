@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The one-time "What's New" card at the top of Today (`WhatsNew`): the three places, Details, Search or Ask and the
-/// Chat tab, Triage, the Inbox swipes, the selection bar, Today showing what is open. "Got It" or × puts it away for
+/// The one-time "What's New" card at the top of Today (`WhatsNew`): the three places with "+" in the tab bar, Details,
+/// Search or Ask with its Chat side, Triage, the Inbox swipes, the selection bar, Today showing what is open. "Got It" or × puts it away for
 /// good (on this device).
 struct WhatsNewCard: View {
     var onDismiss: () -> Void

@@ -129,7 +129,9 @@ struct SearchPane<Results: View>: View {
             }
 
             if hasQuery {
+                // The keyboard goes with a drag through the results (their list) or a tap in them.
                 results
+                    .simultaneousGesture(TapGesture().onEnded { focused = false })
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -179,6 +181,8 @@ struct SearchPane<Results: View>: View {
                     .padding(.top, 6)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { focused = false })
             }
         }
     }

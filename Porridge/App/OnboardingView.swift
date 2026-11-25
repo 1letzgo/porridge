@@ -104,10 +104,10 @@ struct OnboardingView: View {
         }
     }
 
-    /// The last page shows the places (the tabs) and what each is for.
+    /// The last page shows the tab bar from left to right (the places, "+", Search with Chat) and what each is for.
     private var ready: some View {
         page(icon: "checkmark.seal.fill", title: "All Set",
-             text: "Porridge has three places, plus Chat and Search:") {
+             text: "Porridge has three places, “+” in the middle to add, and Search with Chat:") {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(WhatsNew.places(mac: false), id: \.self) { place in
                     HStack(alignment: .top, spacing: 12) {

@@ -22,7 +22,7 @@ enum WhatsNew {
                 symbol: "square.grid.2x2", title: String(localized: "Three Places"),
                 text: mac
                     ? String(localized: "Today, Inbox and Bowls lead the sidebar (⌘1–3); Chat has its own row (⌘4).")
-                    : String(localized: "Today, Inbox and Bowls are tabs; Chat and Search have their own. Settings is the gear in the Bowls bar.")
+                    : String(localized: "Today, Inbox, Bowls and Search are the tabs, with the big “+” in the middle to add anything. Settings is the gear in Today and in Bowls.")
             ),
             Item(
                 symbol: "info.circle", title: String(localized: "Details"),
@@ -34,7 +34,7 @@ enum WhatsNew {
                 symbol: "magnifyingglass", title: String(localized: "Search or Ask"),
                 text: mac
                     ? String(localized: "One field (⌘K) searches, goes to a bowl or runs a command; ⌘↩ asks Porridge in the Chat.")
-                    : String(localized: "One field searches and goes to a bowl or place; “Ask Porridge” hands the question to the Chat tab.")
+                    : String(localized: "One field searches and goes to a bowl or place. Switch the Search tab to Chat to ask Porridge, or tap “Ask Porridge”.")
             ),
             Item(
                 symbol: "bolt.fill", title: String(localized: "Triage"),
@@ -56,22 +56,33 @@ enum WhatsNew {
             ),
             Item(
                 symbol: "calendar", title: String(localized: "Today Shows What Is Open"),
-                text: String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl.")
+                text: String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Open To-dos and the Weekly Review are at the end of the Inbox.")
             ),
         ]
     }
 
-    /// The last page of the onboarding: the places and what each is for (iPhone tabs, Mac sidebar).
+    /// The last page of the onboarding: the places and what each is for. iPhone: the tab bar from left to right
+    /// (Today, Inbox, "+", Bowls, Search with Chat); Mac: the sidebar (Chat has its own row) and the field.
     static func places(mac: Bool) -> [Item] {
-        [
-            Item(symbol: "calendar", title: String(localized: "Today"), text: String(localized: "Appointments and the to-dos that are due.")),
-            Item(symbol: "tray.fill", title: String(localized: "Inbox"), text: String(localized: "Everything new lands here first, until it is filed into a bowl.")),
-            Item(symbol: "folder.fill", title: String(localized: "Bowls"), text: mac
-                ? String(localized: "One bowl per topic, the smart filters, Archive and Recently Deleted.")
-                : String(localized: "One bowl per topic, the smart filters, Archive, Recently Deleted and Settings.")),
-            Item(symbol: "bubble.left.and.bubble.right.fill", title: String(localized: "Chat"), text: String(localized: "Ask about your notes; answers name their sources.")),
-            Item(symbol: "magnifyingglass", title: mac ? String(localized: "Search or Ask (⌘K)") : String(localized: "Search"),
-                 text: String(localized: "Find any entry, go to a bowl, or ask Porridge.")),
+        let today = Item(symbol: "calendar", title: String(localized: "Today"), text: String(localized: "Appointments and the to-dos that are due."))
+        let inbox = Item(symbol: "tray.fill", title: String(localized: "Inbox"),
+                         text: String(localized: "Everything new lands here first, until it is filed into a bowl. At its end: Open To-dos and the Weekly Review."))
+        let bowls = Item(symbol: "folder.fill", title: String(localized: "Bowls"), text: mac
+            ? String(localized: "One bowl per topic, the smart filters, Archive and Recently Deleted.")
+            : String(localized: "One bowl per topic, the smart filters, Archive, Recently Deleted and Settings."))
+        if mac {
+            return [
+                today, inbox, bowls,
+                Item(symbol: "bubble.left.and.bubble.right.fill", title: String(localized: "Chat"), text: String(localized: "Ask about your notes; answers name their sources.")),
+                Item(symbol: "magnifyingglass", title: String(localized: "Search or Ask (⌘K)"), text: String(localized: "Find any entry, go to a bowl, or ask Porridge.")),
+            ]
+        }
+        return [
+            today, inbox,
+            Item(symbol: "plus.circle.fill", title: String(localized: "Add"), text: String(localized: "The big “+” in the middle of the tab bar adds a note, to-do, meeting, link or file where you are.")),
+            bowls,
+            Item(symbol: "magnifyingglass", title: String(localized: "Search and Chat"),
+                 text: String(localized: "Find any entry or go to a bowl; switch to Chat to ask about your notes, with sources.")),
         ]
     }
 

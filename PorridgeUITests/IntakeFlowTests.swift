@@ -77,8 +77,9 @@ final class IntakeFlowTests: XCTestCase {
         // (documents lost their payment state), that takes a while on a simulator full of earlier test entries.
         XCTAssertTrue(app.staticTexts["There is nothing in this bowl yet."].waitForExistence(timeout: 90), "answer missing")
 
-        // Asking about a bowl opens the Chat tab.
-        XCTAssertTrue(app.tabBars.buttons["Chat"].isSelected, "the chat did not open in the Chat tab")
+        // Asking about a bowl opens the Search tab on its Chat side.
+        XCTAssertTrue(app.tabBars.buttons["Search"].isSelected, "the chat did not open in the Search tab")
+        XCTAssertEqual(app.searchSideShown, "Chat", "the chat did not open on the Chat side")
         // Kept: it is in the list of chats, and asking about the bowl again shows it.
         app.buttons["All Chats"].tap()
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 5), "chat missing in the list of chats")
@@ -156,6 +157,7 @@ final class IntakeFlowTests: XCTestCase {
         XCTAssertTrue(counter.waitForExistence(timeout: 5), "Triage did not open")
         XCTAssertTrue(counter.label.hasPrefix("Entry 1 of 10"), counter.label)
         XCTAssertFalse(app.tabBars.firstMatch.isHittable, "the tab bar shows in Triage")
+        XCTAssertFalse(app.addButton.exists && app.addButton.isHittable, "+ of the tab bar shows in Triage")
         XCTAssertTrue(app.staticTexts["Suggested bowl: Reading"].exists, "the suggestion is not named")
         screenshot("triage-first", app)
         app.buttons["TriageFile"].tap()
@@ -186,6 +188,7 @@ final class IntakeFlowTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["SelectionCount"].label, "3 Selected")
         XCTAssertTrue(app.buttons["SelectionMove"].exists, "no selection bar")
         XCTAssertFalse(app.tabBars.firstMatch.isHittable, "the tab bar still shows while selecting")
+        XCTAssertFalse(app.addButton.exists && app.addButton.isHittable, "+ of the tab bar still shows while selecting")
         screenshot("inbox-selection-bar", app)
         app.buttons["SelectionMore"].tap()
         let kind = app.buttons["Document Kind"]
@@ -201,5 +204,6 @@ final class IntakeFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Kind set to Receipt"].waitForExistence(timeout: 5), "setting the kind offers no Undo toast")
         app.buttons["Done"].firstMatch.tap()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5) && app.tabBars.firstMatch.isHittable, "the tab bar did not come back")
+        XCTAssertTrue(app.addButton.waitForExistence(timeout: 5) && app.addButton.isHittable, "+ did not come back with the tab bar")
     }
 }

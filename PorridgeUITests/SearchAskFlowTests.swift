@@ -1,8 +1,8 @@
 import XCTest
 
-/// Search & Ask and the Chat tab (stage 5, revision 3): the search offers "Ask Porridge: …" first, then where to go,
-/// then the entries; asking hands the question over to the Chat tab; Ask About This Bowl opens the Chat tab about the
-/// bowl; a chat's changes are confirmed on one card and undone from the toast; Delete Chat asks and can be undone.
+/// Search & Ask and the chat (stage 5; since owner revision 5 the two sides of the Search tab): the search offers "Ask
+/// Porridge: …" first, then where to go, then the entries; asking switches the tab to Chat and asks there; Ask About
+/// This Bowl opens the Chat side about the bowl; a chat's changes are confirmed on one card and undone from the toast; Delete Chat asks and can be undone.
 /// The model is the Debug stand-in (`-chatStub YES`): no model and no network.
 final class SearchAskFlowTests: XCTestCase {
     override func setUp() {
@@ -27,19 +27,35 @@ final class SearchAskFlowTests: XCTestCase {
         app.textFields["ChatField"].exists ? app.textFields["ChatField"] : app.textViews["ChatField"]
     }
 
-    func testTheTabsAreTheFourPlacesAndTheSearch() throws {
+    /// The Search tab has two sides, Search and Chat, switched at its top; the side chosen last comes back, also after
+    /// a new launch.
+    func testSearchAndChatShareTheLastTab() throws {
         let app = launch()
-        let tabs = ["Today", "Inbox", "Bowls", "Chat", "Search"]
+        let tabs = ["Today", "Inbox", "Add", "Bowls", "Search"]
         for tab in tabs {
             XCTAssertTrue(app.tabBars.buttons[tab].waitForExistence(timeout: 30), "tab \(tab) missing")
         }
         let order = tabs.map { app.tabBars.buttons[$0].frame.midX }
-        XCTAssertEqual(order, order.sorted(), "the tabs are not in the order Today · Inbox · Bowls · Chat · Search")
-        app.openTab("Chat")
-        XCTAssertTrue(app.buttons["Chat About"].waitForExistence(timeout: 5), "the Chat tab shows no chat")
-        XCTAssertTrue(chatField(app).exists, "the Chat tab has no field")
+        XCTAssertEqual(order, order.sorted(), "the tabs are not in the order Today · Inbox · + · Bowls · Search")
+        XCTAssertFalse(app.tabBars.buttons["Chat"].exists, "Chat still has a tab of its own")
         app.openTab("Search")
-        XCTAssertTrue(app.textFields["SearchField"].waitForExistence(timeout: 5), "the search tab has no field")
+        app.searchSide("Chat")
+        XCTAssertTrue(app.buttons["Chat About"].waitForExistence(timeout: 5), "the Chat side shows no chat")
+        XCTAssertTrue(chatField(app).exists, "the Chat side has no field")
+        XCTAssertFalse(app.textFields["SearchField"].exists, "the Chat side still shows the search field")
+        // Away and back: the side stays.
+        app.openTab("Inbox")
+        app.openTab("Search")
+        XCTAssertEqual(app.searchSideShown, "Chat", "the Search tab forgot its side")
+        // A new launch comes back to the side chosen last.
+        app.terminate()
+        app.launch()
+        app.openTab("Search")
+        XCTAssertTrue(app.segmentedControls["SearchSide"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.searchSideShown, "Chat", "the side chosen last was not kept")
+        app.searchSide("Search")
+        XCTAssertTrue(app.textFields["SearchField"].waitForExistence(timeout: 5), "the Search side has no field")
+        XCTAssertFalse(chatField(app).exists, "the Search side still shows the chat")
         XCTAssertFalse(app.buttons["SearchChat"].exists, "the search still has the old Chat row")
     }
 
@@ -55,12 +71,14 @@ final class SearchAskFlowTests: XCTestCase {
         XCTAssertLessThan(ask.frame.minY, goTo.frame.minY, "Ask Porridge is not the first row")
         screenshot("search-ask-kitchen", app)
 
-        // Typing never asks by itself: the Chat tab has no chat about "kitchen".
-        app.openTab("Chat")
+        // Typing never asks by itself: the Chat side has no chat about "kitchen".
+        app.searchSide("Chat")
         XCTAssertFalse(app.staticTexts["kitchen"].exists, "typing started a chat")
 
-        // The second door to Settings. The Search tab kept its query, like every tab keeps its place.
+        // The second door to Settings. The Search side kept its query, like every tab keeps its place.
+        app.openTab("Inbox")
         app.openTab("Search")
+        app.searchSide("Search")
         let field = app.textFields["SearchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         XCTAssertEqual(field.value as? String, "kitchen", "the Search tab did not keep its query")
@@ -87,8 +105,8 @@ final class SearchAskFlowTests: XCTestCase {
         let ask = app.buttons["SearchAsk"]
         XCTAssertTrue(ask.waitForExistence(timeout: 10), "no Ask Porridge row")
         ask.tap()
-        XCTAssertTrue(app.tabBars.buttons["Chat"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["Chat"].isSelected, "the question did not go to the Chat tab")
+        XCTAssertTrue(app.tabBars.buttons["Search"].isSelected, "the question left the Search tab")
+        XCTAssertEqual(app.searchSideShown, "Chat", "the question did not go to the Chat side")
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 10), "the question is not in the chat")
         let answer = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'From your notes'")).firstMatch
         XCTAssertTrue(answer.waitForExistence(timeout: 90), "no answer")
@@ -109,7 +127,7 @@ final class SearchAskFlowTests: XCTestCase {
         undo.tap()
     }
 
-    func testAskAboutThisBowlOpensTheChatTab() throws {
+    func testAskAboutThisBowlOpensTheChatSide() throws {
         let app = launch()
         app.openTab("Bowls")
         let bowl = app.staticTexts["Kitchen Renovation"].firstMatch
@@ -119,7 +137,8 @@ final class SearchAskFlowTests: XCTestCase {
         XCTAssertTrue(menu.waitForExistence(timeout: 10), "bowl menu missing")
         menu.tap()
         app.buttons["Ask About This Bowl"].tap()
-        XCTAssertTrue(app.tabBars.buttons["Chat"].isSelected, "Ask About This Bowl did not open the Chat tab")
+        XCTAssertTrue(app.tabBars.buttons["Search"].isSelected, "Ask About This Bowl did not open the Search tab")
+        XCTAssertEqual(app.searchSideShown, "Chat", "Ask About This Bowl did not open the Chat side")
         let about = app.buttons["Chat About"]
         XCTAssertTrue(about.waitForExistence(timeout: 5))
         XCTAssertEqual(about.value as? String, "Kitchen Renovation", "the chat is not about the bowl")
@@ -157,13 +176,22 @@ final class SearchAskFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[question].waitForExistence(timeout: 5), "undo did not bring the chat back")
     }
 
-    func testTheChatLinkOpensTheChatTab() throws {
+    /// `porridge://chat` and `porridge://search` select the Search tab on the right side.
+    func testTheChatAndSearchLinksOpenTheirSide() throws {
         let app = launch()
         app.openTab("Today")
         app.open(URL(string: "porridge://chat")!)
-        XCTAssertTrue(app.tabBars.buttons["Chat"].waitForExistence(timeout: 10))
         let selected = NSPredicate(format: "isSelected == true")
-        expectation(for: selected, evaluatedWith: app.tabBars.buttons["Chat"])
+        expectation(for: selected, evaluatedWith: app.tabBars.buttons["Search"])
         waitForExpectations(timeout: 10)
+        XCTAssertTrue(app.buttons["Chat About"].waitForExistence(timeout: 5), "porridge://chat shows no chat")
+        XCTAssertEqual(app.searchSideShown, "Chat")
+        app.openTab("Today")
+        app.open(URL(string: "porridge://search?q=kitchen")!)
+        let field = app.textFields["SearchField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "porridge://search did not open the Search side")
+        XCTAssertTrue(app.tabBars.buttons["Search"].isSelected)
+        XCTAssertEqual(app.searchSideShown, "Search")
+        XCTAssertEqual(field.value as? String, "kitchen", "the link's query is not in the field")
     }
 }

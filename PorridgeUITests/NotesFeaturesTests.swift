@@ -116,6 +116,7 @@ final class NotesFeaturesTests: XCTestCase {
 
         // The search offers the tags as chips; picking one filters the notes.
         app.openTab("Search")
+        app.searchSide("Search")
         let suggestion = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "#\(tag)")).firstMatch
         XCTAssertTrue(suggestion.waitForExistence(timeout: 5), "tag not offered")
         suggestion.tap()

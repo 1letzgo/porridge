@@ -4,8 +4,8 @@ import SwiftUI
 // MARK: - The Today page
 
 /// Today: the hint of the day, the day's appointments, each with what is linked to it, then the open to-dos due today
-/// or before, Up Next (the next seven days, at most five rows, foldable) and the fixed rows Open To-dos and Weekly
-/// Review. Paged a day at a time (`TodayDay`): another day shows its appointments and the open to-dos due on it,
+/// or before and Up Next (the next seven days, at most five rows, foldable). Open To-dos and Weekly Review are the
+/// card at the end of the Inbox (owner revision 5). Paged a day at a time (`TodayDay`): another day shows its appointments and the open to-dos due on it,
 /// nothing else. Only what is open: done to-dos never show, one ticked here leaves with the undo toast.
 struct TodayPage: View {
     let notes: [Note]
@@ -19,9 +19,6 @@ struct TodayPage: View {
     var onNewNote: (CalendarAppointment) -> Void
     /// The hint of the day was tapped.
     var onHint: (DailyHint) -> Void = { _ in }
-    /// The fixed rows: Open To-dos and Weekly Review.
-    var onOpenTodos: () -> Void = {}
-    var onReview: () -> Void = {}
 
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
@@ -159,27 +156,6 @@ struct TodayPage: View {
                         }
                         .accessibilityHint(upNextFolded ? "Shows the to-dos of the next seven days" : "Hides the to-dos of the next seven days")
                     }
-                }
-                // Fixed rows: the place looks the same every day.
-                Section {
-                    let folder = Todos.folder(notes)
-                    PlaceLinkRow(
-                        title: String(localized: "Open To-dos"),
-                        subtitle: folder.open == 0 ? String(localized: "None open")
-                            : folder.overdue > 0 ? String(localized: "\(folder.open) open · \(folder.overdue) overdue") : String(localized: "\(folder.open) open"),
-                        systemImage: "checklist", tint: .brandTask, count: folder.open, action: onOpenTodos
-                    )
-                    .accessibilityIdentifier("TodayOpenTodos")
-                    PlaceLinkRow(
-                        title: String(localized: "Weekly Review"),
-                        subtitle: String(localized: "This Week · \(Places.newThisWeek(notes)) new entries"),
-                        systemImage: "calendar.badge.checkmark", tint: .brandNavy, action: onReview
-                    )
-                    .lastInSection(true)
-                    .accessibilityIdentifier("TodayWeeklyReview")
-                } header: {
-                    Rectangle().fill(Look.hairline).frame(height: 0.5)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 4, trailing: 20))
                 }
             }
         }

@@ -131,10 +131,11 @@ final class TodoFlowTests: XCTestCase {
         app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-seedTodos", prefix]
         app.launch()
 
-        // Open To-dos is a fixed row at the end of Today.
-        app.openTab("Today")
-        let entry = app.buttons["TodayOpenTodos"]
-        XCTAssertTrue(app.reveal(entry), "Open To-dos missing in Today")
+        // Open To-dos is the card at the end of the Inbox.
+        app.openTab("Inbox")
+        app.inboxSegment(0).tap()
+        let entry = app.buttons["InboxOpenTodos"]
+        XCTAssertTrue(app.reveal(entry), "Open To-dos missing at the end of the Inbox")
         XCTAssertTrue(entry.label.contains("overdue"), "the row does not say that to-dos are late: \(entry.label)")
         screenshot("inbox-todos-folder-home", app)
         entry.tap()
@@ -154,8 +155,10 @@ final class TodoFlowTests: XCTestCase {
         box.tap()
         XCTAssertTrue(app.reveal(app.staticTexts["Done Today"]), "no Done Today group after ticking")
 
-        // The plus makes a to-do right here.
-        app.addButton.tap()
+        // Its own plus makes a to-do right here ("+" of the tab bar opens the Add sheet).
+        let newTodo = app.buttons["TodosAdd"]
+        XCTAssertTrue(app.revealAbove(newTodo), "Open To-dos has no New To-do")
+        newTodo.tap()
         XCTAssertTrue(app.waitForTitleField(), "the plus did not make a to-do")
         XCTAssertTrue(app.switches["To-do"].firstMatch.waitForExistence(timeout: 5), "the plus made a note, not a to-do")
     }

@@ -11,7 +11,8 @@ final class NotesFlowTests: XCTestCase {
         app.newNote()
         sleep(3)
         XCTAssertTrue(app.titleField.exists, "note closed again by itself")
-        XCTAssertFalse(app.buttons.matching(identifier: "PlaceAdd").allElementsBoundByIndex.contains { $0.isHittable }, "list is showing again")
+        // The entry's page (its back pill), not the list ("+" of the tab bar shows on both).
+        XCTAssertTrue(app.buttons["Back"].firstMatch.exists, "list is showing again")
     }
 
     /// Create a note, leave it empty, go back, create another one: it must open and stay open.
@@ -101,10 +102,10 @@ final class NotesFlowTests: XCTestCase {
         app.launchArguments += ["-onboardingDone", "YES", "-whatsNewSeen", "YES", "-syncMode", "off", "-recordsNewNotes", "NO", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         XCTAssertTrue(app.addButton.waitForExistence(timeout: 30))
-        XCTAssertTrue(app.addButton.isHittable, "the bar's + is cut off")
-        for tab in ["Inbox", "Bowls", "Today"] {
+        XCTAssertTrue(app.addButton.isHittable, "the tab bar's + is cut off")
+        for tab in ["Inbox", "Bowls", "Search", "Today"] {
             app.openTab(tab)
-            XCTAssertTrue(app.addButton.isHittable, "\(tab): the bar's + is cut off")
+            XCTAssertTrue(app.addButton.isHittable, "\(tab): the tab bar's + is cut off")
         }
         app.addButton.tap()
         sleep(1)
@@ -162,27 +163,33 @@ final class NotesFlowTests: XCTestCase {
         return count
     }
 
-    /// The three places and the search are tabs; each place's bar ends in "+"; Today ends in its fixed rows, Bowls in
-    /// Smart Filters, Archive and Recently Deleted, also when they are empty.
+    /// The three places and the search are tabs with "+" in the middle; Today has its gear, the Inbox ends in the card
+    /// with Open To-dos and Weekly Review, Bowls in Smart Filters, Archive and Recently Deleted (also when empty); the
+    /// Search tab switches to Chat.
     func testThreePlacesAsTabs() throws {
         let app = launchApp()
-        for tab in ["Today", "Inbox", "Bowls", "Chat", "Search"] {
+        for tab in ["Today", "Inbox", "Add", "Bowls", "Search"] {
             XCTAssertTrue(app.tabBars.buttons[tab].waitForExistence(timeout: 30), "tab \(tab) missing")
         }
+        XCTAssertFalse(app.tabBars.buttons["Chat"].exists, "Chat still has a tab of its own")
         app.openTab("Today")
-        XCTAssertTrue(app.addButton.waitForExistence(timeout: 10), "Today has no +")
+        XCTAssertTrue(app.addButton.waitForExistence(timeout: 10), "the tab bar has no +")
         XCTAssertTrue(app.buttons["TodayNextDay"].exists, "Today has no day paging")
-        XCTAssertTrue(app.reveal(app.buttons["TodayOpenTodos"]), "Open To-dos row missing in Today")
-        XCTAssertTrue(app.buttons["TodayWeeklyReview"].exists, "Weekly Review row missing in Today")
-        app.buttons["TodayOpenTodos"].tap()
-        XCTAssertTrue(app.staticTexts["Open To-dos"].waitForExistence(timeout: 5), "Open To-dos did not open")
-        app.buttons["Back"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["PlaceSettings"].exists, "Today has no Settings gear")
+        XCTAssertFalse(app.buttons["TodayOpenTodos"].exists, "Open To-dos still hangs at the end of Today")
         app.openTab("Inbox")
-        XCTAssertTrue(app.segmentedControls["InboxSegment"].waitForExistence(timeout: 5), "Inbox has no New / Later")
+        XCTAssertTrue(app.inboxSegment(0).waitForExistence(timeout: 5), "Inbox has no New / Later")
         XCTAssertTrue(app.buttons["Select"].exists, "Inbox has no Select")
+        let todos = app.buttons["InboxOpenTodos"]
+        XCTAssertTrue(app.reveal(todos), "Open To-dos missing at the end of the Inbox")
+        XCTAssertTrue(app.buttons["InboxWeeklyReview"].exists, "Weekly Review missing at the end of the Inbox")
+        todos.tap()
+        XCTAssertTrue(app.staticTexts["Open To-dos"].waitForExistence(timeout: 5), "Open To-dos did not open")
+        XCTAssertTrue(app.tabBars.buttons["Inbox"].isSelected, "Open To-dos did not open on the Inbox")
+        app.buttons["Back"].firstMatch.tap()
         app.openTab("Bowls")
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 5), "Bowls has no sort menu")
-        XCTAssertTrue(app.buttons["Settings"].exists, "Bowls has no Settings gear")
+        XCTAssertTrue(app.buttons["PlaceSettings"].exists, "Bowls has no Settings gear")
         let archive = app.buttons["BowlsArchive"]
         XCTAssertTrue(app.reveal(archive), "Archive row missing")
         XCTAssertTrue(app.buttons["BowlsRecentlyDeleted"].exists, "Recently Deleted row missing")
@@ -191,9 +198,11 @@ final class NotesFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Archive"].waitForExistence(timeout: 5), "Archive did not open")
         app.buttons["Back"].firstMatch.tap()
         app.openTab("Search")
+        app.searchSide("Search")
         XCTAssertTrue(app.textFields["SearchField"].waitForExistence(timeout: 5), "the search tab has no field")
-        app.openTab("Chat")
-        XCTAssertTrue(app.buttons["Chat About"].waitForExistence(timeout: 5), "the Chat tab shows no chat")
+        app.searchSide("Chat")
+        XCTAssertTrue(app.buttons["Chat About"].waitForExistence(timeout: 5), "the Chat side shows no chat")
+        app.searchSide("Search")
     }
 
     /// "+" in a bowl: the Add sheet puts new things into that bowl ("Into:"); its ⋯ holds the bowl's management.

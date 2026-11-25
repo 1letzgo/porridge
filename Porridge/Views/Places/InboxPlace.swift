@@ -3,7 +3,8 @@ import SwiftUI
 
 /// The Inbox, the second place: what is new or in no bowl, and what was put away for later, as the two halves of
 /// one segment (New / Later) in the first row of the content. New shows the bundle suggestion (one line) above its
-/// entries; each entry names its suggested bowl ("✦ Bowl") and swipes to file or put away. While choosing several,
+/// entries; each entry names its suggested bowl ("✦ Bowl") and swipes to file or put away. At the end of New, also
+/// when it is empty, one card leads to Open To-dos and the Weekly Review (`InboxEndCard`). While choosing several,
 /// "N Selected · Select All" is the first row and the selection bar takes the tab bar's place.
 struct InboxPlace: View {
     let notes: [Note]
@@ -14,8 +15,9 @@ struct InboxPlace: View {
     /// The Later half of the segment.
     @Binding var showsLater: Bool
     var onRemove: (Note) -> Void
-    /// "Add" of the empty Inbox: the Add sheet.
-    var onAdd: () -> Void
+    /// The end card: Open To-dos and the Weekly Review.
+    var onOpenTodos: () -> Void = {}
+    var onReview: () -> Void = {}
 
     var body: some View {
         // Read so that an entry coming back from later shows up.
@@ -50,15 +52,31 @@ struct InboxPlace: View {
                     List(selection: $chosen) { newRows(waiting) }
                         .environment(\.editMode, .constant(.active))
                 } else {
-                    List(selection: $selection) { newRows(waiting) }
+                    List(selection: $selection) {
+                        // Nothing new: the message in the list, so the card stays below it on every screen.
+                        if waiting.isEmpty {
+                            Section {
+                                empty(later: later)
+                                    .frame(maxWidth: .infinity)
+                                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 20))
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                            }
+                        }
+                        newRows(waiting)
+                        Section {
+                            InboxEndCard(notes: notes, onOpenTodos: onOpenTodos, onReview: onReview)
+                                .listRowInsets(EdgeInsets(top: waiting.isEmpty ? 8 : 20, leading: 16, bottom: 24, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                    }
                 }
             }
             .cardList()
             .overlay {
                 if showsLater, later.isEmpty {
                     EmptyStateView(title: "Nothing for Later", message: "Put an entry away with a swipe to the left: it comes back here at the time you choose.", systemImage: "clock")
-                } else if !showsLater, waiting.isEmpty {
-                    empty(later: later)
                 }
             }
         }
@@ -78,7 +96,8 @@ struct InboxPlace: View {
         }
     }
 
-    /// Nothing new: one sentence, one way to add, and when what is away comes back.
+    /// Nothing new: one sentence and when what is away comes back (adding is the "+" of the tab bar right below; a
+    /// button in the list's row would make the whole row a button).
     private func empty(later: [Note]) -> some View {
         ContentUnavailableView {
             Label {
@@ -93,13 +112,6 @@ struct InboxPlace: View {
         } description: {
             Text("Everything is filed into a bowl. New things land here first.")
         } actions: {
-            Button(action: onAdd) {
-                Label("Add", systemImage: "plus")
-                    .font(.body.weight(.semibold))
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.brandSky)
-            .accessibilityIdentifier("InboxEmptyAdd")
             if let next = later.compactMap(\.snoozedUntil).min() {
                 Text(later.count == 1
                      ? "1 entry comes back from Later · \(InboxSnooze.timeLabel(next))"
@@ -109,5 +121,66 @@ struct InboxPlace: View {
                     .multilineTextAlignment(.center)
             }
         }
+    }
+}
+
+/// The end of the Inbox's New side: one card with the two ways that used to hang at the end of Today, Open To-dos
+/// ("5 open · 2 overdue") and the Weekly Review ("This Week · 8 new entries").
+struct InboxEndCard: View {
+    let notes: [Note]
+    var onOpenTodos: () -> Void
+    var onReview: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        let folder = Todos.folder(notes)
+        VStack(spacing: 0) {
+            // "5 open · 2 overdue", the overdue part red and semibold.
+            let open = Text(folder.open == 0 ? String(localized: "None open") : String(localized: "\(folder.open) open"))
+            let late = Text(" · " + String(localized: "\(folder.overdue) overdue")).fontWeight(.semibold).foregroundStyle(Color.brandDangerText)
+            target(
+                title: String(localized: "Open To-dos"), subtitle: folder.overdue > 0 ? open + late : open,
+                systemImage: "checklist", tint: .brandTask, action: onOpenTodos
+            )
+            .accessibilityIdentifier("InboxOpenTodos")
+            Divider().padding(.leading, 14 + ThingsRowIcon.inset)
+            target(
+                title: String(localized: "Weekly Review"),
+                subtitle: Text(String(localized: "This Week · \(Places.newThisWeek(notes)) new entries")),
+                systemImage: "calendar.badge.checkmark", tint: .brandNavy, action: onReview
+            )
+            .accessibilityIdentifier("InboxWeeklyReview")
+        }
+        .background(Color.appSecondaryBackground, in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous).strokeBorder(Look.hairline, lineWidth: 0.5))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("InboxEndCard")
+    }
+
+    private func target(title: String, subtitle: Text, systemImage: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            // With the largest text sizes the row is tall: the icon stays by the first line.
+            HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
+                ThingsRowIcon(systemImage: systemImage, tint: tint)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .foregroundStyle(.primary)
+                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                    subtitle
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
     }
 }

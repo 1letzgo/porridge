@@ -46,7 +46,7 @@ extension XCUIApplication {
         return buttons.matching(NSPredicate(format: "label BEGINSWITH %@", index == 0 ? "New " : "Later ")).firstMatch
     }
 
-    /// The "+" pill of the place in front (the last pill of its bar).
+    /// "+" in the middle of the tab bar (on an iPad the last pill of the bar).
     var addButton: XCUIElement {
         buttons.matching(identifier: "PlaceAdd").allElementsBoundByIndex.first { $0.exists && $0.isHittable }
             ?? buttons.matching(identifier: "PlaceAdd").firstMatch
@@ -65,11 +65,37 @@ extension XCUIApplication {
         return navigationBars["Add"].waitForExistence(timeout: 5)
     }
 
-    /// One of the places' tabs: Today, Inbox, Bowls, Search.
+    /// One of the places' tabs: Today, Inbox, Bowls, Search. "Chat" is the Search tab on its Chat side.
     func openTab(_ name: String) {
+        if name == "Chat" {
+            openTab("Search")
+            searchSide("Chat")
+            return
+        }
         let tab = tabBars.buttons[name].exists ? tabBars.buttons[name] : buttons[name].firstMatch
         XCTAssertTrue(tab.waitForExistence(timeout: 30), "tab \(name) missing")
         tab.tap()
+    }
+
+    /// The side of the Search tab's switch (Search or Chat): a segmented control, or capsules with the largest text
+    /// sizes.
+    func searchSide(_ name: String) {
+        let control = segmentedControls["SearchSide"]
+        // With the largest text sizes: capsules, above the tab bar (whose "Search" has the same label).
+        let barTop = tabBars.firstMatch.exists ? tabBars.firstMatch.frame.minY : .greatestFiniteMagnitude
+        let side = control.waitForExistence(timeout: 5) ? control.buttons[name]
+            : buttons.matching(NSPredicate(format: "label == %@", name)).allElementsBoundByIndex
+                .first { $0.exists && $0.isHittable && $0.frame.maxY < barTop }
+                ?? buttons[name].firstMatch
+        XCTAssertTrue(side.waitForExistence(timeout: 10), "Search | Chat has no \(name)")
+        if !side.isSelected { side.tap() }
+    }
+
+    /// The side of the Search tab that shows.
+    var searchSideShown: String? {
+        let control = segmentedControls["SearchSide"]
+        guard control.exists else { return nil }
+        return ["Search", "Chat"].first { control.buttons[$0].isSelected }
     }
 
     /// One of the choices of the Add sheet ("+" in the bar): Note, To-do, Meeting, Link, Photo or File, New Bowl…
@@ -77,7 +103,7 @@ extension XCUIApplication {
     func create(_ option: String) {
         // An alert that is still going away has a "Create" of its own.
         _ = alerts.firstMatch.waitForNonExistence(timeout: 5)
-        // The app opens on the tab used last; Chat and Search have no "+": Today has.
+        // "+" is the middle of the tab bar on every tab (it hides only while choosing several).
         var plus = addButton
         if !(plus.waitForExistence(timeout: 5) && plus.isHittable) {
             openTab("Today")
@@ -130,6 +156,8 @@ extension XCUIApplication {
 
     func goBack() {
         buttons["Back"].firstMatch.tap()
+        // "+" of the tab bar shows on an entry's page too: the list is back once the entry's title is gone.
+        _ = titleField.waitForNonExistence(timeout: 10)
         XCTAssertTrue(addButton.waitForExistence(timeout: 10), "list missing after going back")
     }
 
@@ -164,6 +192,7 @@ extension XCUIApplication {
 
     func search(for text: String) {
         openTab("Search")
+        searchSide("Search")
         let field = textFields["SearchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 10), "search field missing")
         field.tap()
@@ -173,6 +202,16 @@ extension XCUIApplication {
     /// Replaces the text in the open search.
     func searchAgain(for text: String) {
         let field = textFields["SearchField"]
+        // A tap in the results puts the keyboard away (opening one, scrolling): then the field is emptied and takes
+        // the keyboard back.
+        if !((field.value(forKey: "hasKeyboardFocus") as? Bool) ?? false) {
+            let clear = buttons["Clear Text"]
+            if clear.exists { clear.tap() }
+            field.tap()
+            _ = keyboards.firstMatch.waitForExistence(timeout: 5)
+            field.typeText(text)
+            return
+        }
         let old = field.value as? String ?? ""
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
     }

@@ -67,6 +67,7 @@ final class PlacesShotsTests: XCTestCase {
             shoot("settings")
             app.buttons["Back"].firstMatch.tap()
             app.openTab("Search")
+            app.searchSide("Search")
             shoot("search")
             app.openTab("Today")
             app.addButton.tap()

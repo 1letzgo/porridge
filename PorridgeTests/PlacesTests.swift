@@ -77,19 +77,20 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(QuickAction.openBowls.url.absoluteString, "porridge://bowls")
     }
 
-    /// Each page opened from elsewhere lands on its place's stack: Open To-dos on Today, the bowls' pages and Settings
-    /// on Bowls, the chat on the search.
+    /// Each page opened from elsewhere lands on its place's stack: Open To-dos on the Inbox (its end card), the bowls'
+    /// pages and Settings on Bowls, the chat on the search (its Chat side).
     func testPagesBelongToTheirPlace() {
-        XCTAssertEqual(ListPage.todos.place, .today)
+        XCTAssertEqual(ListPage.todos.place, .inbox)
         XCTAssertEqual(ListPage.project(UUID()).place, .bowls)
         XCTAssertEqual(ListPage.smartFilter(UUID()).place, .bowls)
         XCTAssertEqual(ListPage.archive.place, .bowls)
         XCTAssertEqual(ListPage.trash.place, .bowls)
         XCTAssertEqual(ListPage.settings.place, .bowls)
-        XCTAssertEqual(ListPage.chat.place, .chat)
+        XCTAssertEqual(ListPage.chat.place, .search)
         XCTAssertEqual(Place(root: .inbox), .inbox)
         XCTAssertNil(Place(root: .todos))
-        XCTAssertEqual(Place.allCases.map(\.root), [.today, .inbox, .bowls, .chat, .search])
+        XCTAssertNil(Place(root: .chat), "the chat is a side of the Search tab, not a place")
+        XCTAssertEqual(Place.allCases.map(\.root), [.today, .inbox, .bowls, .search])
     }
 
     /// An entry link waits until the entry can be opened (cold start: before the list has loaded it).
@@ -102,17 +103,39 @@ final class PlacesTests: XCTestCase {
         XCTAssertNil(EntryLinkRouter.waiting)
     }
 
-    /// Five tabs in this order; the chat is a place of its own (owner decision, revision 3).
-    func testTheTabsAreTheFourPlacesAndTheSearch() {
-        XCTAssertEqual(Place.allCases, [.today, .inbox, .bowls, .chat, .search])
-        XCTAssertEqual(ListPage.chat.place, .chat)
-        XCTAssertEqual(Place(root: .chat), .chat)
+    /// The tab bar (owner revision 5): Today · Inbox · "+" · Bowls · Search. "+" is the middle slot and no place; the
+    /// chat is the Search tab's other side.
+    func testTheTabBarIsFourPlacesWithPlusInTheMiddle() {
+        XCTAssertEqual(Place.allCases, [.today, .inbox, .bowls, .search])
+        XCTAssertEqual(TabSlot.bar, [.place(.today), .place(.inbox), .add, .place(.bowls), .place(.search)])
+        XCTAssertEqual(TabSlot.bar.firstIndex(of: .add), TabSlot.bar.count / 2, "+ is in the middle")
+        XCTAssertEqual(ListPage.chat.place, .search)
         XCTAssertEqual(ListPage.search.place, .search)
+        XCTAssertEqual(SearchSide.allCases, [.search, .chat])
+        XCTAssertEqual(SearchSide(rawValue: "chat"), .chat, "the side kept in UserDefaults reads back")
+    }
+
+    /// "+" fits the floating tab bar: whole on screen, inside the bar's height (its slots are 54 pt), and clear of the
+    /// neighbours' badges and selection capsule (about 21 pt from the middle at 375 pt), yet a full touch target and
+    /// clearly bigger than a tab symbol (about 26 pt).
+    func testTheTabBarPlusFitsTheBar() {
+        // The badge "120" ends 21 pt from the middle at 375 pt, 24 pt at 390 pt (measured): 3 pt or more stay free.
+        for (width, badge) in [(CGFloat(375), CGFloat(21)), (390, 24), (440, 24)] {
+            let diameter = TabBarAddButton.diameter(screenWidth: width)
+            XCTAssertGreaterThan(TabBarAddButton.centerFromBottom, diameter / 2, "the circle stays on screen")
+            XCTAssertLessThanOrEqual(diameter, 54, "taller than the bar")
+            XCTAssertLessThanOrEqual(diameter / 2 + 3, badge, "at \(width) pt it reaches under the Inbox's badge")
+            XCTAssertGreaterThanOrEqual(diameter, 26 * 1.38, "at \(width) pt it is not clearly bigger than a tab symbol")
+        }
+        XCTAssertGreaterThanOrEqual(TabBarAddButton.touchSize, 44, "not a full touch target")
     }
 
     func testTheChatLinkOpensTheChat() {
         XCTAssertEqual(QuickAction(url: URL(string: "porridge://chat")!), .openChat)
         XCTAssertEqual(QuickAction.openChat.url.absoluteString, "porridge://chat")
+        // The Search side of the same tab.
+        XCTAssertEqual(QuickAction(url: URL(string: "porridge://search")!), .search(""))
+        XCTAssertEqual(QuickAction(url: URL(string: "porridge://search?q=Q4")!), .search("Q4"))
     }
 
     // MARK: What's New
@@ -140,7 +163,14 @@ final class PlacesTests: XCTestCase {
             XCTAssertEqual(WhatsNew.places(mac: mac).map(\.symbol).count, 5)
         }
         let phone = WhatsNew.items(mac: false).map(\.text).joined(separator: " ")
-        XCTAssertTrue(phone.contains("Chat"), "the Chat tab is named")
+        XCTAssertTrue(phone.contains("Chat"), "the Chat side is named")
+        XCTAssertTrue(phone.contains("“+” in the middle"), "the + of the tab bar is named")
+        XCTAssertTrue(phone.contains("gear in Today"), "the gear in Today is named")
+        XCTAssertTrue(phone.contains("end of the Inbox"), "the Inbox's end card is named")
+        XCTAssertFalse(phone.contains("Chat tab"), "Chat has no tab of its own any more")
+        // The onboarding's last page: the tab bar from left to right.
+        XCTAssertEqual(WhatsNew.places(mac: false).map(\.title), ["Today", "Inbox", "Add", "Bowls", "Search and Chat"])
+        XCTAssertEqual(WhatsNew.places(mac: true).map(\.title), ["Today", "Inbox", "Bowls", "Chat", "Search or Ask (⌘K)"])
         XCTAssertTrue(phone.contains("Swipe"), "the Inbox swipes are named")
         XCTAssertTrue(phone.contains("Move · Later · Done · More"), "the selection bar is named")
         XCTAssertFalse(phone.contains("Bucket") || phone.contains("Project"), "the container is a Bowl")

@@ -79,9 +79,11 @@ final class TodayFlowTests: XCTestCase {
         XCTAssertEqual(done.count, 0, "tomorrow shows a done to-do")
         app.buttons["TodayPreviousDay"].tap()
 
-        // Open To-dos keeps it under Done Today.
-        let entry = app.buttons["TodayOpenTodos"]
-        XCTAssertTrue(app.reveal(entry), "Open To-dos missing in Today")
+        // Open To-dos (the card at the end of the Inbox) keeps it under Done Today.
+        app.openTab("Inbox")
+        app.inboxSegment(0).tap()
+        let entry = app.buttons["InboxOpenTodos"]
+        XCTAssertTrue(app.reveal(entry), "Open To-dos missing at the end of the Inbox")
         entry.tap()
         XCTAssertTrue(app.reveal(app.staticTexts["Done Today"]), "the ticked to-do is not under Done Today in Open To-dos")
     }

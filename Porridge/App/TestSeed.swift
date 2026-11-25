@@ -19,6 +19,17 @@ enum TestSeed {
         if UserDefaults.standard.bool(forKey: "seedEntryKinds") { seedEntryKinds(container.mainContext) }
         // Only on the store in memory: added on every launch, it would pile up in a real one.
         if UserDefaults.standard.bool(forKey: "seedInbox"), UserDefaults.standard.bool(forKey: "emptyStore") { seedInbox(container.mainContext) }
+        // `-seedInboxCount <n>` (with `-emptyStore YES`): n plain notes in the Inbox, for a badge with three digits.
+        let count = UserDefaults.standard.integer(forKey: "seedInboxCount")
+        if count > 0, UserDefaults.standard.bool(forKey: "emptyStore") {
+            for index in 1...count {
+                let note = Note()
+                note.source = .note
+                note.title = "Inbox note \(index)"
+                container.mainContext.insert(note)
+            }
+            try? container.mainContext.save()
+        }
         guard let title = UserDefaults.standard.string(forKey: "seedMeetingWithTasks"), !title.isEmpty else { return }
         let context = container.mainContext
         // Made again on every launch (the launch argument stays set): what an earlier launch left goes first.

@@ -29,7 +29,7 @@ final class ChatNavigation {
     }
 }
 
-/// The chat, a place of its own (the Chat tab): one chat, or the list of all of them. Chats are kept; a new chat
+/// The chat, the Search tab's Chat side: one chat, or the list of all of them. Chats are kept; a new chat
 /// offers the recent ones to take up again.
 struct ChatPage: View {
     let notes: [Note]
@@ -229,7 +229,12 @@ struct ChatView: View {
             .defaultScrollAnchor(entries.isEmpty ? .top : .bottom, for: .initialOffset)
             // A short chat stays at the top under the pills instead of sinking to the field.
             .defaultScrollAnchor(.top, for: .alignment)
+            // The keyboard goes with a drag down through the conversation, or a tap in it (also where it is empty:
+            // a short chat does not scroll).
             .scrollDismissesKeyboard(.interactively)
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded { focused = false })
+            .accessibilityIdentifier("ChatConversation")
             .onChange(of: entries.count) { scrollToEnd(proxy) }
             .onChange(of: isThinking) { scrollToEnd(proxy) }
             .onChange(of: focused) { _, isFocused in
@@ -508,6 +513,8 @@ struct ChatView: View {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty, service.thinking == nil else { return }
         input = ""
+        // The answer comes in where the keyboard was: it does not stay over it.
+        focused = false
         // A new chat is kept from its first question on.
         let chat: ChatThread
         if let thread {
