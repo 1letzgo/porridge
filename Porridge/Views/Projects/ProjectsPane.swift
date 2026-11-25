@@ -316,6 +316,9 @@ struct ProjectContent {
     var links: [Note] = []
     var images: [Note] = []
     var files: [Note] = []
+    /// The appointments filed into the bowl (each series once, `BowlAppointments.counts`): a bowl with appointments
+    /// is not empty.
+    var appointments = 0
 
     init() {}
 
@@ -326,11 +329,12 @@ struct ProjectContent {
 
     /// The content of every bowl in one pass over the notes, by the bowl's key (`Projects.key`). For lists of
     /// bowls: asking each bowl on its own would walk all notes once per bowl.
-    static func byProject(_ all: [Note]) -> [String: ProjectContent] {
+    static func byProject(_ all: [Note], appointments: [String: Int] = [:]) -> [String: ProjectContent] {
         var contents: [String: ProjectContent] = [:]
         for note in all where !note.isDeleted {
             for id in note.projectIDs { contents[id, default: ProjectContent()].add(note) }
         }
+        for (id, count) in appointments { contents[id, default: ProjectContent()].appointments = count }
         return contents
     }
 
@@ -388,7 +392,8 @@ struct ProjectContent {
             (images.count, String(localized: "Image"), String(localized: "Images")),
             (files.count, String(localized: "File"), String(localized: "Files")),
         ].filter { $0.0 > 0 }.map { "\($0.0) \($0.0 == 1 ? $0.1 : $0.2)" }
-        return parts.isEmpty ? String(localized: "Empty") : parts.joined(separator: " · ")
+        let all = (appointments > 0 ? [appointments == 1 ? String(localized: "1 Appointment") : String(localized: "\(appointments) Appointments")] : []) + parts
+        return all.isEmpty ? String(localized: "Empty") : all.joined(separator: " · ")
     }
 }
 

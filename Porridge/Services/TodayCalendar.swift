@@ -75,6 +75,9 @@ final class TodayCalendar {
         return read
     }
 
+    /// Changes whenever the calendar is read again (`windowAppointments` too).
+    var windowToken: Int { version }
+
     static let windowDaysBack = 180
     static let windowDaysAhead = 365
     @ObservationIgnored private var window: (day: Date, items: [CalendarAppointment])?

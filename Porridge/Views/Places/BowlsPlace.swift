@@ -26,7 +26,7 @@ struct BowlsPlace: View {
         let bowls = HomeList.bowls(projects, notes: notes, order: order)
         let pinned = bowls.filter(\.isPinned)
         let others = bowls.filter { !$0.isPinned }
-        let contents = ProjectContent.byProject(notes)
+        let contents = ProjectContent.byProject(notes, appointments: AppointmentLinks.shared.appointmentCounts())
         let filters = SmartFilterStore.shared.filters
         List {
             if showsPlaces {

@@ -854,7 +854,7 @@ struct NotesView: View {
     /// The archive: archived bowls only. Notes are never archived.
     private var archive: some View {
         let folders = HomeList.archivedProjects(projects)
-        let contents = ProjectContent.byProject(notes)
+        let contents = ProjectContent.byProject(notes, appointments: AppointmentLinks.shared.appointmentCounts())
         return List(selection: $selection) {
             if !folders.isEmpty {
                 Section {

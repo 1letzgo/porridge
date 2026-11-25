@@ -116,6 +116,20 @@ enum BowlAppointments {
         let past = picked.filter { $0.end <= now }.sorted { ($0.start, $0.title) > ($1.start, $1.title) }
         return upcoming + past
     }
+
+    /// How many appointments each bowl shows (each series once, as `rows`), by the bowl's key, in one pass.
+    static func counts(_ appointments: [CalendarAppointment], bowls: [String: AppointmentLedger.BowlLink]) -> [String: Int] {
+        var series: [String: Set<String>] = [:]
+        for appointment in appointments {
+            if let bowl = bowls[appointment.seriesID]?.bowl { series[bowl, default: []].insert(appointment.seriesID) }
+        }
+        return series.mapValues(\.count)
+    }
+
+    /// "1 appointment", "3 appointments"; nil for none.
+    static func phrase(_ count: Int) -> String? {
+        count == 0 ? nil : count == 1 ? String(localized: "1 appointment") : String(localized: "\(count) appointments")
+    }
 }
 
 /// The appointments the Inbox shows (New, under its card): those of the day not filed into a bowl, each series once
@@ -225,6 +239,22 @@ final class AppointmentLinks {
     func inboxAppointments(among appointments: [CalendarAppointment], day: Date = Date()) -> [CalendarAppointment] {
         InboxAppointments.rows(appointments, bowls: ledger.bowls, day: day)
     }
+
+    /// How many appointments each bowl shows (`BowlAppointments.counts`), by the bowl's key: for the lists of bowls,
+    /// which so ask the calendar once (`TodayCalendar.windowAppointments`, kept until the calendar changes) and count
+    /// again only when the calendar or a filing changed.
+    func appointmentCounts() -> [String: Int] {
+        let calendar = TodayCalendar.shared
+        guard calendar.status == .granted else { return [:] }
+        let window = calendar.windowAppointments()
+        let token = calendar.windowToken
+        if let cached = countsCache, cached.token == token, cached.bowls == ledger.bowls { return cached.counts }
+        let counts = BowlAppointments.counts(window, bowls: ledger.bowls)
+        countsCache = (token, ledger.bowls, counts)
+        return counts
+    }
+
+    @ObservationIgnored private var countsCache: (token: Int, bowls: [String: AppointmentLedger.BowlLink], counts: [String: Int])?
 
     /// The bowl's appointments among these (`BowlAppointments`).
     func appointments(inBowl bowl: String, among appointments: [CalendarAppointment], now: Date = Date()) -> [CalendarAppointment] {

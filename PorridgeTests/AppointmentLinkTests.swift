@@ -152,6 +152,25 @@ final class AppointmentLinkTests: XCTestCase {
         XCTAssertTrue(afterFiling.isEmpty)
     }
 
+    /// A bowl with appointments filed into it is not empty: they are counted once per series and named in its summary.
+    func testABowlWithAppointmentsIsNotEmpty() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let weekly = (0...3).map { appointment(id: "w\($0)", series: "weekly", start: now.addingTimeInterval(Double($0) * 7 * 86400)) }
+        let party = appointment(id: "p", series: "party", start: now)
+        let bowls: [String: AppointmentLedger.BowlLink] = ["weekly": .init(bowl: "B", changedAt: now), "party": .init(bowl: "B", changedAt: now)]
+        let counts = BowlAppointments.counts(weekly + [party, appointment(id: "x", series: "x", start: now)], bowls: bowls)
+        XCTAssertEqual(counts, ["B": 2], "a series counts once, an unfiled appointment not at all")
+
+        let bowl = NoteFolder(name: "SPD")
+        let key = Projects.key(bowl)
+        let contents = ProjectContent.byProject([], appointments: [key: 2])
+        XCTAssertEqual(contents[key]?.appointments, 2)
+        XCTAssertEqual(contents[key]?.summary, "2 Appointments", "a bowl with only appointments says so instead of Empty")
+        XCTAssertEqual(ProjectContent().summary, "Empty")
+        XCTAssertEqual(BowlAppointments.phrase(1), "1 appointment")
+        XCTAssertNil(BowlAppointments.phrase(0))
+    }
+
     func testDevicesMergeLinkByLinkAndTheLaterChangeWins() {
         let early = Date(timeIntervalSince1970: 1_000), late = Date(timeIntervalSince1970: 2_000)
         let ref = AppointmentRef(appointment())

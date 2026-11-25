@@ -141,7 +141,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         libraryToken = library.observe { [weak self] in self?.reload() }
         // Today's appointments and the links to them (from other devices too).
         observers.append(Observing { [weak self] in
-            guard let self, self.state.page == .today || self.state.page == .inbox || self.state.page.projectID != nil else { return }
+            guard let self, [.today, .inbox, .bowls, .archive].contains(self.state.page) || self.state.page.projectID != nil else { return }
             // The day paged to is read through `appointments(on:)`, which follows the calendar's changes.
             _ = (TodayCalendar.shared.appointments(on: self.state.todayShownDay), TodayCalendar.shared.status, AppointmentLinks.shared.ledger, self.state.todayDay)
             self.reload()
@@ -231,7 +231,9 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             return cell
         case .project(let id):
             let cell = table.makeView(withIdentifier: BucketCellView.identifier, owner: nil) as? BucketCellView ?? BucketCellView()
-            if let project = library.project(id) { cell.show(project, notes: library.notes) }
+            if let project = library.project(id) {
+                cell.show(project, notes: library.notes, appointments: AppointmentLinks.shared.appointmentCounts()[Projects.key(project)] ?? 0)
+            }
             return cell
         case .link(let link):
             let cell = table.makeView(withIdentifier: LinkCellView.identifier, owner: nil) as? LinkCellView ?? LinkCellView()
@@ -755,11 +757,14 @@ final class BucketCellView: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ project: NoteFolder, notes: [Note]) {
+    /// `appointments`: those filed into the bowl (`AppointmentLinks.appointmentCounts`); a bowl with some is not empty.
+    func show(_ project: NoteFolder, notes: [Note], appointments: Int = 0) {
         name.stringValue = project.name
         let key = Projects.key(project)
         let count = notes.lazy.filter { !$0.isDeleted && $0.projectIDs.contains(key) }.count
-        summary.stringValue = count == 0 ? String(localized: "Empty") : count == 1 ? String(localized: "1 entry") : String(localized: "\(count) entries")
+        let entries = count == 0 ? nil : count == 1 ? String(localized: "1 entry") : String(localized: "\(count) entries")
+        let parts = [entries, BowlAppointments.phrase(appointments)].compactMap { $0 }
+        summary.stringValue = parts.isEmpty ? String(localized: "Empty") : parts.joined(separator: " · ")
         icon.isPinned = project.isPinned
         setAccessibilityLabel("Bowl \(project.name), \(summary.stringValue)")
     }

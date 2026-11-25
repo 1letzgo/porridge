@@ -835,6 +835,13 @@ changes; the notes on the tab bar's "+", the Bowls place's last rows and the Cha
   the day, each series once, all-day first). Filing one (row menu or the sheet's Bowl) takes it out. Not counted in the
   badge (`Inbox.notes` unchanged), not in Triage, Later or choosing several. Mac: the section `inbox-appointments`
   after the card. Test: `testTheInboxShowsTodaysUnfiledAppointmentsOncePerSeries`.
+- **A bowl with appointments is not empty** (owner: "Bowls werden trotz Terminen als empty angezeigt"). The rows of
+  the Bowls place and the archive (iPhone `ProjectContent.summary`, Mac `BucketCellView`) name the filed appointments
+  (each series once, `BowlAppointments.counts`) and say "Empty" only with neither entries nor appointments; the bowl's
+  page shows its empty state only then (already so with All). The counts come from `AppointmentLinks.appointmentCounts`:
+  one pass over `TodayCalendar.windowAppointments` (read once per calendar change), cached until the calendar or a
+  filing changes, never a calendar query per row. Mac reloads the Bowls place and the archive on those changes.
+  Widgets show no bowl summaries. Test: `testABowlWithAppointmentsIsNotEmpty`.
 
 ---
 
