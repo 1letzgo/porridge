@@ -97,7 +97,8 @@ final class ListHeaderView: NSView {
     }
 
     @MainActor
-    func show(page: SidebarPage, library: Library, state: WindowState, kindCounts: [KindFilter: Int]) {
+    /// `appointmentCount`: a bowl's appointments, rows of All and counted in it.
+    func show(page: SidebarPage, library: Library, state: WindowState, kindCounts: [KindFilter: Int], appointmentCount: Int = 0) {
         let (name, symbol, tint): (String, String, NSColor) = switch page {
         case .today: (TodayDay.title(state.todayShownDay), "calendar", .brandNavy)
         case .inbox: ("Inbox", "tray.fill", .brandSky)
@@ -257,7 +258,7 @@ final class ListHeaderView: NSView {
         case .project:
             kinds = KindFilter.allCases.filter { (kindCounts[$0] ?? 0) > 0 || state.kindFilter == $0 }
             if kinds.count > 1 || state.kindFilter != nil {
-                let total = kindCounts.values.reduce(0, +)
+                let total = kindCounts.values.reduce(0, +) + appointmentCount
                 filters.addArrangedSubview(filterPill(title: "All", count: total, kind: nil, isOn: state.kindFilter == nil, tint: .brandProject))
                 for kind in kinds {
                     filters.addArrangedSubview(filterPill(title: kind.title, count: kindCounts[kind] ?? 0, kind: kind, isOn: state.kindFilter == kind, tint: .brandProject))

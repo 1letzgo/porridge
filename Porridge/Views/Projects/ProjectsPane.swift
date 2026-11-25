@@ -35,7 +35,8 @@ struct ProjectRow: View {
                         .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                 }
                 Spacer(minLength: 0)
-                let count = content.count(.all)
+                // The entries and the appointments, as the bowl lists them under All.
+                let count = content.count(.all) + content.appointments
                 if count > 0 {
                     Text("\(count)")
                         .font(.subheadline)
@@ -201,40 +202,40 @@ struct ProjectPage: View {
         let content = ProjectContent(of: project, notes: notes)
         // One flat list without headers: pinned first, then by last change; the To-dos filter by due day.
         let list = content.list(filter)
-        // The appointments filed into the bowl, one row per series (`BowlAppointments`), above the entries; only
-        // with All and not while choosing entries.
+        // The appointments filed into the bowl (`BowlAppointments`, one per series) are rows like the entries, where
+        // the date of their occurrence puts them, with the bowl's entries linked to them moved in under them
+        // (`BowlListing`, as in Today); only with All and not while choosing entries (an appointment is not chosen).
         let calendar = TodayCalendar.shared
         let links = AppointmentLinks.shared
-        let appointments = filter == .all && !isSelecting && calendar.status == .granted
-            ? links.appointments(inBowl: Projects.key(project), among: calendar.windowAppointments()) : []
-        let rows = Group {
-            if !appointments.isEmpty {
-                Section {
-                    ForEach(appointments) { appointment in
-                        AppointmentRow(
-                            appointment: appointment, bowlName: nil,
-                            linked: TodayTodos.shown(links.notes(for: appointment, among: notes)).count,
-                            projects: projects,
-                            onBowl: { links.setBowl($0.map(Projects.key), for: appointment, notes: notes, in: context) },
-                            onRecord: { onRecord(appointment) },
-                            onNewNote: { onNewNote(appointment) },
-                            onOpen: { opened = appointment },
-                            showsDay: true
-                        )
-                        .lastInSection(appointment.id == appointments.last?.id)
-                    }
-                } header: {
-                    ListHeader(title: String(localized: "Appointments"), count: appointments.count, tint: .brandNavy, isFirst: true)
-                }
-            }
-            Section {
-                ForEach(list) { note in
+        let filed = calendar.status == .granted ? links.appointments(inBowl: Projects.key(project), among: calendar.windowAppointments()) : []
+        let appointments = filter == .all && !isSelecting ? filed : []
+        let listed = links.bowlRows(list, appointments: appointments)
+        let lastID = listed.last?.id
+        let rows = Section {
+            ForEach(listed) { row in
+                switch row {
+                case .note(let note):
                     NoteListRow(note: note) { onRemove(note) }
-                        .lastInSection(note.id == list.last?.id)
-                }
-            } header: {
-                if !appointments.isEmpty, !list.isEmpty {
-                    ListHeader(title: String(localized: "Entries"), count: list.count, tint: .brandProject)
+                        .tag(note.id)
+                        .lastInSection(row.id == lastID)
+                case .appointment(let appointment, let linked):
+                    AppointmentRow(
+                        appointment: appointment, bowlName: nil,
+                        linked: linked.count,
+                        projects: projects,
+                        onBowl: { links.setBowl($0.map(Projects.key), for: appointment, notes: notes, in: context) },
+                        onRecord: { onRecord(appointment) },
+                        onNewNote: { onNewNote(appointment) },
+                        onOpen: { opened = appointment },
+                        showsDay: true
+                    )
+                    .lastInSection(linked.isEmpty && row.id == lastID)
+                    // What belongs to it, moved in a little (as in Today).
+                    ForEach(linked) { note in
+                        NoteListRow(note: note) { onRemove(note) }
+                            .underAppointment()
+                            .lastInSection(note.id == linked.last?.id && row.id == lastID)
+                    }
                 }
             }
         }
@@ -248,7 +249,8 @@ struct ProjectPage: View {
                     HStack(spacing: 8) {
                         // Only the kinds the bowl has something of; the one chosen stays while it is.
                         ForEach(ProjectFilter.allCases.filter { $0 == .all || $0 == filter || content.count($0) > 0 }, id: \.self) { kind in
-                            chip(kind, count: content.count(kind))
+                            // All counts the appointments too: they are rows of it.
+                            chip(kind, count: content.count(kind) + (kind == .all ? filed.count : 0))
                         }
                     }
                     .padding(.horizontal, 20)

@@ -132,6 +132,52 @@ enum BowlAppointments {
     }
 }
 
+/// A bowl's list with its appointments as rows among the entries (owner revision 8): each appointment of the bowl
+/// (`BowlAppointments.rows`, one per series) stands where the date of its occurrence shown puts it among the entries
+/// (pinned entries first, then newest first: an upcoming appointment comes before every entry, a past one among those
+/// changed around its day). Under it, moved in a little as in Today (`AppointmentLinks.underAppointment`), the
+/// entries of this bowl linked to any occurrence of its series; those are not listed again at their own place. An
+/// entry linked to an appointment that is not one of the bowl's rows (filed elsewhere, or outside the calendar
+/// window) stands at its own place; entries linked to it in other bowls or the Inbox are not shown here.
+enum BowlListing {
+    enum Row: Identifiable {
+        case note(Note)
+        /// The appointment and the entries under it, in their order.
+        case appointment(CalendarAppointment, linked: [Note])
+
+        var id: String {
+            switch self {
+            case .note(let note): "note-" + note.id.uuidString
+            case .appointment(let appointment, _): "appointment-" + appointment.seriesID
+            }
+        }
+    }
+
+    /// `entries`: the bowl's entries in its order (`Projects.ordered`); `appointments`: the bowl's appointments;
+    /// `seriesOf`: the series an entry is linked to (`AppointmentLinks.appointment(for:)`).
+    static func rows(_ entries: [Note], appointments: [CalendarAppointment], seriesOf: (Note) -> String?) -> [Row] {
+        guard !appointments.isEmpty else { return entries.map { .note($0) } }
+        let series = Set(appointments.map(\.seriesID))
+        var linked: [String: [Note]] = [:]
+        var rest: [Note] = []
+        for note in entries {
+            if let id = seriesOf(note), series.contains(id) { linked[id, default: []].append(note) } else { rest.append(note) }
+        }
+        let pinned = rest.prefix { $0.isPinned }
+        var others = rest.dropFirst(pinned.count)
+        var rows = pinned.map { Row.note($0) }
+        for appointment in appointments.sorted(by: { ($0.start, $0.title) > ($1.start, $1.title) }) {
+            while let next = others.first, next.updatedAt >= appointment.start {
+                rows.append(.note(next))
+                others = others.dropFirst()
+            }
+            rows.append(.appointment(appointment, linked: AppointmentLinks.underAppointment(linked[appointment.seriesID] ?? [])))
+        }
+        rows += others.map { .note($0) }
+        return rows
+    }
+}
+
 /// The appointments the Inbox shows (New, under its card): those of the day not filed into a bowl, each series once
 /// (its occurrence of the day; the first one if it repeats within the day), all-day ones first, then by start. Never
 /// another day's, never a filed one (that one is in its bowl and in Today). They are no entries: not counted in the
@@ -187,7 +233,18 @@ final class AppointmentLinks {
     /// The entries linked to the appointment, among these notes (deleted ones left out), newest first.
     func notes(for appointment: CalendarAppointment, among notes: [Note]) -> [Note] {
         let ids = Set(ledger.notes.compactMap { id, link in link.ref?.matches(appointment) == true ? id : nil })
-        return notes.filter { ids.contains($0.id.uuidString) && !$0.isDeleted }.sorted { $0.createdAt > $1.createdAt }
+        return Self.underAppointment(notes.filter { ids.contains($0.id.uuidString) && !$0.isDeleted })
+    }
+
+    /// The order of the entries under an appointment, in Today and in its bowl (`BowlListing`): newest first.
+    nonisolated static func underAppointment(_ linked: [Note]) -> [Note] {
+        linked.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// The bowl's list with its appointments among the entries (`BowlListing`): `entries` in the bowl's order,
+    /// `appointments` the bowl's (`appointments(inBowl:among:)`).
+    func bowlRows(_ entries: [Note], appointments: [CalendarAppointment]) -> [BowlListing.Row] {
+        BowlListing.rows(entries, appointments: appointments) { [ledger] note in ledger.notes[note.id.uuidString]?.ref?.seriesID }
     }
 
     /// The other entries linked to the same appointment as this one, newest first.

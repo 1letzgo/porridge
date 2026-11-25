@@ -107,7 +107,7 @@ struct TodayPage: View {
                         // What belongs to it, moved in a little.
                         ForEach(linked) { note in
                             NoteListRow(note: note, buckets: buckets(note)) { onRemove(note) }
-                                .padding(.leading, 24)
+                                .underAppointment()
                                 .lastInSection(note.id == linked.last?.id && appointment.id == appointments.last?.id)
                         }
                     }
@@ -172,6 +172,13 @@ struct TodayPage: View {
         // A to-do ticked done leaves Today: the tick offers Undo.
         .environment(\.ticksLeaveList, true)
         .refreshable { calendar.refresh() }
+    }
+}
+
+extension View {
+    /// An entry linked to the appointment above it, moved in a little as belonging to it (Today, a bowl).
+    func underAppointment() -> some View {
+        padding(.leading, 24)
     }
 }
 

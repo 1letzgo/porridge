@@ -1,6 +1,6 @@
 import AppKit
 
-/// An appointment of the day in Today's list: time, title, its bowl and how many entries are linked; the button at
+/// An appointment of the day in Today's list (or of a bowl, among its entries): time, title, its bowl and how many entries are linked; the button at
 /// the end (and the context menu) record a meeting for it, start a note for it or file it into a bowl.
 final class AppointmentCellView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("appointment")
@@ -43,16 +43,18 @@ final class AppointmentCellView: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     @MainActor
-    func show(_ appointment: CalendarAppointment, notes: [Note], showsDay: Bool = false) {
+    /// `showsBowl`: names its bowl (not in the bowl itself); `linked`: how many entries are under it (a bowl's list),
+    /// else those linked to the occurrence as Today shows them.
+    func show(_ appointment: CalendarAppointment, notes: [Note], showsDay: Bool = false, showsBowl: Bool = true, linked: Int? = nil) {
         self.appointment = appointment
         let over = appointment.end < Date()
         name.stringValue = appointment.title
         name.textColor = over ? .secondaryLabelColor : .labelColor
         var parts = [AppointmentActions.time(appointment, showsDay: showsDay) + (appointment.isRecurring ? " ↻" : "")]
-        if let bowl = AppointmentLinks.shared.bowl(for: appointment), let project = Library.shared.project(key: bowl) {
+        if showsBowl, let bowl = AppointmentLinks.shared.bowl(for: appointment), let project = Library.shared.project(key: bowl) {
             parts.append(project.name)
         }
-        let linked = TodayTodos.shown(AppointmentLinks.shared.notes(for: appointment, among: notes)).count
+        let linked = linked ?? TodayTodos.shown(AppointmentLinks.shared.notes(for: appointment, among: notes)).count
         if linked > 0 { parts.append(linked == 1 ? String(localized: "1 linked entry") : String(localized: "\(linked) linked entries")) }
         summary.stringValue = parts.joined(separator: " · ")
         setAccessibilityLabel("\(appointment.title), \(summary.stringValue)")

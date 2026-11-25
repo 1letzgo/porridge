@@ -171,6 +171,77 @@ final class AppointmentLinkTests: XCTestCase {
         XCTAssertNil(BowlAppointments.phrase(0))
     }
 
+    /// Owner revision 8: in its bowl an appointment is a row among the entries, where the date of its occurrence shown
+    /// puts it (after pinned entries, newest first); the bowl's entries linked to any occurrence of its series stand
+    /// under it (newest first, as in Today) and not again at their own place; others stay where they are.
+    func testABowlListsItsAppointmentsAmongTheEntriesWithTheirEntriesUnderThem() throws {
+        let context = try TestStore.context()
+        let links = links()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let day: TimeInterval = 86400
+        let bowl = NoteFolder(name: "SPD")
+        context.insert(bowl)
+        let key = Projects.key(bowl)
+        let upcoming = appointment(id: "u", series: "jour-fixe", title: "Jour fixe", start: now.addingTimeInterval(2 * day))
+        let earlier = appointment(id: "u0", series: "jour-fixe", title: "Jour fixe", start: now.addingTimeInterval(-5 * day))
+        let past = appointment(id: "k", series: "kick-off", title: "Kick-off", start: now.addingTimeInterval(-10 * day))
+        let elsewhere = appointment(id: "x", series: "dentist", title: "Dentist", start: now.addingTimeInterval(-3 * day))
+        links.setBowl(key, for: upcoming, notes: [], in: context)
+        links.setBowl(key, for: past, notes: [], in: context)
+        links.setBowl("OTHER", for: elsewhere, notes: [], in: context)
+
+        func note(_ title: String, changed: TimeInterval, created: TimeInterval? = nil, pinned: Bool = false) -> Note {
+            let note = Note()
+            note.title = title
+            note.updatedAt = now.addingTimeInterval(changed * day)
+            note.createdAt = now.addingTimeInterval((created ?? changed) * day)
+            note.isPinned = pinned
+            note.projectIDs = [key]
+            context.insert(note)
+            return note
+        }
+        let pinned = note("Pinned", changed: -30, pinned: true)
+        let fresh = note("Fresh", changed: -1)
+        let minutes = note("Minutes", changed: -4, created: -5)
+        let agenda = note("Agenda", changed: -20, created: -6)
+        let kickoffNotes = note("Kick-off notes", changed: -9)
+        let middle = note("Middle", changed: -7)
+        let dentistNote = note("Dentist note", changed: -3)
+        let old = note("Old", changed: -40)
+        // Linked to the earlier occurrence of the series shown with its next one.
+        links.link(minutes, to: earlier, in: context)
+        links.link(agenda, to: earlier, in: context)
+        links.link(kickoffNotes, to: past, in: context)
+        // Its appointment is in another bowl: it stays at its own place here.
+        links.link(dentistNote, to: elsewhere, in: context)
+
+        let entries = Projects.ordered([pinned, fresh, minutes, agenda, kickoffNotes, middle, dentistNote, old])
+        let shown = links.appointments(inBowl: key, among: [upcoming, earlier, past, elsewhere], now: now)
+        XCTAssertEqual(shown.map(\.id), ["u", "k"], "each series once")
+        let rows = links.bowlRows(entries, appointments: shown)
+        func describe(_ row: BowlListing.Row) -> String {
+            switch row {
+            case .note(let note): note.title
+            case .appointment(let appointment, let linked): ([appointment.title] + linked.map { "  " + $0.title }).joined(separator: "|")
+            }
+        }
+        XCTAssertEqual(rows.map(describe), [
+            "Pinned",
+            "Jour fixe|  Minutes|  Agenda",
+            "Fresh",
+            "Dentist note",
+            "Middle",
+            "Kick-off|  Kick-off notes",
+            "Old",
+        ])
+        // Taken out of the bowl: its entries stand at their own place again.
+        links.setBowl(nil, for: past, notes: [], in: context)
+        let without = links.bowlRows(entries, appointments: links.appointments(inBowl: key, among: [upcoming, earlier, past], now: now))
+        XCTAssertEqual(without.map(describe), ["Pinned", "Jour fixe|  Minutes|  Agenda", "Fresh", "Dentist note", "Middle", "Kick-off notes", "Old"])
+        // No appointments: the entries as they are.
+        XCTAssertEqual(links.bowlRows(entries, appointments: []).map(describe), entries.map(\.title))
+    }
+
     func testDevicesMergeLinkByLinkAndTheLaterChangeWins() {
         let early = Date(timeIntervalSince1970: 1_000), late = Date(timeIntervalSince1970: 2_000)
         let ref = AppointmentRef(appointment())

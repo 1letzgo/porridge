@@ -843,6 +843,28 @@ changes; the notes on the tab bar's "+", the Bowls place's last rows and the Cha
   filing changes, never a calendar query per row. Mac reloads the Bowls place and the archive on those changes.
   Widgets show no bowl summaries. Test: `testABowlWithAppointmentsIsNotEmpty`.
 
+**As built (owner revision 8, 2026-11-25):** owner: "Termine sollen ein normaler Eintrag in einem Bowl sein … wenn an
+einem Termin ein anderer Eintrag verknüpft ist, rücke ihn ein, analog der Logik auf Today".
+
+- **No "Appointments" section on a bowl's page.** Each appointment of the bowl (`BowlAppointments.rows`, one per
+  series, its next occurrence not over, else its last) is a row of the one list under All, in the row form it had
+  (calendar icon, title, day and time, ↻), placed by the start of the occurrence shown among the entries' last
+  changes (`BowlListing.rows`): pinned entries first, then newest first, so an upcoming appointment leads the unpinned
+  entries and a past one stands among those changed around its day. Under it, moved in as in Today (iPhone
+  `.underAppointment()`, 24 pt; Mac `NoteCellView.isIndented` from `Built.indented`, which Today now uses too), the
+  entries of this bowl linked to any occurrence of its series, newest first (`AppointmentLinks.underAppointment`, the
+  order of Today); they are not listed again at their own place. Done to-dos go under it too (a bowl shows them;
+  Today hides them everywhere). Entries linked to it in other bowls or the Inbox are not shown; an entry whose
+  appointment is filed elsewhere, in no bowl or outside the calendar window stands at its own place.
+- **What the row offers.** A tap opens the appointment (iPhone sheet, Mac popover); its ⋯ / context menu stays Record
+  Meeting (while not over), New Note and Bowl. No swipe, selection, pin, triage or delete. The other filters (To-dos,
+  Meetings, …) and choosing several show no appointments; their entries stand at their own place there. The linked
+  count of the row is the number of entries under it; on the Mac the row no longer names its own bowl.
+- **Counts.** The All chip (iPhone and Mac) and the number at the end of a bowl's row in the Bowls place count the
+  appointments too; the summaries stay ("1 Appointment · 1 Meeting · 1 Note", Mac "2 entries · 1 appointment"). Bowl
+  pages have no search of their own. Inbox and Today unchanged. Test:
+  `AppointmentLinkTests.testABowlListsItsAppointmentsAmongTheEntriesWithTheirEntriesUnderThem`.
+
 ---
 
 ## What gets removed (summary)

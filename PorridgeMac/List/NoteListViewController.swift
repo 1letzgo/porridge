@@ -14,6 +14,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
     private let bundleBanner = InboxBundleBanner()
     private var dataSource: NoteListDataSource!
     private var sectionsByID: [String: ListSection] = [:]
+    /// The entries moved in a little under the appointment they are linked to (`NoteListContent.Built.indented`).
+    private var indented: Set<UUID> = []
     private var libraryToken: UUID?
     private var observers: [Observing] = []
     private var shownPage: SidebarPage?
@@ -189,6 +191,18 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             snapshot.appendItems(items, toSection: section)
             sectionsByID[section.id] = section
         }
+        // An entry that went under an appointment or out from under it keeps its cell: it is drawn again.
+        let movedIn = indented.symmetricDifference(built.indented)
+        indented = built.indented
+        let redrawn = Set(dataSource.snapshot().itemIdentifiers).intersection(snapshot.itemIdentifiers).filter { item in
+            switch item {
+            case .note(let id): movedIn.contains(id)
+            // Its line says how many entries are linked to it, which may have changed.
+            case .appointment: true
+            default: false
+            }
+        }
+        if !pageChanged, !redrawn.isEmpty { snapshot.reloadItems(Array(redrawn)) }
         // The fixed rows (Open To-dos "5 open · 1 overdue", a smart filter's count) say what is in them: the same item
         // keeps its cell, so it is drawn again.
         let shown = Set(dataSource.snapshot().itemIdentifiers)
@@ -204,7 +218,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             self.isApplying -= 1
             self.syncSelection()
         }
-        header.show(page: state.page, library: library, state: state, kindCounts: built.kindCounts)
+        header.show(page: state.page, library: library, state: state, kindCounts: built.kindCounts, appointmentCount: built.appointmentCount)
         bundleBanner.host = self
         bundleBanner.refresh(isInbox: state.page == .inbox && state.searchText.isEmpty)
         let isEmpty = built.sections.isEmpty
@@ -227,7 +241,8 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
                 let isToday = state.page == .today
                 cell.onToggleDone = { [library] note in Todos.tick(note, leavesList: isToday, in: library.context) }
             }
-            cell.isIndented = dataSource.snapshot().sectionIdentifier(containingItem: item)?.id == "today-appointments"
+            // Under the appointment it is linked to (Today, a bowl): moved in a little.
+            cell.isIndented = indented.contains(id)
             return cell
         case .project(let id):
             let cell = table.makeView(withIdentifier: BucketCellView.identifier, owner: nil) as? BucketCellView ?? BucketCellView()
@@ -242,14 +257,26 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         case .appointment(let key):
             let cell = table.makeView(withIdentifier: AppointmentCellView.identifier, owner: nil) as? AppointmentCellView ?? AppointmentCellView()
             if let appointment = TodayCalendar.shared.appointment(key: key, on: state.todayShownDay) {
-                // In a bowl the row is the series' next occurrence: with its day.
-                cell.show(appointment, notes: library.notes, showsDay: state.page.projectID != nil)
+                // In a bowl the row is the series' next occurrence: with its day, without the bowl's name, and with
+                // how many of its entries are under it.
+                let inBowl = state.page.projectID != nil
+                let linked = inBowl ? indentedUnder(item) : nil
+                cell.show(appointment, notes: library.notes, showsDay: inBowl, showsBowl: !inBowl, linked: linked)
                 cell.menuProvider = { [weak self] appointment in
                     AppointmentActions.menu(for: appointment, in: self?.view.window?.windowController as? MainWindowController)
                 }
             }
             return cell
         }
+    }
+
+    /// How many entries are moved in under the appointment's row (a bowl's rows: those right after it).
+    private func indentedUnder(_ item: ListItem) -> Int {
+        let items = dataSource.snapshot().itemIdentifiers
+        guard let index = items.firstIndex(of: item) else { return 0 }
+        return items[(index + 1)...].prefix { next in
+            if case .note(let id) = next { indented.contains(id) } else { false }
+        }.count
     }
 
     private func syncSelection() {

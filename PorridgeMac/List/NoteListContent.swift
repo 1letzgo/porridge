@@ -42,6 +42,10 @@ enum NoteListContent {
         var showsEmptyMessage = false
         /// The kinds a bowl holds, for its filter; empty elsewhere.
         var kindCounts: [KindFilter: Int] = [:]
+        /// The appointments of a bowl (rows of All, counted in it).
+        var appointmentCount = 0
+        /// The entries moved in a little under the appointment they are linked to (Today, a bowl).
+        var indented: Set<UUID> = []
     }
 
     /// The section of the Inbox's top card (Open To-dos, Weekly Review): its rows are drawn as one card.
@@ -111,20 +115,31 @@ enum NoteListContent {
             }
             // One flat list without headers: pinned first, then by last change; the To-dos filter by due day.
             let sorted = Projects.ordered(shown, byDue: state.kindFilter == .todos)
-            var sections: [(ListSection, [ListItem])] = sorted.isEmpty ? [] : [(ListSection(id: "bucket", title: "", tint: .sky), sorted.map { .note($0.id) })]
-            // The appointments filed into the bowl, one row per series (`BowlAppointments`), above the entries.
+            // The appointments filed into the bowl (`BowlAppointments`, one per series) are rows like the entries,
+            // where the date of their occurrence puts them, with the bowl's entries linked to them moved in under
+            // them (`BowlListing`, as in Today); only with All.
             let calendar = TodayCalendar.shared
-            if state.kindFilter == nil, calendar.status == .granted {
-                let appointments = AppointmentLinks.shared.appointments(inBowl: key, among: calendar.windowAppointments())
-                if !appointments.isEmpty {
-                    sections.insert((ListSection(id: "bowl-appointments", title: String(localized: "Appointments"), tint: .navy, count: appointments.count),
-                                     appointments.map { .appointment($0.key) }), at: 0)
+            let links = AppointmentLinks.shared
+            let filed = calendar.status == .granted ? links.appointments(inBowl: key, among: calendar.windowAppointments()) : []
+            var items: [ListItem] = []
+            var indented = Set<UUID>()
+            for row in links.bowlRows(sorted, appointments: state.kindFilter == nil ? filed : []) {
+                switch row {
+                case .note(let note):
+                    items.append(.note(note.id))
+                case .appointment(let appointment, let linked):
+                    items.append(.appointment(appointment.key))
+                    for note in linked {
+                        items.append(.note(note.id))
+                        indented.insert(note.id)
+                    }
                 }
             }
+            let sections: [(ListSection, [ListItem])] = items.isEmpty ? [] : [(ListSection(id: "bucket", title: "", tint: .sky), items)]
             return Built(
                 sections: sections, emptyTitle: "Nothing Here Yet",
                 emptyMessage: "Add meetings, notes and links to the bowl, or drop them on it in the sidebar.",
-                emptySymbol: "folder", kindCounts: counts
+                emptySymbol: "folder", kindCounts: counts, appointmentCount: filed.count, indented: indented
             )
         case .smartFilter(let id):
             guard let filter = SmartFilterStore.shared.filter(id) else {
@@ -229,7 +244,7 @@ enum NoteListContent {
         return Built(
             sections: sections, emptyTitle: isToday ? "Nothing Today" : "Nothing on This Day",
             emptyMessage: isToday ? "Today's appointments and the to-dos due show up here." : "The day's appointments and the to-dos due on it show up here.",
-            emptySymbol: "calendar"
+            emptySymbol: "calendar", indented: shown
         )
     }
 
