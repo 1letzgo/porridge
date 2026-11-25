@@ -87,13 +87,29 @@ extension XCUIApplication {
         name == "Add" ? buttons["PlaceAdd"] : buttons["Tab" + name]
     }
 
-    /// The chat's Send, once the field has risen above the keyboard (it moves while the keyboard comes in).
+    /// The chat's Send, once the keyboard has come in and the field has risen above it, and pressed again if the press
+    /// sent nothing (Send stays enabled while the question is still in the field). With the largest text sizes the
+    /// keyboard exists below the screen's edge for a moment while it comes in: a press then lands where Send was
+    /// before the bar moved up, and the question is never sent.
     func tapSendWhenAboveTheKeyboard() {
         let send = buttons["ChatSend"]
         let keyboard = keyboards.firstMatch
-        let deadline = Date().addingTimeInterval(5)
-        while Date() < deadline, keyboard.exists, send.exists, send.frame.maxY > keyboard.frame.minY + 1 { usleep(200_000) }
-        send.tap()
+        let bottom = windows.firstMatch.frame.maxY
+        for _ in 0..<3 {
+            let deadline = Date().addingTimeInterval(5)
+            var last = CGRect.null
+            while Date() < deadline, send.exists {
+                let frame = send.frame
+                let settled = !keyboard.exists || (keyboard.frame.minY < bottom - 1 && frame.maxY <= keyboard.frame.minY + 1)
+                if settled, frame == last { break }
+                last = frame
+                usleep(250_000)
+            }
+            send.tap()
+            // Sent: the field is empty and Send disabled while the answer comes.
+            let sent = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == false"), object: send)
+            if XCTWaiter().wait(for: [sent], timeout: 3) == .completed { return }
+        }
     }
 
     /// All Chats on the Chat side: from an open conversation the bar's back pill goes to the chat's start, whose
