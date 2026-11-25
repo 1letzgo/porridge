@@ -80,8 +80,17 @@ enum NoteKindStyle {
 
 extension NSImage {
     /// An SF Symbol with a weight and size, for buttons and cells.
+    /// A name that is no SF Symbol is one of the app's own template images (`BowlPlace`, `BowlPlaceFill`), sized to
+    /// the symbol's point size.
     static func symbol(_ name: String, size: CGFloat = 13, weight: NSFont.Weight = .regular, label: String? = nil) -> NSImage {
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: label) ?? NSImage()
+        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: label) else {
+            guard let own = NSImage(named: name)?.copy() as? NSImage else { return NSImage() }
+            let height = (size * 1.05).rounded()
+            own.size = NSSize(width: (height * own.size.width / max(own.size.height, 1)).rounded(), height: height)
+            own.isTemplate = true
+            own.accessibilityDescription = label
+            return own
+        }
         return image.withSymbolConfiguration(.init(pointSize: size, weight: weight)) ?? image
     }
 }

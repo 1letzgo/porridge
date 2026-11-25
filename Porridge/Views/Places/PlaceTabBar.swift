@@ -119,7 +119,7 @@ struct PlaceTabBar: View {
         let count = badges[place] ?? 0
         return Button { onSelect(place) } label: {
             VStack(spacing: 3) {
-                Image(systemName: place.tabSymbol)
+                place.tabIcon(chosen: chosen)
                     .font(.system(size: 22, weight: .medium))
                     .frame(width: 30, height: 27)
                     .overlay(alignment: .topLeading) {
@@ -148,7 +148,7 @@ struct PlaceTabBar: View {
         .accessibilityAddTraits(chosen ? [.isSelected] : [])
         .accessibilityIdentifier("Tab" + place.tabTitle)
         .accessibilityShowsLargeContentViewer {
-            Label(place.tabTitle, systemImage: place.tabSymbol)
+            Label { Text(place.tabTitle) } icon: { place.tabIcon(chosen: true) }
         }
     }
 
@@ -177,6 +177,22 @@ extension Place {
         case .inbox: String(localized: "Inbox")
         case .bowls: String(localized: "Bowls")
         case .search: String(localized: "Search")
+        }
+    }
+
+    /// The tab's symbol: an SF Symbol, for Bowls a bowl of the app's own (`BowlPlace`, `BowlPlaceFill` when chosen:
+    /// SF Symbols has no bowl), drawn as large as the folder it replaces.
+    @ViewBuilder
+    func tabIcon(chosen: Bool) -> some View {
+        if self == .bowls {
+            Image(chosen ? "BowlPlaceFill" : "BowlPlace")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 26, height: 22)
+                .accessibilityHidden(true)
+        } else {
+            Image(systemName: tabSymbol)
         }
     }
 
