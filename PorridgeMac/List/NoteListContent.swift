@@ -67,10 +67,16 @@ enum NoteListContent {
             let next = later.compactMap(\.snoozedUntil).min().map { " " + String(localized: "\(later.count) come back from Later · next \(InboxSnooze.timeLabel($0)).") } ?? ""
             // At the top, above the entries, also when nothing waits: the card with Open To-dos and the Weekly Review.
             let card = (ListSection(id: Self.inboxCardID, title: "", tint: .navy), [ListItem.link(.openTodos), .link(.weeklyReview)])
+            // Under the card: today's appointments not filed into a bowl (`InboxAppointments`).
+            let calendar = TodayCalendar.shared
+            let appointments = calendar.status == .granted ? AppointmentLinks.shared.inboxAppointments(among: calendar.appointments, day: calendar.today) : []
+            let appointmentSection: [(ListSection, [ListItem])] = appointments.isEmpty ? [] : [
+                (ListSection(id: "inbox-appointments", title: String(localized: "Appointments"), tint: .navy, count: appointments.count), appointments.map { .appointment($0.key) }),
+            ]
             return Built(
-                sections: [card] + (waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]),
+                sections: [card] + appointmentSection + (waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]),
                 emptyTitle: "Inbox Empty", emptyMessage: "Everything is filed. Drop files, mails or links here, or press ⌘N." + next, emptySymbol: "tray",
-                showsEmptyMessage: waiting.isEmpty
+                showsEmptyMessage: waiting.isEmpty && appointments.isEmpty
             )
         case .bowls:
             return bowls(notes, library: library)

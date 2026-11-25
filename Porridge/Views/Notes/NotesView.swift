@@ -609,7 +609,9 @@ struct NotesView: View {
                 showsLater: $inboxShowsLater,
                 onRemove: { remove($0) },
                 onOpenTodos: { go(.todos) },
-                onReview: { showReview = true }
+                onReview: { showReview = true },
+                onRecord: { startRecording(for: $0) },
+                onNewNote: { addNote(for: $0) }
             )
         case .todos:
             todosPage

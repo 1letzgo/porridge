@@ -830,6 +830,11 @@ changes; the notes on the tab bar's "+", the Bowls place's last rows and the Cha
   `CalendarAppointment` (Codable, not SwiftData) gains `location` and `repeats` (optional, old remembered ones decode).
   Tests: `AppointmentLinkTests.testABowlShowsItsAppointmentsOncePerSeriesUpcomingFirst`,
   `testAppointmentsNeverFillTheInbox`.
+- **Today's unfiled appointments in the Inbox** (owner: "Inbox Termine von heute"). New shows, under the card and
+  before the entries, a group "Appointments": today's appointments in no bowl (`InboxAppointments.rows`: overlapping
+  the day, each series once, all-day first). Filing one (row menu or the sheet's Bowl) takes it out. Not counted in the
+  badge (`Inbox.notes` unchanged), not in Triage, Later or choosing several. Mac: the section `inbox-appointments`
+  after the card. Test: `testTheInboxShowsTodaysUnfiledAppointmentsOncePerSeries`.
 
 ---
 

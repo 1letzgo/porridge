@@ -141,7 +141,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         libraryToken = library.observe { [weak self] in self?.reload() }
         // Today's appointments and the links to them (from other devices too).
         observers.append(Observing { [weak self] in
-            guard let self, self.state.page == .today || self.state.page.projectID != nil else { return }
+            guard let self, self.state.page == .today || self.state.page == .inbox || self.state.page.projectID != nil else { return }
             // The day paged to is read through `appointments(on:)`, which follows the calendar's changes.
             _ = (TodayCalendar.shared.appointments(on: self.state.todayShownDay), TodayCalendar.shared.status, AppointmentLinks.shared.ledger, self.state.todayDay)
             self.reload()
@@ -241,7 +241,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             let cell = table.makeView(withIdentifier: AppointmentCellView.identifier, owner: nil) as? AppointmentCellView ?? AppointmentCellView()
             if let appointment = TodayCalendar.shared.appointment(key: key, on: state.todayShownDay) {
                 // In a bowl the row is the series' next occurrence: with its day.
-                cell.show(appointment, notes: library.notes, showsDay: state.page != .today)
+                cell.show(appointment, notes: library.notes, showsDay: state.page.projectID != nil)
                 cell.menuProvider = { [weak self] appointment in
                     AppointmentActions.menu(for: appointment, in: self?.view.window?.windowController as? MainWindowController)
                 }

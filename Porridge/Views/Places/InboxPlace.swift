@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The Inbox, the second place: what is new or in no bowl, and what was put away for later, as the two halves of
 /// one segment (New / Later) in the first row of the content. New shows the bundle suggestion (one line) above its
-/// entries; each entry names its suggested bowl ("✦ Bowl") and swipes to file or put away. At the top of New, above
+/// entries (between them, today's appointments that are in no bowl yet, `InboxAppointments`); each entry names its suggested bowl ("✦ Bowl") and swipes to file or put away. At the top of New, above
 /// the entries and also when it is empty, one card leads to Open To-dos and the Weekly Review (`InboxEndCard`). While choosing several,
 /// "N Selected · Select All" is the first row and the selection bar takes the tab bar's place.
 struct InboxPlace: View {
@@ -18,6 +18,12 @@ struct InboxPlace: View {
     /// The card at the top of New: Open To-dos and the Weekly Review.
     var onOpenTodos: () -> Void = {}
     var onReview: () -> Void = {}
+    /// Records a meeting for one of today's appointments, or starts a note for it.
+    var onRecord: (CalendarAppointment) -> Void = { _ in }
+    var onNewNote: (CalendarAppointment) -> Void = { _ in }
+    /// The appointment opened with a tap on its row.
+    @State private var opened: CalendarAppointment?
+    @Environment(\.modelContext) private var context
 
     var body: some View {
         // Read so that an entry coming back from later shows up.
@@ -60,6 +66,29 @@ struct InboxPlace: View {
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                         }
+                        // Today's appointments not filed into a bowl (`InboxAppointments`): filing one into a bowl
+                        // takes it out of here.
+                        let calendar = TodayCalendar.shared
+                        let links = AppointmentLinks.shared
+                        let appointments = calendar.status == .granted ? links.inboxAppointments(among: calendar.appointments, day: calendar.today) : []
+                        if !appointments.isEmpty {
+                            Section {
+                                ForEach(appointments) { appointment in
+                                    AppointmentRow(
+                                        appointment: appointment, bowlName: nil,
+                                        linked: TodayTodos.shown(links.notes(for: appointment, among: notes)).count,
+                                        projects: projects,
+                                        onBowl: { links.setBowl($0.map(Projects.key), for: appointment, notes: notes, in: context) },
+                                        onRecord: { onRecord(appointment) },
+                                        onNewNote: { onNewNote(appointment) },
+                                        onOpen: { opened = appointment }
+                                    )
+                                    .lastInSection(appointment.id == appointments.last?.id)
+                                }
+                            } header: {
+                                ListHeader(title: String(localized: "Appointments"), count: appointments.count, tint: .brandNavy)
+                            }
+                        }
                         // Nothing new: the message in the list, below the card.
                         if waiting.isEmpty {
                             Section {
@@ -80,6 +109,12 @@ struct InboxPlace: View {
                     EmptyStateView(title: "Nothing for Later", message: "Put an entry away with a swipe to the left: it comes back here at the time you choose.", systemImage: "clock")
                 }
             }
+        }
+        .sheet(item: $opened) { appointment in
+            AppointmentSheet(
+                appointment: appointment, notes: notes, projects: projects,
+                onRecord: onRecord, onNewNote: onNewNote, onOpenNote: { selection = $0.id }
+            )
         }
         // The selection bar in the tab bar's place (`NotesView` hides the tab bar while choosing).
         .safeAreaInset(edge: .bottom, spacing: 0) {
