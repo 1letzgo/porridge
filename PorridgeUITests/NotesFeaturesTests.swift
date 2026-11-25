@@ -37,7 +37,14 @@ final class NotesFeaturesTests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 10), "editor missing")
         editor.tap()
         typeInBody(app, (1...40).map { "Line \($0)" }.joined(separator: "\n"))
-        app.buttons["Done"].firstMatch.tap()
+        // The software keyboard can still be coming in after the typing, and the editor's Done rises with it: a tap
+        // where it was lands in the text and keeps the keyboard. Pressed again until the keyboard is gone.
+        let done = app.buttons["EditorDone"]
+        for _ in 0..<3 {
+            done.tap()
+            if app.keyboards.firstMatch.waitForNonExistence(timeout: 3) { break }
+        }
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "Done left the keyboard up")
 
         for _ in 0..<4 { app.swipeDown() }
         let top = app.titleField.frame.minY
