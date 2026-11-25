@@ -708,6 +708,55 @@ Pay By, Mark as Paid/Unpaid (rows, chips, Details, inspector, Entry and ⋯ menu
 payment words of search and chat, the due day the device and the model read, and the export's due/paid keys are gone;
 the notes on "paid" in the stages above are historical. `DocumentInfo.dueDay`/`isPaid`/`paidDay` stay stored, unused.
 
+**As built (owner revision 5, 2026-11-25, after the owner's review on his iPhone):** placement changes; the notes on
+the tab bar, the Chat tab, Today's fixed rows and "+" in the bars in the stages above are historical.
+
+- **"+" is the middle of the tab bar (iPhone).** Tabs Today · Inbox · **+** · Bowls · Search (`TabSlot.bar`). The
+  middle slot is a tab without a stack (`TabSlot.add`): the `TabView` selection is a binding that opens the Add sheet
+  for it and keeps the place in front. Over the slot lies `TabBarAddButton`, a sky circle of 40 pt (36 pt below 390 pt screen width), 48 pt to touch (first 54 pt: it ran into the Inbox's badge and selection capsule; a badge "120" ends 21 pt from the middle on the 375 pt iPhone SE, 24 pt at 390 pt, measured with `-seedInboxCount 120`, `testPlusLeavesRoomForAThreeDigitBadge`) with a navy `plus`
+  (fixed size, large content viewer, VoiceOver "Add" with the action "New Note"), `PlaceAdd` as before; a long press
+  makes a note. The Search tab is a plain tab now (the search role sets it apart at the edge, which would move "+" off
+  the middle). The circle is put 52 pt above the screen's bottom edge: measured as the middle of the bar's slot on the
+  iPhone 16e and the iPhone SE alike, and checked against the slot in `TabBarFlowTests`. It hides while choosing
+  several (with the tab bar); Triage, sheets and the keyboard cover it. The "+" pills left the bars of Today, Inbox,
+  Bowls and bowl pages on the iPhone; on the iPad (no tab bar) the pill stays. Open To-dos keeps a green "+" pill of
+  its own that makes a to-do at once (`TodosAdd`).
+- **Search | Chat share the last tab.** `SearchSide` (`searchSide` in UserDefaults) with a `TabSwitcher` on top of the
+  Search tab (capsules at AX sizes); the bar's title, square and pills follow the side (Save as Smart Filter / All
+  Chats · New Chat). `Place.chat` is gone; `ListPage.chat` stays as the way there: `go(.chat)` / `go(.search)` pick the
+  side and bring the Search tab to its start. "Ask Porridge", Ask About This Bowl, `porridge://chat` / Open Chat,
+  All Chats (Go To) land on Chat; `porridge://search?q=` on Search.
+- **Open To-dos and Weekly Review left Today** (iPhone and Mac) and are one card at the end of the Inbox's New side
+  (`InboxEndCard`): "Open To-dos · 5 open · 1 overdue" (overdue red, semibold), "Weekly Review · This Week · N new
+  entries". Shown also when the Inbox is empty: the empty message is then a row of the list above the card (the old
+  overlay would have covered it on a small phone), and its "Add" button went (a button in a list row makes the whole
+  row a button; "+" sits right below). `ListPage.todos` now belongs to the Inbox tab (`porridge://todos`, the To-dos
+  widgets and the overdue hint open it there). Go To rows in Search keep both.
+- **Gear in Today's bar** (‹ › · gear): Settings is pushed onto Today's own stack (`go`: settings pages stay on Today
+  when Today is in front; from elsewhere on Bowls, as before). The gear in Bowls stays (`PlaceSettings`).
+- **Start on Today.** The tab is `@State` (was `@SceneStorage`): every launch starts on Today, a link, widget,
+  shortcut or notification moves on from there (they run after the first appearance), the background keeps the tab.
+  Mac: `RestoredState.apply` sets Today and keeps only the open chat; AppKit still restores the window's frame.
+- **Chat keyboard.** The conversation had `scrollDismissesKeyboard(.interactively)`, but a short chat does not scroll,
+  so nothing took the keyboard away. Now a tap anywhere in the conversation (also its empty part) and sending a
+  question put it away; the search's results and its empty page do the same on a tap. "Ask Porridge" lets it go too.
+- **Mac.** The Today list lost its two fixed rows; the Inbox list ends in the same two rows drawn as one card
+  (`CardRowView`, rounded on the outer edge, the table's row gap is the line between them), also when the Inbox is
+  empty (the message shows over the list then and lets clicks through). Driver: `scroll-end`.
+- Texts: What's New (Three Places: tabs with "+" in the middle, gear in Today and Bowls; Search or Ask: switch to
+  Chat; Today Shows What Is Open: Open To-dos and the Weekly Review at the end of the Inbox), the onboarding's last page
+  (iPhone: Today, Inbox, Add, Bowls, Search and Chat; Mac unchanged but the Inbox line), DESIGN.md. The What's New flag
+  is unchanged, so who dismissed the card does not see it again.
+- Tests: unit `PlacesTests` (tab bar order with "+" in the middle, pages → places with Open To-dos on the Inbox and
+  the chat on Search, `SearchSide`, "+" fits the bar, chat and search links, What's New and the onboarding's places);
+  UI `TabBarFlowTests` ("+" on the middle slot and keeping the tab, Add sheet Into: Inbox / the bowl and the long
+  press, gear in Today, start on Today after Bowls and the background, the Inbox card to Open To-dos and Weekly
+  Review, the empty Inbox's card, the chat keyboard by tap, send and drag, the search's by drag),
+  `SearchAskFlowTests.testSearchAndChatShareTheLastTab` (switch, kept side across a launch),
+  `testTheChatAndSearchLinksOpenTheirSide`; the tests that tapped the Chat tab, the bar's "+" or Today's Open To-dos
+  row now use the Search tab's side, "+" of the tab bar and the Inbox card. `Revision5ShotsTests` →
+  /tmp/porridge-s10-shots.
+
 ---
 
 ## What gets removed (summary)
