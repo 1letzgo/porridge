@@ -116,12 +116,12 @@ enum AppleSpeech {
         private let continuation: AsyncStream<AnalyzerInput>.Continuation
         private var converter: AVAudioConverter?
         private var resultsTask: Task<Void, Never>?
-        private let onUpdate: @Sendable (_ confirmed: String, _ volatile: String) -> Void
+        /// A piece of text with its place in the audio (seconds since the first buffer): final pieces are confirmed,
+        /// a non-final one is the open phrase that is still refined.
+        typealias OnPiece = @Sendable (_ text: String, _ start: Double, _ end: Double, _ isFinal: Bool) -> Void
+        private let onPiece: OnPiece
 
-        static func make(
-            language: Language?,
-            onUpdate: @escaping @Sendable (_ confirmed: String, _ volatile: String) -> Void
-        ) async throws -> Live {
+        static func make(language: Language?, onPiece: @escaping OnPiece) async throws -> Live {
             let locale = try await AppleSpeech.supportedLocale(for: language)
             let transcriber = SpeechTranscriber(
                 locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: []
@@ -131,7 +131,7 @@ enum AppleSpeech {
             }
             let (stream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self, bufferingPolicy: .unbounded)
             let analyzer = SpeechAnalyzer(modules: [transcriber])
-            let live = Live(transcriber: transcriber, analyzer: analyzer, format: format, continuation: continuation, onUpdate: onUpdate)
+            let live = Live(transcriber: transcriber, analyzer: analyzer, format: format, continuation: continuation, onPiece: onPiece)
             try await analyzer.start(inputSequence: stream)
             live.listen()
             return live
@@ -140,29 +140,26 @@ enum AppleSpeech {
         private init(
             transcriber: SpeechTranscriber, analyzer: SpeechAnalyzer, format: AVAudioFormat,
             continuation: AsyncStream<AnalyzerInput>.Continuation,
-            onUpdate: @escaping @Sendable (String, String) -> Void
+            onPiece: @escaping OnPiece
         ) {
             self.transcriber = transcriber
             self.analyzer = analyzer
             self.format = format
             self.continuation = continuation
-            self.onUpdate = onUpdate
+            self.onPiece = onPiece
         }
 
         private func listen() {
             let transcriber = transcriber
-            let onUpdate = onUpdate
+            let onPiece = onPiece
             resultsTask = Task {
-                var confirmed = ""
                 do {
+                    // The result's range is on the timeline of the audio fed in (it starts at zero).
                     for try await result in transcriber.results {
                         let text = String(result.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
-                        if result.isFinal {
-                            confirmed = [confirmed, text].filter { !$0.isEmpty }.joined(separator: " ")
-                            onUpdate(confirmed, "")
-                        } else {
-                            onUpdate(confirmed, text)
-                        }
+                        let start = result.range.start.seconds
+                        let end = CMTimeRangeGetEnd(result.range).seconds
+                        onPiece(text, start.isFinite ? start : 0, end.isFinite ? end : 0, result.isFinal)
                     }
                 } catch {}
             }

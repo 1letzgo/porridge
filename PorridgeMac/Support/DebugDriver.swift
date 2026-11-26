@@ -171,6 +171,13 @@ enum DebugDriver {
             // Removes the test to-dos and the bowl "seed-todos" made.
             for note in library.notes where note.title.hasPrefix(argument + " ") { NoteStore.deletePermanently(note, in: library.context) }
             for project in library.projects where project.name == argument { Projects.delete(project, in: library.context) }
+        case "replay-live":
+            // A stereo file (microphone left, Mac's sound right) in real time into the live transcript of a new
+            // recording; `live-dump` lists what it heard.
+            MeetingRecorder.replay(URL(fileURLWithPath: (argument as NSString).expandingTildeInPath))
+            log("replay-live: \(argument)")
+        case "live-dump":
+            log(MeetingRecorder.liveLines.joined(separator: "\n"))
         case "seed-meeting":
             // A summarized meeting whose summary has three tasks (the user's, somebody else's with a date,
             // nobody's), as the iOS test seed makes it but without a bowl.

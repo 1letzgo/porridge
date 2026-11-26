@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// Full-screen meeting recorder with live transcript.
@@ -6,10 +7,12 @@ struct RecordingView: View {
     var title: String?
     /// The meeting this recording is added to.
     var continues: UUID?
-    var onFinish: (RecordingResult, [String], String, [RecordingNote]) -> Void
+    /// The recording, the names of a split stereo microphone's speakers, the live transcript and the notes written.
+    var onFinish: (RecordingResult, [String], LiveTranscript, [RecordingNote]) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(ModelManager.self) private var models
+    @Environment(\.modelContext) private var modelContext
     @State private var recorder = AudioRecorder()
     @State private var live = LiveTranscriber()
     @State private var speakerNames = ["Speaker 1", "Speaker 2"]
@@ -311,7 +314,10 @@ struct RecordingView: View {
             journal.setUnfinishedFile(recorder.fileName)
             // Keeps recording visible on the Lock Screen; recording itself continues via the audio background mode.
             LiveRecording.start(kind: .meeting, title: "Meeting", onTogglePause: { togglePause() }) { finish() }
-            await live.start(language: AppSettings.language)
+            // One microphone: its voices are told apart live where the device allows it (`LiveSpeakers`), not when
+            // a split stereo receiver's two microphones are the speakers already.
+            let layout = LiveLayout.single(separatesVoices: LiveSpeakers.isAvailable && !recorder.isSplitStereo)
+            await live.start(language: AppSettings.language, layout: layout, knownVoices: LiveSpeakers.knownVoices(in: modelContext))
         } catch {
             journal?.finish()
             errorMessage = error.localizedDescription
@@ -325,47 +331,76 @@ struct RecordingView: View {
             let trimmed = name.trimmingCharacters(in: .whitespaces)
             return trimmed.isEmpty ? "Speaker \(index + 1)" : trimmed
         }
-        let liveText = live.text
+        let transcript = live.transcript
         LiveRecording.end()
         live.cancel()
         var written = notes
         let unsent = noteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !unsent.isEmpty { written.append(RecordingNote(at: result.duration, text: unsent)) }
-        onFinish(result, names, liveText, written)
+        onFinish(result, names, transcript, written)
         journal?.finish()
         dismiss()
     }
 }
 
-/// Scrolling live transcript, newest text at the bottom.
+/// The live transcript as chat bubbles (`TranscriptBubbles`), newest at the bottom: it follows the newest text
+/// unless the user has scrolled up, and again once they scroll back down. Text that may still change is dimmed.
 struct LiveTranscriptCard: View {
     let live: LiveTranscriber
     var isPaused = false
     var minHeight: CGFloat = 120
+    @State private var followsEnd = true
+    @State private var userScrolls = false
+
     var body: some View {
+        let bubbles = self.bubbles
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading) {
-                    content
+                VStack(alignment: .leading, spacing: 0) {
+                    content(bubbles)
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
+                .padding(12)
             }
             .frame(minHeight: minHeight)
             .chunkyCard(padding: 0)
+            .onScrollPhaseChange { _, phase in
+                userScrolls = phase == .interacting || phase == .tracking || phase == .decelerating
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.visibleRect.maxY >= geometry.contentSize.height - 40
+            } action: { _, atEnd in
+                if userScrolls { followsEnd = atEnd }
+            }
             .onChange(of: live.text) {
+                guard followsEnd else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
     }
 
+    private var bubbles: [TranscriptBubble] {
+        let utterances = live.utterances
+        let ids = Set(utterances.compactMap(\.speakerID))
+        var speakers: [String: BubbleSpeaker] = [:]
+        for id in ids {
+            speakers[id] = TranscriptBubbles.liveSpeaker(
+                id: id, allIDs: ids, knownNames: live.knownNames, meName: AppSettings.myName ?? "Me",
+                othersName: SystemAudioMix.othersName, isMeName: { AppSettings.isMe($0) })
+        }
+        return TranscriptBubbles.bubbles(utterances.map {
+            TranscriptBubbles.Item(id: $0.id, speakerID: $0.speakerID, text: $0.text, isFinal: $0.isFinal, start: $0.start, end: $0.end)
+        }, speakers: speakers)
+    }
+
     @ViewBuilder
-    private var content: some View {
+    private func content(_ bubbles: [TranscriptBubble]) -> some View {
         switch live.phase {
         case .idle, .preparing:
             Label("Starting live transcription…", systemImage: "waveform")
                 .foregroundStyle(.secondary)
+                .padding(4)
         case .downloading(let progress):
             VStack(alignment: .leading, spacing: 8) {
                 Text("Downloading speech model (one time)…")
@@ -373,38 +408,61 @@ struct LiveTranscriptCard: View {
                 ProgressView(value: progress)
                     .tint(Color.brandSky)
             }
+            .padding(4)
         case .unavailable:
             Label("Live transcription unavailable. The transcript is created after recording.", systemImage: "exclamationmark.circle")
                 .foregroundStyle(.secondary)
+                .padding(4)
         case .running:
-            if live.text.isEmpty {
+            if bubbles.isEmpty {
                 Label(isPaused ? "Paused" : "Listening…", systemImage: "waveform")
                     .foregroundStyle(.secondary)
                     .symbolEffect(.variableColor.iterative, isActive: !isPaused)
+                    .padding(4)
             } else {
-                paragraphs
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(bubbles) { bubble in
+                        LiveBubble(bubble: bubble)
+                    }
+                }
             }
         }
     }
 }
 
-extension LiveTranscriptCard {
-    /// Running text broken into short paragraphs; sentences that are not confirmed yet are dimmed.
-    fileprivate var paragraphs: some View {
-        let confirmedCount = Paragraphs.sentences(live.confirmed).count
-        let all = Paragraphs.sentences([live.confirmed, live.volatile].filter { !$0.isEmpty }.joined(separator: " "))
-        let groups = Paragraphs.group(all.enumerated().map { (text: $0.element, flag: $0.offset >= confirmedCount) })
-        return VStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                group.enumerated().reduce(Text("")) { result, item in
-                    let piece = Text((item.offset == 0 ? "" : " ") + item.element.text)
-                        .foregroundStyle(item.element.flag ? Color.secondary : Color.primary)
-                    return result + piece
+/// One bubble of the live transcript: the speaker's name where it changes, confirmed text, then dimmed text that
+/// may still change.
+private struct LiveBubble: View {
+    let bubble: TranscriptBubble
+
+    var body: some View {
+        let trailing = bubble.side == .trailing
+        VStack(alignment: trailing ? .trailing : .leading, spacing: 3) {
+            if bubble.showsName, let speaker = bubble.speaker {
+                Text(speaker.name)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 6)
+            }
+            BubbleRowLayout(trailing: trailing) {
+                bubble.parts.enumerated().reduce(Text("")) { result, item in
+                    result + Text((item.offset == 0 ? "" : " ") + item.element.text)
+                        .foregroundStyle(item.element.isFinal ? Color.primary : Color.secondary)
                 }
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    (bubble.speaker.map { Color.speaker($0.colorIndex) } ?? .gray).opacity(0.14),
+                    in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous)
+                )
             }
         }
-        .font(.body)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: trailing ? .trailing : .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel([bubble.speaker?.name, bubble.text].compactMap { $0 }.joined(separator: ": "))
     }
 }
 

@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 
 /// Where a meeting is recorded: in the inspector's Record mode of the main window it was started from (`MainSplitViewController`),
 /// so the rest of the window stays usable; in a window of its own only when no main window is open (a global
@@ -8,7 +9,8 @@ enum MeetingRecorder {
     struct Finished {
         let result: RecordingResult
         let speakerNames: [String]
-        let liveText: String
+        /// The live transcript, kept until the final one is ready.
+        let live: LiveTranscript
         let written: [RecordingNote]
     }
 
@@ -24,6 +26,18 @@ enum MeetingRecorder {
 
     /// How long the running recording is, for the toolbar's counter.
     static var elapsed: TimeInterval? { current?.elapsed }
+
+    #if DEBUG
+    /// `DebugDriver`'s `replay-live`: records as usual, but the live transcript hears `file` (a stereo file: the
+    /// microphone on the left, the Mac's sound on the right) in real time instead of the microphone.
+    static func replay(_ file: URL) {
+        RecordingViewController.nextReplayFile = file
+        start(title: "Replay \(file.deletingPathExtension().lastPathComponent)", in: MainWindowController.frontIfAny) { _ in }
+    }
+
+    /// `DebugDriver`'s `live-dump`: the live utterances of the running recording, one per line.
+    static var liveLines: [String] { current?.liveLines ?? [] }
+    #endif
 
     /// Ends the running recording as Stop does, so the meeting is kept (before quitting).
     static func stopAll() {
@@ -148,6 +162,11 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
     private var finished = false
     private var observers: [Observing] = []
     private var timer: Timer?
+    #if DEBUG
+    static var nextReplayFile: URL?
+    private let replayFile: URL?
+    private var replayTask: Task<Void, Never>?
+    #endif
 
     private let inputLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), color: .controlAccentColor)
     private let clock = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 54, weight: .bold))
@@ -155,7 +174,7 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
     private let stereo = NSStackView()
     private let nameFields = [NSTextField(string: "Speaker 1"), NSTextField(string: "Speaker 2")]
     private let stereoMeters = [LevelBarView(), LevelBarView()]
-    private let transcript = NSTextView()
+    private let transcript = LiveBubblesView()
     private let notesList = NSStackView()
     private let noteField = NSTextField()
     private let hint = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor, lines: 0)
@@ -168,6 +187,10 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
         meetingTitle = title
         self.continues = continues
         self.onFinish = onFinish
+        #if DEBUG
+        replayFile = Self.nextReplayFile
+        Self.nextReplayFile = nil
+        #endif
         super.init(nibName: nil, bundle: nil)
         self.title = title.map { "Recording · \($0)" } ?? "Recording"
         // Meetings only: the Mac's sound on the right channel, the microphone (the user) on the left.
@@ -215,23 +238,9 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
         }
         stereo.isHidden = true
 
-        transcript.isEditable = false
-        transcript.isSelectable = true
-        transcript.drawsBackground = false
-        transcript.textContainerInset = NSSize(width: 12, height: 12)
-        transcript.isVerticallyResizable = true
-        transcript.autoresizingMask = [.width]
-        transcript.setAccessibilityLabel("Live Transcript")
-        let transcriptScroll = NSScrollView()
-        transcriptScroll.documentView = transcript
-        transcriptScroll.hasVerticalScroller = true
-        transcriptScroll.autohidesScrollers = true
-        transcriptScroll.borderType = .noBorder
-        transcriptScroll.drawsBackground = true
-        transcriptScroll.backgroundColor = .controlBackgroundColor
-        transcriptScroll.wantsLayer = true
-        transcriptScroll.layer?.cornerRadius = 12
-        transcriptScroll.translatesAutoresizingMaskIntoConstraints = false
+        // The names show in the live bubbles as they are typed.
+        for field in nameFields { field.delegate = self }
+        let transcriptScroll = transcript
 
         notesList.orientation = .vertical
         notesList.alignment = .trailing
@@ -304,6 +313,14 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
                 feed(buffer)
                 journal.append(buffer)
             }
+            // A call: the microphone and the Mac's sound each get a recognizer of their own (the user and the others).
+            recorder.onChannelBuffers = live.feedChannels
+            #if DEBUG
+            if replayFile != nil {
+                recorder.onBuffer = { buffer in journal.append(buffer) }
+                recorder.onChannelBuffers = nil
+            }
+            #endif
             try recorder.start()
             journal.setUnfinishedFile(recorder.fileName)
             LiveRecording.start(kind: .meeting, title: "Meeting", onTogglePause: { [weak self] in self?.togglePause() }) { [weak self] in self?.stop() }
@@ -316,7 +333,10 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
                 MainActor.assumeIsolated { self?.tick() }
             }
             NotificationCenter.default.addObserver(self, selector: #selector(stop), name: .porridgeStopRecording, object: nil)
-            await live.start(language: AppSettings.language)
+            await live.start(language: AppSettings.language, layout: liveLayout, knownVoices: LiveSpeakers.knownVoices(in: Library.shared.context))
+            #if DEBUG
+            if let replayFile { replay(replayFile) }
+            #endif
         } catch {
             journal?.finish()
             fail(error.localizedDescription)
@@ -372,36 +392,59 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
         renderTranscript()
     }
 
-    /// The running text in short paragraphs; what is not confirmed yet is dimmed.
+    /// How the live transcript listens: a recognizer per side of a call; a microphone alone has its voices told
+    /// apart live, unless two microphones (a split stereo receiver) are the speakers already.
+    private var liveLayout: LiveLayout {
+        #if DEBUG
+        if replayFile != nil { return .microphoneAndSystem(separatesVoices: LiveSpeakers.isAvailable) }
+        #endif
+        if recorder.includesSystemAudio { return .microphoneAndSystem(separatesVoices: LiveSpeakers.isAvailable) }
+        return .single(separatesVoices: LiveSpeakers.isAvailable && !recorder.isSplitStereo)
+    }
+
+    /// The live transcript as chat bubbles: the user on the right, the others on the left.
     private func renderTranscript() {
-        let font = NSFont.preferredFont(forTextStyle: .body)
-        let result = NSMutableAttributedString()
         switch live.phase {
         case .idle, .preparing:
-            result.append(NSAttributedString(string: "Starting live transcription…", attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
+            transcript.show(message: String(localized: "Starting live transcription…"), bubbles: [])
         case .downloading(let progress):
-            result.append(NSAttributedString(string: "Downloading speech model (one time)… \(Int(progress * 100)) %", attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
+            transcript.show(message: String(localized: "Downloading speech model (one time)… \(Int(progress * 100)) %"), bubbles: [])
         case .unavailable:
-            result.append(NSAttributedString(string: "Live transcription unavailable. The transcript is created after recording.", attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
+            transcript.show(message: String(localized: "Live transcription unavailable. The transcript is created after recording."), bubbles: [])
         case .running:
-            if live.text.isEmpty {
-                result.append(NSAttributedString(string: recorder.isPaused ? "Paused" : "Listening…", attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
+            let utterances = live.utterances
+            if utterances.isEmpty {
+                transcript.show(message: recorder.isPaused ? String(localized: "Paused") : String(localized: "Listening…"), bubbles: [])
             } else {
-                let confirmedCount = Paragraphs.sentences(live.confirmed).count
-                let all = Paragraphs.sentences([live.confirmed, live.volatile].filter { !$0.isEmpty }.joined(separator: " "))
-                let groups = Paragraphs.group(all.enumerated().map { (text: $0.element, flag: $0.offset >= confirmedCount) })
-                for (index, group) in groups.enumerated() {
-                    if index > 0 { result.append(NSAttributedString(string: "\n\n", attributes: [.font: font])) }
-                    for (offset, item) in group.enumerated() {
-                        result.append(NSAttributedString(string: (offset == 0 ? "" : " ") + item.text, attributes: [
-                            .font: font, .foregroundColor: item.flag ? NSColor.secondaryLabelColor : NSColor.labelColor,
-                        ]))
-                    }
-                }
+                transcript.show(message: nil, bubbles: Self.bubbles(utterances, knownNames: live.knownNames, names: currentNames))
             }
         }
-        transcript.textStorage?.setAttributedString(result)
-        transcript.scrollToEndOfDocument(nil)
+    }
+
+    /// The names typed for the microphone and the Mac's sound.
+    private var currentNames: (me: String, others: String) {
+        let me = nameFields[0].stringValue.trimmingCharacters(in: .whitespaces)
+        let others = nameFields[1].stringValue.trimmingCharacters(in: .whitespaces)
+        return (me.isEmpty ? (AppSettings.myName ?? "Me") : me, others.isEmpty ? SystemAudioMix.othersName : others)
+    }
+
+    static func bubbles(_ utterances: [LiveUtterance], knownNames: [String: String], names: (me: String, others: String)) -> [TranscriptBubble] {
+        let ids = Set(utterances.compactMap(\.speakerID))
+        var speakers: [String: BubbleSpeaker] = [:]
+        for id in ids {
+            speakers[id] = TranscriptBubbles.liveSpeaker(
+                id: id, allIDs: ids, knownNames: knownNames, meName: names.me, othersName: names.others,
+                isMeName: { AppSettings.isMe($0) })
+        }
+        let items = utterances.map {
+            TranscriptBubbles.Item(id: $0.id, speakerID: $0.speakerID, text: $0.text, isFinal: $0.isFinal, start: $0.start, end: $0.end)
+        }
+        return TranscriptBubbles.bubbles(items, speakers: speakers)
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField, nameFields.contains(field) else { return }
+        renderTranscript()
     }
 
     @objc private func togglePause() {
@@ -440,13 +483,16 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
             let trimmed = field.stringValue.trimmingCharacters(in: .whitespaces)
             return trimmed.isEmpty ? "Speaker \(index + 1)" : trimmed
         }
-        let liveText = live.text
+        let transcript = live.transcript
         LiveRecording.end()
         live.cancel()
+        #if DEBUG
+        replayTask?.cancel()
+        #endif
         var written = notes
         let unsent = noteField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !unsent.isEmpty { written.append(RecordingNote(at: result.duration, text: unsent)) }
-        onFinish(Finished(result: result, speakerNames: names, liveText: liveText, written: written))
+        onFinish(Finished(result: result, speakerNames: names, live: transcript, written: written))
         journal?.finish()
         onClose?()
     }
@@ -458,11 +504,49 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
             self.finished = true
             self.recorder.cancel()
             self.live.cancel()
+            #if DEBUG
+            self.replayTask?.cancel()
+            #endif
             self.journal?.finish()
             LiveRecording.end()
             self.onClose?()
         }
     }
+
+    #if DEBUG
+    /// Feeds the file to the live transcript at the pace it plays.
+    private func replay(_ url: URL) {
+        let channels = live.feedChannels
+        replayTask = Task.detached {
+            guard let file = try? AVAudioFile(forReading: url) else {
+                print("[live] replay: cannot read \(url.path)")
+                return
+            }
+            let format = file.processingFormat
+            let last = Int(format.channelCount) - 1
+            let began = Date()
+            var played = 0.0
+            while !Task.isCancelled {
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096),
+                      (try? file.read(into: buffer, frameCount: 4096)) != nil, buffer.frameLength > 0 else { break }
+                if let left = AudioRecorder.channelCopy(of: buffer, channel: 0),
+                   let right = AudioRecorder.channelCopy(of: buffer, channel: min(1, last)) {
+                    channels(left, right)
+                }
+                played += Double(buffer.frameLength) / format.sampleRate
+                let wait = played - Date().timeIntervalSince(began)
+                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            }
+            print("[live] replay: done after \(Int(played)) s")
+        }
+    }
+
+    var liveLines: [String] {
+        live.utterances.map {
+            "\(String(format: "%7.1f", $0.start))  \($0.speakerID ?? "-")\(live.knownNames[$0.speakerID ?? ""].map { " (\($0))" } ?? "")\($0.isFinal ? "" : " …")  \($0.text)"
+        }
+    }
+    #endif
 
     /// Ends the clock, the observers and the stop notification (`MeetingRecorder` when the recording ended).
     /// How long it is recording.

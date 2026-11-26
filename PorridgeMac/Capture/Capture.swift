@@ -55,10 +55,8 @@ enum Capture {
                 Speaker(id: SpeakerAssigner.rightChannelID, name: finished.speakerNames[1], colorIndex: 1),
             ]
         }
-        if !finished.liveText.isEmpty {
-            // Shown until the final transcript with speakers is ready.
-            note.segments = [TranscriptSegment(speakerId: nil, start: 0, end: result.duration, text: finished.liveText)]
-        }
+        // Shown until the final transcript is ready: the live utterances with their speakers (the user, the others).
+        finished.live.store(in: note, duration: result.duration)
         if let project { note.projectIDs = [project] }
         let library = Library.shared
         if let appointment {

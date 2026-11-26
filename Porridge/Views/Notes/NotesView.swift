@@ -528,8 +528,8 @@ struct NotesView: View {
             }
         }
         .fullScreenCoverOrSheet(isPresented: $showRecorder) {
-            RecordingView(title: appointmentTitle) { result, names, liveText, written in
-                addRecording(from: result, speakerNames: names, liveText: liveText, written: written)
+            RecordingView(title: appointmentTitle) { result, names, live, written in
+                addRecording(from: result, speakerNames: names, live: live, written: written)
             }
         }
         .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio, .movie]) { result in
@@ -2037,7 +2037,7 @@ struct NotesView: View {
     }
 
     /// A recorded meeting becomes a note that is transcribed with speakers.
-    private func addRecording(from result: RecordingResult, speakerNames: [String], liveText: String, written: [RecordingNote]) {
+    private func addRecording(from result: RecordingResult, speakerNames: [String], live: LiveTranscript, written: [RecordingNote]) {
         let note = Note()
         note.source = .meeting
         note.title = appointmentTitle ?? Note.defaultMeetingTitle(for: note.createdAt)
@@ -2061,10 +2061,8 @@ struct NotesView: View {
                 Speaker(id: SpeakerAssigner.rightChannelID, name: speakerNames[1], colorIndex: 1),
             ]
         }
-        if !liveText.isEmpty {
-            // Shown until the final transcript with speakers is ready.
-            note.segments = [TranscriptSegment(speakerId: nil, start: 0, end: result.duration, text: liveText)]
-        }
+        // Shown until the final transcript with speakers is ready.
+        live.store(in: note, duration: result.duration)
         insertAndProcess(note)
     }
 
