@@ -100,44 +100,7 @@ struct SearchPane<Results: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // The field and its chips: a bar for the empty views below (`emptyStateBar`).
-            VStack(spacing: 10) {
-                if !usesSystemField {
-                    field
-                        .padding(.horizontal)
-                }
-
-                if typeSize.isAccessibilitySize {
-                    // The largest text sizes: two chips that wrap (the kinds in one menu), nothing cut off at the edge.
-                    FlowLayout(spacing: 8) {
-                        scopeChip
-                        kindMenuChip
-                    }
-                    .padding(.horizontal)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            scopeChip
-                            ForEach(SearchKind.allCases, id: \.self) { option in kindChip(option) }
-                        }
-                        .padding(.horizontal)
-                    }
-                }
-
-                if !matchingTags.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(matchingTags.prefix(20), id: \.key) { tag in chip(tag) }
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 2)
-                    }
-                }
-            }
-            .padding(.bottom, 10)
-            .emptyStateBar()
-
+        Group {
             if hasQuery {
                 // The keyboard goes with a drag through the results (their list) or a tap in them.
                 results
@@ -205,6 +168,45 @@ struct SearchPane<Results: View>: View {
                 .contentShape(Rectangle())
                 .simultaneousGesture(TapGesture().onEnded { focused = false })
             }
+        }
+        // The field and its chips: a bar for the empty views below (`emptyStateBar`); on an iPad over the top of
+        // the results (`pageTopBar`).
+        .pageTopBar {
+            VStack(spacing: 10) {
+                if !usesSystemField {
+                    field
+                        .padding(.horizontal)
+                }
+
+                if typeSize.isAccessibilitySize {
+                    // The largest text sizes: two chips that wrap (the kinds in one menu), nothing cut off at the edge.
+                    FlowLayout(spacing: 8) {
+                        scopeChip
+                        kindMenuChip
+                    }
+                    .padding(.horizontal)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            scopeChip
+                            ForEach(SearchKind.allCases, id: \.self) { option in kindChip(option) }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+
+                if !matchingTags.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(matchingTags.prefix(20), id: \.key) { tag in chip(tag) }
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 2)
+                    }
+                }
+            }
+            .padding(.bottom, 10)
+            .emptyStateBar()
         }
     }
 

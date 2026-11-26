@@ -14,6 +14,7 @@ struct WeeklyReviewView: View {
     @State private var aiText: String?
     @State private var aiError: String?
     @State private var isWriting = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private static let sky = Color("BrandSkyText")
     private static let task = Color("BrandTaskText")
@@ -87,7 +88,11 @@ struct WeeklyReviewView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(review.total == 1 ? "1 new entry" : "\(review.total) new entries")
                 .font(.headline)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], alignment: .leading, spacing: 10) {
+            // The largest text sizes: one tile under the other, each word whole ("Meet…", "To-d…" side by side).
+            let columns = typeSize.isAccessibilitySize
+                ? [GridItem(.flexible(), spacing: 10)]
+                : [GridItem(.adaptive(minimum: 120), spacing: 10)]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
                 ForEach(review.counts, id: \.kind) { item in
                     HStack(spacing: 8) {
                         Image(systemName: item.kind.systemImage)
@@ -97,7 +102,7 @@ struct WeeklyReviewView: View {
                             .font(.body.weight(.semibold).monospacedDigit())
                         Text(item.kind.title)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                             // Two tiles side by side in a narrow column (the iPad's list column): the word shrinks
                             // a little instead of ending in "…" ("1 Docume…").
                             .minimumScaleFactor(0.7)

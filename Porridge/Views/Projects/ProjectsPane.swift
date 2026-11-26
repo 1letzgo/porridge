@@ -239,28 +239,7 @@ struct ProjectPage: View {
                 }
             }
         }
-        VStack(spacing: 0) {
-            // The share line and the chips: bars for the empty bowl's message (`emptyStateBar`).
-            VStack(spacing: 0) {
-                BowlShareLine(project: project)
-                if isSelecting {
-                    // Choosing: "N Selected · Select All" takes the place of the kinds, the bar the tab bar's.
-                    NoteSelectionHeader(notes: list, chosen: $chosen)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            // Only the kinds the bowl has something of; the one chosen stays while it is.
-                            ForEach(ProjectFilter.allCases.filter { $0 == .all || $0 == filter || content.count($0) > 0 }, id: \.self) { kind in
-                                // All counts the appointments too: they are rows of it.
-                                chip(kind, count: content.count(kind) + (kind == .all ? filed.count : 0))
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                    }
-                    .padding(.bottom, Look.headerGap)
-                }
-            }
-            .emptyStateBar()
+        Group {
             Group {
                 if isSelecting {
                     List(selection: $chosen) { rows }
@@ -288,6 +267,29 @@ struct ProjectPage: View {
                     )
                 }
             }
+        }
+        // The share line and the chips: bars for the empty bowl's message (`emptyStateBar`).
+        .pageTopBar {
+            VStack(spacing: 0) {
+                BowlShareLine(project: project)
+                if isSelecting {
+                    // Choosing: "N Selected · Select All" takes the place of the kinds, the bar the tab bar's.
+                    NoteSelectionHeader(notes: list, chosen: $chosen)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            // Only the kinds the bowl has something of; the one chosen stays while it is.
+                            ForEach(ProjectFilter.allCases.filter { $0 == .all || $0 == filter || content.count($0) > 0 }, id: \.self) { kind in
+                                // All counts the appointments too: they are rows of it.
+                                chip(kind, count: content.count(kind) + (kind == .all ? filed.count : 0))
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    .padding(.bottom, Look.headerGap)
+                }
+            }
+            .emptyStateBar()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if isSelecting {

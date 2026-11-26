@@ -112,3 +112,10 @@ struct DailyHintBanner: View {
         .padding(.bottom, 8)
     }
 }
+
+/// The selection bar (Move, Done, More) stands at the bottom: the undo toast keeps above it instead of lying over it
+/// (an iPad of regular width, where the toast otherwise sits close to the bottom edge).
+struct SelectionBarShownKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}

@@ -12,6 +12,11 @@ struct PlaceCommandActions {
     var settings: () -> Void
     /// Moves the open entry to Recently Deleted; nil while none is open (or it is there already).
     var deleteEntry: (() -> Void)?
+    /// iPad of regular width: shows or hides the split view's sidebar through its column visibility, the one state the
+    /// sidebar button and the edge swipe change too; nil where there is no sidebar (tabs).
+    var toggleSidebar: (() -> Void)?
+    /// Whether the sidebar shows (the menu says Hide Sidebar then).
+    var sidebarShown = false
 }
 
 extension FocusedValues {
@@ -19,7 +24,7 @@ extension FocusedValues {
 }
 
 /// The menus of the iPad's menu bar: File (New Note ⌘N, New To-do ⇧⌘N, Record Meeting ⌘R), the app's Settings… ⌘,,
-/// View (Show/Hide Sidebar ⌃⌘S from the system, the places ⌘1–⌘4, the last named Search or Chat after its side, Search ⌘F, Weekly Review) and Entry (Delete, without
+/// View (Show/Hide Sidebar ⌃⌘S, through the split view's column visibility, the places ⌘1–⌘4, the last named Search or Chat after its side, Search ⌘F, Weekly Review) and Entry (Delete, without
 /// a shortcut: ⌘⌫ belongs to the text being typed, it deletes to the line's start in a title, a text or the search field;
 /// a menu shortcut took that key from the text field and could cost an entry).
 struct PlaceCommands: Commands {
@@ -44,7 +49,13 @@ struct PlaceCommands: Commands {
                 .keyboardShortcut(",")
                 .disabled(actions == nil)
         }
-        SidebarCommands()
+        // Not `SidebarCommands`: the system's toggle went past the split view's column visibility, so after the
+        // sidebar had stepped aside for a chosen place the first ⌃⌘S did nothing.
+        CommandGroup(replacing: .sidebar) {
+            Button(actions?.sidebarShown == true ? "Hide Sidebar" : "Show Sidebar") { actions?.toggleSidebar?() }
+                .keyboardShortcut("s", modifiers: [.command, .control])
+                .disabled(actions?.toggleSidebar == nil)
+        }
         CommandGroup(before: .sidebar) {
             Button("Today") { actions?.showPlace(.today) }
                 .keyboardShortcut("1")

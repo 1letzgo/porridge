@@ -283,14 +283,19 @@ struct ListHeader: View {
     /// A quiet word after the title ("by Last Change").
     var detail: String?
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.usesSystemBars) private var usesSystemBars
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // The largest text sizes: the quiet word goes under the title instead of squeezing it.
+            // The largest text sizes: the quiet word goes under the title instead of squeezing it; the count stays
+            // beside the title.
             (typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 6))) {
-                Text(title)
-                if let count {
-                    Text("\(count)").foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(title)
+                    if let count {
+                        Text("\(count)").foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
                 }
                 if let detail {
                     Text(detail)
@@ -303,6 +308,13 @@ struct ListHeader: View {
             Rectangle().fill(Look.hairline).frame(height: 0.5)
         }
         .padding(.top, isFirst ? 0 : 4)
+        // iPad: pinned at the top of the list, the header covers the rows that scroll under it (across its whole
+        // row, its insets included) instead of letting them show through.
+        .background {
+            if usesSystemBars {
+                Color.appBackground.padding(EdgeInsets(top: 0, leading: -20, bottom: -4, trailing: -20))
+            }
+        }
         .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 4, trailing: 20))
         .textCase(nil)
     }
@@ -840,5 +852,41 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
 
     public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         viewControllers.count > 1
+    }
+}
+
+/// A bar between a page's head and its list: a switch (Bowls · To-dos, Search | Chat), chips, the hint of the day, a
+/// selection header, the week's head. On a phone it stands above the list (the app's own head is no navigation bar).
+/// On an iPad of regular width (system bars) it lies over the top of the list as the system's bars do
+/// (`safeAreaBar`, iPadOS 26): the list is the page's scroll view, so the navigation bar's large title collapses
+/// while it scrolls, and what scrolls under the bar and its pinned section headers fades behind the scroll edge
+/// effect instead of showing through. Before iPadOS 26 a `safeAreaInset` on the page's background.
+struct PageTopBar<Bar: View>: ViewModifier {
+    let bar: Bar
+    @Environment(\.usesSystemBars) private var usesSystemBars
+
+    func body(content: Content) -> some View {
+        if usesSystemBars {
+            if #available(iOS 26.0, *) {
+                content
+                    .safeAreaBar(edge: .top, spacing: 0) { bar }
+                    .scrollEdgeEffectStyle(.hard, for: .top)
+            } else {
+                content
+                    .safeAreaInset(edge: .top, spacing: 0) { bar.background(Color.appBackground) }
+            }
+        } else {
+            VStack(spacing: 0) {
+                bar
+                content
+            }
+        }
+    }
+}
+
+extension View {
+    /// The page's bar above its list (`PageTopBar`).
+    func pageTopBar<Bar: View>(@ViewBuilder _ bar: () -> Bar) -> some View {
+        modifier(PageTopBar(bar: bar()))
     }
 }

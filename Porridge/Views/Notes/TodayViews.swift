@@ -38,15 +38,15 @@ struct TodayPage: View {
         let calendar = TodayCalendar.shared
         let shown = day ?? calendar.today
         let isToday = TodayDay.isToday(shown)
-        VStack(spacing: 0) {
-            // The hint of the day ("1 to-do is overdue"), today only.
-            if isToday, let hint = DailyHints.shared.current {
-                DailyHintBanner(hint: hint) { onHint(hint) }
-                    .emptyStateBar()
-                    .transition(.opacity)
+        list(shown, isToday: isToday)
+            .pageTopBar {
+                // The hint of the day ("1 to-do is overdue"), today only.
+                if isToday, let hint = DailyHints.shared.current {
+                    DailyHintBanner(hint: hint) { onHint(hint) }
+                        .emptyStateBar()
+                        .transition(.opacity)
+                }
             }
-            list(shown, isToday: isToday)
-        }
         .sheet(item: $opened) { appointment in
             AppointmentSheet(
                 appointment: appointment, notes: notes, projects: projects,
@@ -223,13 +223,20 @@ struct AppointmentRow: View {
                     .font(.body.weight(.semibold))
                     .foregroundStyle(isOver ? .secondary : .primary)
                     .lineLimit(2)
-                HStack(spacing: 6) {
-                    Text(time)
-                    if appointment.isRecurring {
-                        Image(systemName: "repeat")
-                            .imageScale(.small)
-                            .accessibilityLabel("Repeats")
+                // The largest text sizes: the time stays whole on its line ("18:00–22:00", never broken at "–"), the
+                // bowl and the links go under it instead of being squeezed beside it.
+                (typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 6))) {
+                    HStack(spacing: 6) {
+                        Text(time)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        if appointment.isRecurring {
+                            Image(systemName: "repeat")
+                                .imageScale(.small)
+                                .accessibilityLabel("Repeats")
+                        }
                     }
+                    .layoutPriority(1)
                     if let bowlName {
                         Label(bowlName, systemImage: "folder.fill")
                             .labelStyle(.tight)

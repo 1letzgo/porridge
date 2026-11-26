@@ -13,6 +13,7 @@ struct NotesView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(ProcessingService.self) private var processing
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
@@ -36,6 +37,8 @@ struct NotesView: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.doubleColumn
     /// iPad: the split view's width, measured (0 until it is).
     @State private var splitWidth: CGFloat = 0
+    /// iPad: the window's height, measured: the Add popover may be as high as the window leaves room for.
+    @State private var splitHeight: CGFloat = 0
     /// iPad: the sidebar's width grows with the text size, so the places and their counts are not cut.
     @ScaledMetric(relativeTo: .body) private var sidebarWidth: CGFloat = 210
     /// iPad: Settings as a sheet over the window (on a phone a page of the stack).
@@ -95,7 +98,7 @@ struct NotesView: View {
     @State private var chosen = Set<UUID>()
     /// A note in Recently Deleted that is about to go for good.
     @State private var deletingNow: Note?
-    /// Triage: the Inbox one entry at a time, full screen (`TriageView`).
+    /// Triage: the Inbox one entry at a time (`TriageView`): full screen on a phone, a sheet on an iPad.
     @State private var showTriage = false
     @AppStorage(DailyHint.enabledKey) private var hintsEnabled = true
     /// The smart filter being made or changed (`SmartFilterEditor`).
@@ -164,6 +167,7 @@ struct NotesView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             fitColumns(to: width)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { splitHeight = $0 }
         .onChange(of: columnVisibility) { _, shown in
             // The list column stays: the entry column alone is never left (a gesture or a key that hid both).
             if shown == .detailOnly { columnVisibility = .doubleColumn }
@@ -449,7 +453,7 @@ struct NotesView: View {
     }
 
     var body: some View {
-        smartFilterDialogs(bowlDialogs(columns))
+        smartFilterDialogs(bowlDialogs(triageAndArchive(columns)))
         // The menu bar and the keyboard shortcuts (`PlaceCommands`).
         .focusedSceneValue(\.placeCommands, commandActions)
         .onChange(of: page) { old, new in
@@ -483,7 +487,6 @@ struct NotesView: View {
                 runPendingAdd()
             }
         }
-        .fullScreenCover(isPresented: $showTriage) { TriageView() }
         .fullScreenCoverOrSheet(isPresented: $showRecorder) {
             RecordingView(title: appointmentTitle) { result, names, liveText, written in
                 addRecording(from: result, speakerNames: names, liveText: liveText, written: written)
@@ -653,6 +656,27 @@ struct NotesView: View {
         }
     }
 
+    /// Triage, the selection bar's word to the undo toast, and a bowl that was just archived.
+    private func triageAndArchive(_ content: some View) -> some View {
+        content
+        // Triage: full screen on a phone; on an iPad of regular width a page-sized sheet with the system's bar.
+        .fullScreenCover(isPresented: Binding(get: { showTriage && !usesSystemBars }, set: { showTriage = $0 })) {
+            TriageView()
+        }
+        .sheet(isPresented: Binding(get: { showTriage && usesSystemBars }, set: { showTriage = $0 })) {
+            TriageView(inSheet: true)
+                .presentationSizing(.page)
+        }
+        .onChange(of: Set(projects.filter(\.isArchived).map(\.id))) { old, new in
+            // A bowl just archived (its ⋯, a swipe, another device) leaves the stacks it is open on: the list goes back
+            // to the Bowls page and an entry of it open beside the list closes with it. A bowl opened from Archive is
+            // archived already and stays.
+            for id in new.subtracting(old) { leave(.project(id)) }
+        }
+        // The undo toast keeps above the selection bar (`RootView`).
+        .preference(key: SelectionBarShownKey.self, value: isSelecting)
+    }
+
     /// The smart filters' editor, renaming and deleting.
     private func smartFilterDialogs(_ content: some View) -> some View {
         content
@@ -706,7 +730,7 @@ struct NotesView: View {
                 .background(Color.appBackground)
                 .environment(\.highlightedEntry, selection)
                 .navigationTitle(listTitle(shown))
-                .navigationBarTitleDisplayMode(.large)
+                .navigationBarTitleDisplayMode(largeTitleFits(listTitle(shown)) ? .large : .inline)
                 .toolbar { pageToolbar(shown) }
         } else {
             VStack(spacing: 0) {
@@ -729,6 +753,18 @@ struct NotesView: View {
             // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
             .toolbar(.hidden, for: .navigationBar)
         }
+    }
+
+    /// iPad: whether the page's title fits as a large title into the list column (the system cuts it with "…" where it
+    /// does not: "Weekly Revi…" with the largest text sizes); else the page has the inline title, whole. Measured with
+    /// the large title's font at the text size in use against the narrowest list column.
+    private func largeTitleFits(_ title: String) -> Bool {
+        guard typeSize.isAccessibilitySize else { return true }
+        let base = UIFont.preferredFont(forTextStyle: .largeTitle, compatibleWith: UITraitCollection(preferredContentSizeCategory: typeSize.uiCategory))
+        let font = UIFont.systemFont(ofSize: base.pointSize, weight: .bold)
+        let width = (title as NSString).size(withAttributes: [.font: font]).width
+        // The list column is at least 300 pt wide, the title keeps the bar's margins.
+        return width <= 300 - 2 * 20
     }
 
     /// iPad: the page's actions as toolbar items at the trailing end of the list column's bar, "+" last on its own,
@@ -807,7 +843,15 @@ struct NotesView: View {
     /// open to-do. Archive and Recently Deleted are pages pushed from here. Every launch starts on Bowls.
     private var bowlsPlace: some View {
         let open = Todos.folder(notes).open
-        return VStack(spacing: 0) {
+        return Group {
+            switch bowlsSide {
+            case .bowls:
+                bowlsList
+            case .todos:
+                OpenTodosList(notes: notes, projects: projects, selection: $selection) { remove($0) }
+            }
+        }
+        .pageTopBar {
             TabSwitcher(selection: $bowlsSide, options: [
                 (value: BowlsSide.bowls, title: String(localized: "Bowls")),
                 (value: BowlsSide.todos, title: Places.countedTitle(String(localized: "To-dos"), open)),
@@ -816,12 +860,6 @@ struct NotesView: View {
             .padding(.bottom, 8)
             .emptyStateBar()
             .accessibilityIdentifier("BowlsSide")
-            switch bowlsSide {
-            case .bowls:
-                bowlsList
-            case .todos:
-                OpenTodosList(notes: notes, projects: projects, selection: $selection) { remove($0) }
-            }
         }
     }
 
@@ -854,15 +892,7 @@ struct NotesView: View {
     /// chosen),
     /// then Search & Ask or the chat.
     private var searchPlace: some View {
-        VStack(spacing: 0) {
-            TabSwitcher(selection: $searchSide, options: [
-                (value: SearchSide.search, title: String(localized: "Search")),
-                (value: SearchSide.chat, title: String(localized: "Chat")),
-            ])
-            .padding(.horizontal, 20)
-            .padding(.bottom, 10)
-            .emptyStateBar()
-            .accessibilityIdentifier("SearchSide")
+        Group {
             switch searchSide {
             case .search:
                 searchPage
@@ -872,6 +902,16 @@ struct NotesView: View {
                     openNote($0)
                 }
             }
+        }
+        .pageTopBar {
+            TabSwitcher(selection: $searchSide, options: [
+                (value: SearchSide.search, title: String(localized: "Search")),
+                (value: SearchSide.chat, title: String(localized: "Chat")),
+            ])
+            .padding(.horizontal, 20)
+            .padding(.bottom, 10)
+            .emptyStateBar()
+            .accessibilityIdentifier("SearchSide")
         }
     }
 
@@ -1114,7 +1154,8 @@ struct NotesView: View {
             }
         }
         .cardList()
-        .scrollDismissesKeyboard(.interactively)
+        // iPad: a scroll of the results lets go of the keyboard at once (the docked keyboard covers half the column).
+        .scrollDismissesKeyboard(usesSystemBars ? .immediately : .interactively)
         .overlay {
             if found.isEmpty, question == nil {
                 // Only tags or a kind chosen, and nothing fits (with typed text "Ask Porridge" stays as a row).
@@ -1222,11 +1263,15 @@ struct NotesView: View {
             settingsButton
             if bowlsSide == .todos {
                 if usesSystemBars {
-                    // iPad: a toolbar item like the others; "+" (Add) stays the one prominent action.
+                    // iPad: a toolbar item like the others, with its word ("+ To-do", in the to-dos' green) so it
+                    // is not taken for the Add sheet's "+" beside it, which stays the one prominent action.
                     Button { addNote(todo: true) } label: {
-                        Label("New To-do", systemImage: "checklist")
+                        Label("To-do", systemImage: "plus")
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(Color.brandTaskText)
                     }
                     .help("New To-do")
+                    .accessibilityLabel("New To-do")
                     .accessibilityIdentifier("TodosAdd")
                 } else {
                     // One line, never wrapped; on a narrow bar (iPhone SE, larger text) after the title has shrunk
@@ -1346,7 +1391,11 @@ struct NotesView: View {
             settings: { go(.settings) },
             deleteEntry: open.flatMap { note in
                 note.modelContext == nil || note.isDeleted ? nil : { remove(note) }
-            }
+            },
+            toggleSidebar: usesSystemBars ? {
+                columnVisibility = columnVisibility == .all ? .doubleColumn : .all
+            } : nil,
+            sidebarShown: usesSystemBars && columnVisibility == .all
         )
     }
 
@@ -1489,7 +1538,12 @@ struct NotesView: View {
 
     /// The Add sheet's content (a sheet on a phone, a popover on an iPad).
     private func addSheet(inPopover: Bool = false) -> some View {
-        AddSheet(into: defaultInto, projects: projects, inPopover: inPopover) { choice, into in
+        AddSheet(
+            into: defaultInto, projects: projects, inPopover: inPopover,
+            // The popover hangs from "+" at the top of the window: below it the window's height less the bar and a
+            // margin to the bottom edge.
+            maxPopoverHeight: splitHeight > 0 ? max(360, splitHeight - 140) : AddSheet.defaultMaxPopoverHeight
+        ) { choice, into in
             pendingAdd = choice
             addInto = .some(into)
             showAdd = false

@@ -1,10 +1,14 @@
 import SwiftData
 import SwiftUI
 
-/// Triage (iPhone): the Inbox one entry at a time, full screen without the tab bar. File (into the suggested bowl;
-/// "Other…" picks one), Skip, Delete, and Done for a to-do: the Mac's F, J, ⌫ and D. Every step offers the
-/// one undo toast; an entry brought back by Undo is in front again. The bar's "Done" ends it.
+/// Triage: the Inbox one entry at a time. iPhone (and an iPad window of compact width): full screen without the tab
+/// bar, the app's own bar with "Done". iPad of regular width (`inSheet`): a page-sized sheet with the system's
+/// navigation bar (title "Triage", Done), the card and its buttons at a readable width. File (into the suggested
+/// bowl; "Other…" picks one), Skip, Delete, and Done for a to-do: the Mac's F, J, ⌫ and D. Every step offers the one
+/// undo toast; an entry brought back by Undo is in front again. "Done" ends it.
 struct TriageView: View {
+    /// iPad of regular width: shown as a sheet with the system's bar.
+    var inSheet = false
     @Query(sort: \Note.updatedAt, order: .reverse) private var notes: [Note]
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
     @Environment(\.modelContext) private var context
@@ -15,19 +19,53 @@ struct TriageView: View {
     @State private var triage: InboxTriage?
     @State private var bowlNote: Note?
 
-    var body: some View {
-        let current = triage?.current(in: notes)
-        VStack(spacing: 0) {
-            ChromeBar(title: String(localized: "Triage"), systemImage: "bolt.fill", tint: .brandSky) {
-                Button { dismiss() } label: {
-                    Text("Done").fontWeight(.semibold).padding(.horizontal, 10)
-                }
-                .buttonStyle(ChromePillButtonStyle(fill: .brandSky))
-                .labelStyle(.titleOnly)
-                .accessibilityIdentifier("TriageEnd")
-            }
-            .padding(.bottom, Look.headerGap)
+    /// iPad sheet: the card, its buttons and the next entries keep to this width.
+    private static let readableWidth: CGFloat = 560
 
+    var body: some View {
+        Group {
+            if inSheet {
+                NavigationStack {
+                    page
+                        .navigationTitle("Triage")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { dismiss() }
+                                    .accessibilityIdentifier("TriageEnd")
+                            }
+                        }
+                }
+            } else {
+                VStack(spacing: 0) {
+                    ChromeBar(title: String(localized: "Triage"), systemImage: "bolt.fill", tint: .brandSky) {
+                        Button { dismiss() } label: {
+                            Text("Done").fontWeight(.semibold).padding(.horizontal, 10)
+                        }
+                        .buttonStyle(ChromePillButtonStyle(fill: .brandSky))
+                        .labelStyle(.titleOnly)
+                        .accessibilityIdentifier("TriageEnd")
+                    }
+                    .padding(.bottom, Look.headerGap)
+                    page
+                }
+            }
+        }
+        .background(Color.appBackground)
+        .overlay(alignment: .bottom) {
+            UndoToastView().padding(.bottom, 16)
+        }
+        .onAppear {
+            if triage == nil { triage = InboxTriage(notes: notes) }
+        }
+        .sheet(item: $bowlNote) { note in BowlPickerSheet(notes: [note]) }
+    }
+
+    /// The counter, the card, its buttons and what comes next; the end once everything was seen.
+    @ViewBuilder
+    private var page: some View {
+        let current = triage?.current(in: notes)
+        Group {
             if let triage, let current {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
@@ -63,7 +101,11 @@ struct TriageView: View {
                             .accessibilityElement(children: .combine)
                         }
                     }
+                    .padding(.top, inSheet ? Look.headerGap : 0)
                     .padding(.bottom, 90)
+                    // iPad: a readable width in the middle of the sheet, not the whole width.
+                    .frame(maxWidth: inSheet ? Self.readableWidth : .infinity)
+                    .frame(maxWidth: .infinity)
                 }
             } else if triage != nil {
                 finished
@@ -71,15 +113,8 @@ struct TriageView: View {
                 Spacer()
             }
         }
-        .background(Color.appBackground)
-        .overlay(alignment: .bottom) {
-            UndoToastView().padding(.bottom, 16)
-        }
+        .frame(maxHeight: .infinity, alignment: .top)
         .animation(.snappy, value: current?.note.id)
-        .onAppear {
-            if triage == nil { triage = InboxTriage(notes: notes) }
-        }
-        .sheet(item: $bowlNote) { note in BowlPickerSheet(notes: [note]) }
     }
 
     // MARK: The entry
