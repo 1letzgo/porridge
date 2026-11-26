@@ -29,6 +29,7 @@ struct VoicesRow: View {
 struct VoicesView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Environment(\.usesSystemBars) private var usesSystemBars
     @Query(sort: \VoiceProfile.name) private var voices: [VoiceProfile]
     @AppStorage(AppSettings.myVoiceKey) private var myVoice = ""
     @State private var renaming: VoiceProfile?
@@ -62,7 +63,8 @@ struct VoicesView: View {
         }
         .background(Color.appBackground)
         .brandNavigationTitle("Known Voices")
-        .toolbar(.hidden, for: .navigationBar)
+        // Phone: the page's own bar (ChromeBar); the iPad's Settings sheet keeps the system's.
+        .toolbar(usesSystemBars ? .automatic : .hidden, for: .navigationBar)
         .alert("Rename Voice", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Cancel", role: .cancel) { renaming = nil }

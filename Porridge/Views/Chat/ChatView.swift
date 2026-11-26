@@ -54,9 +54,16 @@ final class ChatNavigation {
 /// The chat, the Search tab's Chat side: one chat, or the list of all of them. Chats are kept; a new chat
 /// offers the recent ones to take up again.
 struct ChatPage: View {
+    /// What of the chat page shows: all of it in one place (phone), or on an iPad of regular width the chats in the
+    /// list column and the conversation in the entry column.
+    enum Part {
+        case whole, list, conversation
+    }
+
     let notes: [Note]
     let projects: [NoteFolder]
     @Bindable var navigation: ChatNavigation
+    var part = Part.whole
     /// Opens a note (a source of an answer).
     var onOpen: (UUID) -> Void
 
@@ -69,7 +76,23 @@ struct ChatPage: View {
 
     var body: some View {
         Group {
-            if navigation.showsList {
+            if part == .list {
+                // iPad: every chat in the list column; the one open stands out. A new chat is "New Chat" in the bar.
+                ChatList(threads: threads, projects: projects, openID: navigation.openID) { thread in
+                    navigation.openFromList(thread.id)
+                } onDelete: { thread in
+                    deleting = thread
+                }
+                .overlay {
+                    if threads.isEmpty {
+                        EmptyStateView(
+                            title: "No Chats Yet",
+                            message: "Ask Porridge about your notes in the chat beside the list.",
+                            systemImage: "bubble.left.and.bubble.right"
+                        )
+                    }
+                }
+            } else if navigation.showsList, part == .whole {
                 ChatList(threads: threads, projects: projects, openID: navigation.openID) { thread in
                     navigation.openFromList(thread.id)
                 } onDelete: { thread in
@@ -78,7 +101,8 @@ struct ChatPage: View {
             } else {
                 ChatView(
                     thread: open, notes: notes, projects: projects, scope: $navigation.newScope,
-                    recent: open == nil ? SearchAsk.recentChats(threads) : [],
+                    // iPad: the recent chats are the list column already.
+                    recent: open == nil && part == .whole ? SearchAsk.recentChats(threads) : [],
                     onOpen: onOpen,
                     onOpenChat: { thread in navigation.openID = thread.id },
                     onAllChats: { withAnimation(.snappy) { navigation.showsList = true } }

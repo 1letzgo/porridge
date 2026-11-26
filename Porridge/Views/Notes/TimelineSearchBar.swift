@@ -79,6 +79,9 @@ struct SearchPane<Results: View>: View {
     var onClearRecent: () -> Void = {}
     /// Return in the field: what was typed is kept as a recent search (it never asks the chat).
     var onSubmit: () -> Void = {}
+    /// iPad of regular width: the field is the system's (`SystemSearchField`, in the navigation bar); only the chips
+    /// stay here.
+    var usesSystemField = false
     @ViewBuilder var results: Results
 
     @FocusState private var focused: Bool
@@ -100,8 +103,10 @@ struct SearchPane<Results: View>: View {
         VStack(spacing: 0) {
             // The field and its chips: a bar for the empty views below (`emptyStateBar`).
             VStack(spacing: 10) {
-                field
-                    .padding(.horizontal)
+                if !usesSystemField {
+                    field
+                        .padding(.horizontal)
+                }
 
                 if typeSize.isAccessibilitySize {
                     // The largest text sizes: two chips that wrap (the kinds in one menu), nothing cut off at the edge.
@@ -337,6 +342,34 @@ struct SearchPane<Results: View>: View {
         .frame(minHeight: 44)
         .background(Color.appBackground, in: Capsule())
         .overlay(Capsule().strokeBorder(Color.brandNavy.opacity(0.25), lineWidth: 1))
+    }
+}
+
+/// iPad of regular width: the system's search field for Search & Ask, at the top of the list column under the large
+/// title, with the picked tags as its tokens (removed with the field's own delete key or its clear button). Return keeps
+/// the search (`onSubmit`); ⌘F gives it the focus (`focused`).
+struct SystemSearchField: ViewModifier {
+    let isOn: Bool
+    @Binding var text: String
+    @Binding var tokens: [TagToken]
+    var focused: FocusState<Bool>.Binding
+    var onSubmit: () -> Void
+
+    func body(content: Content) -> some View {
+        if isOn {
+            content
+                .searchable(
+                    text: $text, tokens: $tokens, placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: Text("Search or Ask")
+                ) { token in
+                    Text("#\(token.name)")
+                }
+                .searchFocused(focused)
+                .autocorrectionDisabled()
+                .onSubmit(of: .search, onSubmit)
+        } else {
+            content
+        }
     }
 }
 

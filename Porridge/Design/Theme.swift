@@ -383,7 +383,8 @@ struct ListRowLink<Content: View>: View {
     }
 }
 
-/// The app's own bar in place of the system navigation bar (iOS), as in Things: an optional back pill,
+/// The app's own bar in place of the system navigation bar (iPhone and an iPad window of compact width; an iPad of
+/// regular width uses the system's navigation bar and toolbar items, `usesSystemBars`), as in Things: an optional back pill,
 /// the colored square with the screen's symbol and the big bold title on the left, actions as pills on the right.
 struct ChromeBar<Actions: View>: View {
     let title: String
@@ -400,8 +401,6 @@ struct ChromeBar<Actions: View>: View {
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 30
     @ScaledMetric(relativeTo: .body) private var squareSize: CGFloat = 34
     @Environment(\.dynamicTypeSize) private var typeSize
-    /// iPad with the sidebar hidden: a pill at the front brings it back.
-    @Environment(\.showSidebar) private var showSidebar
 
     /// The pills take the screen's color too; the sky screens keep the accent color for contrast.
     private var buttonTint: Color? { tint == .brandSky ? nil : tint.readable }
@@ -413,7 +412,6 @@ struct ChromeBar<Actions: View>: View {
                 // take two lines, so neither is cut to "Meeti…" or shrinks the pills.
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
-                        sidebarButton
                         backButton
                         Spacer(minLength: 8)
                         pills
@@ -422,7 +420,6 @@ struct ChromeBar<Actions: View>: View {
                 }
             } else {
                 HStack(alignment: .center, spacing: 10) {
-                    sidebarButton
                     backButton
                     titleView(lineLimit: 1)
                     Spacer(minLength: 8)
@@ -430,26 +427,11 @@ struct ChromeBar<Actions: View>: View {
                 }
             }
         }
-        // An iPad window: the row starts right of the window's controls.
+        // An iPad window of compact width (the phone's layout): the row starts right of the window's controls. In
+        // regular width the system's navigation bar keeps clear of them by itself.
         .avoidsWindowControls()
         .padding(.horizontal, 20)
         .padding(.top, 8)
-    }
-
-    @ViewBuilder
-    private var sidebarButton: some View {
-        if let showSidebar {
-            Button(action: showSidebar) {
-                Label("Show Sidebar", systemImage: "sidebar.left")
-                    .labelStyle(.iconOnly)
-                    .font(.body.weight(.medium))
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-                    .foregroundStyle(buttonTint ?? .accentColor)
-            }
-            .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
-            .help("Show Sidebar")
-            .accessibilityIdentifier("ShowSidebar")
-        }
     }
 
     @ViewBuilder
@@ -514,6 +496,22 @@ extension View {
             containerCornerOffset(.leading, sizeToFit: true)
         } else {
             self
+        }
+    }
+}
+
+extension View {
+    /// iPad: the one prominent action of a toolbar ("+"), filled with `tint` (iPadOS 26: Liquid Glass, prominent).
+    @ViewBuilder
+    func prominentToolbarButton(tint: Color) -> some View {
+        if #available(iOS 26.0, *) {
+            buttonStyle(.glassProminent)
+                .tint(tint)
+                .foregroundStyle(tint.onFill)
+        } else {
+            buttonStyle(.borderedProminent)
+                .tint(tint)
+                .foregroundStyle(tint.onFill)
         }
     }
 }

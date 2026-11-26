@@ -644,7 +644,9 @@ struct KnownVoicesSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
+            // Its own head above: the page keeps no system bar, also on an iPad.
             NavigationStack { VoicesView() }
+                .environment(\.usesSystemBars, false)
         }
         .background(Color.appBackground)
         .presentationDetents([.medium, .large])

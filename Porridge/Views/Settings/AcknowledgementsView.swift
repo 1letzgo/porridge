@@ -24,6 +24,7 @@ struct AcknowledgementsRow: View {
 
 struct AcknowledgementsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.usesSystemBars) private var usesSystemBars
     private let list = Acknowledgements.bundled
     /// Entries whose license text is open.
     @State private var expanded: Set<String> = []
@@ -48,8 +49,8 @@ struct AcknowledgementsView: View {
         }
         .background(Color.appBackground)
         .brandNavigationTitle("Acknowledgements")
-        // Our own bar (ChromeBar) replaces the system one, as in Settings.
-        .toolbar(.hidden, for: .navigationBar)
+        // Our own bar (ChromeBar) replaces the system one, as in Settings (the iPad's Settings sheet keeps the system's).
+        .toolbar(usesSystemBars ? .automatic : .hidden, for: .navigationBar)
     }
 
     /// A group in the look of the Settings cards: bold title over a hairline, rows separated by hairlines.

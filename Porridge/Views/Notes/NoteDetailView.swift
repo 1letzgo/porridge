@@ -29,6 +29,8 @@ struct NoteDetailView: View {
     @Environment(\.openNote) private var openNote
     @Environment(\.askAboutBowl) private var askAboutBowl
     @Environment(\.openURL) private var openURL
+    /// iPad of regular width: the system's navigation bar instead of the app's own (`ChromeBar`).
+    @Environment(\.usesSystemBars) private var usesSystemBars
     @State private var dictation = InlineDictation()
     @State private var didStartRecording = false
     @State private var showExport = false
@@ -173,17 +175,9 @@ struct NoteDetailView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            // The same head as every page: the kind's square and word, ✦ AI, Share and ⋯ as pills.
-            ChromeBar(title: barTitle, systemImage: barIcon, tint: barTint, onBack: onBack) {
-                aiMenu
-                shareAction
-                moreMenu
-            }
-            .padding(.bottom, Look.headerGap)
-            .background(Color.appBackground)
-        }
-        .toolbar(.hidden, for: .navigationBar)
+        .modifier(EntryChrome(usesSystemBars: usesSystemBars, title: barTitle, systemImage: barIcon, tint: barTint, onBack: onBack) {
+            entryActions
+        })
         .overlay(alignment: .bottomTrailing) {
             // Dictation starts from the mic in the editor bar; while it runs (the keyboard is away) this button stops it.
             if tab == .note, canDictate, dictation.phase != .idle {
@@ -555,6 +549,14 @@ struct NoteDetailView: View {
     private var barTint: Color { note.isTodo ? .brandTask : note.isLink ? .brandLink : note.isRecording || note.isStored ? .brandNavy : .brandSky }
 
     // MARK: ✦ AI · Share · ⋯ More (`EntryMenus`)
+
+    /// The entry's actions, defined once: pills of the app's bar (phone) or toolbar items (iPad).
+    @ViewBuilder
+    private var entryActions: some View {
+        aiMenu
+        shareAction
+        moreMenu
+    }
 
     /// ✦ AI: what a model does to this entry, then Ask About This Bowl. Locked in Recently Deleted.
     private var aiMenu: some View {
@@ -1343,5 +1345,39 @@ private struct NoteTabScroll<Content: View>: View {
 
     var body: some View {
         VStack { content }
+    }
+}
+
+/// The head of an entry: the app's own bar on a phone (`ChromeBar`: the kind's square and word, ✦ AI, Share and ⋯ as
+/// pills, the back pill on a stack); on an iPad of regular width the entry column's navigation bar with the kind as its
+/// inline title and the same actions as toolbar items.
+private struct EntryChrome<Actions: View>: ViewModifier {
+    let usesSystemBars: Bool
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let onBack: (() -> Void)?
+    @ViewBuilder var actions: Actions
+
+    func body(content: Content) -> some View {
+        if usesSystemBars {
+            content
+                .navigationTitle(title)
+                .toolbar {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        actions
+                    }
+                }
+        } else {
+            content
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    ChromeBar(title: title, systemImage: systemImage, tint: tint, onBack: onBack) {
+                        actions
+                    }
+                    .padding(.bottom, Look.headerGap)
+                    .background(Color.appBackground)
+                }
+                .toolbar(.hidden, for: .navigationBar)
+        }
     }
 }

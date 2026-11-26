@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// The iPad's sidebar (regular width): only the places Today · Inbox · Bowls · Search (with the counts of the phone's
-/// tab badges, only when there are any). Single bowls and the smart filters are not listed here: they open from the
-/// Bowls page in the main view, as on the phone. Its head holds Settings (the gear) and the pill that hides it. The
-/// pages themselves open right of it (`NotesView`), with their own bar.
+/// The iPad's sidebar (regular width), the first column of the system's split view: only the places Today · Inbox ·
+/// Bowls · Search (with the counts of the phone's tab badges, only when there are any), as a sidebar list with the
+/// system's selection. Single bowls and the smart filters are not listed here: they open from the Bowls page in the
+/// list column, as on the phone. Settings is the gear in the sidebar's bottom bar. The system's sidebar button, the
+/// edge swipe and ⌃⌘S show and hide it.
 struct PadSidebar: View {
     let notes: [Note]
     @Binding var selection: Place?
     var onSettings: () -> Void
-    var onHide: () -> Void
 
     var body: some View {
         List(selection: $selection) {
@@ -16,7 +16,9 @@ struct PadSidebar: View {
                 Label {
                     Text(shown.tabTitle)
                 } icon: {
+                    // The place's symbol in its color (the bowl for Bowls).
                     SymbolImage(shown.tabSymbol)
+                        .foregroundStyle(tint(of: shown).readable)
                 }
                 .badge(count(of: shown))
                 .tag(shown)
@@ -24,7 +26,16 @@ struct PadSidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .top, spacing: 0) { head }
+        .navigationTitle("Porridge")
+        .toolbar {
+            ToolbarItem(placement: .bottomBar) {
+                Button(action: onSettings) {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .help("Settings")
+                .accessibilityIdentifier("SidebarSettings")
+            }
+        }
     }
 
     /// The count of a place as its tab badge shows it: Today the to-dos due, the Inbox what waits.
@@ -36,27 +47,12 @@ struct PadSidebar: View {
         }
     }
 
-    private var head: some View {
-        HStack(spacing: 8) {
-            Spacer(minLength: 0)
-            Button(action: onSettings) {
-                Label("Settings", systemImage: "gearshape")
-            }
-            .help("Settings")
-            .accessibilityIdentifier("SidebarSettings")
-            Button(action: onHide) {
-                Label("Hide Sidebar", systemImage: "sidebar.left")
-            }
-            .help("Hide Sidebar")
-            .accessibilityIdentifier("HideSidebar")
+    /// The colors of the places' heads on the phone.
+    private func tint(of shown: Place) -> Color {
+        switch shown {
+        case .today, .search: .brandNavy
+        case .inbox: .brandSky
+        case .bowls: .brandProject
         }
-        .labelStyle(.iconOnly)
-        .font(.body.weight(.medium))
-        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-        .buttonStyle(ChromePillButtonStyle())
-        .avoidsWindowControls()
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 }

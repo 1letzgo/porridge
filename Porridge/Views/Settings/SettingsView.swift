@@ -20,6 +20,7 @@ struct SettingsView: View {
     @Environment(ModelManager.self) private var models
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.usesSystemBars) private var usesSystemBars
 
     @AppStorage(AppSettings.languageKey) private var language = "auto"
     @AppStorage(AppSettings.speechEngineKey) private var engine = SpeechEngine.parakeet
@@ -123,8 +124,8 @@ struct SettingsView: View {
         }
         .background(Color.appBackground)
         .brandNavigationTitle("Settings")
-        // Pushed: our own bar (ChromeBar) replaces the system one.
-        .toolbar(isEmbedded ? .hidden : .automatic, for: .navigationBar)
+        // Pushed (phone): our own bar (ChromeBar) replaces the system one; the iPad's Settings sheet keeps the system's.
+        .toolbar(isEmbedded && !usesSystemBars ? .hidden : .automatic, for: .navigationBar)
         .onAppear {
             refreshInput()
             models.refreshLLM()

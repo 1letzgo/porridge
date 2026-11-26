@@ -289,6 +289,7 @@
 		8D6FDA68556EC145BEC5EBC0 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2141F7919F1EE60B134F704 /* MarkdownText.swift */; };
 		8E92A95213B7A6628B3B09FC /* TemplatesSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 803F8FA2ADF97C745A2BCDC1 /* TemplatesSheetController.swift */; };
 		8EAA4EC0CA6C02E36B51F55E /* TableEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05AA2D998EBC4E2A010B32E /* TableEditorView.swift */; };
+		8F0CB0AEA96E1AA6321254A8 /* PadSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A86BAAAE3A4C0F241F7470A7 /* PadSettingsSheet.swift */; };
 		8F2E3431B5D21CF4B56C996F /* InboxSnooze.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CBA851D4C3B59E34201A2D2 /* InboxSnooze.swift */; };
 		8F4D91243FF50697DAFB8FFE /* DocumentInfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72F8AE2C57A9A29D0C4EB358 /* DocumentInfoSheet.swift */; };
 		8F8118B750229CF47A02CF93 /* SystemAudioMix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8938AD30A62950BFB2E15048 /* SystemAudioMix.swift */; };
@@ -820,6 +821,7 @@
 		A774E41E8B24EDEAF494FF5C /* NoteCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteCellView.swift; sourceTree = "<group>"; };
 		A77652CA7E1DB76E348FCBF5 /* PlaceTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceTabBar.swift; sourceTree = "<group>"; };
 		A7825A3F61D5732826AD5E47 /* NoteEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEditorView.swift; sourceTree = "<group>"; };
+		A86BAAAE3A4C0F241F7470A7 /* PadSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadSettingsSheet.swift; sourceTree = "<group>"; };
 		A8DCA8F75243E96D40F6CE3A /* BrandMenuLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandMenuLabel.swift; sourceTree = "<group>"; };
 		A8FB1FA5442CC6CC84B575EC /* Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capture.swift; sourceTree = "<group>"; };
 		AC82EC350B85940475F85526 /* AutoSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSummaryTests.swift; sourceTree = "<group>"; };
@@ -994,6 +996,7 @@
 				B68D31EF1251F260AE988FED /* ExportViews.swift */,
 				358506EA71C01A91EB123C70 /* MeetingAlertsCard.swift */,
 				18E02FDC85B30CF580A0C780 /* NoteTemplatesView.swift */,
+				A86BAAAE3A4C0F241F7470A7 /* PadSettingsSheet.swift */,
 				EB0384279FBB5C1A2424DD1B /* SettingsView.swift */,
 				60A0B43E6BF68BEF6D3BF395 /* SummaryTemplatesView.swift */,
 				56FD02EAB29161B15D0292BF /* VoicesView.swift */,
@@ -2025,6 +2028,7 @@
 				179CF1D750C84E09B9978330 /* OpusOggDecoder.swift in Sources */,
 				0AEDFE9766914D54A7AFB73A /* PDFPageEditor.swift in Sources */,
 				F7FE4EF71ABE9BD19E9954CC /* PDFTextLayer.swift in Sources */,
+				8F0CB0AEA96E1AA6321254A8 /* PadSettingsSheet.swift in Sources */,
 				73283E2D1D1719A0FF5F7E10 /* PadSidebar.swift in Sources */,
 				96EE3621CBC49AA8BFF6B318 /* Paragraphs.swift in Sources */,
 				E0E0388BAE141780DD09FD86 /* PlaceTabBar.swift in Sources */,
