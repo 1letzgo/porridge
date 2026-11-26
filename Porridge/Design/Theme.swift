@@ -406,32 +406,56 @@ struct ChromeBar<Actions: View>: View {
     private var buttonTint: Color? { tint == .brandSky ? nil : tint.readable }
 
     var body: some View {
-        Group {
-            if typeSize.isAccessibilitySize {
-                // The largest text sizes: the pills keep their row, the title gets one of its own below them and may
-                // take two lines, so neither is cut to "Meeti…" or shrinks the pills.
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        backButton
-                        Spacer(minLength: 8)
-                        pills
-                    }
-                    titleView(lineLimit: 2)
-                }
-            } else {
-                HStack(alignment: .center, spacing: 10) {
-                    backButton
-                    titleView(lineLimit: 1)
-                    Spacer(minLength: 8)
-                    pills
-                }
-            }
+        // The pills never wrap or shrink. What gives way where the row is narrow (iPhone SE, larger text): first the
+        // title, down to its smallest scale; then the pills that have a short form drop their words
+        // (`ChromeBarPillLabel`: "+ To-do" becomes "+"); only then is the title cut with "…".
+        ViewThatFits(in: .horizontal) {
+            row(compact: false)
+            row(compact: true)
         }
         // An iPad window of compact width (the phone's layout): the row starts right of the window's controls. In
         // regular width the system's navigation bar keeps clear of them by itself.
         .avoidsWindowControls()
         .padding(.horizontal, 20)
         .padding(.top, 8)
+    }
+
+    /// The bar's row; `compact` asks the pills for their short form. The full row is measured with the title at its
+    /// smallest scale (its ideal width), so the title shrinks before a pill drops its words.
+    @ViewBuilder
+    private func row(compact: Bool) -> some View {
+        if typeSize.isAccessibilitySize {
+            // The largest text sizes: the pills keep their row, the title gets one of its own below them and may
+            // take two lines, so neither is cut to "Meeti…" or shrinks the pills.
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    backButton
+                    Spacer(minLength: 8)
+                    pills.layoutPriority(1)
+                }
+                titleView(lineLimit: 2)
+                    .frame(idealWidth: compact ? nil : 0, alignment: .leading)
+            }
+            .environment(\.chromeBarCompact, compact)
+        } else {
+            HStack(alignment: .center, spacing: 10) {
+                backButton
+                titleView(lineLimit: 1)
+                    .frame(idealWidth: compact ? nil : smallestTitleWidth, alignment: .leading)
+                Spacer(minLength: 8)
+                // The pills first: they keep their own width, the title takes what is left.
+                pills.layoutPriority(1)
+            }
+            .environment(\.chromeBarCompact, compact)
+        }
+    }
+
+    /// Square, gap and the title at its smallest scale (`minimumScaleFactor` 0.6), rounded up.
+    private var smallestTitleWidth: CGFloat {
+        let size = min(titleSize, 52)
+        let font = UIFont.systemFont(ofSize: size, weight: .bold)
+        let textWidth = (title as NSString).size(withAttributes: [.font: font, .kern: -0.5]).width
+        return min(squareSize, 44) + 10 + (textWidth * 0.6).rounded(.up) + 1
     }
 
     @ViewBuilder
@@ -530,6 +554,33 @@ struct ChromePillButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         ChromePill(configuration: configuration, fill: fill, tint: tint)
+    }
+}
+
+extension EnvironmentValues {
+    /// Set by `ChromeBar` when its row is too narrow for the pills' words: they show only their symbol.
+    @Entry var chromeBarCompact = false
+}
+
+/// The label of a pill with words in a `ChromeBar` ("+ To-do"): symbol and words on one line, never wrapped; where
+/// the bar is too narrow (`chromeBarCompact`) only the symbol. The button keeps its accessibility label either way.
+struct ChromeBarPillLabel: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    @Environment(\.chromeBarCompact) private var compact
+
+    var body: some View {
+        if compact {
+            Image(systemName: systemImage)
+                .fontWeight(.semibold)
+        } else {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.tight)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 12)
+        }
     }
 }
 

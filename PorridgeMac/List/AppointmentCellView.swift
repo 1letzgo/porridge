@@ -5,7 +5,8 @@ import AppKit
 final class AppointmentCellView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("appointment")
     private let icon = KindIconView()
-    private let name = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize + 1, weight: .medium))
+    /// At most two lines, broken between words; the second ends in "…" (a wrapping label that cuts its last line).
+    private let name = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize + 1, weight: .medium), lines: 2)
     private let summary = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize), color: .secondaryLabelColor)
     private let actions = NSButton()
     private var appointment: CalendarAppointment?
@@ -17,8 +18,6 @@ final class AppointmentCellView: NSTableCellView {
         identifier = Self.identifier
         icon.symbol = "calendar"
         icon.tint = .brandNavy
-        name.lineBreakMode = .byWordWrapping
-        name.maximumNumberOfLines = 2
         summary.lineBreakMode = .byTruncatingTail
         actions.image = .symbol("ellipsis.circle", size: 15, weight: .regular, label: String(localized: "Appointment Actions"))
         actions.isBordered = false

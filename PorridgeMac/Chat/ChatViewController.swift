@@ -120,9 +120,17 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
             // middle, a conversation starts at the top.
             document.heightAnchor.constraint(greaterThanOrEqualTo: scroll.contentView.heightAnchor),
         ])
-        let fitsTranscript = document.heightAnchor.constraint(equalTo: transcript.heightAnchor)
-        fitsTranscript.priority = .defaultLow
-        fitsTranscript.isActive = true
+        // The document is as tall as the visible room, or the transcript where that is taller (the required "at least"
+        // above and the transcript's own top/bottom inside it). Before, the wish was "as tall as the transcript"
+        // (priority 250): the visible room shrank to the intro's height by stretching the scope row (a stack view
+        // that hugs at 250), so the pop-ups stood a third down and the intro sat right above the field.
+        let fillsVisibleRoom = document.heightAnchor.constraint(equalTo: scroll.contentView.heightAnchor)
+        fillsVisibleRoom.priority = .defaultLow
+        fillsVisibleRoom.isActive = true
+        // The rows above and below the transcript keep their own height; only the scroll view takes the room left.
+        scopeRow.setHuggingPriority(.defaultHigh, for: .vertical)
+        inputRow.setHuggingPriority(.defaultHigh, for: .vertical)
+        hintLabel.setContentHuggingPriority(.defaultHigh, for: .vertical)
         transcriptAtTop = transcript.topAnchor.constraint(equalTo: document.topAnchor)
         transcriptInMiddle = transcript.centerYAnchor.constraint(equalTo: document.centerYAnchor)
         transcriptInMiddle.priority = .defaultHigh

@@ -1184,11 +1184,10 @@ struct NotesView: View {
                     .help("New To-do")
                     .accessibilityIdentifier("TodosAdd")
                 } else {
+                    // One line, never wrapped; on a narrow bar (iPhone SE, larger text) after the title has shrunk
+                    // only the "+" (ChromeBar).
                     Button { addNote(todo: true) } label: {
-                        Label("To-do", systemImage: "plus")
-                            .labelStyle(.tight)
-                            .fontWeight(.semibold)
-                            .padding(.horizontal, 12)
+                        ChromeBarPillLabel(title: "To-do", systemImage: "plus")
                     }
                     .buttonStyle(ChromePillButtonStyle(fill: .brandTask))
                     .help("New To-do")
