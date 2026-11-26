@@ -50,6 +50,9 @@ final class ChatViewController: NSViewController, NSTextViewDelegate {
         transcript.spacing = 14
         transcript.edgeInsets = NSEdgeInsets(top: 14, left: 24, bottom: 14, right: 24)
         transcript.translatesAutoresizingMaskIntoConstraints = false
+        // The transcript keeps the height of what it holds: with the stack view's low default hugging it stretched to
+        // the visible height, which met "centered" as well, and the intro stood at its top.
+        transcript.setHuggingPriority(.init(760), for: .vertical)
         let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
         document.addSubview(transcript)

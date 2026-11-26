@@ -26,6 +26,13 @@ final class ListHeaderView: NSView {
     private let filters = NSStackView()
     private let tags = NSStackView()
     private let trailing = NSStackView()
+    /// Today's day stepper (‹ Today ›) in one compact control, as in Calendar: three separate push buttons and the
+    /// Weekly Review beside them left the title only "T…" at the list's usual width.
+    private let dayStepper = NSSegmentedControl()
+    /// The second row: Today's date, and the buttons that would crowd the title (Weekly Review, Delete All…, Save as
+    /// Smart Filter…), so a place's name stays readable at every width of the list column.
+    private let secondRow = NSStackView()
+    private let secondTrailing = NSStackView()
     private var iconTint: NSColor = .brandSky
     private let hintRow = DailyHintRow()
     /// The one-time "What's New" card (`WhatsNew`), in Today's head on today.
@@ -54,6 +61,29 @@ final class ListHeaderView: NSView {
         tags.spacing = 6
         trailing.orientation = .horizontal
         trailing.spacing = 6
+        secondTrailing.orientation = .horizontal
+        secondTrailing.spacing = 6
+        dateLine.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        secondRow.orientation = .horizontal
+        secondRow.spacing = 8
+        secondRow.alignment = .centerY
+        secondRow.translatesAutoresizingMaskIntoConstraints = false
+        [dateLine, NSView(), secondTrailing].forEach(secondRow.addArrangedSubview)
+        dayStepper.segmentStyle = .rounded
+        dayStepper.trackingMode = .momentary
+        dayStepper.controlSize = .small
+        dayStepper.segmentCount = 3
+        dayStepper.setImage(.symbol("chevron.left", size: 11, weight: .semibold, label: String(localized: "Previous Day")), forSegment: 0)
+        dayStepper.setLabel(String(localized: "Today"), forSegment: 1)
+        dayStepper.setImage(.symbol("chevron.right", size: 11, weight: .semibold, label: String(localized: "Next Day")), forSegment: 2)
+        dayStepper.setToolTip("\(String(localized: "Previous Day")) (←)", forSegment: 0)
+        dayStepper.setToolTip("\(String(localized: "Go to Today")) (T)", forSegment: 1)
+        dayStepper.setToolTip("\(String(localized: "Next Day")) (→)", forSegment: 2)
+        dayStepper.target = self
+        dayStepper.action = #selector(dayStepped)
+        dayStepper.setContentCompressionResistancePriority(.required, for: .horizontal)
+        dayStepper.setAccessibilityIdentifier("TodayDayStepper")
+        dayStepper.setAccessibilityLabel(String(localized: "Day"))
         titleRow = NSStackView.horizontal([iconBox, title, NSView(), trailing], spacing: 8)
         triageKeys.stringValue = String(localized: "J / K  Next, Previous   ·   F  File   ·   D  Done   ·   ⌫  Delete   ·   Esc  End")
         triageKeys.lineBreakMode = .byTruncatingTail
@@ -68,7 +98,7 @@ final class ListHeaderView: NSView {
         segment.setAccessibilityIdentifier("BowlsSide")
         segment.setAccessibilityLabel(String(localized: "Bowls"))
         dateLine.isHidden = true
-        let stack = NSStackView.vertical([titleRow, dateLine, segment, whatsNew, hintRow, triageKeys, filters, tags], spacing: 10)
+        let stack = NSStackView.vertical([titleRow, secondRow, segment, whatsNew, hintRow, triageKeys, filters, tags], spacing: 10)
         stack.setCustomSpacing(2, after: titleRow)
         hintRow.onOpen = { [weak self] hint in self?.onHint?(hint) }
         addSubview(stack)
@@ -78,6 +108,7 @@ final class ListHeaderView: NSView {
             icon.centerXAnchor.constraint(equalTo: iconBox.centerXAnchor),
             icon.centerYAnchor.constraint(equalTo: iconBox.centerYAnchor),
             titleRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            secondRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             hintRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             whatsNew.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
@@ -125,24 +156,13 @@ final class ListHeaderView: NSView {
         iconBox.layer?.backgroundColor = tint.resolved(for: self)
 
         trailing.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        secondTrailing.arrangedSubviews.forEach { $0.removeFromSuperview() }
         // Today: the day before and after (also ← and → in the list), and back to today from another day.
         if page == .today {
-            let isToday = state.todayDay == nil
-            let previous = ActionButton(title: "", symbol: "chevron.left") { [weak self] in self?.onStepDay?(-1) }
-            let today = ActionButton(title: String(localized: "Today")) { [weak self] in self?.onToday?() }
-            let next = ActionButton(title: "", symbol: "chevron.right") { [weak self] in self?.onStepDay?(1) }
-            for (button, label, key) in [(previous, String(localized: "Previous Day"), "←"), (today, String(localized: "Go to Today"), "T"), (next, String(localized: "Next Day"), "→")] {
-                button.controlSize = .small
-                button.bezelStyle = .push
-                button.toolTip = "\(label) (\(key))"
-                button.setAccessibilityLabel(label)
-            }
-            today.isEnabled = !isToday
-            previous.setAccessibilityIdentifier("TodayPreviousDay")
-            today.setAccessibilityIdentifier("TodayBackToToday")
-            next.setAccessibilityIdentifier("TodayNextDay")
-            [previous, today, next].forEach(trailing.addArrangedSubview)
-            // The Weekly Review (owner revision 9; before, a row of the Inbox's top card), also View › Weekly Review.
+            dayStepper.setEnabled(state.todayDay != nil, forSegment: 1)
+            trailing.addArrangedSubview(dayStepper)
+            // The Weekly Review (owner revision 9; before, a row of the Inbox's top card), also View › Weekly Review;
+            // beside the date, so the title keeps its room.
             let review = ActionButton(title: "", symbol: "calendar.badge.checkmark") { [weak self] in
                 (self?.window?.windowController as? MainWindowController)?.showWeeklyReview(nil)
             }
@@ -151,7 +171,7 @@ final class ListHeaderView: NSView {
             review.toolTip = String(localized: "Weekly Review")
             review.setAccessibilityLabel(String(localized: "Weekly Review"))
             review.setAccessibilityIdentifier("TodayWeeklyReview")
-            trailing.addArrangedSubview(review)
+            secondTrailing.addArrangedSubview(review)
         }
         dateLine.stringValue = page == .today ? TodayDay.fullDate(state.todayShownDay) : ""
         dateLine.isHidden = page != .today
@@ -198,7 +218,7 @@ final class ListHeaderView: NSView {
             button.controlSize = .small
             button.bezelStyle = .push
             button.hasDestructiveAction = true
-            trailing.addArrangedSubview(button)
+            secondTrailing.addArrangedSubview(button)
         }
         // A smart filter: what it asks for, and its editor.
         if case .smartFilter(let id) = page, let filter = SmartFilterStore.shared.filter(id) {
@@ -232,7 +252,7 @@ final class ListHeaderView: NSView {
             button.controlSize = .small
             button.bezelStyle = .push
             button.setAccessibilityIdentifier("SaveAsSmartFilter")
-            trailing.addArrangedSubview(button)
+            secondTrailing.addArrangedSubview(button)
         }
         // A bowl: share it (with iCloud sync on), or who it is shared with; a click shows the people.
         if case .project(let id) = page, BowlSharing.isAvailable, let project = library.project(id) {
@@ -318,6 +338,7 @@ final class ListHeaderView: NSView {
             }
         }
         tags.isHidden = tags.arrangedSubviews.isEmpty
+        secondRow.isHidden = dateLine.isHidden && secondTrailing.arrangedSubviews.isEmpty
     }
 
     private func filterPill(title: String, count: Int?, kind: KindFilter?, isOn: Bool, tint: NSColor) -> PillButton {
@@ -347,6 +368,15 @@ final class ListHeaderView: NSView {
 
     @objc private func removeTag(_ sender: NSButton) {
         if let tag = sender.identifier?.rawValue { onRemoveTag?(tag) }
+    }
+
+    @objc private func dayStepped() {
+        switch dayStepper.selectedSegment {
+        case 0: onStepDay?(-1)
+        case 1: onToday?()
+        case 2: onStepDay?(1)
+        default: break
+        }
     }
 
     @objc private func segmentChanged() {

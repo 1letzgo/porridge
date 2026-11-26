@@ -248,6 +248,20 @@ final class EmptyMessageView: NSView {
         stack.topAnchor.constraint(greaterThanOrEqualTo: anchor, constant: 8).isActive = true
     }
 
+    /// Title and message wrap at the width the room gives (at most 280): with a fixed wrap width the labels asked for
+    /// the height of fewer lines than they got in a narrow list column, and the message was cut after its first line.
+    override func layout() {
+        let width = max(min(280, bounds.width - 40), 60)
+        var changed = false
+        for label in [title, message] where label.preferredMaxLayoutWidth != width {
+            label.preferredMaxLayoutWidth = width
+            label.invalidateIntrinsicContentSize()
+            changed = true
+        }
+        super.layout()
+        if changed { needsLayout = true }
+    }
+
     /// Only a message: clicks go through to what is below it (the empty Inbox's top card).
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 

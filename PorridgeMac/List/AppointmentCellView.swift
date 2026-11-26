@@ -27,15 +27,25 @@ final class AppointmentCellView: NSTableCellView {
         actions.action = #selector(showActions)
         actions.toolTip = String(localized: "Appointment Actions")
         actions.setContentHuggingPriority(.required, for: .horizontal)
+        actions.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // The labels give way (the line "… · 2 linked entries" ends in "…"), never the ⋯ button: with the labels'
+        // default resistance the row grew past the column and pushed the button out of view.
+        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        summary.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let text = NSStackView.vertical([name, summary], spacing: 3)
+        // The text takes the width of the row; the button keeps its own at the end.
+        text.setHuggingPriority(.init(1), for: .horizontal)
         text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let row = NSStackView.horizontal([icon, text, actions], spacing: 12, alignment: .centerY)
+        row.distribution = .fill
         addSubview(row)
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             row.topAnchor.constraint(equalTo: topAnchor, constant: 9),
             row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -9),
+            name.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
+            summary.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
         ])
     }
 
