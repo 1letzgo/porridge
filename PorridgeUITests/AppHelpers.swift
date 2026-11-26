@@ -104,7 +104,7 @@ extension XCUIApplication {
 
     /// A tab of the app's tab bar by its place: Today, Inbox, Bowls, Search ("Add" is "+" in its middle). Found by its
     /// identifier, not its words: the Search tab says "Chat" while its Chat side is chosen (its identifier stays
-    /// "TabSearch", so there is never a "TabChat").
+    /// "TabSearch", so there is never a "TabChat"), the Inbox tab "To-dos" on its To-dos side ("TabInbox").
     func tab(_ name: String) -> XCUIElement {
         name == "Add" ? buttons["PlaceAdd"] : buttons["Tab" + name]
     }
@@ -115,7 +115,8 @@ extension XCUIApplication {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             if navigationBars[name].exists { return true }
-            let control = segmentedControls["SearchSide"]
+            let search = segmentedControls["SearchSide"]
+            let control = search.exists ? search : segmentedControls["InboxSide"]
             let top = control.exists ? control.frame.minY : placeTabBar.exists ? placeTabBar.frame.minY : .greatestFiniteMagnitude
             let texts = staticTexts.matching(NSPredicate(format: "label == %@", name)).allElementsBoundByIndex
             if texts.contains(where: { $0.exists && $0.frame.maxY <= top + 1 }) { return true }

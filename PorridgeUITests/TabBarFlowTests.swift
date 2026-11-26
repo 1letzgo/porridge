@@ -168,10 +168,14 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox tab")
         XCTAssertTrue(side.label.hasPrefix("To-dos "), "the To-dos side does not count the open to-dos: \(side.label)")
         XCTAssertFalse(app.buttons["TodosAdd"].exists, "the To-dos side still has its own New To-do")
-        XCTAssertTrue(app.headTitled("Inbox"), "the head does not keep the tab's name on the To-dos side")
+        // The tab and the head are named after the side, as Search on its Chat side.
+        XCTAssertTrue(app.headTitled("To-dos"), "the head is not named To-dos on the To-dos side")
+        XCTAssertEqual(app.tab("Inbox").label, "To-dos", "the Inbox tab does not say To-dos on its To-dos side")
         screenshot("inbox-todos-side", app)
         app.inboxSide("Inbox")
         XCTAssertTrue(app.buttons["InboxTriage"].waitForExistence(timeout: 5), "the Inbox side has no Triage")
+        XCTAssertEqual(app.tab("Inbox").label, "Inbox", "the Inbox tab kept the name To-dos on the Inbox side")
+        XCTAssertTrue(app.headTitled("Inbox"), "the head is not named Inbox on the Inbox side")
 
         app.openTab("Today")
         let review = app.buttons["TodayWeeklyReview"]

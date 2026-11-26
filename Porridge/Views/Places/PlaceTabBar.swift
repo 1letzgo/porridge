@@ -63,7 +63,8 @@ struct TabBarLayout: Equatable {
     static let threeDigitBadge: CGFloat = 36
 }
 
-/// The phone's tab bar, drawn by the app: Today · Inbox · + · Bowls · Search (Chat on its Chat side) on a floating bar of glass, the selected
+/// The phone's tab bar, drawn by the app: Today · Inbox (To-dos on its To-dos side) · + · Bowls · Search (Chat on its
+/// Chat side) on a floating bar of glass, the selected
 /// tab in a soft capsule, badges on Today and the Inbox, and the raised "+" (`TabBarAddButton`) in a wide middle
 /// slot. Its symbols and words keep their size at every text size (a long press shows them in the large content
 /// viewer), as in the system's tab bar. Tapping the tab in front takes its stack back to its start.
@@ -71,9 +72,10 @@ struct PlaceTabBar: View {
     let layout: TabBarLayout
     let selection: Place
     var badges: [Place: Int] = [:]
-    /// The Search place's chosen side is Chat: its tab says "Chat" with the chat's symbol (also while another tab is in
-    /// front, so the tab does not change on coming back).
-    var searchShowsChat = false
+    /// The side each tab shows (`Place.tab`): the Inbox tab on its To-dos side says "To-dos" with the to-do's symbol,
+    /// the Search tab on its Chat side "Chat" with the chat's; also while another tab is in front, so the tab does not
+    /// change on coming back. A tab not in here shows its own place.
+    var sides: [Place: Place] = [:]
     var onSelect: (Place) -> Void
     var onAdd: () -> Void
     var onAddLongPress: () -> Void
@@ -120,11 +122,11 @@ struct PlaceTabBar: View {
     private func item(_ place: Place) -> some View {
         let chosen = place == selection
         let count = badges[place] ?? 0
-        let showsChat = place == .search && searchShowsChat
-        let title = place.tabTitle(showsChat: showsChat)
+        let side = sides[place] ?? place
+        let title = side.tabTitle
         return Button { onSelect(place) } label: {
             VStack(spacing: 3) {
-                place.tabIcon(chosen: chosen, showsChat: showsChat)
+                side.tabIcon(chosen: chosen)
                     .font(.system(size: 22, weight: .medium))
                     .frame(width: 30, height: 27)
                     .overlay(alignment: .topLeading) {
@@ -151,10 +153,10 @@ struct PlaceTabBar: View {
         .accessibilityLabel(title)
         .accessibilityValue(count > 0 ? "\(count)" : "")
         .accessibilityAddTraits(chosen ? [.isSelected] : [])
-        // The identifier keeps the place's own name ("TabSearch" on the Chat side too).
+        // The identifier keeps the place's own name ("TabInbox" on the To-dos side, "TabSearch" on the Chat side).
         .accessibilityIdentifier("Tab" + place.tabTitle)
         .accessibilityShowsLargeContentViewer {
-            Label { Text(title) } icon: { place.tabIcon(chosen: true) }
+            Label { Text(title) } icon: { side.tabIcon(chosen: true) }
         }
     }
 
@@ -188,20 +190,10 @@ extension Place {
         }
     }
 
-    /// The name in the phone's tab bar: the Search tab on its Chat side is "Chat".
-    func tabTitle(showsChat: Bool) -> String {
-        self == .search && showsChat ? Place.chat.tabTitle : tabTitle
-    }
-
-    /// The symbol, the chat's on the Chat side of the Search tab.
-    func tabSymbol(showsChat: Bool) -> String {
-        self == .search && showsChat ? Place.chat.tabSymbol : tabSymbol
-    }
-
     /// The tab's symbol: an SF Symbol, for Bowls a bowl of the app's own (`BowlPlace`, `BowlPlaceFill` when chosen:
     /// SF Symbols has no bowl), drawn as large as the folder it replaces.
     @ViewBuilder
-    func tabIcon(chosen: Bool, showsChat: Bool = false) -> some View {
+    func tabIcon(chosen: Bool) -> some View {
         if self == .bowls {
             Image(chosen ? Places.bowlsSymbol : "BowlPlace")
                 .renderingMode(.template)
@@ -210,7 +202,7 @@ extension Place {
                 .frame(width: 26, height: 22)
                 .accessibilityHidden(true)
         } else {
-            Image(systemName: tabSymbol(showsChat: showsChat))
+            Image(systemName: tabSymbol)
         }
     }
 

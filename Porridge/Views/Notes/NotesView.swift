@@ -304,7 +304,11 @@ struct NotesView: View {
         let showsBar = !isSelecting
         let room = showsBar && !keyboardShown ? max(0, layout.contentInset - bottomSafeArea) : 0
         let selected = place.tab
-        let badges: [Place: Int] = [.today: Places.todayCount(notes), .inbox: inboxCount]
+        // Each tab is named after the side it shows (To-dos, Chat), its badge counts that side: the Inbox tab on
+        // To-dos the open to-dos, as the iPad's sidebar row To-dos does.
+        let sides = Dictionary(uniqueKeysWithValues: Place.tabs.map { ($0, shown(in: $0)) })
+        let inboxBadge = sides[.inbox] == .todos ? Todos.folder(notes).open : inboxCount
+        let badges: [Place: Int] = [.today: Places.todayCount(notes), .inbox: inboxBadge]
         return TabView(selection: Binding(get: { place.tab }, set: { chooseTab($0) })) {
             ForEach(Place.tabs, id: \.self) { shown in
                 // The app's own bowl is an image, not an SF Symbol (`Places.bowlsSymbol`).
@@ -314,7 +318,7 @@ struct NotesView: View {
                             .toolbar(.hidden, for: .tabBar)
                     }
                 } else {
-                    Tab(shown.tabTitle(showsChat: searchTabShowsChat), systemImage: shown.tabSymbol(showsChat: searchTabShowsChat), value: shown) {
+                    Tab(sides[shown, default: shown].tabTitle, systemImage: sides[shown, default: shown].tabSymbol, value: shown) {
                         placeStack(shown)
                             .toolbar(.hidden, for: .tabBar)
                     }
@@ -334,7 +338,7 @@ struct NotesView: View {
             // Counted from the screen's bottom edge; the keyboard covers the bar instead of lifting it.
             if showsBar {
                 PlaceTabBar(
-                    layout: layout, selection: selected, badges: badges, searchShowsChat: searchTabShowsChat,
+                    layout: layout, selection: selected, badges: badges, sides: sides,
                     onSelect: { chooseTab($0) },
                     onAdd: { tapAdd() },
                     onAddLongPress: { longPressAdd() }
@@ -376,9 +380,6 @@ struct NotesView: View {
     }
 
     private var inboxCount: Int { Places.inboxCount(notes) }
-
-    /// The phone's last tab shows Chat (in front or left on its Chat side): it says "Chat" with the chat's symbol.
-    private var searchTabShowsChat: Bool { shown(in: .search) == .chat }
 
     /// Every page is a real page of the system's stack: it slides in, the swipe from the edge follows the finger,
     /// and what lies below keeps its scroll position.
@@ -1817,8 +1818,8 @@ struct NotesView: View {
         case .bowls: "Bowls"
         case .project: project(on: shown)?.name ?? "Bowl"
         case .inbox: "Inbox"
-        // The phone's Inbox tab keeps its name on the To-dos side (the tab says "Inbox" too); an iPad's own place.
-        case .todos: usesSystemBars ? "To-dos" : "Inbox"
+        // The phone's Inbox tab on its To-dos side is named after it (the tab says "To-dos" too), as Chat.
+        case .todos: "To-dos"
         case .today: todayDay.map { TodayDay.title($0) } ?? "Today"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Smart Filter"
         case .search: "Search"
@@ -1847,6 +1848,7 @@ struct NotesView: View {
         case .archive, .chat, .search, .smartFilter, .weeklyReview: .brandNavy
         case .trash: .red
         case .today: .brandNavy
+        case .todos: .brandTask
         default: .brandSky
         }
     }
@@ -1867,7 +1869,8 @@ struct NotesView: View {
         switch shown {
         case .bowls: Places.bowlsSymbol
         case .project: "folder.fill"
-        case .inbox, .todos: "tray.fill"
+        case .inbox: "tray.fill"
+        case .todos: Place.todos.tabSymbol
         case .today: "calendar"
         case .smartFilter: "line.3.horizontal.decrease"
         case .search: "magnifyingglass"

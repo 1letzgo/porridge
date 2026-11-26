@@ -127,8 +127,12 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(ListPage.chat.place.tab, .search)
         XCTAssertEqual(ListPage.todos.place.tab, .inbox)
         XCTAssertEqual(ListPage.search.place, .search)
-        XCTAssertEqual(Place.search.tabTitle(showsChat: true), "Chat")
-        XCTAssertEqual(Place.search.tabTitle(showsChat: false), "Search")
+        // A tab is named after the side it shows (`PlaceTabBar.sides`).
+        XCTAssertEqual(SearchSide.chat.place.tabTitle, "Chat")
+        XCTAssertEqual(SearchSide.search.place.tabTitle, "Search")
+        XCTAssertEqual(InboxSide.todos.place.tabTitle, "To-dos")
+        XCTAssertEqual(InboxSide.todos.place.tabSymbol, "checklist")
+        XCTAssertEqual(InboxSide.inbox.place.tabTitle, "Inbox")
         XCTAssertEqual(SearchSide.allCases, [.search, .chat])
         XCTAssertEqual(SearchSide(rawValue: "chat"), .chat, "the side kept in UserDefaults reads back")
     }
