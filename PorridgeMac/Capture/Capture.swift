@@ -36,6 +36,19 @@ enum Capture {
         }
     }
 
+    #if DEBUG
+    /// `DebugDriver`'s `replay-live`: `file` recorded as a meeting with the Mac's sound (`MeetingRecorder.replay`);
+    /// after Stop it becomes a meeting as a real recording does, without a bowl.
+    static func replay(_ file: URL) {
+        let title = "Replay \(file.deletingPathExtension().lastPathComponent)"
+        let controller = MainWindowController.frontIfAny
+        let state = controller?.state
+        MeetingRecorder.replay(file, title: title, in: controller) { finished in
+            addMeeting(finished, title: title, project: nil, state: state)
+        }
+    }
+    #endif
+
     private static func addMeeting(_ finished: MeetingRecorder.Finished, title: String?, appointment: CalendarAppointment? = nil, project: String?, state: WindowState?) {
         let result = finished.result
         let note = Note()

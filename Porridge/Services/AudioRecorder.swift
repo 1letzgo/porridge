@@ -189,6 +189,56 @@ final class AudioRecorder {
         observeInterruptions()
     }
 
+    #if DEBUG
+    /// The Mac's `replay-live`: a recording of the Mac's sound with the microphone, but nothing is opened; the
+    /// returned function takes the replayed stereo buffers (left the microphone, right the Mac's sound, at
+    /// `sampleRate`) in place of the tap's, and handles them as the tap does (file, levels, `onBuffer`,
+    /// `onChannelBuffers`). The file is then marked as such a recording, so it is processed like one after Stop.
+    func startReplay(sampleRate: Double) throws -> @Sendable (AVAudioPCMBuffer) -> Void {
+        guard !isRecording else { throw RecorderError.noInput }
+        inputName = SystemAudioMix.inputName
+        isExternal = false
+        includesSystemAudio = true
+        secondChannelError = nil
+        channelCount = 2
+        isSplitStereo = true
+        levels = [0, 0]
+        let name = AudioStore.newFileName()
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 2,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+        ]
+        let file = try AVAudioFile(forWriting: AudioStore.localURL(for: name), settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let writer = TapWriter(file: file, channels: 2) { [weak self] in
+            Task { @MainActor in if self?.isRecording == true { self?.onInterrupted?() } }
+        }
+        self.writer = writer
+        fileName = name
+        let tap = Self.makeTapBlock(writer: writer, second: nil, onBuffer: onBuffer, onChannels: onChannelBuffers) { [weak self] levels in
+            Task { @MainActor in if self?.isPaused == false { self?.levels = levels } }
+        }
+        isRecording = true
+        isPaused = false
+        isReplaying = true
+        recordedBeforePause = 0
+        startDate = Date()
+        elapsed = 0
+        ticker = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard let self else { return }
+                self.elapsed = self.recordedTime
+            }
+        }
+        return { buffer in tap(buffer, AVAudioTime(hostTime: mach_absolute_time())) }
+    }
+
+    /// Recording a replay (`startReplay`): no engine to restart on resume.
+    @ObservationIgnored private var isReplaying = false
+    #endif
+
     /// The microphone keeps running and its sound is dropped: iOS may suspend an app in the background that
     /// stops recording, and would not let it start again from there. So the file has no gap and no silence.
     func pause() {
@@ -204,7 +254,12 @@ final class AudioRecorder {
     func resume() {
         guard isRecording, isPaused, !isPausedForCall else { return }
         // After a call that could not restart the microphone on its own.
-        guard restartEngine() else { return }
+        #if DEBUG
+        let restarted = isReplaying || restartEngine()
+        #else
+        let restarted = restartEngine()
+        #endif
+        guard restarted else { return }
         resumeAfterCall = false
         startDate = Date()
         isPaused = false
@@ -228,6 +283,9 @@ final class AudioRecorder {
         writer?.close()
         writer = nil
         isRecording = false
+        #if DEBUG
+        isReplaying = false
+        #endif
         observers.forEach(NotificationCenter.default.removeObserver)
         observers.removeAll()
         #if os(iOS)

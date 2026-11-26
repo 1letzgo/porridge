@@ -10,7 +10,8 @@ import SwiftData
 /// `search <text>`, `dump`, `shot <path.png>`, `key <window title>` (orders a window front), `title <text>` / `body <text>` (types
 /// into the open note), `settings <tab>`, `settings-rows` (the open Settings tab's rows), `rewrite-bar` (✦ of the format bar,
 /// logging what it showed), `dismiss`, `import-meeting <file>` (a stereo file as a meeting with the Mac's sound),
-/// `speakers <title>` (that meeting's speakers and transcript). Commands also run while a menu or a modal alert is open.
+/// `speakers <title>` (that meeting's speakers and transcript, while it is processed too), `replay-live <file>`,
+/// `live-dump`, `stop-recording`, `discard-recording`. Commands also run while a menu or a modal alert is open.
 @MainActor
 enum DebugDriver {
     /// The file the commands are read from (one per line), and the file answers go to.
@@ -172,12 +173,16 @@ enum DebugDriver {
             for note in library.notes where note.title.hasPrefix(argument + " ") { NoteStore.deletePermanently(note, in: library.context) }
             for project in library.projects where project.name == argument { Projects.delete(project, in: library.context) }
         case "replay-live":
-            // A stereo file (microphone left, Mac's sound right) in real time into the live transcript of a new
-            // recording; `live-dump` lists what it heard.
-            MeetingRecorder.replay(URL(fileURLWithPath: (argument as NSString).expandingTildeInPath))
+            // A stereo file (microphone left, Mac's sound right) in real time as a new recording with the Mac's sound
+            // (file, live transcript, journal; no microphone); `live-dump` lists what it heard, `stop-recording`
+            // ends it as Stop does ("Replay <file name>").
+            Capture.replay(URL(fileURLWithPath: (argument as NSString).expandingTildeInPath))
             log("replay-live: \(argument)")
         case "live-dump":
             log(MeetingRecorder.liveLines.joined(separator: "\n"))
+        case "stop-recording":
+            // The running recording (a replay too) ends as Stop does: the meeting is made and processed.
+            log(MeetingRecorder.stopCurrent() ? "stop-recording: stopped" : "stop-recording: no recording")
         case "discard-recording":
             // The running recording (a replay too) is discarded as Discard… does, without asking.
             log(MeetingRecorder.discardCurrent() ? "discard-recording: discarded" : "discard-recording: no recording")
@@ -647,8 +652,10 @@ enum DebugDriver {
             }
         case "speakers":
             // `speakers <title>`: the meeting's state, speakers (id, name, seconds of voice) and transcript by speaker.
-            guard let note = library.notes.first(where: { $0.title == argument && !$0.isDeleted }) else { log("speakers: none"); return }
-            log("speakers: \(note.title) status=\(note.status.rawValue) mode=\(note.speakerMode.rawValue) error=\(note.errorMessage ?? "none")")
+            // The newest of that title (a replay repeated), also while it is processed (the live transcript then).
+            guard let note = library.notes.filter({ $0.title == argument && !$0.isDeleted }).max(by: { $0.createdAt < $1.createdAt })
+            else { log("speakers: none"); return }
+            log("speakers: \(note.title) status=\(note.status.rawValue) stage=\(library.processing.stages[note.id] ?? "none") mode=\(note.speakerMode.rawValue) error=\(note.errorMessage ?? "none")")
             for speaker in note.speakers {
                 log("  \(speaker.id) \(speaker.name) voice=\(String(format: "%.1f", speaker.voiceSeconds ?? 0))s profile=\(speaker.profileID == nil ? "no" : "yes")")
             }

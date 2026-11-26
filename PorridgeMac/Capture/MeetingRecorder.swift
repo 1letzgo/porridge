@@ -28,15 +28,24 @@ enum MeetingRecorder {
     static var elapsed: TimeInterval? { current?.elapsed }
 
     #if DEBUG
-    /// `DebugDriver`'s `replay-live`: records as usual, but the live transcript hears `file` (a stereo file: the
-    /// microphone on the left, the Mac's sound on the right) in real time instead of the microphone.
-    static func replay(_ file: URL) {
+    /// `DebugDriver`'s `replay-live`: a meeting recorded with the Mac's sound, from `file` (a stereo file: the
+    /// microphone on the left, the Mac's sound on the right) played in real time instead of the microphone: the
+    /// recording, the live transcript and the journal get it. Stop makes the meeting (`onFinish`) and it is
+    /// processed like a real one.
+    static func replay(_ file: URL, title: String, in controller: MainWindowController?, onFinish: @escaping (Finished) -> Void) {
         RecordingViewController.nextReplayFile = file
-        start(title: "Replay \(file.deletingPathExtension().lastPathComponent)", in: MainWindowController.frontIfAny) { _ in }
+        start(title: title, in: controller, onFinish: onFinish)
     }
 
     /// `DebugDriver`'s `live-dump`: the live utterances of the running recording, one per line.
     static var liveLines: [String] { current?.liveLines ?? [] }
+
+    /// `DebugDriver`'s `stop-recording`: ends the running recording (a replay too) as Stop does. False when none runs.
+    static func stopCurrent() -> Bool {
+        guard let current else { return false }
+        current.stop()
+        return true
+    }
 
     /// `DebugDriver`'s `discard-recording`: discards the running recording (a replay too) as Discard… does, without
     /// asking. False when none runs.
@@ -174,6 +183,7 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
     static var nextReplayFile: URL?
     private let replayFile: URL?
     private var replayTask: Task<Void, Never>?
+    private var replayFeed: (@Sendable (AVAudioPCMBuffer) -> Void)?
     #endif
 
     private let inputLabel = NSTextField.label(font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), color: .controlAccentColor)
@@ -202,6 +212,14 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
         super.init(nibName: nil, bundle: nil)
         self.title = title.map { "Recording · \($0)" } ?? "Recording"
         // Meetings only: the Mac's sound on the right channel, the microphone (the user) on the left.
+        #if DEBUG
+        if replayFile != nil {
+            // Recorded as such a meeting, from the file (`AudioRecorder.startReplay`), whatever the setting says.
+            nameFields[0].stringValue = AppSettings.myName ?? "Me"
+            nameFields[1].stringValue = SystemAudioMix.othersName
+            return
+        }
+        #endif
         if MeetingAudio.includesSystemAudio {
             recorder.secondChannel = SystemAudioTap()
             nameFields[0].stringValue = AppSettings.myName ?? "Me"
@@ -336,12 +354,17 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
             // A call: the microphone and the Mac's sound each get a recognizer of their own (the user and the others).
             recorder.onChannelBuffers = live.feedChannels
             #if DEBUG
-            if replayFile != nil {
-                recorder.onBuffer = { buffer in journal.append(buffer) }
-                recorder.onChannelBuffers = nil
+            if let replayFile {
+                // The file takes the microphone's and the Mac's place: in the recording, the live transcript and
+                // the journal alike, so what is processed after Stop is what was heard live. No microphone opens.
+                let sampleRate = try AVAudioFile(forReading: replayFile).processingFormat.sampleRate
+                replayFeed = try recorder.startReplay(sampleRate: sampleRate)
+            } else {
+                try recorder.start()
             }
-            #endif
+            #else
             try recorder.start()
+            #endif
             journal.setUnfinishedFile(recorder.fileName)
             LiveRecording.start(kind: .meeting, title: "Meeting", onTogglePause: { [weak self] in self?.togglePause() }) { [weak self] in self?.stop() }
             observers.append(Observing { [weak self] in self?.render() })
@@ -355,7 +378,7 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
             NotificationCenter.default.addObserver(self, selector: #selector(stop), name: .porridgeStopRecording, object: nil)
             await live.start(language: AppSettings.language, layout: liveLayout, knownVoices: LiveSpeakers.knownVoices(in: Library.shared.context))
             #if DEBUG
-            if let replayFile { replay(replayFile) }
+            if let replayFile, let replayFeed { replay(replayFile, into: replayFeed) }
             #endif
         } catch {
             journal?.finish()
@@ -547,12 +570,12 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
     /// `RollingRecognizer`, so the last piece is confirmed.
     private static let replayTailSeconds = 2.5
 
-    /// Feeds the file to the live transcript at the pace it plays.
-    private func replay(_ url: URL) {
-        let channels = live.feedChannels
+    /// Feeds the file to the recording (and so to the live transcript and the journal) at the pace it plays.
+    private func replay(_ url: URL, into feed: @escaping @Sendable (AVAudioPCMBuffer) -> Void) {
         let tail = Self.replayTailSeconds
         replayTask = Task.detached {
-            guard let file = try? AVAudioFile(forReading: url) else {
+            guard let file = try? AVAudioFile(forReading: url),
+                  let stereo = AVAudioFormat(standardFormatWithSampleRate: file.processingFormat.sampleRate, channels: 2) else {
                 print("[live] replay: cannot read \(url.path)")
                 return
             }
@@ -563,9 +586,13 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
             while !Task.isCancelled {
                 guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096),
                       (try? file.read(into: buffer, frameCount: 4096)) != nil, buffer.frameLength > 0 else { break }
-                if let left = AudioRecorder.channelCopy(of: buffer, channel: 0),
-                   let right = AudioRecorder.channelCopy(of: buffer, channel: min(1, last)) {
-                    channels(left, right)
+                // Left the microphone, right the Mac's sound (a mono file on both).
+                if let out = AVAudioPCMBuffer(pcmFormat: stereo, frameCapacity: buffer.frameLength),
+                   let src = buffer.floatChannelData, let dst = out.floatChannelData {
+                    out.frameLength = buffer.frameLength
+                    dst[0].update(from: src[0], count: Int(buffer.frameLength))
+                    dst[1].update(from: src[min(1, last)], count: Int(buffer.frameLength))
+                    feed(out)
                 }
                 played += Double(buffer.frameLength) / format.sampleRate
                 let wait = played - Date().timeIntervalSince(began)
@@ -576,15 +603,12 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
             // was decoded a second before, or not there at all, until Stop).
             let fileSeconds = played
             while !Task.isCancelled, played < fileSeconds + tail {
-                guard let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096) else { break }
+                guard let silence = AVAudioPCMBuffer(pcmFormat: stereo, frameCapacity: 4096) else { break }
                 silence.frameLength = 4096
-                for channel in 0..<Int(format.channelCount) {
+                for channel in 0..<2 {
                     silence.floatChannelData?[channel].update(repeating: 0, count: 4096)
                 }
-                if let left = AudioRecorder.channelCopy(of: silence, channel: 0),
-                   let right = AudioRecorder.channelCopy(of: silence, channel: min(1, last)) {
-                    channels(left, right)
-                }
+                feed(silence)
                 played += 4096 / format.sampleRate
                 let wait = played - Date().timeIntervalSince(began)
                 if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
