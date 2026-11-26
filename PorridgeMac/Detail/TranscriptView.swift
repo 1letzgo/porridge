@@ -1,7 +1,8 @@
 import AppKit
 
-/// The transcript of a meeting: one row per passage with speaker, time and text. A click plays the recording from
-/// there; the passage being played is marked. A click on a speaker's name names it (`onSpeaker`); the context menu
+/// The transcript of a meeting as chat bubbles (`TranscriptBubbles`): one per passage, the user's on the right, the
+/// others' on the left, the speaker's name where the speaker changes. A click plays the recording from there; the
+/// passage being played is marked. A click on a speaker's name names it (`onSpeaker`); the context menu
 /// copies a passage or gives it to another speaker.
 final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     var onPlay: ((TranscriptSegment) -> Void)?
@@ -15,6 +16,7 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
     private let message = NSTextField.label(color: .secondaryLabelColor, lines: 0)
     private var segments: [TranscriptSegment] = []
     private var speakers: [Speaker] = []
+    private var styles: [TranscriptBubbles.RowStyle] = []
     private var activeRow = -1
     private var canPlay = false
 
@@ -27,7 +29,7 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
         table.style = .plain
         table.usesAutomaticRowHeights = true
         table.selectionHighlightStyle = .none
-        table.intercellSpacing = NSSize(width: 0, height: 10)
+        table.intercellSpacing = NSSize(width: 0, height: 4)
         table.backgroundColor = .clear
         table.dataSource = self
         table.delegate = self
@@ -64,6 +66,7 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
         message.isHidden = !segments.isEmpty
         scroll.isHidden = segments.isEmpty
         if changed {
+            styles = TranscriptBubbles.rows(speakerIDs: segments.map(\.speakerId), meIDs: TranscriptBubbles.meIDs(in: speakers))
             activeRow = -1
             table.reloadData()
         }
@@ -87,7 +90,8 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
         let cell = tableView.makeView(withIdentifier: SegmentCell.identifier, owner: nil) as? SegmentCell ?? SegmentCell()
         let segment = segments[row]
         let speaker = speakers.first { $0.id == segment.speakerId }
-        cell.show(segment, speaker: speaker, canPlay: canPlay)
+        let style = row < styles.count ? styles[row] : TranscriptBubbles.RowStyle(side: .leading, showsName: true)
+        cell.show(segment, speaker: speaker, style: style, canPlay: canPlay, width: tableView.bounds.width)
         cell.onName = canAssign && speaker != nil ? { [weak self] anchor in
             guard let self, let speaker else { return }
             self.onSpeaker?(segment, speaker, anchor)
@@ -125,7 +129,8 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
     }
 }
 
-/// One passage: a tint of the speaker's color, the speaker and the time on top, the text below.
+/// One passage as a bubble on its speaker's side, at most `TranscriptBubbles.maximumWidth` of the width: a tint of
+/// the speaker's color, the speaker (where it changes) and the time on top, the text below.
 private final class SegmentCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("segment")
     private let box = NSView()
@@ -137,6 +142,10 @@ private final class SegmentCell: NSTableCellView {
     private let time = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold), color: .secondaryLabelColor)
     private let text = NSTextField(wrappingLabelWithString: "")
     private var tint: NSColor = .systemGray
+    private var leadingEdge: NSLayoutConstraint!
+    private var trailingEdge: NSLayoutConstraint!
+    private var top: NSLayoutConstraint!
+    private static let inset: CGFloat = 14
     var isActive = false { didSet { updateLayer() } }
 
     init() {
@@ -144,7 +153,7 @@ private final class SegmentCell: NSTableCellView {
         identifier = Self.identifier
         wantsLayer = true
         box.wantsLayer = true
-        box.layer?.cornerRadius = 12
+        box.layer?.cornerRadius = 14
         box.layer?.cornerCurve = .continuous
         box.translatesAutoresizingMaskIntoConstraints = false
         dot.wantsLayer = true
@@ -168,20 +177,30 @@ private final class SegmentCell: NSTableCellView {
         let stack = NSStackView.vertical([head, text], spacing: 6)
         box.addSubview(stack)
         addSubview(box)
+        leadingEdge = box.leadingAnchor.constraint(equalTo: leadingAnchor)
+        trailingEdge = box.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2)
+        top = box.topAnchor.constraint(equalTo: topAnchor)
+        // As narrow as its text allows: a short passage is a small bubble.
+        let compact = box.widthAnchor.constraint(equalToConstant: 0)
+        compact.priority = NSLayoutConstraint.Priority(200)
         NSLayoutConstraint.activate([
             dot.widthAnchor.constraint(equalToConstant: 10),
             dot.heightAnchor.constraint(equalToConstant: 10),
             me.widthAnchor.constraint(equalToConstant: 26),
             head.widthAnchor.constraint(equalTo: stack.widthAnchor),
             text.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 14),
-            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -14),
-            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
+            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: Self.inset),
+            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -Self.inset),
+            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 10),
             stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -12),
-            box.leadingAnchor.constraint(equalTo: leadingAnchor),
-            box.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
-            box.topAnchor.constraint(equalTo: topAnchor),
+            box.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor),
+            box.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
+            box.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, multiplier: TranscriptBubbles.maximumWidth),
+            box.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            compact,
+            top,
             box.bottomAnchor.constraint(equalTo: bottomAnchor),
+            leadingEdge,
         ])
     }
 
@@ -191,7 +210,7 @@ private final class SegmentCell: NSTableCellView {
     override var wantsUpdateLayer: Bool { true }
 
     override func updateLayer() {
-        box.layer?.backgroundColor = (isActive ? NSColor.brandSky.withAlphaComponent(0.22) : tint.withAlphaComponent(0.08)).resolved(for: self)
+        box.layer?.backgroundColor = (isActive ? NSColor.brandSky.withAlphaComponent(0.22) : tint.withAlphaComponent(0.1)).resolved(for: self)
         dot.layer?.backgroundColor = tint.resolved(for: self)
     }
 
@@ -200,11 +219,33 @@ private final class SegmentCell: NSTableCellView {
         updateLayer()
     }
 
+    /// A wrapping label needs the width it may take to know its height.
+    override func layout() {
+        fitText(to: bounds.width)
+        super.layout()
+    }
+
+    private func fitText(to width: CGFloat) {
+        guard width > 0 else { return }
+        let available = max(80, floor(width * TranscriptBubbles.maximumWidth) - 2 * Self.inset)
+        if abs(text.preferredMaxLayoutWidth - available) > 0.5 {
+            text.preferredMaxLayoutWidth = available
+            text.invalidateIntrinsicContentSize()
+        }
+    }
+
     @objc private func nameClicked() { onName?(name) }
 
-    func show(_ segment: TranscriptSegment, speaker: Speaker?, canPlay: Bool) {
+    func show(_ segment: TranscriptSegment, speaker: Speaker?, style: TranscriptBubbles.RowStyle, canPlay: Bool, width: CGFloat) {
         tint = speaker.map { NSColor.speaker($0.colorIndex) } ?? .systemGray
-        dot.isHidden = speaker == nil
+        let trailing = style.side == .trailing
+        leadingEdge.isActive = !trailing
+        trailingEdge.isActive = trailing
+        // A new speaker gets a little more room above.
+        top.constant = style.showsName ? 8 : 0
+        let showsName = style.showsName && speaker != nil
+        dot.isHidden = !showsName
+        name.isHidden = !showsName
         let title = NSMutableAttributedString(string: speaker?.name ?? "", attributes: [
             .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: NSColor.brandNavy,
         ])
@@ -217,12 +258,14 @@ private final class SegmentCell: NSTableCellView {
         name.attributedTitle = title
         name.toolTip = speaker.map { String(localized: "Name \($0.name)") }
         name.setAccessibilityLabel(speaker.map { String(localized: "Speaker \($0.name)") })
-        me.isHidden = !(speaker.map(AppSettings.isMe) ?? false)
+        me.isHidden = !(showsName && (speaker.map(AppSettings.isMe) ?? false))
         time.stringValue = segment.start.clockString
         text.stringValue = segment.text
+        fitText(to: width)
         updateLayer()
         setAccessibilityElement(true)
         setAccessibilityRole(canPlay ? .button : .group)
+        // The name is read for every passage, also where it is not shown.
         setAccessibilityLabel([speaker?.name, segment.start.clockString, segment.text].compactMap { $0 }.joined(separator: ", "))
         setAccessibilityHelp(canPlay ? "Plays the recording from here." : "")
     }

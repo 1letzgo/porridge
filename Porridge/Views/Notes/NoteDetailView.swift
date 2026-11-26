@@ -885,13 +885,15 @@ struct NoteDetailView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(segments) { segment in
+                let styles = TranscriptBubbles.rows(speakerIDs: segments.map(\.speakerId), meIDs: TranscriptBubbles.meIDs(in: speakers))
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
                         let speaker = speakers.first { $0.id == segment.speakerId }
                         SegmentRow(
                             segment: segment,
                             speaker: speaker,
                             isActive: player.isPlaying && player.currentTime >= segment.start && player.currentTime < segment.end,
+                            style: styles[index],
                             speakerMenu: isLocked || speaker == nil ? nil : {
                                 // A tap on the name: who the speaker is, or only this line to another one.
                                 AnyView(SpeakerMenuItems(
