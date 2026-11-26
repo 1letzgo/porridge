@@ -36,7 +36,8 @@ struct NotesView: View {
     @State private var paths: [Place: [ListRoute]] = [:]
     /// A new note that is not saved yet; it is stored when it gets its first content.
     @State private var draft: Note?
-    /// A new note made from the keyboard (⌘N, ⇧⌘N): its title takes the focus and it does not start recording.
+    /// A new note whose title takes the focus and that does not start recording: made from the keyboard (⌘N, ⇧⌘N),
+    /// or with the Add sheet's Note or To-do while new notes do not record (`addTyped`).
     @State private var typedDraftID: UUID?
     /// iPad: which columns of the split view show (sidebar, list, entry). Set by the window's width
     /// (`fitColumns`): all three where they fit, else the list and the entry with the sidebar shown on demand; the
@@ -1730,8 +1731,8 @@ struct NotesView: View {
         guard let choice = pendingAdd else { return }
         pendingAdd = nil
         switch choice {
-        case .note: addNote()
-        case .todo: addNote(todo: true)
+        case .note: addTyped(todo: false)
+        case .todo: addTyped(todo: true)
         case .meeting: showCalendar = true
         case .link: showAddLink = true
         case .scan: showScanner = true
@@ -1749,6 +1750,15 @@ struct NotesView: View {
             projectName = ""
             showNewProject = true
         }
+    }
+
+    /// The Add sheet's Note or To-do: the new entry opens with the keyboard in its title, as after ⌘N, so typing goes
+    /// into it (it had opened without any focus: "+" › To-do on an iPad, round 10, B1). Where new notes record
+    /// (Settings › Record New Notes Automatically) the note records instead, as before. Runs once the sheet or the
+    /// popover is gone (`runPendingAdd`), so nothing takes the focus back.
+    private func addTyped(todo: Bool) {
+        addNote(todo: todo)
+        if !AppSettings.recordsNewNotes { typedDraftID = draft?.id }
     }
 
     /// The previous and next day of Today as one pill at the right of the bar (phone). The day is view state (nil is
