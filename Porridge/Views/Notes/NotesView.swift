@@ -819,9 +819,9 @@ struct NotesView: View {
     /// "+" is an item of its own with the highest visibility priority (iOS 27), so the system never moves it into
     /// the overflow menu; Today's day pair ‹ › is one item (a toolbar item of its own, so the system cannot take one
     /// chevron and leave the other) right below it, "Today" (another day) below that, the Weekly Review the lowest.
-    /// Today's bar also makes room itself (`todayBarRoom`): what would not fit is left out rather than put into the
-    /// overflow menu, whose ⋯ takes a button's room as well (in a window the window's buttons and the sidebar button
-    /// stand in the same bar: "‹ + ⋯" was left of "‹ › Weekly Review +").
+    /// "Today" (another day) is always there, a symbol where the room is small (`todayBarRoom`); the Weekly Review
+    /// goes into the system's overflow menu ⋯ where it does not fit, never out of reach (in a window of 829 pt both
+    /// had been left out: only "‹ › +"). Before iOS 27 (no priorities) Today's bar still leaves them out by its room.
     @ToolbarContentBuilder
     private func pageToolbar(_ shown: ListPage) -> some ToolbarContent {
         if #available(iOS 27.0, *) {
@@ -839,7 +839,7 @@ struct NotesView: View {
                 }
                 .visibilityPriority(.high)
             }
-            if shown == .today, showsPadWeeklyReview {
+            if shown == .today {
                 ToolbarItem(placement: .topBarTrailing) {
                     weeklyReviewButton
                 }
@@ -899,20 +899,23 @@ struct NotesView: View {
         return windowArea.size.width < bounds.width - 1 || windowArea.size.height < bounds.height - 1
     }
 
-    /// iPad, Today on another day: "Today" brings back today. As the word from 300 pt of room, as a symbol from
-    /// 235 pt or with the largest text sizes (from xxxLarge); with less room it gives way to the day pair (today then
-    /// comes back with ⌘1, View › Today, or the day pair's long press).
+    /// iPad, Today on another day: "Today" brings back today. As the word from 300 pt of room, else as a symbol
+    /// (about 44 pt), also with the largest text sizes (from xxxLarge). iOS 27: always in the bar (its priority is
+    /// between the day pair's and the Weekly Review's; a window of 829 pt has room for it left of ‹ ›). Before iOS 27
+    /// only from 235 pt of room (today also comes back with ⌘1, View › Today, or the day pair's long press).
     private var showsPadTodayButton: Bool {
-        todayDay != nil && (listColumnWidth == 0 || todayBarRoom >= 235)
+        guard todayDay != nil else { return false }
+        if #available(iOS 27.0, *) { return true }
+        return listColumnWidth == 0 || todayBarRoom >= 235
     }
 
     private var todayButtonIsSymbol: Bool {
         todayDay != nil && (todayBarRoom < 300 || typeSize >= .xxxLarge)
     }
 
-    /// iPad: the Weekly Review in Today's bar. On today from 235 pt of room; on another day ("Today" there too) from
-    /// 400 pt and without the largest text sizes. Else it is not in the bar (View › Weekly Review and Search's Go To
-    /// have it).
+    /// iPad before iOS 27: the Weekly Review in Today's bar. On today from 235 pt of room; on another day ("Today"
+    /// there too) from 400 pt and without the largest text sizes. Else it is not in the bar (View › Weekly Review and
+    /// Search's Go To have it). From iOS 27 it is always an item, with the lowest priority (the overflow menu).
     private var showsPadWeeklyReview: Bool {
         guard listColumnWidth > 0 else { return true }
         if todayDay == nil { return todayBarRoom >= 235 }
