@@ -821,7 +821,8 @@ struct NotesView: View {
     /// chevron and leave the other) right below it, "Today" (another day) below that, the Weekly Review the lowest.
     /// "Today" (another day) is always there, a symbol where the room is small (`todayBarRoom`); the Weekly Review
     /// goes into the system's overflow menu ⋯ where it does not fit, never out of reach (in a window of 829 pt both
-    /// had been left out: only "‹ › +"). Before iOS 27 (no priorities) Today's bar still leaves them out by its room.
+    /// had been left out: only "‹ › +"); on another day in a narrow bar it leaves the bar so "Today" keeps its place
+    /// (`showsPadWeeklyReviewItem`). Before iOS 27 (no priorities) Today's bar still leaves them out by its room.
     @ToolbarContentBuilder
     private func pageToolbar(_ shown: ListPage) -> some ToolbarContent {
         if #available(iOS 27.0, *) {
@@ -839,7 +840,7 @@ struct NotesView: View {
                 }
                 .visibilityPriority(.high)
             }
-            if shown == .today {
+            if shown == .today, showsPadWeeklyReviewItem {
                 ToolbarItem(placement: .topBarTrailing) {
                     weeklyReviewButton
                 }
@@ -922,6 +923,16 @@ struct NotesView: View {
         return todayBarRoom >= 400 && !typeSize.isAccessibilitySize
     }
 
+    /// iPad, iOS 27: the Weekly Review as a bar item (lowest priority, into the overflow menu ⋯ where it does not
+    /// fit). On another day only from 280 pt of room: the bar's trailing end holds three glass items in a window of
+    /// 829–968 pt (about 218 pt: ‹ › 84, "+" 45, a symbol or ⋯ 45, with their gaps), and the overflow menu is an item
+    /// itself, so with the Weekly Review in ⋯ "Today" went into ⋯ too ("‹ › + ⋯"). Below 280 pt the bar is
+    /// "↺ ‹ › +" and the Weekly Review is in the day pair's long press, View › Weekly Review, Search's Go To and in
+    /// today's bar. From 280 pt the four items fit ("Today ‹ › Weekly Review +" in landscape, 340 pt).
+    private var showsPadWeeklyReviewItem: Bool {
+        todayDay == nil || listColumnWidth == 0 || todayBarRoom >= 280
+    }
+
     /// iPad: "Today", back from another day (the phone taps the title for it).
     private var backToTodayButton: some View {
         Button { withAnimation(.snappy) { todayDay = nil } } label: {
@@ -937,20 +948,29 @@ struct NotesView: View {
     }
 
     /// iPad: the previous and the next day as one toolbar item (one glass capsule), so they stay together; its long
-    /// press has "Today" on another day.
+    /// press has "Today" and the Weekly Review on another day. The chevrons keep the size of the bar's other symbols
+    /// (at most the `.large` text size, the large content viewer beyond), as the system's bar buttons do: grown with
+    /// the accessibility sizes the pair no longer fit a window's bar beside "+" and ⋯, and a custom view that does
+    /// not fit is not put into the overflow menu, it is left out (round 8: only "+ ⋯" at accessibility-large).
     private var padDayPair: some View {
         HStack(spacing: 0) {
             dayButton(-1, inPill: true)
+                .accessibilityShowsLargeContentViewer()
             dayButton(1, inPill: true)
+                .accessibilityShowsLargeContentViewer()
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.plain)
         .font(.body.weight(.semibold))
         .foregroundStyle(.primary)
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .contextMenu {
             if todayDay != nil {
                 Button { withAnimation(.snappy) { todayDay = nil } } label: {
                     Label("Today", systemImage: "arrow.uturn.backward.circle")
+                }
+                Button { go(.weeklyReview) } label: {
+                    Label("Weekly Review", systemImage: "calendar.badge.checkmark")
                 }
             }
         }
