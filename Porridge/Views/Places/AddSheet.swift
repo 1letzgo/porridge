@@ -22,18 +22,23 @@ struct AddSheet: View {
     @State private var showTemplates = false
     private let projects: [NoteFolder]
     /// iPad of regular width: shown as a popover at "+". It has no Close (a tap outside closes it) and is as high as
-    /// its content, up to `maxPopoverHeight` (what the window leaves below "+"), scrolling beyond.
+    /// its content, down to at most `popoverBottom` (less a margin), scrolling beyond.
     private let inPopover: Bool
-    private let maxPopoverHeight: CGFloat
+    /// Popover: the lowest point of the window it may reach, in the window's coordinates (the window's height less the
+    /// home indicator's safe area), and where it is expected to start until its own top is measured (iPadOS 26 lays a
+    /// popover from a bar button over the button, just below the status bar: y 32 in an 834 pt window).
+    private let popoverBottom: CGFloat
+    private let expectedPopoverTop: CGFloat
     /// The list's whole height with its bar (popover only), measured. Until then (and while rows below the popover's
     /// edge are only estimated by the list) the popover takes its highest height, so every row that fits is laid out
     /// and measured.
     @State private var contentHeight: CGFloat = 0
-    /// Popover: where each row ends in the window, measured while the list is not scrolled (less `listTop`: from the
-    /// top of the list's frame). Where the
-    /// content is higher than the window leaves, the popover ends at the last row's end that fits (no row cut).
+    /// Popover: where each row ends in the window, measured while the list is not scrolled. Where the content is
+    /// higher than the room, the popover ends inside a row (it shows that the list scrolls), never just at a row's end
+    /// (a card ending at the popover's edge looked like the end of the sheet).
     @State private var rowEnds: [String: CGFloat] = [:]
-    /// Popover: the list's top in the window and how far it is scrolled from its start (rows are measured at its start).
+    /// Popover: the list's top in the window (the popover's own top) and how far it is scrolled from its start (rows
+    /// are measured at its start).
     @State private var listTop: CGFloat = 0
     @State private var scrolled: CGFloat = 0
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -42,14 +47,17 @@ struct AddSheet: View {
     /// The popover's width, and its highest height while the window's is not known (the rest scrolls).
     static let popoverWidth: CGFloat = 380
     static let defaultMaxPopoverHeight: CGFloat = 640
+    /// The popover's margin to `popoverBottom`.
+    private static let popoverBottomMargin: CGFloat = 12
 
     init(
-        into: String?, projects: [NoteFolder], inPopover: Bool = false, maxPopoverHeight: CGFloat = AddSheet.defaultMaxPopoverHeight,
+        into: String?, projects: [NoteFolder], inPopover: Bool = false, popoverBottom: CGFloat = 0, expectedPopoverTop: CGFloat = 32,
         onPick: @escaping (AddChoice, String?) -> Void
     ) {
         self.projects = projects
         self.inPopover = inPopover
-        self.maxPopoverHeight = maxPopoverHeight
+        self.popoverBottom = popoverBottom
+        self.expectedPopoverTop = expectedPopoverTop
         self.onPick = onPick
         _target = State(initialValue: into)
     }
@@ -95,16 +103,16 @@ struct AddSheet: View {
                     // The four kinds side by side; with the largest text sizes two by two, so their words stay whole.
                     Grid(horizontalSpacing: 10, verticalSpacing: 12) {
                         if typeSize.isAccessibilitySize {
-                            GridRow {
+                            GridRow(alignment: .top) {
                                 kind("Note", systemImage: "square.and.pencil", tint: .brandSky, choice: .note)
                                 kind("To-do", systemImage: "checklist", tint: .brandTask, choice: .todo)
                             }
-                            GridRow {
+                            GridRow(alignment: .top) {
                                 kind("Meeting", systemImage: "mic.fill", tint: .brandNavy, choice: .meeting)
                                 kind("Link", systemImage: "link", tint: .brandLink, choice: .link)
                             }
                         } else {
-                            GridRow {
+                            GridRow(alignment: .top) {
                                 kind("Note", systemImage: "square.and.pencil", tint: .brandSky, choice: .note)
                                 kind("To-do", systemImage: "checklist", tint: .brandTask, choice: .todo)
                                 kind("Meeting", systemImage: "mic.fill", tint: .brandNavy, choice: .meeting)
@@ -157,6 +165,8 @@ struct AddSheet: View {
                 }
             }
             .listStyle(.insetGrouped)
+            // Popover: the sections closer together (the whole sheet fits the 11-inch iPad's landscape window).
+            .listSectionSpacing(inPopover ? .compact : .default)
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { listTop = $0 }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
@@ -187,16 +197,28 @@ struct AddSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    /// The popover's height: the content's where it fits (until measured, the highest height, so every row that fits
-    /// is laid out and measured); where it does not, the end of the last row that fits and the list's margin below it,
-    /// so it ends at a row's edge and the rest scrolls.
+    /// The popover's room: from its top (measured, else where iPadOS puts it) down to `popoverBottom` less a margin.
+    /// Asking for more made the system move and cut the popover itself (it ended in a card, without a margin).
+    private var popoverRoom: CGFloat {
+        guard popoverBottom > 0 else { return Self.defaultMaxPopoverHeight }
+        let top = listTop > 0 ? listTop : expectedPopoverTop
+        return max(300, popoverBottom - top - Self.popoverBottomMargin)
+    }
+
+    /// The popover's height: the content's where it fits (until measured, its whole room, so every row that fits is
+    /// laid out and measured). Where it does not, the popover takes its whole room and the list scrolls: the last row
+    /// in sight is cut, which says that more follows; only where a row would end right at the edge (a card's bottom
+    /// there reads as the sheet's end) does the popover end 28 pt into that row instead.
     private var popoverHeight: CGFloat {
-        guard contentHeight > 0 else { return maxPopoverHeight }
+        let room = popoverRoom
+        guard contentHeight > 0 else { return room }
         let whole = contentHeight.rounded(.up)
-        if whole <= maxPopoverHeight { return whole }
-        let margin: CGFloat = 16
-        let fitting = rowEnds.values.map { $0 - listTop }.filter { $0 > 0 && $0 + margin <= maxPopoverHeight }.max()
-        return fitting.map { ($0 + margin).rounded(.up) } ?? maxPopoverHeight
+        if whole <= room { return whole }
+        let ends = rowEnds.values.map { $0 - listTop }
+        if let flush = ends.first(where: { $0 > room - 20 && $0 <= room + 4 }) {
+            return (flush - 28).rounded(.down)
+        }
+        return room.rounded(.down)
     }
 
     /// Popover: a fixed width and `height`.
@@ -234,12 +256,17 @@ struct AddSheet: View {
                     .foregroundStyle(tint.readable)
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                // Every tile's word at one size: shrunk to fit one by one, "To-do" stood smaller and higher than
+                // "Note" two by two. Two by two (the largest sizes) the words grow up to AX3, which fits "Meeting"
+                // in half the row; four across they keep the shrinking for the narrow phone.
                 Text(title)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+                    .minimumScaleFactor(typeSize.isAccessibilitySize ? 1 : 0.6)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)
             }
+            .frame(maxHeight: .infinity, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

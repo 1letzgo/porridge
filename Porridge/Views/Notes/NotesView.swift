@@ -44,8 +44,10 @@ struct NotesView: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.doubleColumn
     /// iPad: the split view's width, measured (0 until it is).
     @State private var splitWidth: CGFloat = 0
-    /// iPad: the window's height, measured: the Add popover may be as high as the window leaves room for.
-    @State private var splitHeight: CGFloat = 0
+    /// iPad: the whole window (safe areas included) and its safe-area insets, measured: the Add popover may reach
+    /// down to the home indicator's safe area. (The split view's own height is the safe area's, 790 pt of the 834 pt
+    /// window of an 11-inch iPad in landscape: less 80 pt it cut the popover after "Meeting Notes".)
+    @State private var windowArea = WindowArea()
     /// iPad: the list column's width, measured (0 until it is): Today's bar makes room for "+" in a narrow column.
     @State private var listColumnWidth: CGFloat = 0
     /// iPad: the sidebar's width grows with the text size, so the places and their counts are not cut.
@@ -200,7 +202,14 @@ struct NotesView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             fitColumns(to: width)
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { splitHeight = $0 }
+        .background {
+            // Safe areas ignored: the window's whole size, with the insets it keeps.
+            Color.clear
+                .onGeometryChange(for: WindowArea.self) { proxy in
+                    WindowArea(size: proxy.size, top: proxy.safeAreaInsets.top, bottom: proxy.safeAreaInsets.bottom)
+                } action: { windowArea = $0 }
+                .ignoresSafeArea()
+        }
         .onChange(of: columnVisibility) { _, shown in
             // The list column stays: the entry column alone is never left (a gesture or a key that hid both).
             if shown == .detailOnly { columnVisibility = .doubleColumn }
@@ -1624,11 +1633,11 @@ struct NotesView: View {
     private func addSheet(inPopover: Bool = false) -> some View {
         AddSheet(
             into: defaultInto, projects: projects, inPopover: inPopover,
-            // The popover hangs from "+" at the top of the window: the window's height less the status bar, the
-            // popover's arrow and a small margin to the bottom edge (an 11-inch iPad in landscape, 834 pt, shows the
-            // whole sheet, about 745 pt; 140 pt less cut it in the middle of a template's row). Where the content is
-            // higher, the popover ends at a row's edge (`AddSheet.popoverHeight`).
-            maxPopoverHeight: splitHeight > 0 ? max(360, splitHeight - 80) : AddSheet.defaultMaxPopoverHeight
+            // iPadOS lays the popover over "+", just under the status bar (y 32 of 834 pt in landscape), and it may
+            // reach down to the home indicator's safe area: the 11-inch iPad in landscape has about 770 pt for the
+            // sheet of about 700 pt (`AddSheet.popoverHeight` measures its own top once shown).
+            popoverBottom: windowArea.size.height > 0 ? windowArea.size.height - windowArea.bottom : 0,
+            expectedPopoverTop: windowArea.top + 8
         ) { choice, into in
             pendingAdd = choice
             addInto = .some(into)
@@ -2424,6 +2433,13 @@ private struct FileIntake: ViewModifier {
                 return true
             }
     }
+}
+
+/// iPad: the window's whole size and the safe-area insets at its top and bottom (`NotesView.windowArea`).
+struct WindowArea: Equatable {
+    var size: CGSize = .zero
+    var top: CGFloat = 0
+    var bottom: CGFloat = 0
 }
 
 /// The small picture of an attachment at the end of a list row.
