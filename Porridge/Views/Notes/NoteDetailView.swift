@@ -18,7 +18,8 @@ struct NoteDetailView: View {
     var onClose: () -> Void = {}
     /// A note that was just created records right away.
     var startsRecording = false
-    /// On a phone: the note has the app's own bar, with a back pill that calls this. Nil: the system's bar.
+    /// The back pill of the app's own bar (`ChromeBar`): on a stack (phone, an iPad without room beside the list).
+    /// Nil: no back pill (the iPad's column beside the list); the bar is the same.
     var onBack: (() -> Void)?
 
     @Environment(\.modelContext) private var context
@@ -172,19 +173,17 @@ struct NoteDetailView: View {
                 }
             }
         }
-        .toolbar { toolbar }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if let onBack {
-                ChromeBar(title: barTitle, systemImage: barIcon, tint: barTint, onBack: onBack) {
-                    aiMenu
-                    shareAction
-                    moreMenu
-                }
-                .padding(.bottom, Look.headerGap)
-                .background(Color.appBackground)
+            // The same head as every page: the kind's square and word, ✦ AI, Share and ⋯ as pills.
+            ChromeBar(title: barTitle, systemImage: barIcon, tint: barTint, onBack: onBack) {
+                aiMenu
+                shareAction
+                moreMenu
             }
+            .padding(.bottom, Look.headerGap)
+            .background(Color.appBackground)
         }
-        .toolbar(onBack == nil ? .automatic : .hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .bottomTrailing) {
             // Dictation starts from the mic in the editor bar; while it runs (the keyboard is away) this button stops it.
             if tab == .note, canDictate, dictation.phase != .idle {
@@ -554,13 +553,6 @@ struct NoteDetailView: View {
     private var barTitle: String { EntryMeta.kindWord(for: note) }
     private var barIcon: String { note.kindSymbol }
     private var barTint: Color { note.isTodo ? .brandTask : note.isLink ? .brandLink : note.isRecording || note.isStored ? .brandNavy : .brandSky }
-
-    @ToolbarContentBuilder
-    private var toolbar: some ToolbarContent {
-        BrandToolbarItem(placement: .primaryAction) { aiMenu.buttonStyle(.plain) }
-        BrandToolbarItem(placement: .primaryAction) { shareAction }
-        BrandToolbarItem(placement: .primaryAction) { moreMenu.buttonStyle(.plain) }
-    }
 
     // MARK: ✦ AI · Share · ⋯ More (`EntryMenus`)
 

@@ -672,7 +672,8 @@ struct NotesView: View {
                 .frame(maxWidth: .infinity)
         }
         .background(Color.appBackground)
-
+        // iPad: the row of the entry open beside the list stands out.
+        .environment(\.highlightedEntry, entriesBeside ? selection : nil)
         .keepsTabBarRoom()
         .navigationTitle(listTitle(shown))
         // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
@@ -1134,17 +1135,21 @@ struct NotesView: View {
             }
         case .bowls:
             // Recently Deleted on both sides (owner revision 10); Sort applies to the bowls; on To-dos a new to-do at
-            // once, in no bowl (the "+" of the tab bar opens the Add sheet).
+            // once, in no bowl: a green pill that says "To-do" beside its "+", so it is not taken for the Add sheet's
+            // "+" (the tab bar's, on an iPad the blue pill after it).
             trashButton
             if bowlsSide == .bowls { bowlSortMenu }
             settingsButton
             if bowlsSide == .todos {
                 Button { addNote(todo: true) } label: {
-                    Label("New To-do", systemImage: "plus")
+                    Label("To-do", systemImage: "plus")
+                        .labelStyle(.tight)
                         .fontWeight(.semibold)
+                        .padding(.horizontal, 12)
                 }
                 .buttonStyle(ChromePillButtonStyle(fill: .brandTask))
                 .help("New To-do")
+                .accessibilityLabel("New To-do")
                 .accessibilityIdentifier("TodosAdd")
             }
         case .project:
@@ -2009,6 +2014,8 @@ extension EnvironmentValues {
     @Entry var openNote: (UUID) -> Void = { _ in }
     /// ✦ AI › Ask About This Bowl: the chat about a bowl (`Projects.key`), the last one about it taken up again.
     @Entry var askAboutBowl: (String) -> Void = { _ in }
+    /// iPad: the entry open beside the list; its row stands out (`ListRowLink`).
+    @Entry var highlightedEntry: UUID?
     /// iPad: brings back the hidden sidebar; the bar (`ChromeBar`) shows a pill for it at its front. Nil: no pill.
     @Entry var showSidebar: (() -> Void)?
     /// Every note of the list, for views that look up others (the to-dos made from a summary).

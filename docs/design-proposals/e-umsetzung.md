@@ -387,7 +387,7 @@ paging (‹ › and ← → T).
   (`ListPage.place`: Open To-dos → Today; bowl, smart filter, Archive, Recently Deleted, Settings → Bowls; chat →
   Search). The open entry is pushed onto the tab in front; switching tabs keeps each tab's entry, an empty new note
   left in another tab goes. iPad (regular width): the split view stays, its sidebar is the Bowls place with a first
-  section "Places" (Today, Inbox, Search) pushing onto the one sidebar stack.
+  section "Places" (Today, Inbox, Search) pushing onto the one sidebar stack (replaced in owner revision 11 · iPad).
 - New files: `Views/Places/BowlsPlace.swift` (Pinned, All Bowls "by …", Smart Filters + New Smart Filter…, Archive
   and Recently Deleted always, "No Bowls Yet" + New Bowl; `PlaceLinkRow` for fixed rows), `InboxPlace.swift`
   (segment New N / Later N as the first row, bundle card under it, empty Inbox with "Add" and when Later comes
@@ -911,6 +911,31 @@ letzte kategorie inkl zeile".
   number of archived bowls only when > 0, chevron); it pushes the archived bowls as a page (empty: "Nothing Archived").
 - Go To Archive and Recently Deleted select the Bowls tab and push that page. Mac: Archive and Recently Deleted stay
   rows of the sidebar.
+
+**As built (owner revision 11 · iPad, 2026-11-26):** after the iPad check in landscape (pages squeezed into the
+320 pt sidebar, titles cut to one letter, no way to hide the sidebar, two kinds of head side by side, the right two
+thirds empty) the iPad of regular width is rebuilt after the Mac's main window. Compact width stays the iPhone.
+
+- **Sidebar** (`Views/Places/PadSidebar.swift`): Today · Inbox · Bowls · Search with the tab badges' counts, then
+  Pinned, All Bowls (`HomeList.bowls`, the order of Sort Bowls By) and Smart Filters as selectable rows (a bowl or
+  filter opens on the Bowls stack with Bowls under it); the head has the gear and a pill that hides the sidebar
+  (`columnVisibility`); the system's toggle is removed, a pill at the front of every bar (`ChromeBar`,
+  `\.showSidebar`) brings the sidebar back. The Bowls place no longer has a "Places" section.
+- **Pages:** `NavigationSplitView` with two columns (sidebar · detail, `.balanced`). The detail is laid out by
+  `NotesView.padContent`: the stack of the place in front (`place`, `paths`, the same `go`, `push` and back pill as
+  the phone's tabs) and, when `entriesBeside` (width ≥ list 370–400 pt + 480 pt, and the page lists entries), the open
+  entry beside it, else the entry is pushed onto the stack. Three columns of the system were not used: in portrait the
+  system shows them as overlays, and the entry's place would depend on the system's collapsing instead of the page.
+  Chat, Weekly Review, Settings (and its subpages) take the whole width, content ≤ 760 pt centered
+  (`usesWholeWidth`). Leaving a page (or turning to such a page) lets go of the entry beside the list; turning the
+  device moves an open entry between the column and the stack.
+- **Heads:** the entry beside the list has the same `ChromeBar` (kind, ✦ AI, Share, ⋯) without back pill; the
+  system toolbar of `NoteDetailView` is gone. "+" (`PlaceAdd`) is the last pill of every page's bar in the list's
+  column; the gear left Today's and Bowls' bars on the iPad (it is in the sidebar).
+- **Also fixed:** Bowls › To-dos has one "+" only: the green pill says "+ To-do" (iPhone and iPad, `TodosAdd`). The
+  row of the open entry is on a sky wash and keeps its text colors (`ListRowLink`: `backgroundProminence` standard,
+  `cardListRow(highlighted:)`). On an iPad the bars keep clear of the window controls (`avoidsWindowControls`,
+  `containerCornerOffset(.leading, sizeToFit: true)`, iPadOS 26).
 
 ---
 

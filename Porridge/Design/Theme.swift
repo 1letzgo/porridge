@@ -143,11 +143,17 @@ extension View {
             .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous))
     }
 
-    /// Row of a plain list: hairline separator from the text on, no row background.
-    func cardListRow() -> some View {
+    /// Row of a plain list: hairline separator from the text on, no row background; a highlighted row (the entry open
+    /// beside the list on an iPad) on a rounded wash of sky.
+    func cardListRow(highlighted: Bool = false) -> some View {
         self
             .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
-            .listRowBackground(Color.clear)
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: Look.buttonRadius, style: .continuous)
+                    .fill(highlighted ? Color.brandSky.opacity(0.18) : Color.clear)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+            )
             .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + ThingsRowIcon.inset }
     }
 
@@ -359,16 +365,21 @@ struct ListHeaderButton: View {
 struct ListRowLink<Content: View>: View {
     let value: UUID
     @ViewBuilder var content: Content
+    @Environment(\.highlightedEntry) private var highlighted
 
     var body: some View {
+        let isOpen = highlighted == value
         ZStack {
             NavigationLink(value: value) { EmptyView() }.opacity(0)
             content
+                // A selected row of `List(selection:)` turns its text white for the system's selection fill, which
+                // the clear row background hides: the text keeps its colors on the app's own wash.
+                .environment(\.backgroundProminence, .standard)
         }
         // For VoiceOver one thing to press, not a symbol, two texts and a nameless button.
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .cardListRow()
+        .accessibilityAddTraits(isOpen ? [.isButton, .isSelected] : .isButton)
+        .cardListRow(highlighted: isOpen)
     }
 }
 
@@ -419,6 +430,8 @@ struct ChromeBar<Actions: View>: View {
                 }
             }
         }
+        // An iPad window: the row starts right of the window's controls.
+        .avoidsWindowControls()
         .padding(.horizontal, 20)
         .padding(.top, 8)
     }
@@ -487,6 +500,21 @@ struct ChromeBar<Actions: View>: View {
         .tint(buttonTint ?? .accentColor)
         .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
         .menuStyle(.button)
+    }
+}
+
+extension View {
+    /// An iPad window (iPadOS 26 and later): keeps a bar's content clear of the window's controls (close, minimize,
+    /// full screen) in its top leading corner, by the room the system reports for the container's corners
+    /// (`containerCornerOffset`); the content is laid out in the width that is left. Nothing changes where the corner
+    /// has no controls (full screen) and on a phone.
+    @ViewBuilder
+    func avoidsWindowControls() -> some View {
+        if #available(iOS 26.0, *), UIDevice.current.userInterfaceIdiom == .pad {
+            containerCornerOffset(.leading, sizeToFit: true)
+        } else {
+            self
+        }
     }
 }
 
@@ -649,16 +677,6 @@ extension View {
     /// Toolbar button in the standard system look (kept as one place to change it).
     func brandToolbarButton() -> some View {
         self
-    }
-}
-
-/// Toolbar item in the standard system look.
-struct BrandToolbarItem<Content: View>: ToolbarContent {
-    var placement: ToolbarItemPlacement = .primaryAction
-    @ViewBuilder var content: Content
-
-    var body: some ToolbarContent {
-        ToolbarItem(placement: placement) { content }
     }
 }
 
