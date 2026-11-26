@@ -903,7 +903,7 @@ struct NotesView: View {
     /// iPad, Today on another day: "Today" brings back today. As the word from 300 pt of room, else as a symbol
     /// (about 44 pt), also with the largest text sizes (from xxxLarge). iOS 27: always in the bar (its priority is
     /// between the day pair's and the Weekly Review's; a window of 829 pt has room for it left of ‹ ›). Before iOS 27
-    /// only from 235 pt of room (today also comes back with ⌘1, View › Today, or the day pair's long press).
+    /// only from 235 pt of room (today also comes back with ⌘1 or View › Today).
     private var showsPadTodayButton: Bool {
         guard todayDay != nil else { return false }
         if #available(iOS 27.0, *) { return true }
@@ -927,8 +927,8 @@ struct NotesView: View {
     /// fit). On another day only from 280 pt of room: the bar's trailing end holds three glass items in a window of
     /// 829–968 pt (about 218 pt: ‹ › 60 since round 9, "+" 45, a symbol or ⋯ 45, with their gaps), and the overflow menu is an item
     /// itself, so with the Weekly Review in ⋯ "Today" went into ⋯ too ("‹ › + ⋯"). Below 280 pt the bar is
-    /// "↺ ‹ › +" and the Weekly Review is in the day pair's long press, View › Weekly Review, Search's Go To and in
-    /// today's bar. From 280 pt the four items fit ("Today ‹ › Weekly Review +" in landscape, 340 pt).
+    /// "↺ ‹ › +" and the Weekly Review is in View › Weekly Review, Search's Go To and in today's bar (the symbol
+    /// "Today" leads there). From 280 pt the four items fit ("Today ‹ › Weekly Review +" in landscape, 340 pt).
     private var showsPadWeeklyReviewItem: Bool {
         todayDay == nil || listColumnWidth == 0 || todayBarRoom >= 280
     }
@@ -947,37 +947,30 @@ struct NotesView: View {
         .accessibilityIdentifier("TodayBackToToday")
     }
 
-    /// iPad: the previous and the next day as one toolbar item (one glass capsule), so they stay together; its long
-    /// press has "Today" and the Weekly Review on another day. The chevrons keep the size of the bar's other symbols
+    /// iPad: the previous and the next day as one toolbar item (one glass capsule), so they stay together. No long
+    /// press menu (round 10, N2: at the accessibility sizes the system gives a bar item's long press to the large
+    /// content viewer, so a hidden menu there never opened; "Today" and the Weekly Review are in the bar, the View
+    /// menu and Search's Go To). The chevrons keep the size of the bar's other symbols
     /// (at most the `.large` text size). A custom view that does not fit the bar is not put into the overflow menu,
     /// it is left out, so the pair is narrow: 2 × 30 pt (the phone's halves are 38). In a window of 829 or 916 pt
     /// (list column 340 pt, the window's buttons and the sidebar button at its leading end) the bar had no room to
     /// spare at the standard size: sidebar button to 309, ‹ › 329–405, "+" 425–461, ⋯ 481–517 (20 pt gaps, 14 pt
     /// margin). With the accessibility sizes the system's sidebar button grows from 36 to 42.5 pt, the pair no longer
     /// fit by 6.5 pt and was left out ("+ ⋯", rounds 8 and 9). At 60 pt it fits with 9.5 pt to spare on today and
-    /// about 3 pt on another day ("↺ ‹ › +", the symbol grown from 40 to 46.5 pt).
-    /// No large content viewer: at the accessibility sizes its long press took the pair's long press, so the menu
-    /// with "Today" and the Weekly Review did not open (round 9, N2).
+    /// about 3 pt on another day ("↺ ‹ › +", the symbol grown from 40 to 46.5 pt). Beyond `.large` the large
+    /// content viewer shows a chevron big, as the system's bar buttons do.
     private var padDayPair: some View {
         HStack(spacing: 0) {
             dayButton(-1, inPill: true, width: 30)
+                .accessibilityShowsLargeContentViewer()
             dayButton(1, inPill: true, width: 30)
+                .accessibilityShowsLargeContentViewer()
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.plain)
         .font(.body.weight(.semibold))
         .foregroundStyle(.primary)
         .dynamicTypeSize(...DynamicTypeSize.large)
-        .contextMenu {
-            if todayDay != nil {
-                Button { withAnimation(.snappy) { todayDay = nil } } label: {
-                    Label("Today", systemImage: "arrow.uturn.backward.circle")
-                }
-                Button { go(.weeklyReview) } label: {
-                    Label("Weekly Review", systemImage: "calendar.badge.checkmark")
-                }
-            }
-        }
     }
 
     @ViewBuilder
