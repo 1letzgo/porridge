@@ -296,6 +296,10 @@ struct ProjectPage: View {
                 NoteSelectionBar(notes: list, chosen: $chosen)
             }
         }
+        // iPad, the empty bowl: its list does not start right under the navigation bar (the bars stand above the
+        // message), so the bar took the look of a scrolled page, with a hairline across the list column under it.
+        // No other page has that line at rest.
+        .toolbarBackground(usesSystemBars && isEmpty ? .hidden : .automatic, for: .navigationBar)
     }
 
     /// The share line, then the kinds as chips, or "N Selected · Select All" while choosing.

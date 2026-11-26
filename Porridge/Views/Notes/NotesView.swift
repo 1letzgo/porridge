@@ -1131,6 +1131,9 @@ struct NotesView: View {
                     .buttonStyle(.plain)
                     .cardListRow()
                     .lastInSection(true)
+                    // iPad: the first row right under the search field and its chips, without the line above it that
+                    // ran across the column (on no other page under the bars).
+                    .listRowSeparator(usesSystemBars ? .hidden : .automatic, edges: .top)
                     .accessibilityIdentifier("SearchAsk")
                     .accessibilityHint("Opens the chat and asks this question")
                 }
