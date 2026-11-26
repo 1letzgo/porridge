@@ -6,6 +6,9 @@ import SwiftUI
 struct InboxBundleCard: View {
     let notes: [Note]
     let projects: [NoteFolder]
+    /// Its margin to the sides: the page's (16) in the bar over the list, none under the Inbox's "New" header, whose
+    /// insets it shares.
+    var sideInset: CGFloat = 16
 
     @Environment(\.modelContext) private var context
     @State private var bundle: InboxBundle?
@@ -22,7 +25,7 @@ struct InboxBundleCard: View {
         VStack(spacing: 0) {
             if let bundle {
                 suggestion(bundle)
-                    .padding(.horizontal)
+                    .padding(.horizontal, sideInset)
                     .padding(.vertical, 4)
             }
         }

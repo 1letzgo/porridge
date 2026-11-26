@@ -1,9 +1,11 @@
 import SwiftData
 import SwiftUI
 
-/// The Inbox, the second place: everything in no bowl (it stays there until it is filed), one list without a switch
-/// (owner revision 10: the open to-dos moved to the Bowls tab). The bundle suggestion (one line) above the entries,
-/// today's appointments that are in no bowl yet first (`InboxAppointments`); each entry names its suggested bowl
+/// The Inbox, the second place: everything in no bowl (it stays there until it is filed). On a phone the Inbox tab's
+/// Inbox side (its switch Inbox | To-dos stands above, owner revision 13). Today's appointments that are in no bowl
+/// yet first (`InboxAppointments`), under their header "Appointments"; then the entries, under a header "New" of their
+/// own while the appointments show (without them the list starts with the entries, as before). The bundle suggestion
+/// (one line) belongs to the entries: over the list, or under the "New" header. Each entry names its suggested bowl
 /// ("✦ Bowl") and swipes to file. While choosing several, "N Selected · Select All" is the first row and the selection
 /// bar takes the tab bar's place.
 struct InboxPlace: View {
@@ -51,17 +53,29 @@ struct InboxPlace: View {
                                 ListHeader(title: String(localized: "Appointments"), count: appointments.count, tint: .brandNavy, isFirst: true)
                             }
                         }
-                        // Nothing new below appointments: the message is a part of the page, under them.
-                        if waiting.isEmpty, !appointments.isEmpty {
+                        if appointments.isEmpty {
+                            newRows(waiting)
+                        } else {
+                            // The entries under a header of their own, so they do not run on from the last
+                            // appointment; the bundle suggestion under it, as a part of them.
                             Section {
-                                EmptyStateLabel(title: Self.emptyTitle, message: Self.emptyMessage) {}
-                                    .frame(maxWidth: .infinity)
-                                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 20))
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
+                                if waiting.isEmpty {
+                                    // Nothing new below appointments: the message is a part of the page, under them.
+                                    EmptyStateLabel(title: Self.emptyTitle, message: Self.emptyMessage) {}
+                                        .frame(maxWidth: .infinity)
+                                        .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 20))
+                                        .listRowBackground(Color.clear)
+                                        .listRowSeparator(.hidden)
+                                }
+                                newRows(waiting)
+                            } header: {
+                                VStack(spacing: 0) {
+                                    ListHeader(title: Self.newTitle, count: waiting.isEmpty ? nil : waiting.count, tint: .brandSky)
+                                    InboxBundleCard(notes: notes, projects: projects, sideInset: 0)
+                                }
+                                .background(Color.appBackground)
                             }
                         }
-                        newRows(waiting)
                     }
                 }
             }
@@ -77,8 +91,9 @@ struct InboxPlace: View {
             Group {
                 if isSelecting {
                     NoteSelectionHeader(notes: waiting, chosen: $chosen)
-                } else {
-                    // Entries that belong together: one suggestion for a new bowl at a time (`InboxBundler`).
+                } else if appointments.isEmpty {
+                    // Entries that belong together: one suggestion for a new bowl at a time (`InboxBundler`). With
+                    // appointments on top it stands under the entries' header instead.
                     InboxBundleCard(notes: notes, projects: projects)
                 }
             }
@@ -106,6 +121,8 @@ struct InboxPlace: View {
         }
     }
 
+    /// The header of the entries below today's appointments.
+    static let newTitle = String(localized: "New")
     static let emptyTitle = "Inbox Empty"
     static let emptyMessage = "Everything is filed into a bowl. New things land here first and stay until they are filed."
 }
