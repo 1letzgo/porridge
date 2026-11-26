@@ -817,13 +817,27 @@ struct NotesView: View {
     /// iPad: the page's actions as toolbar items at the trailing end of the list column's bar, "+" last on its own,
     /// the one prominent action (the system moves what does not fit into its overflow menu).
     /// "+" is an item of its own with the highest visibility priority (iOS 27), so the system never moves it into
-    /// the overflow menu; Today's Weekly Review has the lowest. Today's bar also makes room itself (`todayBarIsTight`),
-    /// so "+" stays in the bar on every system and at every width of the column (from 300 pt).
+    /// the overflow menu; Today's day pair ‹ › is one item (a toolbar item of its own, so the system cannot take one
+    /// chevron and leave the other) right below it, "Today" (another day) below that, the Weekly Review the lowest.
+    /// Today's bar also makes room itself (`todayBarRoom`): what would not fit is left out rather than put into the
+    /// overflow menu, whose ⋯ takes a button's room as well (in a window the window's buttons and the sidebar button
+    /// stand in the same bar: "‹ + ⋯" was left of "‹ › Weekly Review +").
     @ToolbarContentBuilder
     private func pageToolbar(_ shown: ListPage) -> some ToolbarContent {
         if #available(iOS 27.0, *) {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 listActions(shown)
+            }
+            if shown == .today, showsPadTodayButton {
+                ToolbarItem(placement: .topBarTrailing) {
+                    backToTodayButton
+                }
+            }
+            if shown == .today {
+                ToolbarItem(placement: .topBarTrailing) {
+                    padDayPair
+                }
+                .visibilityPriority(.high)
             }
             if shown == .today, showsPadWeeklyReview {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -834,10 +848,20 @@ struct NotesView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 barAddButton(shown)
             }
-            .visibilityPriority(.high)
+            .visibilityPriority(ToolbarItemVisibilityPriority(higherThan: .high))
         } else {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 listActions(shown)
+            }
+            if shown == .today, showsPadTodayButton {
+                ToolbarItem(placement: .topBarTrailing) {
+                    backToTodayButton
+                }
+            }
+            if shown == .today {
+                ToolbarItem(placement: .topBarTrailing) {
+                    padDayPair
+                }
             }
             if shown == .today, showsPadWeeklyReview {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -850,18 +874,83 @@ struct NotesView: View {
         }
     }
 
-    /// iPad, Today on another day: "Today", ‹ › and "+" leave no room for the Weekly Review in a list column narrower
-    /// than this (portrait: 325 pt; "Today ‹ ›" alone is one capsule of about 170 pt). Then the Weekly Review is not in
-    /// the bar (View › Weekly Review and Today's own day have it), and in a column narrower still, or with the largest
-    /// text sizes, "Today" is a symbol.
-    private var todayBarIsTight: Bool {
-        todayDay != nil && (listColumnWidth < 400 || typeSize.isAccessibilitySize)
+    /// iPad: the room of Today's trailing bar items: the list column's width less what stands at the bar's leading
+    /// end. Where the list column is the window's first (the sidebar hidden), the sidebar button stands there (about
+    /// 68 pt with its margin); in a window that does not fill the screen (Stage Manager, windowed apps) also the
+    /// window's buttons (about 62 pt more: measured 122 pt with the sidebar button in a 916 pt window).
+    /// Measured with the system's own bar: full screen in landscape (sidebar shown) about 340 pt hold "Today ‹ › +"
+    /// and on today "‹ › Weekly Review +"; in portrait (325 pt column, sidebar button) 257 pt hold "↺ ‹ › +" and
+    /// "‹ › Weekly Review +"; in a window of 829 or 916 pt 212 pt held only three buttons ("‹ + ⋯").
+    private var todayBarRoom: CGFloat {
+        var leading: CGFloat = 0
+        if columnVisibility != .all {
+            leading += 68
+            if isWindowed { leading += 62 }
+        }
+        return listColumnWidth - leading
     }
 
-    private var showsPadWeeklyReview: Bool { !todayBarIsTight }
+    /// iPad: the app's window does not fill the screen (its buttons stand in the leading bar).
+    private var isWindowed: Bool {
+        guard windowArea.size.width > 0,
+              let screen = UIApplication.shared.connectedScenes.lazy.compactMap({ ($0 as? UIWindowScene)?.screen }).first
+        else { return false }
+        let bounds = screen.bounds.size
+        return windowArea.size.width < bounds.width - 1 || windowArea.size.height < bounds.height - 1
+    }
+
+    /// iPad, Today on another day: "Today" brings back today. As the word from 300 pt of room, as a symbol from
+    /// 235 pt or with the largest text sizes (from xxxLarge); with less room it gives way to the day pair (today then
+    /// comes back with ⌘1, View › Today, or the day pair's long press).
+    private var showsPadTodayButton: Bool {
+        todayDay != nil && (listColumnWidth == 0 || todayBarRoom >= 235)
+    }
 
     private var todayButtonIsSymbol: Bool {
-        todayDay != nil && (listColumnWidth < 330 || typeSize >= .xxxLarge)
+        todayDay != nil && (todayBarRoom < 300 || typeSize >= .xxxLarge)
+    }
+
+    /// iPad: the Weekly Review in Today's bar. On today from 235 pt of room; on another day ("Today" there too) from
+    /// 400 pt and without the largest text sizes. Else it is not in the bar (View › Weekly Review and Search's Go To
+    /// have it).
+    private var showsPadWeeklyReview: Bool {
+        guard listColumnWidth > 0 else { return true }
+        if todayDay == nil { return todayBarRoom >= 235 }
+        return todayBarRoom >= 400 && !typeSize.isAccessibilitySize
+    }
+
+    /// iPad: "Today", back from another day (the phone taps the title for it).
+    private var backToTodayButton: some View {
+        Button { withAnimation(.snappy) { todayDay = nil } } label: {
+            if todayButtonIsSymbol {
+                Label("Today", systemImage: "arrow.uturn.backward.circle")
+            } else {
+                Text("Today")
+            }
+        }
+        .help("Back to today")
+        .accessibilityLabel("Today")
+        .accessibilityIdentifier("TodayBackToToday")
+    }
+
+    /// iPad: the previous and the next day as one toolbar item (one glass capsule), so they stay together; its long
+    /// press has "Today" on another day.
+    private var padDayPair: some View {
+        HStack(spacing: 0) {
+            dayButton(-1, inPill: true)
+            dayButton(1, inPill: true)
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.plain)
+        .font(.body.weight(.semibold))
+        .foregroundStyle(.primary)
+        .contextMenu {
+            if todayDay != nil {
+                Button { withAnimation(.snappy) { todayDay = nil } } label: {
+                    Label("Today", systemImage: "arrow.uturn.backward.circle")
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -1302,23 +1391,8 @@ struct NotesView: View {
             // (owner revision 9; before, the card at the top of the Inbox). The gear opens Settings on Today's own
             // stack.
             if usesSystemBars {
-                // iPad: the day back and on as toolbar items; "Today" brings back today from another day (the phone
-                // taps the title for it).
-                // The Weekly Review is an item of its own (`pageToolbar`), the first to give way to "+".
-                if todayDay != nil {
-                    Button { withAnimation(.snappy) { todayDay = nil } } label: {
-                        if todayButtonIsSymbol {
-                            Label("Today", systemImage: "arrow.uturn.backward.circle")
-                        } else {
-                            Text("Today")
-                        }
-                    }
-                    .help("Back to today")
-                    .accessibilityLabel("Today")
-                    .accessibilityIdentifier("TodayBackToToday")
-                }
-                previousDayButton
-                nextDayButton
+                // iPad: "Today", the day pair and the Weekly Review are items of their own (`pageToolbar`).
+                EmptyView()
             } else {
                 todayPager
                 weeklyReviewButton
@@ -1478,7 +1552,12 @@ struct NotesView: View {
                 if usesSystemBars { Task { searchFieldFocused = true } }
             },
             showPlace: { shown in
-                if place != shown { place = shown }
+                if place != shown {
+                    place = shown
+                } else if shown == .today, todayDay != nil {
+                    // ⌘1 on another day: back to today (in a narrow window "Today" is not in the bar).
+                    withAnimation(.snappy) { todayDay = nil }
+                }
             },
             weeklyReview: { go(.weeklyReview) },
             settings: { go(.settings) },
@@ -1693,10 +1772,6 @@ struct NotesView: View {
 
     private var shownDay: Date { todayDay ?? TodayCalendar.shared.today }
 
-    private var previousDayButton: some View { dayButton(-1, inPill: false) }
-
-    private var nextDayButton: some View { dayButton(1, inPill: false) }
-
     /// A day back (-1) or on (1): half of the phone's pill, or a toolbar item of its own (iPad).
     private func dayButton(_ days: Int, inPill: Bool) -> some View {
         Button { stepToday(days) } label: {
@@ -1708,6 +1783,7 @@ struct NotesView: View {
                 }
             }
             .frame(minWidth: inPill ? 38 : nil, minHeight: inPill ? 36 : nil)
+            .contentShape(Rectangle())
         }
         .help(days < 0 ? "Previous Day" : "Next Day")
         .accessibilityValue(TodayDay.fullDate(TodayDay.step(shownDay, by: days)))
@@ -2435,13 +2511,6 @@ private struct FileIntake: ViewModifier {
     }
 }
 
-/// iPad: the window's whole size and the safe-area insets at its top and bottom (`NotesView.windowArea`).
-struct WindowArea: Equatable {
-    var size: CGSize = .zero
-    var top: CGFloat = 0
-    var bottom: CGFloat = 0
-}
-
 /// The small picture of an attachment at the end of a list row.
 private struct RowThumbnail: View {
     let attachment: Attachment
@@ -2460,4 +2529,11 @@ private struct RowThumbnail: View {
         .accessibilityHidden(true)
         .task(id: attachment.fileName) { picture = await AttachmentThumbnail.load(attachment, maxPixels: 160) }
     }
+}
+
+/// iPad: the window's whole size and the safe-area insets at its top and bottom (`NotesView.windowArea`).
+struct WindowArea: Equatable {
+    var size: CGSize = .zero
+    var top: CGFloat = 0
+    var bottom: CGFloat = 0
 }
