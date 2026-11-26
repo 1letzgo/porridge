@@ -51,4 +51,15 @@ final class AddPopoverHeightTests: XCTestCase {
             last = height
         }
     }
+
+    /// After a text size change the popover settles on the latest height once (the content shrank: 782 → 730), not
+    /// on the largest one measured while the rows changed their size (765).
+    func testSettlesOnTheLatestHeightAfterANewMeasurement() {
+        let settled = AddSheet.settledContentHeight(latest: 730, largest: 765)
+        XCTAssertEqual(AddSheet.popoverHeight(content: settled, room: landscapeRoom), 730)
+        XCTAssertEqual(AddSheet.settledContentHeight(latest: 0, largest: 765), 765)
+        // Content longer than the room keeps the whole room.
+        let long = AddSheet.settledContentHeight(latest: 1180, largest: 1180)
+        XCTAssertEqual(AddSheet.popoverHeight(content: long, room: landscapeRoom), 770)
+    }
 }

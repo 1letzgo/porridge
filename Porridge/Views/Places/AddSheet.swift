@@ -37,6 +37,14 @@ struct AddSheet: View {
     /// that is less. Growing and bounded by the room, it settles after a few steps and cannot swing. Measured anew
     /// (from 0) only when the text size or the templates change.
     @State private var contentHeight: CGFloat = 0
+    /// Popover: the list's latest measured height (a reference, so writing it does not draw the view again), and the
+    /// count of new measurements (text size, templates). Once after each, when the list has settled, the popover takes
+    /// the latest height instead of the largest: while the rows change their size the list reports heights of rows
+    /// of both sizes, larger than the new content (round 8: 730 → 782 at accessibility-large → 765 back at the
+    /// standard size, a 35 pt empty band). One step per new measurement, from the list's content size alone, so it
+    /// cannot swing.
+    @State private var latestHeight = LatestHeight()
+    @State private var remeasure = 0
     @Environment(\.dynamicTypeSize) private var typeSize
     private var templates: NoteTemplateStore { .shared }
 
@@ -172,15 +180,42 @@ struct AddSheet: View {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
             } action: { _, height in
-                if inPopover, height > contentHeight + 0.5 { contentHeight = height }
+                guard inPopover else { return }
+                latestHeight.value = height
+                if height > contentHeight + 0.5 { contentHeight = height }
             }
             .sheet(isPresented: $showTemplates) { NoteTemplatesView() }
         }
         .modifier(PopoverSize(active: inPopover, height: Self.popoverHeight(content: contentHeight, room: popoverRoom)))
         .presentationDetents([.medium, .large])
         // Measured anew where the content's height changes from outside: rows of another height, other templates.
-        .onChange(of: typeSize) { if inPopover { contentHeight = 0 } }
-        .onChange(of: templates.templates.map(\.id)) { if inPopover { contentHeight = 0 } }
+        .onChange(of: typeSize) { if inPopover { startMeasuring() } }
+        .onChange(of: templates.templates.map(\.id)) { if inPopover { startMeasuring() } }
+        .task(id: remeasure) {
+            guard inPopover, remeasure > 0 else { return }
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            contentHeight = Self.settledContentHeight(latest: latestHeight.value, largest: contentHeight)
+        }
+    }
+
+    /// The content's height measured anew (from 0, the popover first takes its whole room), settled once after.
+    private func startMeasuring() {
+        contentHeight = 0
+        latestHeight.value = 0
+        remeasure += 1
+    }
+
+    /// The content's height once the list has settled after a new measurement: its latest height where it has one
+    /// (the rows in sight are laid out by then: with the popover at its whole room the list's content is at least that
+    /// room where it is longer, so `popoverHeight` still gives the room), else the largest measured.
+    static func settledContentHeight(latest: CGFloat, largest: CGFloat) -> CGFloat {
+        latest > 0 ? latest : largest
+    }
+
+    /// A height kept without drawing the view again when it changes.
+    final class LatestHeight {
+        var value: CGFloat = 0
     }
 
     /// The popover's room: from where iPadOS puts its top down to `popoverBottom` less a margin, from the window alone.
