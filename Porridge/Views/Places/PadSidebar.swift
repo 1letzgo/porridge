@@ -15,7 +15,11 @@ struct PadSidebar: View {
         List(selection: $selection) {
             ForEach(Place.allCases, id: \.self) { shown in
                 Label {
+                    // One line: with the largest text sizes the narrow column broke the word ("To-/day",
+                    // "To-do/s"); a word too long for the row gets a little smaller instead.
                     Text(shown.tabTitle)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 } icon: {
                     // The place's symbol in its color (the bowl for Bowls: the outlined one, as wide as the
                     // symbols beside it; the bowl's own drawing leaves room above it, so it is drawn a size larger).
@@ -35,6 +39,9 @@ struct PadSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        // The rows grow with the text size up to AX2 (33 pt body), so "To-dos 5" stays one line with its count in the
+        // sidebar's column (AX5 broke "Today" and "To-dos" inside the word).
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .navigationTitle("Porridge")
         // No title in the sidebar's bar: in a window (Stage Manager, not full screen) the window's buttons left it
         // "Porrid…", and the places speak for themselves. The title stays the column's name (VoiceOver, the app
