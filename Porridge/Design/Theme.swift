@@ -378,9 +378,12 @@ struct ListRowLink<Content: View>: View {
     let value: UUID
     @ViewBuilder var content: Content
     @Environment(\.highlightedEntry) private var highlighted
+    @Environment(\.editMode) private var editMode
 
     var body: some View {
-        let isOpen = highlighted == value
+        // While choosing several the wash is not shown: it looked like a chosen row ("Select Entries" with the open
+        // entry blue, or "1 Selected" with two rows marked; iPad).
+        let isOpen = highlighted == value && editMode?.wrappedValue.isEditing != true
         ZStack {
             NavigationLink(value: value) { EmptyView() }.opacity(0)
             content

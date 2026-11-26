@@ -1177,6 +1177,9 @@ struct NotesView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .listRowBackground(Color.clear)
+                        // iPad: in line with the rows above (20 pt in), and no line under it as under a last row.
+                        .listRowInsets(usesSystemBars ? EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20) : nil)
+                        .listRowSeparator(usesSystemBars ? .hidden : .automatic)
                 }
             }
         }
