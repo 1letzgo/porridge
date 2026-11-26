@@ -131,27 +131,6 @@ final class AppointmentLinkTests: XCTestCase {
         XCTAssertEqual(links.appointments(inBowl: Projects.key(bowl), among: [filedSeries, looseSeries], now: filedSeries.start).map(\.seriesID), ["filed"])
     }
 
-    /// The Inbox's appointments: today's, not filed into a bowl, each series once (today's occurrence).
-    func testTheInboxShowsTodaysUnfiledAppointmentsOncePerSeries() {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
-        let today = calendar.date(from: DateComponents(year: 2026, month: 11, day: 25))!
-        func at(_ hour: Int, dayOffset: Int = 0) -> Date { calendar.date(byAdding: .hour, value: hour + 24 * dayOffset, to: today)! }
-        let party = appointment(id: "party", series: "party", title: "SPD Weihnachtsfeier", start: at(18))
-        let standupMorning = appointment(id: "s1", series: "standup", title: "Standup", start: at(9))
-        let standupNoon = appointment(id: "s2", series: "standup", title: "Standup", start: at(12))
-        let standupTomorrow = appointment(id: "s3", series: "standup", title: "Standup", start: at(9, dayOffset: 1))
-        let filed = appointment(id: "f", series: "filed", title: "Board", start: at(10))
-        let yesterday = appointment(id: "y", series: "y", title: "Dentist", start: at(10, dayOffset: -1))
-        let allDay = CalendarAppointment(id: "a", title: "Holiday", start: today, end: at(24), isAllDay: true, calendarName: "Work", externalID: "allday")
-        let bowls: [String: AppointmentLedger.BowlLink] = ["filed": .init(bowl: "B", changedAt: today), "party": .init(bowl: nil, changedAt: today)]
-        let rows = InboxAppointments.rows([party, standupNoon, standupMorning, standupTomorrow, filed, yesterday, allDay], bowls: bowls, day: at(8), calendar: calendar)
-        XCTAssertEqual(rows.map(\.id), ["a", "s1", "party"], "today's unfiled ones, all-day first, a series once")
-        // Filed into a bowl: it leaves the Inbox.
-        let afterFiling = InboxAppointments.rows([party], bowls: ["party": .init(bowl: "B", changedAt: today)], day: today, calendar: calendar)
-        XCTAssertTrue(afterFiling.isEmpty)
-    }
-
     /// A bowl with appointments filed into it is not empty: they are counted once per series and named in its summary.
     func testABowlWithAppointmentsIsNotEmpty() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)

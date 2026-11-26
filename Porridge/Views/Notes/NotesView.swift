@@ -878,9 +878,7 @@ struct NotesView: View {
         case .inbox:
             InboxPlace(
                 notes: notes, projects: projects, selection: $selection, isSelecting: $isSelecting, chosen: $chosen,
-                onRemove: { remove($0) },
-                onRecord: { startRecording(for: $0) },
-                onNewNote: { addNote(for: $0) }
+                onRemove: { remove($0) }
             )
         case .today:
             TodayPage(

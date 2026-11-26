@@ -830,11 +830,11 @@ changes; the notes on the tab bar's "+", the Bowls place's last rows and the Cha
   `CalendarAppointment` (Codable, not SwiftData) gains `location` and `repeats` (optional, old remembered ones decode).
   Tests: `AppointmentLinkTests.testABowlShowsItsAppointmentsOncePerSeriesUpcomingFirst`,
   `testAppointmentsNeverFillTheInbox`.
-- **Today's unfiled appointments in the Inbox** (owner: "Inbox Termine von heute"). New shows, under the card and
-  before the entries, a group "Appointments": today's appointments in no bowl (`InboxAppointments.rows`: overlapping
-  the day, each series once, all-day first). Filing one (row menu or the sheet's Bowl) takes it out. Not counted in the
-  badge (`Inbox.notes` unchanged), not in Triage, Later or choosing several. Mac: the section `inbox-appointments`
-  after the card. Test: `testTheInboxShowsTodaysUnfiledAppointmentsOncePerSeries`.
+- **No appointments in the Inbox** (owner, 2026-11-26: "Keine Termine in inbox auch nicht die heutige. Auch in iOS
+  keine Termine in inbox"). The group "Appointments" of today's unfiled appointments (`InboxAppointments`, from
+  "Inbox Termine von heute") and the entries' header "New" under it are gone on every platform; the Inbox lists only
+  entries again, the bundle suggestion over them. An appointment is filed into a bowl from Today (its row's menu, the
+  appointment sheet's Bowl) and is then a row of its bowl.
 - **A bowl with appointments is not empty** (owner: "Bowls werden trotz Terminen als empty angezeigt"). The rows of
   the Bowls place and the archive (iPhone `ProjectContent.summary`, Mac `BucketCellView`) name the filed appointments
   (each series once, `BowlAppointments.counts`) and say "Empty" only with neither entries nor appointments; the bowl's

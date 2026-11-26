@@ -98,7 +98,7 @@ struct AppointmentLedger: Codable, Equatable {
     static let keepTombstones: TimeInterval = 90 * 86400
 
     /// The bowl is gone (deleted, or a shared bowl left): the series filed into it are taken out of it (a tombstone
-    /// each), so their appointments show in the Inbox and Today again instead of nowhere.
+    /// each), so their appointments show in Today again (and can be filed anew) instead of nowhere.
     func forgettingBowl(_ bowl: String, now: Date = Date()) -> AppointmentLedger {
         var result = self
         for (series, link) in bowls where link.bowl == bowl {
@@ -205,22 +205,6 @@ enum BowlListing {
     }
 }
 
-/// The appointments the Inbox shows (New, under its card): those of the day not filed into a bowl, each series once
-/// (its occurrence of the day; the first one if it repeats within the day), all-day ones first, then by start. Never
-/// another day's, never a filed one (that one is in its bowl and in Today). They are no entries: not counted in the
-/// Inbox's badge, not part of Triage or choosing several.
-enum InboxAppointments {
-    static func rows(_ appointments: [CalendarAppointment], bowls: [String: AppointmentLedger.BowlLink], day: Date, calendar: Calendar = .current) -> [CalendarAppointment] {
-        let start = calendar.startOfDay(for: day)
-        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
-        var seen = Set<String>()
-        return appointments
-            .filter { $0.start < end && ($0.end > start || $0.start >= start) && bowls[$0.seriesID]?.bowl == nil }
-            .sorted { ($0.isAllDay ? 0 : 1, $0.start) < ($1.isAllDay ? 0 : 1, $1.start) }
-            .filter { seen.insert($0.seriesID).inserted }
-    }
-}
-
 /// Entries linked to calendar appointments (a meeting recorded for one is linked by itself), and appointments
 /// filed into bowls: what is linked to an appointment of a bowl goes into that bowl while it is in the inbox.
 @MainActor
@@ -317,11 +301,6 @@ final class AppointmentLinks {
     /// The bowl (`Projects.key`) the appointment's series is filed into.
     func bowl(for appointment: CalendarAppointment) -> String? {
         ledger.bowls[appointment.seriesID]?.bowl
-    }
-
-    /// The day's appointments for the Inbox among these (`InboxAppointments`).
-    func inboxAppointments(among appointments: [CalendarAppointment], day: Date = Date()) -> [CalendarAppointment] {
-        InboxAppointments.rows(appointments, bowls: ledger.bowls, day: day)
     }
 
     /// How many appointments each bowl shows (`BowlAppointments.counts`), by the bowl's key: for the lists of bowls,

@@ -53,21 +53,9 @@ enum NoteListContent {
         case .inbox:
             // Everything in no bowl, until it is filed (owner revision 9).
             let waiting = Inbox.notes(notes)
-            // On top: today's appointments not filed into a bowl (`InboxAppointments`).
-            let calendar = TodayCalendar.shared
-            let appointments = calendar.status == .granted ? AppointmentLinks.shared.inboxAppointments(among: calendar.appointments, day: calendar.today) : []
-            let appointmentSection: [(ListSection, [ListItem])] = appointments.isEmpty ? [] : [
-                (ListSection(id: "inbox-appointments", title: String(localized: "Appointments"), tint: .navy, count: appointments.count), appointments.map { .appointment($0.key) }),
-            ]
+            // No appointments, not even today's (owner): they are in Today, and once filed into a bowl in their bowl.
             return Built(
-                // Below the appointments the entries have a header of their own, "New" (as the iPhone's); without
-                // appointments the list starts with them.
-                sections: appointmentSection + (waiting.isEmpty ? [] : [(
-                    appointments.isEmpty
-                        ? ListSection(id: "inbox", title: "", tint: .sky)
-                        : ListSection(id: "inbox", title: String(localized: "New"), tint: .sky, count: waiting.count),
-                    waiting.map { .note($0.id) }
-                )]),
+                sections: waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })],
                 emptyTitle: "Inbox Empty", emptyMessage: "Everything is filed. Drop files, mails or links here, or press ⌘N.", emptySymbol: "tray"
             )
         case .bowls:

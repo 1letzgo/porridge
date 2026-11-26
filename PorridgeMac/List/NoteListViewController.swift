@@ -136,7 +136,7 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
         libraryToken = library.observe { [weak self] in self?.reload() }
         // Today's appointments and the links to them (from other devices too).
         observers.append(Observing { [weak self] in
-            guard let self, [.today, .inbox, .bowls, .archive].contains(self.state.page) || self.state.page.projectID != nil else { return }
+            guard let self, [.today, .bowls, .archive].contains(self.state.page) || self.state.page.projectID != nil else { return }
             // The day paged to is read through `appointments(on:)`, which follows the calendar's changes.
             _ = (TodayCalendar.shared.appointments(on: self.state.todayShownDay), TodayCalendar.shared.status, AppointmentLinks.shared.ledger, self.state.todayDay)
             self.reload()

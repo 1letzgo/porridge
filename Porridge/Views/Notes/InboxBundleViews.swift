@@ -6,8 +6,8 @@ import SwiftUI
 struct InboxBundleCard: View {
     let notes: [Note]
     let projects: [NoteFolder]
-    /// Its margin to the sides: the page's (16) in the bar over the list, none under the Inbox's "New" header, whose
-    /// insets it shares.
+    /// Its margin to the sides: the page's (16) in the bar over the list (iPhone), the list's (20) as the iPad's pinned
+    /// header.
     var sideInset: CGFloat = 16
 
     @Environment(\.modelContext) private var context
