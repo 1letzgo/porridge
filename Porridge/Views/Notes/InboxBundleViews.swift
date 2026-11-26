@@ -44,8 +44,10 @@ struct InboxBundleCard: View {
         }
     }
 
-    /// One line: "✦ New bowl “Berlin Trip” for 3 entries?", Review…, and the cross. The entries' titles are
-    /// in the review sheet (and read by VoiceOver).
+    /// "✦ New bowl “Berlin Trip” for 3 entries?", Review…, and the cross. The sentence is whole: where the row is
+    /// too narrow for it (a long bowl name, the iPad's list column) it takes up to three lines (it was cut after
+    /// "for 3…"); Review… and the cross keep their size. The entries' titles are in the review sheet (and read by
+    /// VoiceOver).
     private func suggestion(_ bundle: InboxBundle) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles")
@@ -54,8 +56,9 @@ struct InboxBundleCard: View {
             Text(bundle.line)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Color.brandProject.readable)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 6)
                 .accessibilityHint(titles(bundle))
             Spacer(minLength: 4)
             Button("Review…") { reviewing = bundle }
