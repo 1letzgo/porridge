@@ -21,10 +21,20 @@ struct AddSheet: View {
     @State private var target: String?
     @State private var showTemplates = false
     private let projects: [NoteFolder]
+    /// iPad of regular width: shown as a popover at "+". It has no Close (a tap outside closes it) and is as high as
+    /// its content, up to `maxPopoverHeight`, scrolling beyond.
+    private let inPopover: Bool
+    /// The list's whole height with its bar (popover only), measured.
+    @State private var contentHeight: CGFloat = 0
     private var templates: NoteTemplateStore { .shared }
 
-    init(into: String?, projects: [NoteFolder], onPick: @escaping (AddChoice, String?) -> Void) {
+    /// The popover's width and its highest height (the rest scrolls).
+    static let popoverWidth: CGFloat = 380
+    static let maxPopoverHeight: CGFloat = 640
+
+    init(into: String?, projects: [NoteFolder], inPopover: Bool = false, onPick: @escaping (AddChoice, String?) -> Void) {
         self.projects = projects
+        self.inPopover = inPopover
         self.onPick = onPick
         _target = State(initialValue: into)
     }
@@ -112,13 +122,40 @@ struct AddSheet: View {
             .navigationTitle("Add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                if !inPopover {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { dismiss() }
+                    }
                 }
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+            } action: { _, height in
+                if inPopover { contentHeight = height }
             }
             .sheet(isPresented: $showTemplates) { NoteTemplatesView() }
         }
+        .modifier(PopoverSize(active: inPopover, contentHeight: contentHeight))
         .presentationDetents([.medium, .large])
+    }
+
+    /// Popover: a fixed width and the content's height (until measured, and beyond the highest height, that height).
+    private struct PopoverSize: ViewModifier {
+        let active: Bool
+        let contentHeight: CGFloat
+
+        func body(content: Content) -> some View {
+            if active {
+                content
+                    .frame(
+                        width: AddSheet.popoverWidth,
+                        height: contentHeight > 0 ? min(contentHeight.rounded(.up), AddSheet.maxPopoverHeight) : AddSheet.maxPopoverHeight
+                    )
+                    .presentationCompactAdaptation(.popover)
+            } else {
+                content
+            }
+        }
     }
 
     private func pick(_ choice: AddChoice) {

@@ -85,11 +85,8 @@ struct ChatPage: View {
                 }
                 .overlay {
                     if threads.isEmpty {
-                        EmptyStateView(
-                            title: "No Chats Yet",
-                            message: "Ask Porridge about your notes in the chat beside the list.",
-                            systemImage: "bubble.left.and.bubble.right"
-                        )
+                        // Quiet: the chat beside it shows its intro with the bowl, one such message is enough.
+                        PadNoEntry(title: "No Chats Yet", message: "Ask Porridge about your notes in the chat beside the list.")
                     }
                 }
             } else if navigation.showsList, part == .whole {

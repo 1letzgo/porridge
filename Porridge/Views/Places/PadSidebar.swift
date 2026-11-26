@@ -16,9 +16,16 @@ struct PadSidebar: View {
                 Label {
                     Text(shown.tabTitle)
                 } icon: {
-                    // The place's symbol in its color (the bowl for Bowls).
-                    SymbolImage(shown.tabSymbol)
-                        .foregroundStyle(tint(of: shown).readable)
+                    // The place's symbol in its color (the bowl for Bowls: the outlined one, as wide as the
+                    // symbols beside it; the bowl's own drawing leaves room above it, so it is drawn a size larger).
+                    Group {
+                        if shown == .bowls {
+                            SymbolImage("BowlPlace", textStyle: .title2)
+                        } else {
+                            SymbolImage(shown.tabSymbol)
+                        }
+                    }
+                    .foregroundStyle(tint(of: shown).readable)
                 }
                 .badge(count(of: shown))
                 .tag(shown)
@@ -54,5 +61,28 @@ struct PadSidebar: View {
         case .inbox: .brandSky
         case .bowls: .brandProject
         }
+    }
+}
+
+/// iPad: the entry column while no entry is open. Quiet, as Mail's "No Message Selected": a grey title and a line in
+/// the middle of the column, without the bowl of the empty views, so it never stands beside an empty list's message
+/// as a second one of the same weight.
+struct PadNoEntry: View {
+    let title: LocalizedStringKey
+    let message: LocalizedStringKey
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }

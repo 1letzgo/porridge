@@ -18,6 +18,8 @@ struct NoteDetailView: View {
     var onClose: () -> Void = {}
     /// A note that was just created records right away.
     var startsRecording = false
+    /// A note made from the keyboard (⌘N, ⇧⌘N): its title takes the focus when it opens, so typing goes into it.
+    var focusesTitle = false
     /// The back pill of the app's own bar (`ChromeBar`): on a stack (phone, an iPad without room beside the list).
     /// Nil: no back pill (the iPad's column beside the list); the bar is the same.
     var onBack: (() -> Void)?
@@ -215,6 +217,13 @@ struct NoteDetailView: View {
             // Load the speech model right away so the first piece is transcribed without delay.
             Task { try? await ModelManager.shared.ensureASR() }
             tab = opensOnSummary || isSummarizing ? .summary : .note
+            if focusesTitle, !isLocked {
+                // Once the page is in place (and a search field that had the keyboard let go of it).
+                Task {
+                    try? await Task.sleep(for: .milliseconds(150))
+                    focused = true
+                }
+            }
         }
         .task(id: note.audioFileName) {
             // A recording in iCloud is downloaded when its note is opened, then it plays.

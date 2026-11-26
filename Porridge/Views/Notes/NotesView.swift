@@ -28,9 +28,16 @@ struct NotesView: View {
     @State private var paths: [Place: [ListRoute]] = [:]
     /// A new note that is not saved yet; it is stored when it gets its first content.
     @State private var draft: Note?
-    /// iPad: which columns of the split view show (sidebar, list, entry); the system decides by the window's size
-    /// and the sidebar button, the edge swipe and ⌃⌘S change it.
-    @State private var columnVisibility = NavigationSplitViewVisibility.automatic
+    /// A new note made from the keyboard (⌘N, ⇧⌘N): its title takes the focus and it does not start recording.
+    @State private var typedDraftID: UUID?
+    /// iPad: which columns of the split view show (sidebar, list, entry). Set by the window's width
+    /// (`fitColumns`): all three where they fit, else the list and the entry with the sidebar shown on demand; the
+    /// sidebar button, the edge swipe and ⌃⌘S change it. The list column never goes away (never the entry alone).
+    @State private var columnVisibility = NavigationSplitViewVisibility.doubleColumn
+    /// iPad: the split view's width, measured (0 until it is).
+    @State private var splitWidth: CGFloat = 0
+    /// iPad: the sidebar's width grows with the text size, so the places and their counts are not cut.
+    @ScaledMetric(relativeTo: .body) private var sidebarWidth: CGFloat = 210
     /// iPad: Settings as a sheet over the window (on a phone a page of the stack).
     @State private var showPadSettings = false
     /// iPad: the Add sheet as a popover at the "+" of the bar.
@@ -127,27 +134,60 @@ struct NotesView: View {
     /// iPad, regular width: the system's split view with three columns, as Notes, Reminders and Mail. The sidebar lists
     /// the places (`PadSidebar`); the list column holds the place's own stack with its pages (`placeStack`); the entry
     /// column shows the open entry, on the Chat side the conversation (`padDetail`). Every column has the system's
-    /// navigation bar: titles, back button, sidebar button and the pages' actions as toolbar items. The system decides
-    /// which columns show for the window's size (landscape: all three; portrait: list and entry, the sidebar over them).
+    /// navigation bar: titles, back button, sidebar button and the pages' actions as toolbar items. The columns lie
+    /// side by side (`.balanced`): a wide window shows all three, a narrower one (portrait, a smaller window) the list
+    /// and the entry, the sidebar coming in on its button and going again once a place is chosen. The system's
+    /// automatic choice showed the entry column alone in portrait ("No Entry Selected" without its list).
     private var splitView: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             PadSidebar(
                 notes: notes,
-                selection: Binding(get: { place }, set: { if let chosen = $0 { chooseTab(chosen) } }),
+                selection: Binding(get: { place }, set: { chosen in
+                    guard let chosen else { return }
+                    chooseTab(chosen)
+                    // Where the three columns do not fit, the sidebar steps aside for the place it chose.
+                    if !fitsThreeColumns { columnVisibility = .doubleColumn }
+                }),
                 onSettings: { go(.settings) }
             )
+            .navigationSplitViewColumnWidth(min: 180, ideal: min(sidebarWidth, 320), max: 340)
         } content: {
             placeStack(place)
                 // One stack per place, as the phone's tabs: its pages come back from `paths` when the place does.
                 .id(place)
+                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 440)
         } detail: {
             padDetail
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            fitColumns(to: width)
+        }
+        .onChange(of: columnVisibility) { _, shown in
+            // The list column stays: the entry column alone is never left (a gesture or a key that hid both).
+            if shown == .detailOnly { columnVisibility = .doubleColumn }
         }
         .environment(\.usesSystemBars, true)
         .sheet(isPresented: $showPadSettings) {
             PadSettingsSheet()
                 .presentationSizing(.page)
         }
+    }
+
+    /// iPad: the width from which the sidebar, the list and the entry all lie side by side (landscape of the 11 and
+    /// 13 inch iPads); below it the list and the entry (portrait, smaller windows).
+    private static let threeColumnWidth: CGFloat = 1100
+
+    private var fitsThreeColumns: Bool { splitWidth >= Self.threeColumnWidth }
+
+    /// iPad: the columns for the window's width, at the start and whenever the width crosses `threeColumnWidth`
+    /// (turning the iPad, resizing the window); what the sidebar button chose in between stays.
+    private func fitColumns(to width: CGFloat) {
+        let wasMeasured = splitWidth > 0
+        let wasWide = fitsThreeColumns
+        splitWidth = width
+        guard !wasMeasured || wasWide != fitsThreeColumns else { return }
+        columnVisibility = fitsThreeColumns ? .all : .doubleColumn
     }
 
     /// iPad: the Chat side of the Search place shows its chats in the list column and the conversation in the entry
@@ -169,13 +209,9 @@ struct NotesView: View {
                     noteView(note, onBack: nil)
                 } else if page == .bowls, bowlsSide == .bowls {
                     // The Bowls page lists bowls, not entries: the column invites to open one.
-                    EmptyStateView(
-                        title: "Pick a Bowl",
-                        message: "Open a bowl or a smart filter to see its entries here.",
-                        systemImage: "folder"
-                    )
+                    PadNoEntry(title: "Pick a Bowl", message: "Open a bowl or a smart filter to see its entries here.")
                 } else {
-                    EmptyStateView(title: "No Entry Selected", message: "Pick an entry from the list.", systemImage: "note.text")
+                    PadNoEntry(title: "No Entry Selected", message: "Pick an entry from the list.")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -294,6 +330,9 @@ struct NotesView: View {
     private func placeStack(_ shown: Place) -> some View {
         NavigationStack(path: pathBinding(shown)) {
             listColumn(shown.root)
+                // iPad: the Search place's bar is made anew for each side. Its search field (Search side only) came
+                // into a bar made without it, and the large title stayed collapsed after Chat → Search.
+                .id(usesSystemBars && shown == .search ? searchSide.rawValue : "")
                 .navigationDestination(for: ListRoute.self) { route in
                     switch route {
                     case .page(let next):
@@ -309,7 +348,12 @@ struct NotesView: View {
     }
 
     private func noteView(_ note: Note, onBack: (() -> Void)?) -> some View {
-        NoteDetailView(note: note, onClose: { close(note) }, startsRecording: note.id == draft?.id, onBack: onBack)
+        NoteDetailView(
+            note: note, onClose: { close(note) },
+            startsRecording: note.id == draft?.id && note.id != typedDraftID,
+            focusesTitle: note.id == typedDraftID,
+            onBack: onBack
+        )
             .id(note.id)
             .keepsTabBarRoom()
             .environment(\.openNote, { openNote($0) })
@@ -428,7 +472,7 @@ struct NotesView: View {
             if EntryLinkRouter.waiting != nil { openRequestedEntry() }
         }
         .sheet(isPresented: $showAdd, onDismiss: runPendingAdd) {
-            addSheet
+            addSheet()
         }
         .onChange(of: showAddPopover) { _, shown in
             // iPad: what the popover asked for, once it is gone (a sheet cannot open while it closes).
@@ -1286,14 +1330,8 @@ struct NotesView: View {
     private var commandActions: PlaceCommandActions {
         let open = selectedNote
         return PlaceCommandActions(
-            newNote: {
-                addInto = nil
-                addNote()
-            },
-            newTodo: {
-                addInto = nil
-                addNote(todo: true)
-            },
+            newNote: { addFromKeyboard(todo: false) },
+            newTodo: { addFromKeyboard(todo: true) },
             recordMeeting: { showCalendar = true },
             search: {
                 go(.search)
@@ -1309,6 +1347,14 @@ struct NotesView: View {
                 note.modelContext == nil || note.isDeleted ? nil : { remove(note) }
             }
         )
+    }
+
+    /// ⌘N, ⇧⌘N: a new note or to-do opens with the keyboard in its title; a search field that had it lets go.
+    private func addFromKeyboard(todo: Bool) {
+        addInto = nil
+        searchFieldFocused = false
+        addNote(todo: todo)
+        typedDraftID = draft?.id
     }
 
     /// "+" of the tab bar: the Add sheet, into the open bowl, else the Inbox. A long press makes a note at once (the
@@ -1350,8 +1396,7 @@ struct NotesView: View {
             .accessibilityAction(named: "New Note") { addNote() }
             // Only the page in front presents it (pages below on the stack keep their items).
             .popover(isPresented: Binding(get: { showAddPopover && shown == page }, set: { if !$0 { showAddPopover = false } })) {
-                addSheet
-                    .frame(idealWidth: 400, idealHeight: 620)
+                addSheet(inPopover: true)
             }
         }
     }
@@ -1442,8 +1487,8 @@ struct NotesView: View {
     }
 
     /// The Add sheet's content (a sheet on a phone, a popover on an iPad).
-    private var addSheet: some View {
-        AddSheet(into: defaultInto, projects: projects) { choice, into in
+    private func addSheet(inPopover: Bool = false) -> some View {
+        AddSheet(into: defaultInto, projects: projects, inPopover: inPopover) { choice, into in
             pendingAdd = choice
             addInto = .some(into)
             showAdd = false
