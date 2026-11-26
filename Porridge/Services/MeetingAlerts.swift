@@ -203,14 +203,31 @@ enum SpeakerNaming {
     }
 
     /// Names a speaker: the voice is learned under the name (`VoiceProfiles`), earlier unnamed speakers are checked
-    /// against it, and the summary follows (`ProcessingService.speakersRenamed`).
+    /// against it, and the summary follows (`ProcessingService.speakersRenamed`). A name another speaker of the
+    /// meeting already has makes the two one speaker (`mergingSameName`).
     @MainActor
     static func rename(_ speakerID: String, to rawName: String, in note: Note, context: ModelContext, processing: ProcessingService) {
         let name = rawName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty, let old = note.speakers.first(where: { $0.id == speakerID })?.name, old != name else { return }
         note.speakers = VoiceProfiles.rename(speakerID: speakerID, to: name, in: note.speakers, context: context)
+        let merged = mergingSameName(speakerID, speakers: note.speakers, segments: note.segments)
+        if merged.speakers != note.speakers {
+            note.speakers = merged.speakers
+            note.segments = merged.segments
+            note.updatedAt = Date()
+        }
         try? context.save()
         VoiceProfiles.rematchAllMeetings(context: context)
         processing.speakersRenamed(note, from: old, to: name)
+    }
+
+    /// After `renamed` got its name: when another speaker of the meeting has that name already (case aside), the
+    /// two are one person: `renamed`'s segments go to the speaker that had the name first, and `renamed` is removed
+    /// (`SpeakerMerge.merging`). Otherwise nothing changes.
+    static func mergingSameName(_ renamed: String, speakers: [Speaker], segments: [TranscriptSegment]) -> (speakers: [Speaker], segments: [TranscriptSegment]) {
+        guard let name = speakers.first(where: { $0.id == renamed })?.name,
+              let other = speakers.first(where: { $0.id != renamed && $0.name.caseInsensitiveCompare(name) == .orderedSame })
+        else { return (speakers, segments) }
+        return SpeakerMerge.merging(renamed, into: other.id, speakers: speakers, segments: segments)
     }
 }

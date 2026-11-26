@@ -7,6 +7,12 @@ struct TranscriptionOutput: Sendable {
     let words: [Word]
 }
 
+/// What speaker detection found: the turns, and one voice print per detected voice (by the turns' speaker label).
+struct Diarization: Sendable {
+    var segments: [DiarizedSegment]
+    var voices: [String: [Float]] = [:]
+}
+
 /// Owns the FluidAudio models: Parakeet TDT v3 (0.6B) for ASR and the offline
 /// pyannote pipeline for speaker diarization on single-channel recordings.
 actor TranscriptionEngine {
@@ -20,6 +26,9 @@ actor TranscriptionEngine {
 
     private var asrTask: Task<LoadedASR, Error>?
     private var diarizer: OfflineDiarizerManager?
+    /// The diarizer's models, loaded a second time only when a run with an upper limit of voices is asked for (the
+    /// limit is part of a manager's configuration, and the default manager does not hand its models out).
+    private var limitedModels: OfflineDiarizerModels?
 
     nonisolated static var asrInstalled: Bool {
         AsrModels.modelsExist(at: AsrModels.defaultCacheDirectory(for: asrVersion), version: asrVersion)
@@ -63,6 +72,7 @@ actor TranscriptionEngine {
     /// Deletes the downloaded speaker detection files.
     func deleteDiarizer() {
         diarizer = nil
+        limitedModels = nil
         try? FileManager.default.removeItem(at: MLModelConfigurationUtils.defaultModelsDirectory(for: .diarizer))
     }
 
@@ -129,16 +139,33 @@ actor TranscriptionEngine {
         return try await diarizer.embedSpans(audioSource: source, spans: spans)
     }
 
-    func diarize(_ url: URL) async throws -> [DiarizedSegment] {
+    /// Tells the voices of a 16 kHz mono file apart. `maxSpeakers` is an upper limit (from the meeting's invited
+    /// people), never a fixed count: FluidAudio re-clusters only when it found more voices than that
+    /// (`OfflineDiarizerConfig.withSpeakers(max:)`).
+    func diarize(_ url: URL, maxSpeakers: Int? = nil) async throws -> Diarization {
         try await loadDiarizer()
-        guard let diarizer else { return [] }
-        let result = try await diarizer.process(url)
-        return result.segments.map {
+        guard var manager = diarizer else { return Diarization(segments: []) }
+        if let maxSpeakers, maxSpeakers > 0 {
+            do {
+                if limitedModels == nil { limitedModels = try await OfflineDiarizerModels.load() }
+                if let limitedModels {
+                    let limited = OfflineDiarizerManager(config: OfflineDiarizerConfig().withSpeakers(max: maxSpeakers))
+                    limited.initialize(models: limitedModels)
+                    manager = limited
+                }
+            } catch {
+                // Without the limit, as before.
+                print("[diarize] limit of \(maxSpeakers) voices not applied: \(error.localizedDescription)")
+            }
+        }
+        let result = try await manager.process(url)
+        let segments = result.segments.map {
             DiarizedSegment(
                 speaker: $0.speakerId,
                 start: Double($0.startTimeSeconds),
                 end: Double($0.endTimeSeconds)
             )
         }
+        return Diarization(segments: segments, voices: result.speakerDatabase ?? [:])
     }
 }

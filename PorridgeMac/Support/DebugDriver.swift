@@ -9,7 +9,8 @@ import SwiftData
 /// `shot-ask <path.png>`, `shot-settings <path.png>`, `bucket <name>`, `select <row>`, `menu <Top>/<Item>[/<Sub>]`,
 /// `search <text>`, `dump`, `shot <path.png>`, `key <window title>` (orders a window front), `title <text>` / `body <text>` (types
 /// into the open note), `settings <tab>`, `settings-rows` (the open Settings tab's rows), `rewrite-bar` (✦ of the format bar,
-/// logging what it showed), `dismiss`. Commands also run while a menu or a modal alert is open.
+/// logging what it showed), `dismiss`, `import-meeting <file>` (a stereo file as a meeting with the Mac's sound),
+/// `speakers <title>` (that meeting's speakers and transcript). Commands also run while a menu or a modal alert is open.
 @MainActor
 enum DebugDriver {
     /// The file the commands are read from (one per line), and the file answers go to.
@@ -603,6 +604,48 @@ enum DebugDriver {
             guard let note = controller.openNote else { return }
             NoteStore.restore(note, in: library.context)
             state.reveal(note)
+        case "import-meeting":
+            // `import-meeting <file>`: a stereo audio file as a meeting recorded on the Mac with its sound (left the
+            // microphone, the user; right the Mac's sound, the others), transcribed the way such a recording is.
+            // `scripts/make-meeting-fixture.sh` makes one.
+            let url = URL(fileURLWithPath: argument)
+            do {
+                let fileName = try AudioStore.importFile(from: url)
+                let note = Note()
+                note.source = .meeting
+                note.title = url.deletingPathExtension().lastPathComponent
+                note.titleIsCustom = true
+                note.statusRaw = ProcessingStatus.recorded.rawValue
+                note.audioFileName = fileName
+                note.inputName = SystemAudioMix.inputName
+                if let info = AudioStore.audioInfo(for: fileName) {
+                    note.duration = info.duration
+                    note.channelCount = info.channels
+                }
+                note.speakerMode = .channels
+                note.speakers = [
+                    Speaker(id: SpeakerAssigner.leftChannelID, name: AppSettings.myName ?? "Me", colorIndex: 0),
+                    Speaker(id: SpeakerAssigner.rightChannelID, name: SystemAudioMix.othersName, colorIndex: 1),
+                ]
+                library.context.insert(note)
+                library.save()
+                library.processing.enqueue(.transcript(note.id))
+                state.reveal(note)
+                log("import-meeting: \(note.title) \(note.id) channels=\(note.channelCount)")
+            } catch {
+                log("import-meeting: \(error.localizedDescription)")
+            }
+        case "speakers":
+            // `speakers <title>`: the meeting's state, speakers (id, name, seconds of voice) and transcript by speaker.
+            guard let note = library.notes.first(where: { $0.title == argument && !$0.isDeleted }) else { log("speakers: none"); return }
+            log("speakers: \(note.title) status=\(note.status.rawValue) mode=\(note.speakerMode.rawValue) error=\(note.errorMessage ?? "none")")
+            for speaker in note.speakers {
+                log("  \(speaker.id) \(speaker.name) voice=\(String(format: "%.1f", speaker.voiceSeconds ?? 0))s profile=\(speaker.profileID == nil ? "no" : "yes")")
+            }
+            for segment in note.segments {
+                log("  [\(segment.speakerId ?? "-")] \(String(format: "%.1f–%.1f", segment.start, segment.end)) \(segment.text)")
+            }
+            log("--")
         case "hover-end":
             for view in [controller.split.content.view, controller.split.detail.view] {
                 (view as? NSDraggingDestination)?.draggingExited?(nil)

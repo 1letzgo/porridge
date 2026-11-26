@@ -23,7 +23,7 @@ Porridge records what is said in a meeting, writes it down with speaker names an
 
 ## What it does
 
-- **Meetings:** Record a meeting and get a transcript with speakers. Porridge recognizes voices it has learned. A two-channel microphone assigns each channel to one person.
+- **Meetings:** Record a meeting and get a transcript with speakers. Porridge recognizes voices it has learned. A two-channel microphone assigns each channel to one person. On the Mac, calls are recorded with your microphone and the call's sound apart, so your words and the others' are recognized separately and the echo of the loudspeaker is left out.
 - **Summaries with templates:** Choose General, One-on-One, Customer Call, Lecture or your own template each time. Tasks stay in the summary, where you can tick them off.
 - **Your choice of model:** On-device models and cloud models with your own key sit in one list. Pick a default, and switch for a single meeting when you summarize it.
 - **Dictation:** Dictate into any note. On the Mac, a global shortcut types into whatever app you are using.

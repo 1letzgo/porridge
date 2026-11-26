@@ -322,30 +322,49 @@ final class ProcessingService {
     private func transcribe(_ meeting: Note, fileName: String, stageID id: UUID) async throws {
         stages[id] = "Preparing audio…"
         let splitChannels = meeting.speakerMode == .channels
-        // The Mac's sound of a call: its voices are told apart on that channel alone.
-        let keepRight = splitChannels && SystemAudioMix.isSystemAudio(inputName: meeting.inputName)
+        // The Mac's sound of a call: the user's microphone and the others are recognized each on its own, and the
+        // others' voices are told apart on their channel alone.
+        let systemAudio = splitChannels && SystemAudioMix.isSystemAudio(inputName: meeting.inputName)
         let source = AudioStore.url(for: fileName)
         let prepared = try await Task.detached(priority: .userInitiated) {
-            try AudioPreprocessor.prepare(source: source, measureChannels: splitChannels, keepRightChannel: keepRight)
+            try AudioPreprocessor.prepare(
+                source: source, measureChannels: splitChannels, keepRightChannel: systemAudio, keepLeftChannel: systemAudio)
         }.value
-        defer {
-            try? FileManager.default.removeItem(at: prepared.monoURL)
-            if let right = prepared.rightURL { try? FileManager.default.removeItem(at: right) }
-        }
+        defer { prepared.removeFiles() }
 
         stages[id] = "Loading speech model…"
         try await ModelManager.shared.ensureASR()
         stages[id] = "Transcribing…"
-        let output = try await TranscriptionEngine.shared.transcribe(prepared.monoURL, language: AppSettings.language)
+        let output: TranscriptionOutput
+        var channelIds: [String]?
+        if systemAudio, let leftURL = prepared.leftURL, let rightURL = prepared.rightURL, let energy = prepared.channelEnergy {
+            let language = AppSettings.language
+            let mine = try await TranscriptionEngine.shared.transcribe(leftURL, language: language)
+            try stillThere(meeting, id)
+            let others = try await TranscriptionEngine.shared.transcribe(rightURL, language: language)
+            // The others from the loudspeaker, picked up by the microphone, are no words of the user.
+            let kept = SpeakerAssigner.droppingEcho(left: mine.words, right: others.words, energy: energy)
+            let merged = SpeakerAssigner.mergeChannels(left: kept, right: others.words)
+            channelIds = merged.ids
+            let text = merged.words.isEmpty
+                ? [mine.text, others.text].filter { !$0.isEmpty }.joined(separator: " ")
+                : merged.words.map(\.text).joined(separator: " ")
+            output = TranscriptionOutput(text: text, words: merged.words)
+        } else {
+            output = try await TranscriptionEngine.shared.transcribe(prepared.monoURL, language: AppSettings.language)
+        }
         try stillThere(meeting, id)
 
         var speakers = meeting.speakers
         var mode = meeting.speakerMode
         var diagnostics: String?
         var speakerIds: [String?] = output.words.map { _ in nil }
+        // The people invited to the meeting's appointment cap the voices speaker detection may find. A part recorded
+        // later is a scratch note: its meeting knows the appointment.
+        let invited = MeetingLinks.attendees(for: fetchNote(id) ?? meeting).count
 
         if let energy = prepared.channelEnergy {
-            speakerIds = SpeakerAssigner.byChannel(output.words, energy: energy)
+            speakerIds = channelIds ?? SpeakerAssigner.byChannel(output.words, energy: energy)
             for (index, channelID) in [SpeakerAssigner.leftChannelID, SpeakerAssigner.rightChannelID].enumerated()
             where !speakers.contains(where: { $0.id == channelID }) {
                 speakers.append(Speaker(id: channelID, name: "Speaker \(index + 1)", colorIndex: index))
@@ -356,9 +375,12 @@ final class ProcessingService {
                 stages[id] = "Detecting speakers…"
                 do {
                     try await ModelManager.shared.ensureDiarizer()
-                    let segments = try await TranscriptionEngine.shared.diarize(prepared.rightURL ?? prepared.monoURL)
+                    let diarization = try await TranscriptionEngine.shared.diarize(
+                        prepared.rightURL ?? prepared.monoURL,
+                        maxSpeakers: SpeakerAssigner.maxSpeakers(invited: invited, othersOnly: prepared.rightURL != nil))
                     let split = SpeakerAssigner.splitChannel(
-                        output.words, ids: speakerIds, channel: SpeakerAssigner.rightChannelID, segments: segments)
+                        output.words, ids: speakerIds, channel: SpeakerAssigner.rightChannelID,
+                        segments: diarization.segments, voices: diarization.voices)
                     if !split.added.isEmpty {
                         speakerIds = split.ids
                         if let index = speakers.firstIndex(where: { $0.id == SpeakerAssigner.rightChannelID }),
@@ -377,7 +399,8 @@ final class ProcessingService {
             stages[id] = "Detecting speakers…"
             do {
                 try await ModelManager.shared.ensureDiarizer()
-                let segments = try await TranscriptionEngine.shared.diarize(prepared.monoURL)
+                let segments = try await TranscriptionEngine.shared.diarize(
+                    prepared.monoURL, maxSpeakers: SpeakerAssigner.maxSpeakers(invited: invited, othersOnly: false)).segments
                 let assignment = SpeakerAssigner.byDiarization(output.words, segments: segments)
                 // A single voice is kept too, so it can be recognized or named like any other.
                 diagnostics = assignment.speakers.isEmpty
@@ -420,9 +443,12 @@ final class ProcessingService {
             stages[id] = "Recognizing voices…"
             let identified = await VoiceProfiles.identify(
                 meeting.speakers, segments: meeting.segments, audio: prepared.monoURL, rightChannelAudio: prepared.rightURL,
-                context: context)
+                leftChannelAudio: prepared.leftURL, context: context)
             try stillThere(meeting, id)
-            meeting.speakers = identified
+            // One person split in two by speaker detection becomes one again (`SpeakerMerge.sameVoiceThreshold`).
+            let merged = SpeakerMerge.mergingSameVoices(identified, segments: meeting.segments)
+            meeting.speakers = merged.speakers
+            if merged.segments != meeting.segments { meeting.segments = merged.segments }
         }
         meeting.duration = prepared.duration
         meeting.status = .ready
@@ -440,6 +466,8 @@ final class ProcessingService {
             part.createdAt = Date()
             part.audioFileName = fileName
             part.speakerMode = AudioStore.audioInfo(for: fileName)?.channels == 2 ? .channels : .none
+            // A part of a Mac meeting with the Mac's sound goes the same way as the meeting (each channel on its own).
+            if part.speakerMode == .channels { part.inputName = meeting.inputName }
             try await transcribe(part, fileName: fileName, stageID: id)
             guard exists(id) else { return }
             stages[id] = "Adding to the meeting…"

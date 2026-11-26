@@ -16,14 +16,23 @@ struct PreparedAudio: Sendable {
     /// 16 kHz mono of the right channel alone, when asked for (the Mac's sound of a call: only the others speak
     /// there, so their voices are told apart without the user's in between). Delete when done.
     var rightURL: URL? = nil
+    /// 16 kHz mono of the left channel alone, when asked for (the user's microphone in a Mac meeting with the Mac's
+    /// sound: recognized on its own, so the others' voices do not run into the user's words). Delete when done.
+    var leftURL: URL? = nil
+
+    /// Removes the temporary files.
+    func removeFiles() {
+        for url in [monoURL, rightURL, leftURL].compactMap({ $0 }) { try? FileManager.default.removeItem(at: url) }
+    }
 }
 
 enum AudioPreprocessor {
     static let energyFrameDuration = 0.05
 
     /// Streams the recording once: mixes it down to 16 kHz mono and, for split-stereo
-    /// recordings, measures the energy of both channels.
-    static func prepare(source: URL, measureChannels: Bool, keepRightChannel: Bool = false) throws -> PreparedAudio {
+    /// recordings, measures the energy of both channels. `keepRightChannel` / `keepLeftChannel` also write that
+    /// channel alone (`rightURL` / `leftURL`).
+    static func prepare(source: URL, measureChannels: Bool, keepRightChannel: Bool = false, keepLeftChannel: Bool = false) throws -> PreparedAudio {
         let input = try AVAudioFile(forReading: source)
         let inFormat = input.processingFormat
         let channels = Int(inFormat.channelCount)
@@ -34,11 +43,13 @@ enum AudioPreprocessor {
         else { throw ASRPipelineError.audioFormat }
         let mix = try Mono16k(from: monoNative)
         let rightOnly = keepRightChannel && channels >= 2 ? try Mono16k(from: monoNative) : nil
+        let leftOnly = keepLeftChannel && channels >= 2 ? try Mono16k(from: monoNative) : nil
 
         let chunk = AVAudioFrameCount(max(4096, sampleRate))
         guard let inBuffer = AVAudioPCMBuffer(pcmFormat: inFormat, frameCapacity: chunk),
               let monoBuffer = AVAudioPCMBuffer(pcmFormat: monoNative, frameCapacity: chunk),
-              let rightBuffer = AVAudioPCMBuffer(pcmFormat: monoNative, frameCapacity: chunk)
+              let rightBuffer = AVAudioPCMBuffer(pcmFormat: monoNative, frameCapacity: chunk),
+              let leftBuffer = AVAudioPCMBuffer(pcmFormat: monoNative, frameCapacity: chunk)
         else { throw ASRPipelineError.audioFormat }
 
         let frameLength = max(1, Int(sampleRate * energyFrameDuration))
@@ -71,6 +82,11 @@ enum AudioPreprocessor {
                 rightBuffer.frameLength = AVAudioFrameCount(n)
                 try rightOnly.write(rightBuffer, endOfStream: false)
             }
+            if let leftOnly, let leftData = leftBuffer.floatChannelData {
+                leftData[0].update(from: src[0], count: n)
+                leftBuffer.frameLength = AVAudioFrameCount(n)
+                try leftOnly.write(leftBuffer, endOfStream: false)
+            }
 
             if measure {
                 let l = src[0], r = src[1]
@@ -92,6 +108,7 @@ enum AudioPreprocessor {
         }
         try mix.write(nil, endOfStream: true)
         try rightOnly?.write(nil, endOfStream: true)
+        try leftOnly?.write(nil, endOfStream: true)
 
         if measure, accCount > 0 {
             left.append(accLeft / Float(accCount))
@@ -104,7 +121,8 @@ enum AudioPreprocessor {
             channelEnergy: measure
                 ? ChannelEnergy(frameDuration: Double(frameLength) / sampleRate, left: left, right: right)
                 : nil,
-            rightURL: rightOnly?.url
+            rightURL: rightOnly?.url,
+            leftURL: leftOnly?.url
         )
     }
 }

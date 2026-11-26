@@ -76,6 +76,7 @@ enum VoiceProfiles {
         segments: [TranscriptSegment],
         audio: URL,
         rightChannelAudio: URL? = nil,
+        leftChannelAudio: URL? = nil,
         context: ModelContext
     ) async -> [Speaker] {
         guard !speakers.isEmpty else { return speakers }
@@ -83,10 +84,12 @@ enum VoiceProfiles {
 
         var result = speakers
         for index in result.indices {
-            // The voices of the Mac's sound are measured on that channel alone, without the user's microphone.
+            // The voices of the Mac's sound are measured on that channel alone, without the user's microphone, and
+            // the user's voice on the microphone alone, without the others.
             let id = result[index].id
             let onRight = id == SpeakerAssigner.rightChannelID || id.hasPrefix(SpeakerAssigner.rightChannelID + ".")
-            let source = onRight ? (rightChannelAudio ?? audio) : audio
+            let onLeft = id == SpeakerAssigner.leftChannelID
+            let source = onRight ? (rightChannelAudio ?? audio) : onLeft ? (leftChannelAudio ?? audio) : audio
             guard let print = await fingerprint(of: id, in: segments, audio: source) else { continue }
             result[index].voice = VoiceMath.data(from: print.voice)
             result[index].voiceSeconds = print.seconds
