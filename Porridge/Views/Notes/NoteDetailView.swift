@@ -134,8 +134,9 @@ struct NoteDetailView: View {
                     NoteBodyEditor(
                         text: $note.text, isEditable: !isLocked && !isEnhancing, controller: editor,
                         placeholder: note.isTodo ? "Notes and subtasks…" : "Start typing or dictate…", growsWithText: true,
-                        // A to-do: "Add Subtask" right under its few lines, not far down an empty page.
-                        minimumGrowingHeight: note.isTodo ? 88 : 480
+                        // A to-do: as tall as its lines, "Add Subtask" right under them (the stack's 12 pt and
+                        // the button's 4 pt), not far down an empty page.
+                        minimumGrowingHeight: note.isTodo ? 0 : 480, bottomSpace: note.isTodo ? 0 : 200
                     )
                     if note.isTodo, !isLocked, !isEnhancing {
                         addSubtaskButton

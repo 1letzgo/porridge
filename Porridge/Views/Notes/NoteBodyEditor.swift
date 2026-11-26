@@ -14,12 +14,14 @@ struct NoteBodyEditor: View {
     var growsWithText = false
     /// The least height while it grows with its text (`NoteTextView.minimumGrowingHeight`).
     var minimumGrowingHeight: CGFloat = 480
+    /// Room under the last line (`NoteTextView.bottomSpace`).
+    var bottomSpace: CGFloat = 200
 
     var body: some View {
         VStack(spacing: 0) {
             // The text view shows the placeholder itself: an overlay here read `controller.isEmpty`, which the
             // editor sets while SwiftUI is updating (loading a note), and could stay over the text.
-            NoteTextView(text: $text, isEditable: isEditable, controller: controller, placeholder: placeholder, growsWithText: growsWithText, minimumGrowingHeight: minimumGrowingHeight)
+            NoteTextView(text: $text, isEditable: isEditable, controller: controller, placeholder: placeholder, growsWithText: growsWithText, minimumGrowingHeight: minimumGrowingHeight, bottomSpace: bottomSpace)
         }
         .modifier(NoteEditorPresentations(controller: controller))
         .overlay(alignment: .bottom) {

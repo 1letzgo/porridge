@@ -17,6 +17,9 @@ struct NoteTextView: UIViewRepresentable {
     var growsWithText = false
     /// A to-do's body is shorter: its "Add Subtask" follows right below instead of 480 pt down the page.
     var minimumGrowingHeight: CGFloat = 480
+    /// Room under the last line, part of the view (a tap there lands in the text). A to-do's is small: its
+    /// "Add Subtask" follows right under the text (with 200 pt it stood about 200 pt below "Notes and subtasks…").
+    var bottomSpace: CGFloat = 200
 
     func makeCoordinator() -> NoteTextCoordinator {
         NoteTextCoordinator(text: NoteTextBinding($text), controller: controller)
@@ -28,7 +31,7 @@ struct NoteTextView: UIViewRepresentable {
         textView.delegate = context.coordinator
         textView.backgroundColor = .clear
         textView.font = NoteMarkdown.baseFont(kind: .paragraph)
-        textView.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: 200, right: 0)
+        textView.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: bottomSpace, right: 0)
         textView.textContainer.lineFragmentPadding = 0
         textView.keyboardDismissMode = .interactive
         textView.isScrollEnabled = !growsWithText
@@ -55,6 +58,9 @@ struct NoteTextView: UIViewRepresentable {
         coordinator.text = NoteTextBinding($text)
         textView.isEditable = isEditable
         if textView.placeholder != placeholder { textView.placeholder = placeholder }
+        if textView.textContainerInset.bottom != bottomSpace {
+            textView.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: bottomSpace, right: 0)
+        }
         guard text != coordinator.lastWritten else { return }
         if coordinator.hasPendingCommit {
             Self.mergeTicks(from: text, into: textView, coordinator: coordinator)
