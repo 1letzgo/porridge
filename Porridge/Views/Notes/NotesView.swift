@@ -4,10 +4,10 @@ import UserNotifications
 
 /// The app's root on iPhone and iPad: the three places Today · Inbox · Bowls and the search. On a phone (and an iPad
 /// window of compact width) each place is a tab with its own stack (an entry opens on top of it). On an iPad of
-/// regular width a split view: the sidebar lists the places, the pinned and all bowls and the smart filters
-/// (`PadSidebar`); right of it the place's own stack with the same pages as on the phone, and, where the width allows
-/// and the page lists entries, the open entry in a column beside the list (else it is pushed onto the stack, as on a
-/// phone). Holds what every place shares: the Add sheet and what it starts, quick actions, links and the dialogs about
+/// regular width a split view: the sidebar lists only the places (`PadSidebar`); right of it the place's own stack with
+/// the same pages as on the phone (bowls and smart filters open from the Bowls page there), and, where the width
+/// allows and the page lists entries, the open entry in a column beside the list (else it is pushed onto the stack, as
+/// on a phone). Holds what every place shares: the Add sheet and what it starts, quick actions, links and the dialogs about
 /// bowls and smart filters.
 struct NotesView: View {
     @Environment(\.modelContext) private var context
@@ -33,6 +33,8 @@ struct NotesView: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     /// iPad: the width right of the sidebar. Wide enough, an entry opens in a column beside the list.
     @State private var padWidth: CGFloat = 0
+    /// iPad: the sidebar's width, for four rows (a place's name and its count); it grows with the text size.
+    @ScaledMetric(relativeTo: .body) private var padSidebarWidth: CGFloat = 200
     @State private var search = ""
     /// Tags picked in the search field; a note must have all of them.
     @State private var tagTokens: [TagToken] = []
@@ -120,19 +122,20 @@ struct NotesView: View {
         Binding(get: { paths[place] ?? [] }, set: { paths[place] = $0 })
     }
 
-    /// iPad, regular width: the sidebar with the places, bowls and smart filters (as the Mac's main window), and right
-    /// of it the place's stack (`padContent`). Two columns of the system's split view, not three: the third column
+    /// iPad, regular width: the sidebar with the places (as the Mac's main window), and right of it the place's stack
+    /// (`padContent`). Two columns of the system's split view, not three: the third column
     /// (the entry beside the list) is laid out here, so it shows only where it fits and the page lists entries; in a
     /// narrower window (portrait) the entry is pushed onto the place's stack instead, with the back pill.
     private var splitView: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             PadSidebar(
-                notes: notes, projects: projects, order: bowlOrder,
-                selection: Binding(get: { sidebarItem }, set: { if let item = $0 { chooseSidebar(item) } }),
+                notes: notes,
+                selection: Binding(get: { place }, set: { if let chosen = $0 { chooseTab(chosen) } }),
                 onSettings: { go(.settings) },
                 onHide: { withAnimation(.snappy) { columnVisibility = .detailOnly } }
             )
-            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+            // Narrow: four rows. 200 pt at the standard text size, wider with larger text (at most 300 pt).
+            .navigationSplitViewColumnWidth(min(300, max(190, padSidebarWidth.rounded())))
             .toolbar(removing: .sidebarToggle)
             .toolbar(.hidden, for: .navigationBar)
         } detail: {
@@ -159,6 +162,13 @@ struct NotesView: View {
                 Group {
                     if let note = selectedNote {
                         noteView(note, onBack: nil)
+                    } else if page == .bowls, bowlsSide == .bowls {
+                        // The Bowls page lists bowls, not entries: the column invites to open one.
+                        EmptyStateView(
+                            title: "Pick a Bowl",
+                            message: "Open a bowl or a smart filter to see its entries here.",
+                            systemImage: "folder"
+                        )
                     } else {
                         EmptyStateView(title: "No Entry Selected", message: "Pick an entry from the list.", systemImage: "note.text")
                     }
@@ -194,35 +204,7 @@ struct NotesView: View {
 
     /// What decides on an iPad where the open entry stands.
     private var padLayout: PadLayout {
-        PadLayout(page: page, wholeWidth: usesWholeWidth(page), beside: entriesBeside)
-    }
-
-    /// The row of the sidebar that belongs to what is in front: a bowl or smart filter on top of the Bowls stack, else
-    /// the place.
-    private var sidebarItem: SidebarItem? {
-        if place == .bowls, let top = currentPath.compactMap(\.page).last {
-            switch top {
-            case .project(let id): return .bowl(id)
-            case .smartFilter(let id): return .smartFilter(id)
-            default: break
-            }
-        }
-        return .place(place)
-    }
-
-    /// A row of the sidebar: a place as a tab of the phone (the one in front goes back to its start); a bowl or smart
-    /// filter opens on the Bowls stack with Bowls below it, so the back pill leads there.
-    private func chooseSidebar(_ item: SidebarItem) {
-        switch item {
-        case .place(let chosen):
-            chooseTab(chosen)
-        case .bowl(let id):
-            paths[.bowls] = [.page(.project(id))]
-            place = .bowls
-        case .smartFilter(let id):
-            paths[.bowls] = [.page(.smartFilter(id))]
-            place = .bowls
-        }
+        PadLayout(page: page, side: page == .bowls ? bowlsSide : nil, wholeWidth: usesWholeWidth(page), beside: entriesBeside)
     }
 
     /// The places and the search as tabs, "+" in the middle: Today · Inbox · + · Bowls · Search. Each place has its own
@@ -398,7 +380,8 @@ struct NotesView: View {
             guard sizeClass != .compact else { return }
             // iPad: the entry beside the list belonged to the page that was left (or that now takes the whole
             // width); a page on its own does not show another page's entry.
-            if old.beside, old.page != new.page || new.wholeWidth, let selection, !currentPath.contains(.note(selection)) {
+            if old.beside, old.page != new.page || old.side != new.side || new.wholeWidth, let selection,
+               !currentPath.contains(.note(selection)) {
                 self.selection = nil
             }
             // The room changed (turned, the sidebar shown or hidden): the open entry moves beside the list or onto
@@ -1883,17 +1866,12 @@ extension View {
     }
 }
 
-/// A row of the iPad's sidebar (`PadSidebar`).
-enum SidebarItem: Hashable {
-    case place(Place)
-    case bowl(UUID)
-    case smartFilter(UUID)
-}
-
 /// What decides on an iPad where the open entry stands: the page in front, whether it takes the whole width, and
 /// whether the entry has a column beside the list.
 struct PadLayout: Equatable {
     let page: ListPage
+    /// The Bowls page's side: a to-do open beside its To-dos side is let go on its Bowls side.
+    let side: BowlsSide?
     let wholeWidth: Bool
     let beside: Bool
 }

@@ -1,55 +1,26 @@
 import SwiftUI
 
-/// The iPad's sidebar (regular width), as the Mac's main window: the places Today · Inbox · Bowls · Search (with the
-/// counts of the phone's tab badges, only when there are any), then the pinned and all bowls and the smart filters to
-/// go to straight away. Its head holds Settings (the gear) and the pill that hides it. The pages themselves open right
-/// of it (`NotesView`), with their own bar.
+/// The iPad's sidebar (regular width): only the places Today · Inbox · Bowls · Search (with the counts of the phone's
+/// tab badges, only when there are any). Single bowls and the smart filters are not listed here: they open from the
+/// Bowls page in the main view, as on the phone. Its head holds Settings (the gear) and the pill that hides it. The
+/// pages themselves open right of it (`NotesView`), with their own bar.
 struct PadSidebar: View {
     let notes: [Note]
-    let projects: [NoteFolder]
-    let order: HomeList.BowlOrder
-    @Binding var selection: SidebarItem?
+    @Binding var selection: Place?
     var onSettings: () -> Void
     var onHide: () -> Void
 
     var body: some View {
-        let bowls = HomeList.bowls(projects, notes: notes, order: order)
-        let pinned = bowls.filter(\.isPinned)
-        let others = bowls.filter { !$0.isPinned }
-        let filters = SmartFilterStore.shared.filters
         List(selection: $selection) {
-            Section {
-                ForEach(Place.allCases, id: \.self) { shown in
-                    Label {
-                        Text(shown.tabTitle)
-                    } icon: {
-                        SymbolImage(shown.tabSymbol)
-                    }
-                    .badge(count(of: shown))
-                    .tag(SidebarItem.place(shown))
-                    .accessibilityIdentifier("Sidebar" + shown.tabTitle)
+            ForEach(Place.allCases, id: \.self) { shown in
+                Label {
+                    Text(shown.tabTitle)
+                } icon: {
+                    SymbolImage(shown.tabSymbol)
                 }
-            }
-            if !pinned.isEmpty {
-                Section("Pinned") {
-                    ForEach(pinned) { bowl in
-                        Label(bowl.name, systemImage: "folder").tag(SidebarItem.bowl(bowl.id))
-                    }
-                }
-            }
-            if !others.isEmpty {
-                Section("All Bowls") {
-                    ForEach(others) { bowl in
-                        Label(bowl.name, systemImage: "folder").tag(SidebarItem.bowl(bowl.id))
-                    }
-                }
-            }
-            if !filters.isEmpty {
-                Section("Smart Filters") {
-                    ForEach(filters) { filter in
-                        Label(filter.name, systemImage: "line.3.horizontal.decrease").tag(SidebarItem.smartFilter(filter.id))
-                    }
-                }
+                .badge(count(of: shown))
+                .tag(shown)
+                .accessibilityIdentifier("Sidebar" + shown.tabTitle)
             }
         }
         .listStyle(.sidebar)

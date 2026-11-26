@@ -937,6 +937,17 @@ thirds empty) the iPad of regular width is rebuilt after the Mac's main window. 
   `cardListRow(highlighted:)`). On an iPad the bars keep clear of the window controls (`avoidsWindowControls`,
   `containerCornerOffset(.leading, sizeToFit: true)`, iPadOS 26).
 
+**Owner revision 11 · iPad, second step (2026-11-26):** "wir wollen bowls nicht im menü sondern in der hauptview
+öffnen". The sidebar lists only the places Today · Inbox · Bowls · Search (counts > 0) under its head (gear, hide
+pill); the sections Pinned, All Bowls and Smart Filters and `SidebarItem` are gone. It is narrow: 200 pt at the
+standard text size, growing with it (`@ScaledMetric`, 190–300 pt). The place Bowls shows the phone's Bowls page in the
+list column (switch Bowls · To-dos, Pinned, All Bowls, Smart Filters, Archive, trash pill); a bowl or smart filter
+opens on its stack with the back pill (`go`), and so do the Go To of the search, links and widgets. Beside the Bowls
+side the entry's column says "Pick a Bowl / Open a bowl or a smart filter to see its entries here." instead of "No
+Entry Selected" (the To-dos side keeps that, its to-dos open there; switching sides lets go of an open to-do). The
+Bowls page across the whole width was not taken: the stack's width would change in the middle of the push when a
+bowl opens (whole width → list column), so the page would jump.
+
 ---
 
 ## What gets removed (summary)
