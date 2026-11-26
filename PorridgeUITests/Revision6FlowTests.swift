@@ -21,7 +21,7 @@ final class Revision6FlowTests: XCTestCase {
 
     /// Owner revision 13: Bowls has no switch (the open to-dos are the Inbox tab's To-dos side); the trash pill in the
     /// bar opens Recently Deleted as a page with Delete All (when something is there); the Archive row at the end
-    /// opens the archived bowls as a page; Sort and the trash pill are Bowls', "+ To-do" the To-dos side's.
+    /// opens the archived bowls as a page; Sort and the trash pill are Bowls'; the To-dos side has no "+ To-do" of its own ("+" › To-do).
     func testBowlsWithoutSwitchTrashPillAndArchiveRow() throws {
         let app = launch()
         app.openTab("Bowls")
@@ -38,7 +38,7 @@ final class Revision6FlowTests: XCTestCase {
         XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox tab")
         XCTAssertFalse(app.buttons["BowlSort"].exists, "Sort shows on the To-dos side")
         XCTAssertFalse(app.buttons["BowlsTrash"].exists, "the trash pill shows on the To-dos side")
-        XCTAssertTrue(app.buttons["TodosAdd"].exists, "no New To-do on the To-dos side")
+        XCTAssertFalse(app.buttons["TodosAdd"].exists, "the To-dos side still has its own New To-do")
         app.inboxSide("Inbox")
         app.openTab("Bowls")
 

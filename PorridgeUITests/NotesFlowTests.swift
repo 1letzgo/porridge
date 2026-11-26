@@ -181,8 +181,8 @@ final class NotesFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["Select"].waitForExistence(timeout: 5), "Inbox has no Select")
         // The open to-dos are the To-dos side of the Inbox tab (owner revision 13).
         app.openTodos()
-        XCTAssertTrue(app.buttons["TodosAdd"].waitForExistence(timeout: 5), "the To-dos side has no New To-do")
-        XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox")
+        XCTAssertTrue(app.tab("Inbox").waitForExistence(timeout: 5) && app.tab("Inbox").isSelected, "the To-dos side left the Inbox")
+        XCTAssertFalse(app.buttons["TodosAdd"].exists, "the To-dos side still has its own New To-do")
         app.inboxSide("Inbox")
         app.openTab("Bowls")
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 5), "Bowls has no sort menu")

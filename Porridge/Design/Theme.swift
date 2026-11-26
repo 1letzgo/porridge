@@ -426,9 +426,8 @@ struct ChromeBar<Actions: View>: View {
 
     var body: some View {
         // The pills never wrap or shrink. What gives way where the row is narrow (iPhone SE, larger text): first the
-        // title, down to its smallest scale; then the pills that have a short form drop their words
-        // (`ChromeBarPillLabel`: "+ To-do" becomes "+"); only then is the title cut with "…". A kind's word
-        // (`titleIsKind`) is never cut: the bar shows only its symbol instead.
+        // title, down to its smallest scale; then its ideal width gives way; only then is the title cut with "…". A
+        // kind's word (`titleIsKind`) is never cut: the bar shows only its symbol instead.
         ViewThatFits(in: .horizontal) {
             row(compact: false)
             row(compact: true)
@@ -461,7 +460,6 @@ struct ChromeBar<Actions: View>: View {
                 titleView(lineLimit: 2)
                     .frame(idealWidth: compact ? nil : 0, alignment: .leading)
             }
-            .environment(\.chromeBarCompact, compact)
         } else {
             HStack(alignment: .center, spacing: 10) {
                 backButton
@@ -471,7 +469,6 @@ struct ChromeBar<Actions: View>: View {
                 // The pills first: they keep their own width, the title takes what is left.
                 pills.layoutPriority(1)
             }
-            .environment(\.chromeBarCompact, compact)
         }
     }
 
@@ -593,33 +590,6 @@ struct ChromePillButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         ChromePill(configuration: configuration, fill: fill, tint: tint)
-    }
-}
-
-extension EnvironmentValues {
-    /// Set by `ChromeBar` when its row is too narrow for the pills' words: they show only their symbol.
-    @Entry var chromeBarCompact = false
-}
-
-/// The label of a pill with words in a `ChromeBar` ("+ To-do"): symbol and words on one line, never wrapped; where
-/// the bar is too narrow (`chromeBarCompact`) only the symbol. The button keeps its accessibility label either way.
-struct ChromeBarPillLabel: View {
-    let title: LocalizedStringKey
-    let systemImage: String
-    @Environment(\.chromeBarCompact) private var compact
-
-    var body: some View {
-        if compact {
-            Image(systemName: systemImage)
-                .fontWeight(.semibold)
-        } else {
-            Label(title, systemImage: systemImage)
-                .labelStyle(.tight)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.horizontal, 12)
-        }
     }
 }
 

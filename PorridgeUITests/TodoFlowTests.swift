@@ -149,12 +149,11 @@ final class TodoFlowTests: XCTestCase {
         box.tap()
         XCTAssertTrue(app.reveal(app.staticTexts["Done Today"]), "no Done Today group after ticking")
 
-        // Its own plus makes a to-do right here ("+" of the tab bar opens the Add sheet).
-        let newTodo = app.buttons["TodosAdd"]
-        XCTAssertTrue(app.revealAbove(newTodo), "Open To-dos has no New To-do")
-        newTodo.tap()
-        XCTAssertTrue(app.waitForTitleField(), "the plus did not make a to-do")
-        XCTAssertTrue(app.switches["To-do"].firstMatch.waitForExistence(timeout: 5), "the plus made a note, not a to-do")
+        // No own "+ To-do" in the bar: a new to-do comes from "+" › To-do of the tab bar.
+        XCTAssertFalse(app.buttons["TodosAdd"].exists, "Open To-dos still has its own New To-do")
+        app.create("To-do")
+        XCTAssertTrue(app.waitForTitleField(), "+ › To-do did not make a to-do")
+        XCTAssertTrue(app.switches["To-do"].firstMatch.waitForExistence(timeout: 5), "+ › To-do made a note, not a to-do")
     }
 }
 

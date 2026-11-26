@@ -167,7 +167,7 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "the To-dos side shows no open to-dos")
         XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox tab")
         XCTAssertTrue(side.label.hasPrefix("To-dos "), "the To-dos side does not count the open to-dos: \(side.label)")
-        XCTAssertTrue(app.buttons["TodosAdd"].exists, "no New To-do on the To-dos side")
+        XCTAssertFalse(app.buttons["TodosAdd"].exists, "the To-dos side still has its own New To-do")
         XCTAssertTrue(app.headTitled("Inbox"), "the head does not keep the tab's name on the To-dos side")
         screenshot("inbox-todos-side", app)
         app.inboxSide("Inbox")

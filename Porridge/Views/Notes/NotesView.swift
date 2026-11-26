@@ -1450,35 +1450,9 @@ struct NotesView: View {
             bowlSortMenu
             settingsButton
         case .todos:
-            // A new to-do at once, in no bowl: a green pill that says "To-do" beside its "+", so it is not taken for
-            // the Add sheet's "+" (the tab bar's, on an iPad the blue toolbar item after it).
-            if usesSystemBars {
-                // iPad: a toolbar item like the others, with its word ("+ To-do", in the to-dos' green) so it is not
-                // taken for the Add sheet's "+" beside it, which stays the one prominent action. Its label is a
-                // symbol and a text, not a `Label`: the bar draws a `Label` as its symbol alone, whatever its style
-                // (a plain "+" beside the blue "+"), but a text as a text, as it does "Today" or "Done".
-                Button { addNote(todo: true) } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .fontWeight(.semibold)
-                        Text("To-do")
-                    }
-                    .foregroundStyle(Color.brandTaskText)
-                }
-                .help("New To-do")
-                .accessibilityLabel("New To-do")
-                .accessibilityIdentifier("TodosAdd")
-            } else {
-                // One line, never wrapped; on a narrow bar (iPhone SE, larger text) after the title has shrunk only
-                // the "+" (ChromeBar).
-                Button { addNote(todo: true) } label: {
-                    ChromeBarPillLabel(title: "To-do", systemImage: "plus")
-                }
-                .buttonStyle(ChromePillButtonStyle(fill: .brandTask))
-                .help("New To-do")
-                .accessibilityLabel("New To-do")
-                .accessibilityIdentifier("TodosAdd")
-            }
+            // No own "+ To-do" (owner, round 9): a new to-do comes from "+" › To-do (the tab bar's on a phone, the
+            // blue toolbar item on an iPad) or File › New To-do ⇧⌘N.
+            EmptyView()
         case .project:
             if isSelecting {
                 doneSelectingButton
