@@ -948,6 +948,35 @@ Entry Selected" (the To-dos side keeps that, its to-dos open there; switching si
 Bowls page across the whole width was not taken: the stack's width would change in the middle of the push when a
 bowl opens (whole width → list column), so the page would jump.
 
+**Owner revision 12 · iPad system bars (2026-11-26):** an HIG check found the iPad of revision 11 not iPad-like (own
+bar, own third column, pills in place of toolbar items); owner: "system leisten". The iPad of regular width now uses
+the system's navigation; iPhone, compact width and the Mac are unchanged.
+
+- **Frame:** `NavigationSplitView(sidebar:content:detail:)` with `columnVisibility` (automatic) and the automatic
+  style: the sidebar (`PadSidebar`, the four places, gear in its bottom bar, the system's sidebar button), the
+  place's `NavigationStack` in the content column (`placeStack`, without entries on it), and the entry column
+  (`padDetail`, its own `NavigationStack`). `padContent`, `entriesBeside`, `usesWholeWidth`, the 760 pt pages, the
+  sidebar's hide pill and `ChromeBar`'s show-sidebar pill (`\.showSidebar`) are gone.
+- **Heads:** `listColumn` cuts head and content: on a phone `ChromeBar` over `pageContent`, on the iPad
+  (`usesSystemBars`, an environment value) `pageContent` with `navigationTitle` (large) and `pageToolbar`: the same
+  `listActions` in a trailing `ToolbarItemGroup`, then `barAddButton` (`prominentToolbarButton`: `.glassProminent`
+  on iPadOS 26, else `.borderedProminent`, sky). Buttons with the pills' own fills (Done, "+ To-do", the day pager)
+  have a plain toolbar form. The entry (`EntryChrome` in `NoteDetailView`) shows ✦ AI, Share and ⋯ the same way.
+  Accessibility identifiers are kept. `avoidsWindowControls` stays for `ChromeBar` (compact width only).
+- **Pages without a list:** Chat is split (`ChatPage.Part`): chats in the list column, conversation in the entry
+  column with entries opened from it pushed over it (`DetailRoute`). The Weekly Review is a page of Today's stack in
+  the list column, its entries open in the entry column. Settings is a sheet (`PadSettingsSheet`, page sizing) with
+  Known Voices and Acknowledgements pushed inside it; Settings, Voices and Acknowledgements keep the system bar there.
+- **Search:** the system's field (`SystemSearchField`: `.searchable` with the tags as tokens, drawer placement in the
+  list column, `searchFocused` for ⌘F); `SearchPane` hides its own field (`usesSystemField`) and keeps the chips.
+- **Add:** a popover at "+" (the same `AddSheet`; what it chose runs once it is gone).
+- **Commands** (`PlaceCommands`, focused scene value from `NotesView`): New Note ⌘N, New To-do ⇧⌘N, Record Meeting
+  ⌘R, Settings… ⌘,, Today/Inbox/Bowls/Search ⌘1–⌘4, Search or Ask… ⌘F, Weekly Review, the system's sidebar toggle,
+  Entry › Delete ⌘⌫.
+- **Not taken:** the switches (Bowls · To-dos, Search | Chat) as `ToolbarItem(placement: .principal)`: in a list
+  column of 320–400 pt they would crowd the bar beside back button, actions and "+", so they stay in the content as on
+  the phone (and keep lifting the empty views, `emptyStateBar`).
+
 ---
 
 ## What gets removed (summary)
