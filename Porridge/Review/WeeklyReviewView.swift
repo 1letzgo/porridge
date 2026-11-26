@@ -98,6 +98,9 @@ struct WeeklyReviewView: View {
                         Text(item.kind.title)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            // Two tiles side by side in a narrow column (the iPad's list column): the word shrinks
+                            // a little instead of ending in "…" ("1 Docume…").
+                            .minimumScaleFactor(0.7)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
