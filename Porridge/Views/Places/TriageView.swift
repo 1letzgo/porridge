@@ -150,8 +150,9 @@ struct TriageView: View {
                 Text(document.line)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Color.brandNavy.readable)
-                    // With the largest text sizes in lines, not cut ("Telekom Deutschland · 119,…").
-                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                    // At every text size in up to three lines where one is too narrow, never cut: the amount and the
+                    // date came after the sender ("Invoice · Telekom Deutschland · 119,00 € ·…" on an iPhone SE).
+                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if note.isTodo, let due = note.todoDue {
@@ -160,14 +161,16 @@ struct TriageView: View {
                     .foregroundStyle(.secondary)
             }
             Divider()
-            HStack(alignment: typeSize.isAccessibilitySize ? .firstTextBaseline : .center, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "sparkles").foregroundStyle(Color.brandProject.readable)
                 if let suggestion {
-                    // With the largest text sizes the bowl's name wraps ("Suggested bowl: Hous…" was cut).
+                    // At every text size the bowl's name wraps where the line is too narrow, up to two lines (three
+                    // with the largest text sizes), "Other…" on the first line's baseline ("Suggested bowl: House &
+                    // B…" was cut on an iPhone SE).
                     Text("Suggested bowl: \(suggestion.name)")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.brandProject.readable)
-                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 2)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("No bowl suggested")
@@ -178,6 +181,8 @@ struct TriageView: View {
                 Button("Other…") { bowlNote = note }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.brandNavy.readable)
+                    // Whole beside a bowl's name of two lines (the name gives way, not "Other…").
+                    .fixedSize()
                     .accessibilityIdentifier("TriageOther")
             }
         }
