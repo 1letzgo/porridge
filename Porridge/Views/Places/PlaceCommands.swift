@@ -19,7 +19,9 @@ extension FocusedValues {
 }
 
 /// The menus of the iPad's menu bar: File (New Note ⌘N, New To-do ⇧⌘N, Record Meeting ⌘R), the app's Settings… ⌘,,
-/// View (Show/Hide Sidebar ⌃⌘S from the system, the places ⌘1–⌘4, Search ⌘F, Weekly Review) and Entry (Delete ⌘⌫).
+/// View (Show/Hide Sidebar ⌃⌘S from the system, the places ⌘1–⌘4, Search ⌘F, Weekly Review) and Entry (Delete, without
+/// a shortcut: ⌘⌫ belongs to the text being typed, it deletes to the line's start in a title, a text or the search field;
+/// a menu shortcut took that key from the text field and could cost an entry).
 struct PlaceCommands: Commands {
     @FocusedValue(\.placeCommands) private var actions
 
@@ -58,7 +60,6 @@ struct PlaceCommands: Commands {
         }
         CommandMenu("Entry") {
             Button("Delete") { actions?.deleteEntry?() }
-                .keyboardShortcut(.delete)
                 .disabled(actions?.deleteEntry == nil)
         }
     }
