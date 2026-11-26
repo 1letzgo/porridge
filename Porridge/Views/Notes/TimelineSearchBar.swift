@@ -441,3 +441,55 @@ struct FlowLayout: Layout {
         }
     }
 }
+
+/// iPad: a list that ends at the top of the docked software keyboard instead of reaching down under it. The keyboard's
+/// frame (its notifications, in the screen's coordinates) is turned into the window's and compared with the list's own
+/// frame; the list keeps out of the keyboard's safe area itself, so the room is not taken twice. A floating keyboard and
+/// a hardware keyboard's shortcut bar leave the list as it is.
+private struct EndsAboveKeyboard: ViewModifier {
+    @State private var keyboard: CGRect = .null
+    @State private var frame: CGRect = .zero
+
+    private var overlap: CGFloat {
+        guard !keyboard.isNull, keyboard.height > 120, keyboard.width >= frame.width else { return 0 }
+        return max(0, frame.maxY - keyboard.minY)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.bottom, overlap)
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                guard let end = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                keyboard = Self.inWindow(end)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboard = .null
+            }
+    }
+
+    /// The keyboard's frame in the key window's coordinates (a window of Stage Manager is not the screen).
+    private static func inWindow(_ screenFrame: CGRect) -> CGRect {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
+        guard let window else { return screenFrame }
+        let converted = window.convert(screenFrame, from: window.screen.coordinateSpace)
+        // Off the window (put away below it): no keyboard.
+        return converted.minY >= window.bounds.maxY ? .null : converted
+    }
+}
+
+extension View {
+    /// iPad (`isOn`): the list ends above the docked keyboard (`EndsAboveKeyboard`); elsewhere as it is.
+    @ViewBuilder
+    func endsAboveKeyboard(_ isOn: Bool) -> some View {
+        if isOn {
+            modifier(EndsAboveKeyboard())
+        } else {
+            self
+        }
+    }
+}

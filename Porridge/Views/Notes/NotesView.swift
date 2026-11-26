@@ -1238,6 +1238,9 @@ struct NotesView: View {
                 )
             }
         }
+        // iPad: the results end above the docked keyboard, so the last of them scrolls into view above it (the list
+        // reached down under the keyboard as if it were not there: rows behind it, and a drag there was the keyboard's).
+        .endsAboveKeyboard(usesSystemBars)
     }
 
     private func tint(of target: SearchAsk.Target) -> Color {
