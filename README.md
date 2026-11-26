@@ -32,7 +32,6 @@ Porridge records what is said in a meeting, writes it down with speaker names an
 - **Bowls:** Keep notes, meetings and links together, with pinned bowls at the top.
 - **Search:** Search notes, transcripts, summaries and saved pages, narrowed by kind or tag.
 - **Sync:** iCloud across your iPhone, iPad and Mac, recordings and attachments included. It can be turned off in Settings.
-- **Plaud import without the cloud:** Copy recordings straight from a Plaud recorder over Bluetooth, so they do not have to go through Plaud's cloud. You sign in to Plaud once in Settings to connect the recorder, then import from the plus button; the transcript and summary then come from Porridge.
 
 <p align="center">
   <img src="docs/screenshots/search.png" width="240" alt="Search across everything">
@@ -71,7 +70,7 @@ Use the `Porridge` scheme for iPhone and iPad and `PorridgeMac` for the Mac. You
 | Path | Content |
 | --- | --- |
 | `Porridge/Models` | SwiftData models |
-| `Porridge/Services` | Recording, transcription, summaries, search, sync, Plaud |
+| `Porridge/Services` | Recording, transcription, summaries, search, sync |
 | `Porridge/Views`, `Porridge/Design` | SwiftUI views and the shared look |
 | `PorridgeMac` | Mac app: dictation shortcut, menu bar |
 | `PorridgeWidgets`, `PorridgeShare` | Widgets, Live Activity and the share extension |
@@ -101,7 +100,6 @@ Porridge stands on the work of these projects. Thank you! The full license texts
 | [MLX Swift](https://github.com/ml-explore/mlx-swift) | 0.32.3 | MIT |
 | [MLX Swift LM](https://github.com/ml-explore/mlx-swift-lm) | 3.32.3 | MIT |
 | [NeMo Text Processing (in FluidAudio)](https://github.com/FluidInference/text-processing-rs) | 0.3.0 | Apache 2.0 |
-| [plaude-archiver (Plaud Bluetooth protocol)](https://github.com/roopen219/plaude-archiver) | – | MIT |
 | [Swift ASN.1](https://github.com/apple/swift-asn1) | 1.7.3 | Apache 2.0 |
 | [Swift Collections](https://github.com/apple/swift-collections) | 1.7.5 | Apache 2.0 |
 | [Swift Crypto](https://github.com/apple/swift-crypto) | 4.5.2 | Apache 2.0 |
