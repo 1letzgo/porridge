@@ -277,15 +277,42 @@ final class EmptyMessageView: NSView {
 
 extension NSTextField {
     static func label(_ text: String = "", font: NSFont = .systemFont(ofSize: NSFont.systemFontSize), color: NSColor = .labelColor, lines: Int = 1) -> NSTextField {
-        let field = lines == 1 ? NSTextField(labelWithString: text) : NSTextField(wrappingLabelWithString: text)
+        // More than one line: broken between words, the last line cut with "…" (`WrappingLabel`). A truncating line
+        // break mode turns the cell's wrapping off, so such a label stayed on one line ("Quarterly Planning…").
+        if lines != 1 { return WrappingLabel(text, font: font, color: color, lines: lines) }
+        let field = NSTextField(labelWithString: text)
         field.font = font
         field.textColor = color
         field.maximumNumberOfLines = lines
         field.lineBreakMode = .byTruncatingTail
         field.translatesAutoresizingMaskIntoConstraints = false
-        if lines != 1 { field.cell?.truncatesLastVisibleLine = true }
         field.isSelectable = false
         return field
+    }
+}
+
+extension NSTableCellView {
+    /// A cell of a table with automatic row heights and labels of several lines: once the cell knows its width, the
+    /// labels measure their lines for it and the table measures the row again. The table works out a row's height
+    /// before the cell is laid out at the column's width, when a wrapping label still counts one line.
+    func fitWrappingLabels(_ labels: [NSTextField]) {
+        var changed = false
+        for label in labels where !label.isHidden {
+            let width = label.frame.width
+            guard width > 0, abs(label.preferredMaxLayoutWidth - width) > 0.5 else { continue }
+            label.preferredMaxLayoutWidth = width
+            label.invalidateIntrinsicContentSize()
+            changed = true
+        }
+        guard changed else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            var view = self.superview
+            while let current = view, !(current is NSTableView) { view = current.superview }
+            guard let table = view as? NSTableView else { return }
+            let row = table.row(for: self)
+            if row >= 0 { table.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row)) }
+        }
     }
 }
 

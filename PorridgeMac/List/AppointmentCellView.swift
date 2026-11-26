@@ -54,6 +54,12 @@ final class AppointmentCellView: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    override func layout() {
+        super.layout()
+        // Two lines for a long title: measured at the width the row really has.
+        fitWrappingLabels([name])
+    }
+
     @MainActor
     /// `showsBowl`: names its bowl (not in the bowl itself); `linked`: how many entries are under it (a bowl's list),
     /// else those linked to the occurrence as Today shows them.

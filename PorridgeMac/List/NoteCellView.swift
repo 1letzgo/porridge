@@ -101,6 +101,12 @@ final class NoteCellView: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    override func layout() {
+        super.layout()
+        // The preview's two lines: measured at the width the row really has.
+        fitWrappingLabels([previewLabel])
+    }
+
     /// Shows the note and follows it until another one is shown.
     /// `namesBuckets`: the row names its bowls in place of the date (a list that mixes bowls, the to-dos folder).
     /// Under an appointment (Today): moved in a little, as belonging to it.
