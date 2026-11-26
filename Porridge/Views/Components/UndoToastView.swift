@@ -119,3 +119,10 @@ struct SelectionBarShownKey: PreferenceKey {
     static let defaultValue = false
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
+
+/// Where the selection bar stands (global coordinates): on an iPad of regular width the undo toast centers over it, in
+/// the list column, instead of in the middle of the window across the list and the entry.
+struct SelectionBarFrameKey: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) { value = nextValue() ?? value }
+}

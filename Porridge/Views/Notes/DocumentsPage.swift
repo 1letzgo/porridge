@@ -127,6 +127,8 @@ struct NoteSelectionBar: View {
         .modifier(BarBackground())
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         .padding(.horizontal, 10)
+        // Where the bar stands: on an iPad the undo toast centers over it, in the list column (`RootView`).
+        .background(GeometryReader { Color.clear.preference(key: SelectionBarFrameKey.self, value: $0.frame(in: .global)) })
         .padding(.bottom, 4)
         .disabled(isWorking)
         .transition(.move(edge: .bottom).combined(with: .opacity))

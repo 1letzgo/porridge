@@ -22,6 +22,7 @@ struct TodayPage: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.usesSystemBars) private var usesSystemBars
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
     /// Up Next folded (on this device).
     @AppStorage("todayUpNextFolded") private var upNextFolded = false
@@ -39,13 +40,10 @@ struct TodayPage: View {
         let shown = day ?? calendar.today
         let isToday = TodayDay.isToday(shown)
         list(shown, isToday: isToday)
-            .pageTopBar {
-                // The hint of the day ("1 to-do is overdue"), today only.
-                if isToday, let hint = DailyHints.shared.current {
-                    DailyHintBanner(hint: hint) { onHint(hint) }
-                        .emptyStateBar()
-                        .transition(.opacity)
-                }
+            // Phone: above the list. iPad: the list's first row (`PadListBar`), or above the page's empty view, so the
+            // large title stays sharp.
+            .pageTopBar(onPad: .inList) {
+                if !usesSystemBars { hintBar(isToday: isToday) }
             }
         .sheet(item: $opened) { appointment in
             AppointmentSheet(
@@ -61,6 +59,16 @@ struct TodayPage: View {
         .onChange(of: calendar.today) { day = nil }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { calendar.refresh() }
+        }
+    }
+
+    /// The hint of the day ("1 to-do is overdue"), today only: a bar for the empty views below (`emptyStateBar`).
+    @ViewBuilder
+    private func hintBar(isToday: Bool) -> some View {
+        if isToday, let hint = DailyHints.shared.current {
+            DailyHintBanner(hint: hint) { onHint(hint) }
+                .emptyStateBar()
+                .transition(.opacity)
         }
     }
 
@@ -81,15 +89,23 @@ struct TodayPage: View {
         let showsWhatsNew = isToday && onboardingDone && !whatsNewSeen
         if calendar.status == .granted, appointments.isEmpty, open.isEmpty, upcoming.isEmpty, !showsWhatsNew {
             return AnyView(
-                EmptyStateView(
-                    title: isToday ? "Nothing Today" : "Nothing on This Day",
-                    message: isToday ? "Today's appointments and the to-dos due show up here." : "The day's appointments and the to-dos due on it show up here.",
-                    systemImage: "calendar"
-                )
-                .refreshable { calendar.refresh() }
+                VStack(spacing: 0) {
+                    // iPad: the hint above the empty view (on a phone it stands above the page already).
+                    if usesSystemBars { hintBar(isToday: isToday) }
+                    EmptyStateView(
+                        title: isToday ? "Nothing Today" : "Nothing on This Day",
+                        message: isToday ? "Today's appointments and the to-dos due show up here." : "The day's appointments and the to-dos due on it show up here.",
+                        systemImage: "calendar"
+                    )
+                    .refreshable { calendar.refresh() }
+                }
             )
         }
         return AnyView(List(selection: $selection) {
+            // iPad: the hint of the day as the list's first row.
+            if isToday, DailyHints.shared.current != nil {
+                PadListBar { hintBar(isToday: isToday) }
+            }
             // After the update to the three places: what moved, once, on top of today.
             if showsWhatsNew {
                 Section {

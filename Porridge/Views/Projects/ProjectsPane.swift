@@ -197,6 +197,7 @@ struct ProjectPage: View {
     @State private var opened: CalendarAppointment?
     @Query(sort: \NoteFolder.name) private var projects: [NoteFolder]
     @Environment(\.modelContext) private var context
+    @Environment(\.usesSystemBars) private var usesSystemBars
 
     var body: some View {
         let content = ProjectContent(of: project, notes: notes)
@@ -211,32 +212,46 @@ struct ProjectPage: View {
         let appointments = filter == .all && !isSelecting ? filed : []
         let listed = links.bowlRows(list, appointments: appointments)
         let lastID = listed.last?.id
-        let rows = Section {
-            ForEach(listed) { row in
-                switch row {
-                case .note(let note):
+        // Nothing to list: the bars stand above the empty view (also on an iPad, `PadPageBar.above`).
+        let isEmpty = content.count(filter) == 0 && appointments.isEmpty
+        let items = ForEach(listed) { row in
+            switch row {
+            case .note(let note):
+                NoteListRow(note: note) { onRemove(note) }
+                    .tag(note.id)
+                    .lastInSection(row.id == lastID)
+            case .appointment(let appointment, let linked):
+                AppointmentRow(
+                    appointment: appointment, bowlName: nil,
+                    linked: linked.count,
+                    projects: projects,
+                    onBowl: { links.setBowl($0.map(Projects.key), for: appointment, notes: notes, in: context) },
+                    onRecord: { onRecord(appointment) },
+                    onNewNote: { onNewNote(appointment) },
+                    onOpen: { opened = appointment },
+                    showsDay: true
+                )
+                .lastInSection(linked.isEmpty && row.id == lastID)
+                // What belongs to it, moved in a little (as in Today).
+                ForEach(linked) { note in
                     NoteListRow(note: note) { onRemove(note) }
-                        .tag(note.id)
-                        .lastInSection(row.id == lastID)
-                case .appointment(let appointment, let linked):
-                    AppointmentRow(
-                        appointment: appointment, bowlName: nil,
-                        linked: linked.count,
-                        projects: projects,
-                        onBowl: { links.setBowl($0.map(Projects.key), for: appointment, notes: notes, in: context) },
-                        onRecord: { onRecord(appointment) },
-                        onNewNote: { onNewNote(appointment) },
-                        onOpen: { opened = appointment },
-                        showsDay: true
-                    )
-                    .lastInSection(linked.isEmpty && row.id == lastID)
-                    // What belongs to it, moved in a little (as in Today).
-                    ForEach(linked) { note in
-                        NoteListRow(note: note) { onRemove(note) }
-                            .underAppointment()
-                            .lastInSection(note.id == linked.last?.id && row.id == lastID)
-                    }
+                        .underAppointment()
+                        .lastInSection(note.id == linked.last?.id && row.id == lastID)
                 }
+            }
+        }
+        let rows = Group {
+            if usesSystemBars, !isEmpty {
+                // iPad: the share line and the chips (or "N Selected · Select All") as the list's pinned header
+                // (`PadPageBar.inList`), so the bowl's large title stays sharp and collapses above them.
+                Section {
+                    items
+                } header: {
+                    bar(content: content, list: list, filed: filed)
+                        .padPinnedHeader()
+                }
+            } else {
+                Section { items }
             }
         }
         Group {
@@ -268,32 +283,40 @@ struct ProjectPage: View {
                 }
             }
         }
-        // The share line and the chips: bars for the empty bowl's message (`emptyStateBar`).
-        .pageTopBar {
-            VStack(spacing: 0) {
-                BowlShareLine(project: project)
-                if isSelecting {
-                    // Choosing: "N Selected · Select All" takes the place of the kinds, the bar the tab bar's.
-                    NoteSelectionHeader(notes: list, chosen: $chosen)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            // Only the kinds the bowl has something of; the one chosen stays while it is.
-                            ForEach(ProjectFilter.allCases.filter { $0 == .all || $0 == filter || content.count($0) > 0 }, id: \.self) { kind in
-                                // All counts the appointments too: they are rows of it.
-                                chip(kind, count: content.count(kind) + (kind == .all ? filed.count : 0))
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                    }
-                    .padding(.bottom, Look.headerGap)
-                }
+        // The share line and the chips: bars for the empty bowl's message (`emptyStateBar`). Phone: above the list;
+        // iPad: inside it, or above the empty bowl's message.
+        .pageTopBar(onPad: isEmpty ? .above : .inList) {
+            if !usesSystemBars || isEmpty {
+                bar(content: content, list: list, filed: filed)
+                    .emptyStateBar()
             }
-            .emptyStateBar()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if isSelecting {
                 NoteSelectionBar(notes: list, chosen: $chosen)
+            }
+        }
+    }
+
+    /// The share line, then the kinds as chips, or "N Selected · Select All" while choosing.
+    private func bar(content: ProjectContent, list: [Note], filed: [CalendarAppointment]) -> some View {
+        VStack(spacing: 0) {
+            BowlShareLine(project: project)
+            if isSelecting {
+                // Choosing: "N Selected · Select All" takes the place of the kinds, the bar the tab bar's.
+                NoteSelectionHeader(notes: list, chosen: $chosen)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        // Only the kinds the bowl has something of; the one chosen stays while it is.
+                        ForEach(ProjectFilter.allCases.filter { $0 == .all || $0 == filter || content.count($0) > 0 }, id: \.self) { kind in
+                            // All counts the appointments too: they are rows of it.
+                            chip(kind, count: content.count(kind) + (kind == .all ? filed.count : 0))
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.bottom, Look.headerGap)
             }
         }
     }

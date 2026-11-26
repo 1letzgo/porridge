@@ -21,6 +21,7 @@ struct InboxPlace: View {
     /// The appointment opened with a tap on its row.
     @State private var opened: CalendarAppointment?
     @Environment(\.modelContext) private var context
+    @Environment(\.usesSystemBars) private var usesSystemBars
 
     var body: some View {
         let waiting = Inbox.notes(notes)
@@ -31,8 +32,21 @@ struct InboxPlace: View {
         return Group {
             Group {
                 if isSelecting {
-                    List(selection: $chosen) { newRows(waiting) }
-                        .environment(\.editMode, .constant(.active))
+                    List(selection: $chosen) {
+                        if usesSystemBars {
+                            // iPad: "N Selected · Select All" as the list's pinned header (`PadPageBar.inList`).
+                            Section {
+                                newRows(waiting)
+                            } header: {
+                                NoteSelectionHeader(notes: waiting, chosen: $chosen)
+                                    .padding(.top, 4)
+                                    .padPinnedHeader()
+                            }
+                        } else {
+                            newRows(waiting)
+                        }
+                    }
+                    .environment(\.editMode, .constant(.active))
                 } else {
                     List(selection: $selection) {
                         if !appointments.isEmpty {
@@ -54,7 +68,18 @@ struct InboxPlace: View {
                             }
                         }
                         if appointments.isEmpty {
-                            newRows(waiting)
+                            if usesSystemBars {
+                                // iPad: the bundle suggestion as the entries' pinned header (`PadPageBar.inList`);
+                                // without a suggestion it has no height.
+                                Section {
+                                    newRows(waiting)
+                                } header: {
+                                    InboxBundleCard(notes: notes, projects: projects, sideInset: 20)
+                                        .padPinnedHeader()
+                                }
+                            } else {
+                                newRows(waiting)
+                            }
                         } else {
                             // The entries under a header of their own, so they do not run on from the last
                             // appointment; the bundle suggestion under it, as a part of them.
@@ -87,7 +112,9 @@ struct InboxPlace: View {
                 }
             }
         }
-        .pageTopBar {
+        // Phone: above the list. iPad: inside it (the selection header, the bundle suggestion), so the large title
+        // stays sharp.
+        .pageTopBar(onPad: .inList) {
             Group {
                 if isSelecting {
                     NoteSelectionHeader(notes: waiting, chosen: $chosen)

@@ -170,8 +170,8 @@ struct SearchPane<Results: View>: View {
             }
         }
         // The field and its chips: a bar for the empty views below (`emptyStateBar`); on an iPad over the top of
-        // the results (`pageTopBar`).
-        .pageTopBar {
+        // the results (`pageTopBar`), under the page's inline title (`NotesView.listColumn`).
+        .pageTopBar(onPad: .over) {
             VStack(spacing: 10) {
                 if !usesSystemField {
                     field

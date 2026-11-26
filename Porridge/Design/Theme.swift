@@ -855,18 +855,31 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     }
 }
 
+/// Where a page's bar stands on an iPad of regular width (system bars).
+enum PadPageBar {
+    /// The page draws the bar inside its list itself (`PadListBar`, `PadPinnedHeader`): it is a part of the list, so the
+    /// navigation bar's large title stays sharp and collapses above it as the list scrolls. A bar laid over the list
+    /// (`safeAreaBar`) put the large title under its scroll edge effect: blurred ("Inbox" while choosing several, a
+    /// bowl's name above its chips).
+    case inList
+    /// Above the content, as on a phone: for a page without a list to scroll (its empty view).
+    case above
+    /// Over the top of the list (`safeAreaBar` with the hard scroll edge effect): only under an inline title (Search).
+    case over
+}
+
 /// A bar between a page's head and its list: a switch (Inbox | To-dos, Search | Chat, phone), chips, the hint of the day, a
 /// selection header, the week's head. On a phone it stands above the list (the app's own head is no navigation bar).
-/// On an iPad of regular width (system bars) it lies over the top of the list as the system's bars do
-/// (`safeAreaBar`, iPadOS 26): the list is the page's scroll view, so the navigation bar's large title collapses
-/// while it scrolls, and what scrolls under the bar and its pinned section headers fades behind the scroll edge
-/// effect instead of showing through. Before iPadOS 26 a `safeAreaInset` on the page's background.
+/// On an iPad of regular width where `PadPageBar` says.
 struct PageTopBar<Bar: View>: ViewModifier {
     let bar: Bar
+    let onPad: PadPageBar
     @Environment(\.usesSystemBars) private var usesSystemBars
 
     func body(content: Content) -> some View {
-        if usesSystemBars {
+        if usesSystemBars, onPad == .inList {
+            content
+        } else if usesSystemBars, onPad == .over {
             if #available(iOS 26.0, *) {
                 content
                     .safeAreaBar(edge: .top, spacing: 0) { bar }
@@ -885,8 +898,39 @@ struct PageTopBar<Bar: View>: ViewModifier {
 }
 
 extension View {
-    /// The page's bar above its list (`PageTopBar`).
-    func pageTopBar<Bar: View>(@ViewBuilder _ bar: () -> Bar) -> some View {
-        modifier(PageTopBar(bar: bar()))
+    /// The page's bar above its list (`PageTopBar`); on an iPad of regular width where `onPad` says.
+    func pageTopBar<Bar: View>(onPad: PadPageBar, @ViewBuilder _ bar: () -> Bar) -> some View {
+        modifier(PageTopBar(bar: bar(), onPad: onPad))
+    }
+}
+
+/// iPad (system bars): a page's bar as the first row of its list (`PadPageBar.inList`), scrolling with it; nothing on a
+/// phone, where the bar stands above the list.
+struct PadListBar<Bar: View>: View {
+    @ViewBuilder let bar: Bar
+    @Environment(\.usesSystemBars) private var usesSystemBars
+
+    var body: some View {
+        if usesSystemBars {
+            Section {
+                bar
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+        }
+    }
+}
+
+extension View {
+    /// iPad (system bars): a page's bar as the pinned header of a list section (`PadPageBar.inList`): it stays under
+    /// the navigation bar while the rows scroll under it, on the page's color, across the whole width. Not a row, so
+    /// choosing several gives it no selection circle.
+    func padPinnedHeader() -> some View {
+        self
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.appBackground)
+            .listRowInsets(EdgeInsets())
     }
 }

@@ -758,7 +758,9 @@ struct NotesView: View {
                 .background(Color.appBackground)
                 .environment(\.highlightedEntry, selection)
                 .navigationTitle(listTitle(shown))
-                .navigationBarTitleDisplayMode(largeTitleFits(listTitle(shown)) ? .large : .inline)
+                // Search: inline, the search field and its chips right under the bar. A large title there left an
+                // empty band of its height above the field once a search ran (the results list replaced the recents).
+                .navigationBarTitleDisplayMode(shown != .search && largeTitleFits(listTitle(shown)) ? .large : .inline)
                 .toolbar { pageToolbar(shown) }
         } else {
             VStack(spacing: 0) {
@@ -1286,11 +1288,16 @@ struct NotesView: View {
             // the Add sheet's "+" (the tab bar's, on an iPad the blue toolbar item after it).
             if usesSystemBars {
                 // iPad: a toolbar item like the others, with its word ("+ To-do", in the to-dos' green) so it is not
-                // taken for the Add sheet's "+" beside it, which stays the one prominent action.
+                // taken for the Add sheet's "+" beside it, which stays the one prominent action. Its label is a
+                // symbol and a text, not a `Label`: the bar draws a `Label` as its symbol alone, whatever its style
+                // (a plain "+" beside the blue "+"), but a text as a text, as it does "Today" or "Done".
                 Button { addNote(todo: true) } label: {
-                    Label("To-do", systemImage: "plus")
-                        .labelStyle(.titleAndIcon)
-                        .foregroundStyle(Color.brandTaskText)
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .fontWeight(.semibold)
+                        Text("To-do")
+                    }
+                    .foregroundStyle(Color.brandTaskText)
                 }
                 .help("New To-do")
                 .accessibilityLabel("New To-do")
