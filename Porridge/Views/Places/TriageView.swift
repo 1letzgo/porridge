@@ -150,7 +150,9 @@ struct TriageView: View {
                 Text(document.line)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Color.brandNavy.readable)
-                    .lineLimit(1)
+                    // With the largest text sizes in lines, not cut ("Telekom Deutschland · 119,…").
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if note.isTodo, let due = note.todoDue {
                 Label("Due \(Todos.dueLabel(due))", systemImage: "calendar")
@@ -158,13 +160,15 @@ struct TriageView: View {
                     .foregroundStyle(.secondary)
             }
             Divider()
-            HStack(spacing: 8) {
+            HStack(alignment: typeSize.isAccessibilitySize ? .firstTextBaseline : .center, spacing: 8) {
                 Image(systemName: "sparkles").foregroundStyle(Color.brandProject.readable)
                 if let suggestion {
+                    // With the largest text sizes the bowl's name wraps ("Suggested bowl: Hous…" was cut).
                     Text("Suggested bowl: \(suggestion.name)")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.brandProject.readable)
-                        .lineLimit(1)
+                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("No bowl suggested")
                         .font(.subheadline)
