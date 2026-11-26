@@ -1,7 +1,7 @@
 import XCTest
 
 /// Pictures of owner revision 6 to look at: the tab bar with the raised "+" (a badge "120" on the Inbox, each tab
-/// chosen once), the Bowls tab on its three sides, the Search tab's Search and Chat sides (start, an open conversation,
+/// chosen once), the Bowls tab, the Inbox tab's To-dos side, the Search tab's Search and Chat sides (start, an open conversation,
 /// All Chats) and the Inbox's card on top (owner revision 7). They go to /tmp/porridge-s11-shots (or `SHOTS_DIR`,
 /// `TEST_RUNNER_SHOTS_DIR` for xcodebuild) when that folder exists; dark mode and the text size are switched from
 /// outside (`xcrun simctl ui …`) and named by `SHOTS_SUFFIX`.
@@ -77,11 +77,10 @@ final class Revision6ShotsTests: XCTestCase {
             }
         }
         app.openTab("Bowls")
-        app.bowlsSide("Bowls")
         shoot("bowls-bowls")
         app.openTodos()
-        shoot("bowls-todos")
-        app.bowlsSide("Bowls")
+        shoot("inbox-todos")
+        app.inboxSide("Inbox")
         app.openArchive()
         shoot("bowls-archive")
         app.goBack()

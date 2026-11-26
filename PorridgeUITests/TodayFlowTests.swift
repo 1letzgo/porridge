@@ -79,7 +79,7 @@ final class TodayFlowTests: XCTestCase {
         XCTAssertEqual(done.count, 0, "tomorrow shows a done to-do")
         app.buttons["TodayPreviousDay"].tap()
 
-        // The Bowls tab's To-dos side keeps it under Done Today.
+        // The Inbox tab's To-dos side keeps it under Done Today.
         app.openTodos()
         XCTAssertTrue(app.reveal(app.staticTexts["Done Today"]), "the ticked to-do is not under Done Today in Open To-dos")
     }

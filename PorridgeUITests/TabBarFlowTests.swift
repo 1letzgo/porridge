@@ -2,7 +2,8 @@ import XCTest
 
 /// Owner revision 5: "+" in the middle of the tab bar, Search | Chat in one tab, Open To-dos and the Weekly Review at
 /// the end of the Inbox, the gear in Today, the app always starting on Today, and a chat keyboard that goes away.
-/// Owner revision 6: "+" raised and bigger, in a middle slot of its own (`PlaceTabBar`).
+/// Owner revision 6: "+" raised and bigger, in a middle slot of its own (`PlaceTabBar`). Owner revision 13: the open
+/// to-dos are the Inbox tab's To-dos side.
 final class TabBarFlowTests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -74,16 +75,20 @@ final class TabBarFlowTests: XCTestCase {
         }
     }
 
-    /// The Inbox's entries are right under its bar, without a switch (owner revision 10: the To-dos side moved to
-    /// Bowls), and the last rows of the list still scroll clear of the raised "+".
+    /// The Inbox's entries are right under its switch Inbox | To-dos (owner revision 13: the To-dos side came back
+    /// from Bowls; Inbox chosen, with the count of what waits), and the last rows of the list still scroll clear of the
+    /// raised "+".
     func testTheInboxEntriesAreOnTopAndTheLastRowClearsThePlus() {
         let app = launch(["-emptyStore", "YES", "-seedInboxCount", "30"])
         app.openTab("Inbox")
         XCTAssertFalse(app.buttons["InboxWeeklyReview"].exists, "the card is still in the Inbox")
-        XCTAssertFalse(app.segmentedControls["InboxSegment"].exists, "the Inbox still has a switch")
+        let side = app.inboxSide("Inbox")
+        XCTAssertTrue(side.isSelected, "the Inbox tab does not start on its Inbox side")
+        XCTAssertEqual(side.label, "Inbox 30", "the Inbox side does not count what waits")
         let first = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Inbox note '")).firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 5), "no entries")
         XCTAssertGreaterThan(first.frame.minY, app.buttons["InboxTriage"].frame.maxY, "the entries are not under the bar")
+        XCTAssertGreaterThan(first.frame.minY, side.frame.maxY, "the entries are not under the switch")
         let last = app.staticTexts["Inbox note 1"]
         for _ in 0..<20 where !(last.exists && last.isHittable && last.frame.maxY <= app.addButton.frame.minY) { app.swipeUp() }
         XCTAssertLessThanOrEqual(last.frame.maxY, app.addButton.frame.minY, "the last entry stays under +")
@@ -154,18 +159,19 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 10), "a link did not win over Today")
     }
 
-    /// The Bowls tab's To-dos side lists the open to-dos (owner revision 10; before, the Inbox's To-dos side), and
-    /// the Weekly Review opens from Today's bar as a page with a back pill (no sheet).
-    func testBowlsToDosSideAndWeeklyReviewPageInToday() {
+    /// The Inbox tab's To-dos side lists the open to-dos (owner revision 13; owner revision 10 had them on the Bowls
+    /// tab), and the Weekly Review opens from Today's bar as a page with a back pill (no sheet).
+    func testInboxToDosSideAndWeeklyReviewPageInToday() {
         let app = launch(["-seedTodos", unique("Card")])
         let side = app.openTodos()
         XCTAssertTrue(app.staticTexts["Overdue"].firstMatch.waitForExistence(timeout: 10), "the To-dos side shows no open to-dos")
-        XCTAssertTrue(app.tab("Bowls").isSelected, "the To-dos side left the Bowls tab")
+        XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox tab")
         XCTAssertTrue(side.label.hasPrefix("To-dos "), "the To-dos side does not count the open to-dos: \(side.label)")
-        XCTAssertEqual(app.bowlsSide("Bowls").label, "Bowls", "the Bowls side carries a count")
-        app.bowlsSide("To-dos")
-        screenshot("bowls-todos-side", app)
-        app.bowlsSide("Bowls")
+        XCTAssertTrue(app.buttons["TodosAdd"].exists, "no New To-do on the To-dos side")
+        XCTAssertTrue(app.headTitled("Inbox"), "the head does not keep the tab's name on the To-dos side")
+        screenshot("inbox-todos-side", app)
+        app.inboxSide("Inbox")
+        XCTAssertTrue(app.buttons["InboxTriage"].waitForExistence(timeout: 5), "the Inbox side has no Triage")
 
         app.openTab("Today")
         let review = app.buttons["TodayWeeklyReview"]
@@ -178,15 +184,14 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertTrue(review.waitForExistence(timeout: 5), "Back did not return to Today")
     }
 
-    /// An empty Inbox says so, without a switch; the Bowls tab's To-dos side shows no "0".
+    /// An empty Inbox says so below its switch; neither side shows a "0".
     func testEmptyInboxSaysSo() {
         let app = launch(["-emptyStore", "YES"])
         app.openTab("Inbox")
         XCTAssertTrue(app.staticTexts["Inbox Empty"].waitForExistence(timeout: 10), "the empty Inbox says nothing")
-        XCTAssertFalse(app.segmentedControls["InboxSegment"].exists, "the Inbox still has a switch")
+        XCTAssertEqual(app.inboxSide("Inbox").label, "Inbox", "a 0 on the switch")
         XCTAssertEqual(app.openTodos().label, "To-dos", "a 0 on the switch")
-        app.bowlsSide("Bowls")
-        app.openTab("Inbox")
+        app.inboxSide("Inbox")
         screenshot("inbox-empty", app)
     }
 

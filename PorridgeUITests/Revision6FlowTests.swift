@@ -1,7 +1,7 @@
 import XCTest
 
-/// Owner revision 6, as changed by owner revision 10: the Bowls tab's switch Bowls · To-dos, the trash pill and the
-/// Archive row, and the Search tab's Chat side without a page title of its own or a list pill in the bar.
+/// Owner revision 6, as changed by owner revisions 10 and 13: the Bowls tab without a switch (its To-dos side moved
+/// to the Inbox tab), the trash pill and the Archive row, and the Search tab's Chat side without a page title of its own or a list pill in the bar.
 final class Revision6FlowTests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -19,26 +19,28 @@ final class Revision6FlowTests: XCTestCase {
         NSPredicate(format: "label BEGINSWITH 'Notes are deleted after' OR label == 'Nothing Deleted'")
     }
 
-    /// Owner revision 10: the switch has two sides, Bowls (never a count) and To-dos; the trash pill in the bar opens
-    /// Recently Deleted as a page with Delete All (when something is there); the Archive row at the end of the Bowls
-    /// side opens the archived bowls as a page; Sort shows only on Bowls; a cold launch starts on Bowls again.
-    func testBowlsSwitchTrashPillAndArchiveRow() throws {
+    /// Owner revision 13: Bowls has no switch (the open to-dos are the Inbox tab's To-dos side); the trash pill in the
+    /// bar opens Recently Deleted as a page with Delete All (when something is there); the Archive row at the end
+    /// opens the archived bowls as a page; Sort and the trash pill are Bowls', "+ To-do" the To-dos side's.
+    func testBowlsWithoutSwitchTrashPillAndArchiveRow() throws {
         let app = launch()
         app.openTab("Bowls")
-        let bowls = app.bowlsSide("Bowls")
-        XCTAssertTrue(bowls.isSelected, "Bowls does not start on its Bowls side")
-        XCTAssertEqual(bowls.label, "Bowls", "the Bowls side carries a count")
-        XCTAssertTrue(app.buttons["BowlSort"].exists, "no Sort on the Bowls side")
-        XCTAssertTrue(app.buttons["BowlsTrash"].exists, "no trash pill on the Bowls side")
-        XCTAssertTrue(app.reveal(app.buttons["NewSmartFilter"]), "Smart Filters missing on the Bowls side")
+        XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 10), "no Sort in Bowls")
+        XCTAssertFalse(app.segmentedControls["BowlsSide"].exists, "Bowls still has a switch")
+        XCTAssertFalse(app.segmentedControls["InboxSide"].exists, "the Inbox's switch shows in Bowls")
+        XCTAssertFalse(app.buttons["TodosAdd"].exists, "New To-do shows in Bowls")
+        XCTAssertTrue(app.buttons["BowlsTrash"].exists, "no trash pill in Bowls")
+        XCTAssertTrue(app.reveal(app.buttons["NewSmartFilter"]), "Smart Filters missing in Bowls")
         XCTAssertTrue(app.reveal(app.buttons["BowlsArchive"]), "no Archive row after the smart filters")
         XCTAssertGreaterThan(app.buttons["BowlsArchive"].frame.minY, app.buttons["NewSmartFilter"].frame.maxY, "Archive is not the last section")
 
-        app.bowlsSide("To-dos")
+        app.openTodos()
+        XCTAssertTrue(app.tab("Inbox").isSelected, "the To-dos side left the Inbox tab")
         XCTAssertFalse(app.buttons["BowlSort"].exists, "Sort shows on the To-dos side")
-        XCTAssertTrue(app.buttons["BowlsTrash"].exists, "no trash pill on the To-dos side")
+        XCTAssertFalse(app.buttons["BowlsTrash"].exists, "the trash pill shows on the To-dos side")
         XCTAssertTrue(app.buttons["TodosAdd"].exists, "no New To-do on the To-dos side")
-        app.bowlsSide("Bowls")
+        app.inboxSide("Inbox")
+        app.openTab("Bowls")
 
         // The Archive, a page with a back pill.
         app.openArchive()
@@ -64,13 +66,18 @@ final class Revision6FlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["TrashDeleteAll"].exists, "no Delete All in Recently Deleted")
         XCTAssertFalse(app.buttons["BowlSort"].exists, "Sort shows in Recently Deleted")
         app.goBack()
-        XCTAssertTrue(app.bowlsSide("Bowls").isSelected, "Back did not return to Bowls")
+        XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 5), "Back did not return to Bowls")
 
+        // The Inbox tab comes back on the side it was left on while the app runs; a cold launch starts on Inbox.
+        app.openTodos()
+        app.openTab("Today")
+        app.openTab("Inbox")
+        XCTAssertTrue(app.inboxSide("To-dos").isSelected, "the Inbox tab did not come back on To-dos")
         app.terminate()
         let again = launch()
-        again.openTab("Bowls")
-        XCTAssertTrue(again.buttons["BowlSort"].waitForExistence(timeout: 10), "a cold launch did not start on Bowls")
-        XCTAssertTrue(again.bowlsSide("Bowls").isSelected, "a cold launch did not start on Bowls")
+        again.openTab("Inbox")
+        XCTAssertTrue(again.buttons["InboxTriage"].waitForExistence(timeout: 10), "a cold launch did not start on Inbox")
+        XCTAssertTrue(again.inboxSide("Inbox").isSelected, "a cold launch did not start on Inbox")
     }
 
     /// Go To rows of the search open Recently Deleted and the Archive as pages of the Bowls tab, with a back pill.
@@ -95,7 +102,7 @@ final class Revision6FlowTests: XCTestCase {
         expectation(for: NSPredicate(format: "isSelected == true"), evaluatedWith: app.tab("Bowls"))
         waitForExpectations(timeout: 10)
         XCTAssertTrue(app.buttons["Back"].firstMatch.waitForExistence(timeout: 5), "Archive was not pushed as a page")
-        XCTAssertFalse(app.segmentedControls["BowlsSide"].exists, "Go To Archive stayed on the Bowls switch")
+        XCTAssertFalse(app.segmentedControls["InboxSide"].exists, "Go To Archive shows the Inbox's switch")
     }
 
     /// The Chat side: no list pill in the bar; a conversation has New Chat and a back pill to the chat's start; All

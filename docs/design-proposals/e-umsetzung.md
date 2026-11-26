@@ -977,6 +977,37 @@ the system's navigation; iPhone, compact width and the Mac are unchanged.
   column of 320–400 pt they would crowd the bar beside back button, actions and "+", so they stay in the content as on
   the phone (and keep lifting the empty views, `emptyStateBar`).
 
+**Owner revision 13 · places per platform (2026-11-26):** owner: "Das Bowls und Todo auf dem iPhone in einer view
+zusammengefasst ist, hat platz gründe. Dies müssen wir auf iPad / Mac nicht. Können wir dies dort einzeln anzeigen?
+gleiches für search /chat. Verschiebe die „to-do's" auf dem iPhone wieder aus Bowls in Inbox. Zeige dort trenner
+Inbox / todo's." Then: "Neue Einträge in inbox sollten getrennte Überschrift haben".
+
+- **One place model** (`Place` in `NotesView.swift`): Today, Inbox, To-dos, Bowls, Search, Chat. The iPad's sidebar
+  lists all six, each with its own stack (`paths` keyed by place). A phone (and compact width) draws the same state as
+  four tabs: `Place.tab` maps To-dos to the Inbox tab and Chat to the Search tab, whose switches show the side; the
+  stacks are keyed by tab there (`stackKey`). Each tab remembers the side it was left on (`InboxSide` while the app
+  runs, starting on Inbox; `SearchSide` kept on the device), so choosing the tab comes back there (`shown(in:)`).
+  Turning the iPad or resizing its window keeps `place`: the sidebar's To-dos becomes the Inbox tab on To-dos, Chat the
+  Search tab on Chat, and back.
+- **iPhone:** the Inbox tab has the switch Inbox | To-dos (identifier `InboxSide`, both with their count only when
+  > 0, as the tab badge; the head stays "Inbox"; "+ To-do" (`TodosAdd`) in the bar on To-dos, Triage and Select on
+  Inbox). Bowls has no switch (trash pill, Sort, gear). Search | Chat is unchanged. Every way to the open to-dos (Go
+  To "To-dos", the overdue hint, quick action, widgets, `porridge://todos`) opens the Inbox tab on To-dos. The phone's
+  switches stand between the bar and the page (`tabSwitcher` in `listColumn`), so they stay while the side changes.
+- **iPad, regular width:** sidebar Today · Inbox · To-dos (`checklist`, green, open count) · Bowls · Search · Chat
+  (`SidebarToday` … `SidebarTodos`, `SidebarChat`); no switches. To-dos has "+ To-do" and "+" in its toolbar; Chat
+  its chats in the list column, the conversation in the entry column, New Chat in the toolbar. View › Today ⌘1,
+  Inbox ⌘2, To-dos ⌘3, Bowls ⌘4, Search ⌘5, Chat ⌘6 (fixed names); ⌘F goes to Search with its field focused.
+- **Mac:** To-dos is a sidebar row again (after the Inbox, `checklist`, green, open count) with its own head "To-dos";
+  the segment Bowls · To-dos in the Bowls head is gone. View: Today ⌘1, Inbox ⌘2, To-dos ⌘3, Bowls ⌘4, Chat ⌘5,
+  Archive ⌘6, Recently Deleted ⌘7; the command bar's "Go to To-dos". Search and Chat were separate already.
+- **Go To:** "Open To-dos" (a view) is now "To-dos" (a place), after the Inbox.
+- **Inbox header "New":** while today's appointments show on top of the Inbox, the entries below them have a header
+  of their own, "New" with their count (only > 0), the same `ListHeader` as Today's sections (iPhone, iPad, Mac). The
+  bundle suggestion stands under it (it belongs to the entries) and so does "Inbox Empty" when nothing waits. Without
+  appointments there is no header and the bundle suggestion stays over the list. "New" is the word the app used for
+  the unfiled entries before (the Inbox's side "New" of owner revision 9, Triage's "· New").
+
 ---
 
 ## What gets removed (summary)

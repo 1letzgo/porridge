@@ -39,11 +39,12 @@ extension XCUIApplication {
         XCTAssertFalse(alert.exists, "alert did not close")
     }
 
-    /// Every open to-do: the Bowls tab on its To-dos side (owner revision 10; before, the Inbox's To-dos side).
+    /// Every open to-do: the Inbox tab on its To-dos side (owner revision 13; owner revision 10 had them on the Bowls
+    /// tab). Returns the switch's To-dos segment.
     @discardableResult
     func openTodos() -> XCUIElement {
-        openTab("Bowls")
-        return bowlsSide("To-dos")
+        openTab("Inbox")
+        return inboxSide("To-dos")
     }
 
     /// Recently Deleted: the trash pill in the Bowls bar pushes it as a page with a back pill (owner revision 10).
@@ -59,7 +60,6 @@ extension XCUIApplication {
     /// revision 10).
     func openArchive() {
         openTab("Bowls")
-        bowlsSide("Bowls")
         let row = buttons["BowlsArchive"]
         XCTAssertTrue(reveal(row), "no Archive row at the end of Bowls")
         row.tap()
@@ -161,18 +161,20 @@ extension XCUIApplication {
         all.tap()
     }
 
-    /// The side of the Bowls tab's switch (Bowls or To-dos; To-dos carries the count of open to-dos): a segmented
-    /// control, or capsules with the largest text sizes. Returns the segment.
+    /// The side of the Inbox tab's switch (Inbox or To-dos, owner revision 13; each with its count only when there is
+    /// one): a segmented control, or capsules with the largest text sizes. Returns the segment.
     @discardableResult
-    func bowlsSide(_ name: String) -> XCUIElement {
-        // "Bowls" never with a count, "To-dos" without one when nothing is open (no "0"), "To-dos 4" with one.
-        let predicate = NSPredicate(format: "label == %@ OR label BEGINSWITH %@", name, name + " ")
-        let control = segmentedControls["BowlsSide"]
+    func inboxSide(_ name: String) -> XCUIElement {
+        // "Inbox" / "To-dos" without a count when there is nothing (no "0"), "Inbox 3" / "To-dos 4" with one.
+        let predicate = NSPredicate(
+            format: "(label == %@ OR label BEGINSWITH %@) AND identifier != 'TabInbox'", name, name + " "
+        )
+        let control = segmentedControls["InboxSide"]
         let barTop = placeTabBar.exists ? placeTabBar.frame.minY : .greatestFiniteMagnitude
         let side = control.waitForExistence(timeout: 5) ? control.buttons.matching(predicate).firstMatch
             : buttons.matching(predicate).allElementsBoundByIndex.first { $0.exists && $0.isHittable && $0.frame.maxY < barTop }
                 ?? buttons.matching(predicate).firstMatch
-        XCTAssertTrue(side.waitForExistence(timeout: 10), "Bowls · To-dos has no \(name)")
+        XCTAssertTrue(side.waitForExistence(timeout: 10), "Inbox | To-dos has no \(name)")
         if !side.isSelected { side.tap() }
         return side
     }

@@ -75,18 +75,37 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(QuickAction.openBowls.url.absoluteString, "porridge://bowls")
     }
 
-    /// Each page opened from elsewhere lands on its place's stack: the bowls' pages and Settings on Bowls, the chat
-    /// on the search (its Chat side). Open To-dos is the Inbox's To-dos side, no page.
+    /// Each page opened from elsewhere lands on its place's stack: the bowls' pages and Settings on Bowls. To-dos and
+    /// the chat are places of their own (owner revision 13), on a phone shown by the Inbox and the Search tab.
     func testPagesBelongToTheirPlace() {
         XCTAssertEqual(ListPage.project(UUID()).place, .bowls)
         XCTAssertEqual(ListPage.smartFilter(UUID()).place, .bowls)
         XCTAssertEqual(ListPage.archive.place, .bowls)
         XCTAssertEqual(ListPage.trash.place, .bowls)
         XCTAssertEqual(ListPage.settings.place, .bowls)
-        XCTAssertEqual(ListPage.chat.place, .search)
+        XCTAssertEqual(ListPage.chat.place, .chat)
+        XCTAssertEqual(ListPage.todos.place, .todos)
         XCTAssertEqual(Place(root: .inbox), .inbox)
-        XCTAssertNil(Place(root: .chat), "the chat is a side of the Search tab, not a place")
-        XCTAssertEqual(Place.allCases.map(\.root), [.today, .inbox, .bowls, .search])
+        XCTAssertEqual(Place(root: .todos), .todos)
+        XCTAssertEqual(Place(root: .chat), .chat)
+        XCTAssertEqual(Place.allCases.map(\.root), [.today, .inbox, .todos, .bowls, .search, .chat])
+    }
+
+    /// Places per platform (owner revision 13): the iPad's sidebar (and its ⌘1–⌘6) lists the six places in this order;
+    /// a phone shows them in four tabs, To-dos on the Inbox tab, Chat on the Search tab. One state, two drawings: a
+    /// window made narrow on To-dos shows the Inbox tab on To-dos, and back.
+    func testSixPlacesInFourTabs() {
+        XCTAssertEqual(Place.allCases, [.today, .inbox, .todos, .bowls, .search, .chat])
+        XCTAssertEqual(Place.allCases.map(\.tabTitle), ["Today", "Inbox", "To-dos", "Bowls", "Search", "Chat"])
+        XCTAssertEqual(Place.allCases.map(\.tab), [.today, .inbox, .inbox, .bowls, .search, .search])
+        XCTAssertEqual(Place.tabs, [.today, .inbox, .bowls, .search])
+        XCTAssertEqual(Place.todos.tabSymbol, "checklist", "To-dos wears the to-do's symbol")
+        XCTAssertEqual(Place.chat.tabSymbol, Places.chatSymbol)
+        XCTAssertEqual(InboxSide.allCases, [.inbox, .todos], "the Inbox tab's switch: Inbox first")
+        XCTAssertEqual(InboxSide.allCases.map(\.place), [.inbox, .todos])
+        XCTAssertEqual(SearchSide.allCases.map(\.place), [.search, .chat])
+        for side in InboxSide.allCases { XCTAssertEqual(side.place.tab, .inbox) }
+        for side in SearchSide.allCases { XCTAssertEqual(side.place.tab, .search) }
     }
 
     /// An entry link waits until the entry can be opened (cold start: before the list has loaded it).
@@ -100,13 +119,16 @@ final class PlacesTests: XCTestCase {
     }
 
     /// The tab bar (owner revision 5): Today · Inbox · "+" · Bowls · Search. "+" is the middle slot and no place; the
-    /// chat is the Search tab's other side.
+    /// chat is the Search tab's other side, the open to-dos the Inbox tab's.
     func testTheTabBarIsFourPlacesWithPlusInTheMiddle() {
-        XCTAssertEqual(Place.allCases, [.today, .inbox, .bowls, .search])
+        XCTAssertEqual(TabSlot.bar, Array(Place.tabs.prefix(2).map(TabSlot.place)) + [.add] + Place.tabs.suffix(2).map(TabSlot.place))
         XCTAssertEqual(TabSlot.bar, [.place(.today), .place(.inbox), .add, .place(.bowls), .place(.search)])
         XCTAssertEqual(TabSlot.bar.firstIndex(of: .add), TabSlot.bar.count / 2, "+ is in the middle")
-        XCTAssertEqual(ListPage.chat.place, .search)
+        XCTAssertEqual(ListPage.chat.place.tab, .search)
+        XCTAssertEqual(ListPage.todos.place.tab, .inbox)
         XCTAssertEqual(ListPage.search.place, .search)
+        XCTAssertEqual(Place.search.tabTitle(showsChat: true), "Chat")
+        XCTAssertEqual(Place.search.tabTitle(showsChat: false), "Search")
         XCTAssertEqual(SearchSide.allCases, [.search, .chat])
         XCTAssertEqual(SearchSide(rawValue: "chat"), .chat, "the side kept in UserDefaults reads back")
     }
@@ -135,10 +157,9 @@ final class PlacesTests: XCTestCase {
         }
     }
 
-    /// The Bowls tab's two sides (owner revision 10), Bowls first; Archive and Recently Deleted are pages pushed onto
-    /// the Bowls stack, the Weekly Review a page of Today's.
-    func testTheBowlsTabHasTwoSidesAndThePagesTheirStacks() {
-        XCTAssertEqual(BowlsSide.allCases, [.bowls, .todos])
+    /// Bowls has no switch any more (owner revision 13); Archive and Recently Deleted are pages pushed onto the Bowls
+    /// stack, the Weekly Review a page of Today's.
+    func testThePagesOfBowlsAndTodayHaveTheirStacks() {
         XCTAssertEqual(ListPage.archive.place, .bowls)
         XCTAssertEqual(ListPage.trash.place, .bowls)
         XCTAssertEqual(ListPage.weeklyReview.place, .today)
@@ -200,18 +221,21 @@ final class PlacesTests: XCTestCase {
             XCTAssertTrue(titles.contains("Search or Ask"))
             XCTAssertTrue(titles.contains("Triage"))
             XCTAssertTrue(titles.contains("Today Shows What Is Open"))
-            XCTAssertEqual(WhatsNew.places(mac: mac).map(\.symbol).count, 5)
         }
+        XCTAssertEqual(WhatsNew.places(mac: false).count, 5)
+        XCTAssertEqual(WhatsNew.places(mac: true).count, 6)
         let phone = WhatsNew.items(mac: false).map(\.text).joined(separator: " ")
         XCTAssertTrue(phone.contains("Chat"), "the Chat side is named")
         XCTAssertTrue(phone.contains("“+” in the middle"), "the + of the tab bar is named")
         XCTAssertTrue(phone.contains("gear in Today"), "the gear in Today is named")
-        XCTAssertTrue(phone.contains("To-dos side of Bowls"), "the Bowls tab's To-dos side is named")
-        XCTAssertFalse(phone.contains("Inbox’s To-dos"), "the Inbox has no To-dos side any more")
+        XCTAssertTrue(phone.contains("To-dos side of the Inbox"), "the Inbox tab's To-dos side is named")
+        XCTAssertFalse(phone.contains("To-dos side of Bowls"), "Bowls has no To-dos side any more")
+        let mac = WhatsNew.items(mac: true).map(\.text).joined(separator: " ")
+        XCTAssertTrue(mac.contains("Today, Inbox, To-dos and Bowls lead the sidebar (⌘1–4)"), "the Mac's sidebar keys are named")
         XCTAssertFalse(phone.contains("Chat tab"), "Chat has no tab of its own any more")
         // The onboarding's last page: the tab bar from left to right.
         XCTAssertEqual(WhatsNew.places(mac: false).map(\.title), ["Today", "Inbox", "Add", "Bowls", "Search and Chat"])
-        XCTAssertEqual(WhatsNew.places(mac: true).map(\.title), ["Today", "Inbox", "Bowls", "Chat", "Search or Ask (⌘K)"])
+        XCTAssertEqual(WhatsNew.places(mac: true).map(\.title), ["Today", "Inbox", "To-dos", "Bowls", "Chat", "Search or Ask (⌘K)"])
         XCTAssertTrue(phone.contains("Swipe"), "the Inbox swipes are named")
         XCTAssertTrue(phone.contains("Move · Done · More"), "the selection bar is named")
         XCTAssertFalse(phone.contains("Later"), "there is no Later any more")

@@ -51,7 +51,9 @@ final class SearchAskTests: XCTestCase {
     func testSettingsIsAGoToRowAndFoundByItsWords() {
         XCTAssertEqual(SearchAsk.goTo("settings", in: SearchAsk.places()).first?.destination, .settings)
         XCTAssertEqual(SearchAsk.goTo("preferences", in: SearchAsk.places()).first?.destination, .settings, "found by a keyword too")
-        XCTAssertEqual(SearchAsk.goTo("open to", in: SearchAsk.places()).first?.destination, .openTodos)
+        // The open to-dos are the place "To-dos" (owner revision 13), still found as "open".
+        XCTAssertEqual(SearchAsk.goTo("to-dos", in: SearchAsk.places()).first?.destination, .openTodos)
+        XCTAssertEqual(SearchAsk.goTo("open", in: SearchAsk.places()).first?.destination, .openTodos)
     }
 
     func testAMatchInTheNameBeatsOneInTheKeywords() {
