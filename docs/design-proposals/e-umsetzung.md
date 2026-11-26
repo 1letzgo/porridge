@@ -115,7 +115,7 @@ Verify on screen: nothing changes (run both apps once).
   files, shared text or recordings; also enforced by `EntryActions` and chat actions). `EntryMenus` and the Details
   type switch (`EntryDetails.canSwitchTodo`) keep that rule. Question for the owner before stage 3 if the table wins.
 - Meta facts keep the date for to-dos too ("To-do · 24 Nov · 1 of 4 subtasks"); pages only when the view passes
-  `pageCount`; source word only for link domain and imported audio (and Plaud on older entries; the Plaud import was removed). `VoiceProfiles.isUnnamed` added for
+  `pageCount`; source word only for link domain and imported audio. `VoiceProfiles.isUnnamed` added for
   "N Speakers · 1 unnamed". The bowl value's symbol is the asset image "Bowl" (`EntryMeta.bowlImage`).
 - Details rows beyond the plan's list, taken from the mockups: `suggestedBowl` (Inbox), `sameAppointment`, the
   document rows (kind, sender, dated, amount, pay by, paid), `linkedFrom` / `similar`, `sharing` / `activity` /

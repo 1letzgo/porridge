@@ -68,8 +68,6 @@ struct PorridgeApp: App {
                 return try? context.fetch(descriptor).first
             }
         }
-        // Once: what the removed Plaud import left on this device (sign-in, settings, downloads).
-        MainActor.assumeIsolated { PlaudCleanup.run() }
         #if DEBUG
         MainActor.assumeIsolated { TestSeed.run(container) }
         #endif

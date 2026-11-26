@@ -64,9 +64,10 @@ final class AutoSummaryTests: XCTestCase {
         XCTAssertTrue(due(shared))
 
         // Audio shared from another app is imported audio as well.
-        for source in [NoteSource.audioImport, .plaud, .share] {
+        // A recording from a channel this version does not know counts as imported audio.
+        for source in [NoteSource.audioImport.rawValue, "legacy-device", NoteSource.share.rawValue] {
             let audio = entry { note in
-                note.source = source
+                note.sourceRaw = source
                 note.audioFileName = "a.m4a"
                 note.segments = [TranscriptSegment(start: 0, end: 60, text: self.page)]
             }

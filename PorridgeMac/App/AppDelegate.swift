@@ -42,8 +42,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         DebugDriver.start()
         #endif
-        // Once: what the removed Plaud import left on this Mac (sign-in, settings, downloads).
-        PlaudCleanup.run()
         // The shortcuts work even when no window is open.
         GlobalShortcuts.shared.reload()
         // The undo toast, the hint of the day.

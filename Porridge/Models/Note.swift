@@ -99,8 +99,10 @@ final class Note {
         set { segmentsData = try? JSONEncoder().encode(newValue) }
     }
 
+    /// A channel this version does not know (one that was removed, or one from a newer version) stays stored as it
+    /// is; a recording with it counts as imported audio, anything else as from before there were channels.
     var source: NoteSource {
-        get { NoteSource(rawValue: sourceRaw) ?? .unknown }
+        get { NoteSource(rawValue: sourceRaw) ?? (isRecording ? .audioImport : .unknown) }
         set { sourceRaw = newValue.rawValue }
     }
 

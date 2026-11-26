@@ -92,12 +92,19 @@ final class SmartFiltersTests: XCTestCase {
     func testTagsSourceAndDeletedEntries() {
         let tagged = makeNote("Tagged", text: "Plan #travel and #Food")
         let other = makeNote("Other", text: "#travel")
-        // Older entries from the removed Plaud import keep their channel, and a saved filter still finds them.
-        let plaud = makeNote("From Plaud", source: .plaud)
+        // A recording from a channel this version does not know keeps its channel: a saved filter for that
+        // channel still finds it, and it counts as imported audio.
+        let legacy = makeNote("From a device")
+        legacy.sourceRaw = "legacy-device"
+        legacy.audioFileName = "a.m4a"
         let deleted = makeNote("Gone", text: "#travel #food")
         deleted.deletedAt = Date()
         XCTAssertEqual(results(SmartFilterCriteria(tags: ["#food", "Travel"]), [tagged, other, deleted]), ["Tagged"])
-        XCTAssertEqual(results(SmartFilterCriteria(source: .plaud), [tagged, plaud]), ["From Plaud"])
+        var legacyCriteria = SmartFilterCriteria()
+        legacyCriteria.source = "legacy-device"
+        XCTAssertEqual(results(legacyCriteria, [tagged, legacy]), ["From a device"])
+        XCTAssertEqual(results(SmartFilterCriteria(source: .audioImport), [tagged, legacy]), ["From a device"])
+        XCTAssertEqual(results(SmartFilterCriteria(source: .note), [tagged, legacy]), ["Tagged"])
     }
 
     func testOldEntriesWithoutChannelCountAsNotes() {

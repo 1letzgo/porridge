@@ -131,10 +131,12 @@ struct SmartFilterCriteria: Codable, Equatable, Hashable, Sendable {
             guard let entryKind = SmartFilterKind(rawValue: kind), entryKind.matches(note) else { return false }
         }
         if let source {
-            // Entries from before there were channels have "" (`NoteSource.unknown`): they count as notes.
+            // Entries from before there were channels have "" (`NoteSource.unknown`): they count as notes. A channel
+            // this version does not know matches itself and what it counts as (`Note.source`).
             let raw = note.sourceRaw.isEmpty ? NoteSource.note.rawValue : note.sourceRaw
+            let resolved = note.source == .unknown ? NoteSource.note.rawValue : note.source.rawValue
             let wanted = source.isEmpty ? NoteSource.note.rawValue : source
-            guard raw == wanted else { return false }
+            guard raw == wanted || resolved == wanted else { return false }
         }
         if let documentKind {
             guard note.isDocument, (note.documentInfo?.kind ?? .other).rawValue == documentKind else { return false }

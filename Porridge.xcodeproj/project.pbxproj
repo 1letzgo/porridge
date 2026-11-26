@@ -112,7 +112,6 @@
 		30CA02417900CF5C9687001E /* NoteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33144CDDD5CE1296F1220976 /* NoteDetailView.swift */; };
 		31BD4154FE7813B59868D489 /* BowlSharingExtrasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F71C61FDF13327EF337197 /* BowlSharingExtrasTests.swift */; };
 		3380105AA4D3755C1C91AD22 /* SearchAskFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9BC33959C6CC2F7B879875 /* SearchAskFlowTests.swift */; };
-		33C7C5834FDF628DC63BE0C3 /* PlaudCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D23D2AE26E3C7D56FF53A88 /* PlaudCleanup.swift */; };
 		3429A25D4EF65DA7B58F988C /* DictationSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1353083C7CC5218CFF6FB9 /* DictationSettings.swift */; };
 		3452BEEE447C4B9659A7F569 /* NoteBlockAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08FE388D83F96FD390B1DE68 /* NoteBlockAttachment.swift */; };
 		3489B6C68561ADF129E7BB9C /* TodoViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB66B42946E5C12B53226492 /* TodoViews.swift */; };
@@ -355,7 +354,6 @@
 		AC8CCA7F17F3ECCDA003A704 /* AutoSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 455C1FF14CB20CF371B4364D /* AutoSummary.swift */; };
 		AD00C37129276CD83A260909 /* TaskDetectionBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC7FF97B15E08C9746458E2E /* TaskDetectionBarView.swift */; };
 		AEAE848B76D8557398F799BE /* SplitNoteViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0B032D3D8A75CD30063473 /* SplitNoteViewController.swift */; };
-		AF8DF3357787510C03833526 /* PlaudCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D23D2AE26E3C7D56FF53A88 /* PlaudCleanup.swift */; };
 		B07CCDF233B4047E47870049 /* WeeklyReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E8A3FF0534966E1E1C21EC3 /* WeeklyReviewView.swift */; };
 		B1AFC996F0E1DFC3DC4A105F /* NoteImageAttaching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FDADE8C1BFCE48C9E9BD19 /* NoteImageAttaching.swift */; };
 		B1C32999FC316EDC790C9137 /* TodayDayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 937957DBCBF155C63D4ABB3F /* TodayDayTests.swift */; };
@@ -648,7 +646,6 @@
 		2A16B8629289B887438FC635 /* NoteRewrite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRewrite.swift; sourceTree = "<group>"; };
 		2B1CE0B6CCEDF3BFEB9D27B4 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		2C0B032D3D8A75CD30063473 /* SplitNoteViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitNoteViewController.swift; sourceTree = "<group>"; };
-		2D23D2AE26E3C7D56FF53A88 /* PlaudCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaudCleanup.swift; sourceTree = "<group>"; };
 		2D494821C350D92EA37951EB /* MailMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailMessage.swift; sourceTree = "<group>"; };
 		30A3283911FDEDADF5689EB3 /* DictationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationOverlay.swift; sourceTree = "<group>"; };
 		31CDE32503880C8843DE642D /* SplitNoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitNoteSheet.swift; sourceTree = "<group>"; };
@@ -1494,7 +1491,6 @@
 				B35F6EBC569D0247DE87C72E /* NoteTemplates.swift */,
 				79CE7375CA240FA49A4B0266 /* NoteTemplateStore.swift */,
 				87C4BA1C675687EC6A2CF198 /* PDFTextLayer.swift */,
-				2D23D2AE26E3C7D56FF53A88 /* PlaudCleanup.swift */,
 				F0C6D4089FE130492BCC55C9 /* ProcessingService.swift */,
 				4E639258A983029655F3B803 /* Projects.swift */,
 				3E7511785C6CC41FB53AC539 /* RecordingJournal.swift */,
@@ -2011,7 +2007,6 @@
 				96EE3621CBC49AA8BFF6B318 /* Paragraphs.swift in Sources */,
 				F9E7D066C519262E7CC2BA8B /* PlaceCommands.swift in Sources */,
 				E0E0388BAE141780DD09FD86 /* PlaceTabBar.swift in Sources */,
-				AF8DF3357787510C03833526 /* PlaudCleanup.swift in Sources */,
 				7740E9BA5268C7499C37ABBD /* PorridgeApp.swift in Sources */,
 				242BC31239F328603E362BB6 /* PorridgeIntents.swift in Sources */,
 				D00965D8E1D5FF480691CEF9 /* PorridgeShortcuts.swift in Sources */,
@@ -2261,7 +2256,6 @@
 				E632C6F8F2F7258EBAB0C4C2 /* PDFPageEditorController.swift in Sources */,
 				AB929C4E5F1AB21F895243BE /* PDFTextLayer.swift in Sources */,
 				80E05524C639A02033C56895 /* Paragraphs.swift in Sources */,
-				33C7C5834FDF628DC63BE0C3 /* PlaudCleanup.swift in Sources */,
 				9D5600B6F9649361595DE911 /* PorridgeIntents.swift in Sources */,
 				104D58F405C650024CA8FA59 /* PorridgeShortcuts.swift in Sources */,
 				4B6070EAB9B01A1A5784E265 /* ProcessingService.swift in Sources */,

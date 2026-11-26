@@ -2,7 +2,7 @@ import Foundation
 
 /// What comes in from outside gets a summary by itself, as soon as its content is there: a link once its page is
 /// loaded, an image or a file once its text is read, text shared from another app, and imported audio (a file, a
-/// recording shared from another app, or an older Plaud import) once it is transcribed. The user's own notes, to-dos and recordings
+/// recording shared from another app) once it is transcribed. The user's own notes, to-dos and recordings
 /// are summarized only when asked.
 ///
 /// One device does the work: the one the entry came in on (`markOrigin`, kept on that device only). Another device
@@ -34,7 +34,7 @@ enum AutoSummary {
         if note.isLink { return .link }
         if note.isStored { return note.isImage ? .image : .file }
         // Audio shared from another app is imported audio too (its tasks become to-dos, see `Note.isSaved`).
-        if note.isRecording { return [.audioImport, .plaud, .share].contains(note.source) ? .importedAudio : nil }
+        if note.isRecording { return [.audioImport, .share].contains(note.source) ? .importedAudio : nil }
         if note.source == .share, note.attachmentsData == nil { return .sharedText }
         return nil
     }

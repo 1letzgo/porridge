@@ -88,12 +88,10 @@ enum EntryMeta {
         return date.formatted(.dateTime.day().month(.abbreviated).year())
     }
 
-    /// Where it came in, when that says something: the site of a link, an imported recording, or Plaud
-    /// (older recordings from the removed Plaud import).
+    /// Where it came in, when that says something: the site of a link or an imported recording.
     static func sourceWord(for note: Note) -> String? {
         if note.isLink { return note.domain }
         switch note.source {
-        case .plaud: return "Plaud"
         case .audioImport: return String(localized: "Imported")
         default: return nil
         }
