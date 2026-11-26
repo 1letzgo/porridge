@@ -29,6 +29,14 @@ struct AddSheet: View {
     /// edge are only estimated by the list) the popover takes its highest height, so every row that fits is laid out
     /// and measured.
     @State private var contentHeight: CGFloat = 0
+    /// Popover: where each row ends in the window, measured while the list is not scrolled (less `listTop`: from the
+    /// top of the list's frame). Where the
+    /// content is higher than the window leaves, the popover ends at the last row's end that fits (no row cut).
+    @State private var rowEnds: [String: CGFloat] = [:]
+    /// Popover: the list's top in the window and how far it is scrolled from its start (rows are measured at its start).
+    @State private var listTop: CGFloat = 0
+    @State private var scrolled: CGFloat = 0
+    @Environment(\.dynamicTypeSize) private var typeSize
     private var templates: NoteTemplateStore { .shared }
 
     /// The popover's width, and its highest height while the window's is not known (the rest scrolls).
@@ -83,27 +91,48 @@ struct AddSheet: View {
                     }
                     .accessibilityLabel("Into: \(targetName)")
                     .accessibilityIdentifier("AddInto")
-                    HStack(spacing: 10) {
-                        kind("Note", systemImage: "square.and.pencil", tint: .brandSky, choice: .note)
-                        kind("To-do", systemImage: "checklist", tint: .brandTask, choice: .todo)
-                        kind("Meeting", systemImage: "mic.fill", tint: .brandNavy, choice: .meeting)
-                        kind("Link", systemImage: "link", tint: .brandLink, choice: .link)
+                    .rowEnd("into", active: inPopover) { recordRowEnd("into", at: $0) }
+                    // The four kinds side by side; with the largest text sizes two by two, so their words stay whole.
+                    Grid(horizontalSpacing: 10, verticalSpacing: 12) {
+                        if typeSize.isAccessibilitySize {
+                            GridRow {
+                                kind("Note", systemImage: "square.and.pencil", tint: .brandSky, choice: .note)
+                                kind("To-do", systemImage: "checklist", tint: .brandTask, choice: .todo)
+                            }
+                            GridRow {
+                                kind("Meeting", systemImage: "mic.fill", tint: .brandNavy, choice: .meeting)
+                                kind("Link", systemImage: "link", tint: .brandLink, choice: .link)
+                            }
+                        } else {
+                            GridRow {
+                                kind("Note", systemImage: "square.and.pencil", tint: .brandSky, choice: .note)
+                                kind("To-do", systemImage: "checklist", tint: .brandTask, choice: .todo)
+                                kind("Meeting", systemImage: "mic.fill", tint: .brandNavy, choice: .meeting)
+                                kind("Link", systemImage: "link", tint: .brandLink, choice: .link)
+                            }
+                        }
                     }
                     .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 12))
+                    .rowEnd("kinds", active: inPopover) { recordRowEnd("kinds", at: $0) }
                 }
                 Section("Capture") {
                     if DocumentScanner.isAvailable {
                         row("Scan Document", systemImage: "doc.viewfinder", tint: .brandNavy, choice: .scan)
+                            .rowEnd("scan", active: inPopover) { recordRowEnd("scan", at: $0) }
                     }
                     row("Photo or File", systemImage: "paperclip", tint: .brandNavy, choice: .file)
+                        .rowEnd("file", active: inPopover) { recordRowEnd("file", at: $0) }
                     row("Import Audio", systemImage: "waveform", tint: .brandNavy, choice: .audio)
+                        .rowEnd("audio", active: inPopover) { recordRowEnd("audio", at: $0) }
                     row("Import from Plaud", systemImage: "recordingtape", tint: .brandNavy, choice: .plaud)
+                        .rowEnd("plaud", active: inPopover) { recordRowEnd("plaud", at: $0) }
                 }
                 Section {
                     if templates.templates.isEmpty {
                         Text("No templates yet. Save an entry as a template from its ⋯ menu, or make one with Edit.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .rowEnd("noTemplates", active: inPopover) { recordRowEnd("noTemplates", at: $0) }
                     }
                     ForEach(templates.templates) { template in
                         Button { pick(.template(template)) } label: {
@@ -111,6 +140,7 @@ struct AddSheet: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("AddTemplate-\(template.name)")
+                        .rowEnd("template-\(template.id)", active: inPopover) { recordRowEnd("template-\(template.id)", at: $0) }
                     }
                 } header: {
                     HStack {
@@ -123,9 +153,16 @@ struct AddSheet: View {
                 }
                 Section {
                     row("New Bowl…", systemImage: "folder.badge.plus", tint: .brandProject, choice: .bowl)
+                        .rowEnd("bowl", active: inPopover) { recordRowEnd("bowl", at: $0) }
                 }
             }
             .listStyle(.insetGrouped)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { listTop = $0 }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, offset in
+                scrolled = offset
+            }
             .navigationTitle("Add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -146,28 +183,42 @@ struct AddSheet: View {
             }
             .sheet(isPresented: $showTemplates) { NoteTemplatesView() }
         }
-        .modifier(PopoverSize(active: inPopover, contentHeight: contentHeight, maxHeight: maxPopoverHeight))
+        .modifier(PopoverSize(active: inPopover, height: popoverHeight))
         .presentationDetents([.medium, .large])
     }
 
-    /// Popover: a fixed width and the content's height (until measured, and beyond the highest height, that height).
+    /// The popover's height: the content's where it fits (until measured, the highest height, so every row that fits
+    /// is laid out and measured); where it does not, the end of the last row that fits and the list's margin below it,
+    /// so it ends at a row's edge and the rest scrolls.
+    private var popoverHeight: CGFloat {
+        guard contentHeight > 0 else { return maxPopoverHeight }
+        let whole = contentHeight.rounded(.up)
+        if whole <= maxPopoverHeight { return whole }
+        let margin: CGFloat = 16
+        let fitting = rowEnds.values.map { $0 - listTop }.filter { $0 > 0 && $0 + margin <= maxPopoverHeight }.max()
+        return fitting.map { ($0 + margin).rounded(.up) } ?? maxPopoverHeight
+    }
+
+    /// Popover: a fixed width and `height`.
     private struct PopoverSize: ViewModifier {
         let active: Bool
-        let contentHeight: CGFloat
-        let maxHeight: CGFloat
+        let height: CGFloat
 
         func body(content: Content) -> some View {
             if active {
                 content
-                    .frame(
-                        width: AddSheet.popoverWidth,
-                        height: contentHeight > 0 ? min(contentHeight.rounded(.up), maxHeight) : maxHeight
-                    )
+                    .frame(width: AddSheet.popoverWidth, height: height)
                     .presentationCompactAdaptation(.popover)
             } else {
                 content
             }
         }
+    }
+
+    /// Only at the list's start (the popover opens there): scrolled, a row's place says nothing of the popover.
+    private func recordRowEnd(_ id: String, at bottom: CGFloat) {
+        guard inPopover, abs(scrolled) < 0.5 else { return }
+        rowEnds[id] = bottom
     }
 
     private func pick(_ choice: AddChoice) {
@@ -187,7 +238,7 @@ struct AddSheet: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.6)
             }
             .contentShape(Rectangle())
         }
@@ -206,5 +257,18 @@ struct AddSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(title))
+    }
+}
+
+private extension View {
+    /// A row of the Add popover reports where it ends in the window (its content's bottom; the cell's own inset
+    /// follows). Reported by each row itself: a list's rows hand no preferences up to the list.
+    @ViewBuilder
+    func rowEnd(_ id: String, active: Bool, _ report: @escaping (CGFloat) -> Void) -> some View {
+        if active {
+            onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { report($0) }
+        } else {
+            self
+        }
     }
 }

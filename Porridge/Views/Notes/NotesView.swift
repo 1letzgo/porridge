@@ -1626,9 +1626,11 @@ struct NotesView: View {
     private func addSheet(inPopover: Bool = false) -> some View {
         AddSheet(
             into: defaultInto, projects: projects, inPopover: inPopover,
-            // The popover hangs from "+" at the top of the window: below it the window's height less the bar and a
-            // margin to the bottom edge.
-            maxPopoverHeight: splitHeight > 0 ? max(360, splitHeight - 140) : AddSheet.defaultMaxPopoverHeight
+            // The popover hangs from "+" at the top of the window: the window's height less the status bar, the
+            // popover's arrow and a small margin to the bottom edge (an 11-inch iPad in landscape, 834 pt, shows the
+            // whole sheet, about 745 pt; 140 pt less cut it in the middle of a template's row). Where the content is
+            // higher, the popover ends at a row's edge (`AddSheet.popoverHeight`).
+            maxPopoverHeight: splitHeight > 0 ? max(360, splitHeight - 80) : AddSheet.defaultMaxPopoverHeight
         ) { choice, into in
             pendingAdd = choice
             addInto = .some(into)
