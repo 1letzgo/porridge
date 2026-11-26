@@ -21,15 +21,23 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
     private var canPlay = false
     /// The width the rows were measured for: another one measures them again.
     private var measuredWidth: CGFloat = 0
+    /// Row heights at `measuredWidth`, measured with `sizingCell`.
+    private var heights: [Int: CGFloat] = [:]
+    /// A cell that is never shown: it measures rows (`tableView(_:heightOfRow:)`).
+    private lazy var sizingCell = SegmentCell()
 
     init() {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         let column = NSTableColumn(identifier: .init("segment"))
+        column.resizingMask = .autoresizingMask
         table.addTableColumn(column)
         table.headerView = nil
         table.style = .plain
-        table.usesAutomaticRowHeights = true
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        // Heights come from `heightOfRow`: the same sizes the shown cell is laid out with, so a bubble is exactly as
+        // high as its head line and its wrapped text.
+        table.usesAutomaticRowHeights = false
         table.selectionHighlightStyle = .none
         table.intercellSpacing = NSSize(width: 0, height: 4)
         table.backgroundColor = .clear
@@ -43,6 +51,7 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
         table.setAccessibilityLabel("Transcript")
         scroll.documentView = table
         scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -59,21 +68,31 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// The width a row's cell gets: the column's.
+    /// The width a row's cell gets: the column's (the visible width until the table has sized its column).
     private var rowWidth: CGFloat {
-        table.tableColumns.first?.width ?? table.bounds.width
+        let column = table.tableColumns.first?.width ?? 0
+        return column > 0 ? column : scroll.contentView.bounds.width
     }
 
-    /// A row's height comes from its text wrapped at its bubble's width: a new width (the window resized) fits the
-    /// bubbles to it and measures the rows again.
     override func layout() {
         super.layout()
+        refitIfWidthChanged()
+    }
+
+    /// The column got another width (the window or a column of it resized).
+    func tableViewColumnDidResize(_ notification: Notification) {
+        refitIfWidthChanged()
+    }
+
+    /// A new width sizes the shown bubbles for it and measures every row again.
+    private func refitIfWidthChanged() {
         let width = rowWidth
         guard width > 0, abs(width - measuredWidth) > 0.5 else { return }
         measuredWidth = width
+        heights = [:]
         guard !segments.isEmpty else { return }
         table.enumerateAvailableRowViews { rowView, _ in
-            (rowView.view(atColumn: 0) as? SegmentCell)?.fit(to: width)
+            (rowView.view(atColumn: 0) as? SegmentCell)?.apply(width: width)
         }
         table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<segments.count))
     }
@@ -89,6 +108,7 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
         if changed {
             styles = TranscriptBubbles.rows(speakerIDs: segments.map(\.speakerId), meIDs: TranscriptBubbles.meIDs(in: speakers))
             activeRow = -1
+            heights = [:]
             table.reloadData()
         }
     }
@@ -107,12 +127,33 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
 
     func numberOfRows(in tableView: NSTableView) -> Int { segments.count }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = tableView.makeView(withIdentifier: SegmentCell.identifier, owner: nil) as? SegmentCell ?? SegmentCell()
+    private func configure(_ cell: SegmentCell, row: Int) {
         let segment = segments[row]
         let speaker = speakers.first { $0.id == segment.speakerId }
         let style = row < styles.count ? styles[row] : TranscriptBubbles.RowStyle(side: .leading, showsName: true)
-        cell.show(segment, speaker: speaker, style: style, canPlay: canPlay, width: rowWidth)
+        cell.show(segment, speaker: speaker, style: style, canPlay: canPlay)
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        guard row >= 0, row < segments.count else { return 20 }
+        let width = rowWidth
+        if abs(width - measuredWidth) > 0.5 {
+            measuredWidth = width
+            heights = [:]
+        }
+        if let height = heights[row] { return height }
+        configure(sizingCell, row: row)
+        let height = sizingCell.metrics(for: width).height
+        heights[row] = height
+        return height
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let cell = tableView.makeView(withIdentifier: SegmentCell.identifier, owner: nil) as? SegmentCell ?? SegmentCell()
+        configure(cell, row: row)
+        cell.apply(width: rowWidth)
+        let segment = segments[row]
+        let speaker = speakers.first { $0.id == segment.speakerId }
         cell.onName = canAssign && speaker != nil ? { [weak self] anchor in
             guard let self, let speaker else { return }
             self.onSpeaker?(segment, speaker, anchor)
@@ -151,7 +192,12 @@ final class TranscriptView: NSView, NSTableViewDataSource, NSTableViewDelegate, 
 }
 
 /// One passage as a bubble on its speaker's side, at most `TranscriptBubbles.maximumWidth` of the width: a tint of
-/// the speaker's color, the speaker (where it changes) and the time on top, the text below.
+/// the speaker's color, the speaker (where it changes) and the time on top in one line, the text below.
+///
+/// Its sizes come from `metrics(for:)`, for the shown cell (`apply`) and for measuring a row alike: the bubble is as
+/// wide as its text or its head line (whichever is wider, at most the maximum), the text wraps at exactly that width,
+/// and the row is as high as the head line and those lines. The head line never wraps: a name too long for it is
+/// cut with "…".
 private final class SegmentCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("segment")
     private let box = NSView()
@@ -162,20 +208,34 @@ private final class SegmentCell: NSTableCellView {
     private let me = NSTextField.label(font: .systemFont(ofSize: 10, weight: .bold), color: .brandOnFill)
     private let time = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold), color: .secondaryLabelColor)
     private let text = NSTextField(wrappingLabelWithString: "")
-    private var head: NSStackView!
+    private let head: NSStackView
     private var tint: NSColor = .systemGray
     private var leadingEdge: NSLayoutConstraint!
     private var trailingEdge: NSLayoutConstraint!
     private var top: NSLayoutConstraint!
-    /// The bubble's width, from its text and its head line (`fit`).
+    /// The bubble's width (`apply`).
     private var boxWidth: NSLayoutConstraint!
-    /// What the bubble was last fitted to: width of the row, text, head.
-    private var fitted: (width: CGFloat, text: String, head: CGFloat)?
     private static let minimumBoxWidth: CGFloat = 120
     private static let inset: CGFloat = 14
+    private static let insetTop: CGFloat = 10
+    private static let insetBottom: CGFloat = 12
+    private static let lineSpacing: CGFloat = 6
+    /// Room kept free at the trailing edge (the user's bubbles end 2 pt before it).
+    private static let edgeGap: CGFloat = 2
     var isActive = false { didSet { updateLayer() } }
 
+    struct Metrics {
+        /// Width of the bubble, and of its text and head line inside it.
+        let box: CGFloat
+        let content: CGFloat
+        /// Height of the row.
+        let height: CGFloat
+    }
+
     init() {
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        head = NSStackView.horizontal([dot, name, me, spacer, time], spacing: 8)
         super.init(frame: .zero)
         identifier = Self.identifier
         wantsLayer = true
@@ -195,21 +255,30 @@ private final class SegmentCell: NSTableCellView {
         name.isBordered = false
         name.target = self
         name.action = #selector(nameClicked)
+        // One line: the name is cut with "…" rather than broken over lines.
+        name.cell?.wraps = false
+        name.cell?.lineBreakMode = .byTruncatingTail
+        name.cell?.truncatesLastVisibleLine = true
+        name.usesSingleLineMode = true
         name.setContentHuggingPriority(.required, for: .horizontal)
+        name.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(751), for: .horizontal)
+        for fixed in [dot, me, time] as [NSView] {
+            fixed.setContentHuggingPriority(.required, for: .horizontal)
+            fixed.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+        // The gap between name and time takes what is left and is the first to give way.
+        spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        spacer.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
         text.font = .preferredFont(forTextStyle: .body)
         text.isSelectable = true
         text.translatesAutoresizingMaskIntoConstraints = false
         text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let head = NSStackView.horizontal([dot, name, me, NSView(), time], spacing: 8)
-        self.head = head
-        let stack = NSStackView.vertical([head, text], spacing: 6)
+        let stack = NSStackView.vertical([head, text], spacing: Self.lineSpacing)
         box.addSubview(stack)
         addSubview(box)
         leadingEdge = box.leadingAnchor.constraint(equalTo: leadingAnchor)
-        trailingEdge = box.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2)
+        trailingEdge = box.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.edgeGap)
         top = box.topAnchor.constraint(equalTo: topAnchor)
-        // As narrow as its text allows (a short passage is a small bubble), set by `fit`. The text is measured at
-        // exactly the width it is drawn at, so the row is as high as its lines.
         boxWidth = box.widthAnchor.constraint(equalToConstant: Self.minimumBoxWidth)
         boxWidth.priority = NSLayoutConstraint.Priority(999)
         NSLayoutConstraint.activate([
@@ -220,15 +289,15 @@ private final class SegmentCell: NSTableCellView {
             text.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: Self.inset),
             stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -Self.inset),
-            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 10),
-            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -12),
+            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: Self.insetTop),
+            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -Self.insetBottom),
             box.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor),
-            box.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
+            box.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Self.edgeGap),
             box.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, multiplier: TranscriptBubbles.maximumWidth),
-            box.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumBoxWidth),
             boxWidth,
             top,
-            box.bottomAnchor.constraint(equalTo: bottomAnchor),
+            // The row is measured to fit the bubble; it never stretches it.
+            box.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
             leadingEdge,
         ])
     }
@@ -248,32 +317,34 @@ private final class SegmentCell: NSTableCellView {
         updateLayer()
     }
 
-    /// A wrapping label needs the width it is drawn at to know its height.
-    override func layout() {
-        fit(to: bounds.width)
-        super.layout()
+    /// The bubble's sizes in a row `width` wide: the head line in one line at its natural width, the text measured
+    /// at the widest the bubble may be; the bubble takes the wider of the two (at most the maximum), and the text's
+    /// height is measured again at exactly that width.
+    func metrics(for width: CGFloat) -> Metrics {
+        let widest = max(Self.minimumBoxWidth, floor(width * TranscriptBubbles.maximumWidth) - Self.edgeGap) - 2 * Self.inset
+        let headSize = head.fittingSize
+        let unbounded = CGFloat.greatestFiniteMagnitude
+        let natural = text.cell.map { ceil($0.cellSize(forBounds: NSRect(x: 0, y: 0, width: widest, height: unbounded)).width) } ?? widest
+        let content = min(widest, max(natural, ceil(headSize.width), Self.minimumBoxWidth - 2 * Self.inset))
+        let textHeight = text.cell.map { ceil($0.cellSize(forBounds: NSRect(x: 0, y: 0, width: content, height: unbounded)).height) } ?? 0
+        let height = top.constant + Self.insetTop + ceil(headSize.height) + Self.lineSpacing + textHeight + Self.insetBottom
+        return Metrics(box: content + 2 * Self.inset, content: content, height: ceil(height))
     }
 
-    /// Sizes the bubble for a row `width` wide: at most `TranscriptBubbles.maximumWidth` of it, as narrow as the
-    /// wrapped text or the head line allow, and the text measured at exactly the width it gets in the bubble.
-    func fit(to width: CGFloat) {
+    /// Sizes the bubble for a row `width` wide (`metrics`).
+    func apply(width: CGFloat) {
         guard width > 0 else { return }
-        let headWidth = ceil(head.fittingSize.width)
-        if let fitted, abs(fitted.width - width) < 0.5, fitted.text == text.stringValue, abs(fitted.head - headWidth) < 0.5 { return }
-        fitted = (width, text.stringValue, headWidth)
-        let widest = max(Self.minimumBoxWidth, floor(width * TranscriptBubbles.maximumWidth) - 2) - 2 * Self.inset
-        let natural = text.cell.map { ceil($0.cellSize(forBounds: NSRect(x: 0, y: 0, width: widest, height: .greatestFiniteMagnitude)).width) } ?? widest
-        let content = min(widest, max(natural, headWidth, Self.minimumBoxWidth - 2 * Self.inset))
-        if abs(boxWidth.constant - (content + 2 * Self.inset)) > 0.5 { boxWidth.constant = content + 2 * Self.inset }
-        if abs(text.preferredMaxLayoutWidth - content) > 0.5 {
-            text.preferredMaxLayoutWidth = content
+        let metrics = metrics(for: width)
+        if abs(boxWidth.constant - metrics.box) > 0.5 { boxWidth.constant = metrics.box }
+        if abs(text.preferredMaxLayoutWidth - metrics.content) > 0.5 {
+            text.preferredMaxLayoutWidth = metrics.content
             text.invalidateIntrinsicContentSize()
         }
     }
 
     @objc private func nameClicked() { onName?(name) }
 
-    func show(_ segment: TranscriptSegment, speaker: Speaker?, style: TranscriptBubbles.RowStyle, canPlay: Bool, width: CGFloat) {
+    func show(_ segment: TranscriptSegment, speaker: Speaker?, style: TranscriptBubbles.RowStyle, canPlay: Bool) {
         tint = speaker.map { NSColor.speaker($0.colorIndex) } ?? .systemGray
         let trailing = style.side == .trailing
         leadingEdge.isActive = !trailing
@@ -283,13 +354,17 @@ private final class SegmentCell: NSTableCellView {
         let showsName = style.showsName && speaker != nil
         dot.isHidden = !showsName
         name.isHidden = !showsName
+        let oneLine = NSMutableParagraphStyle()
+        oneLine.lineBreakMode = .byTruncatingTail
         let title = NSMutableAttributedString(string: speaker?.name ?? "", attributes: [
             .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: NSColor.brandNavy,
+            .paragraphStyle: oneLine,
         ])
         // An unnamed speaker invites a name.
         if let speaker, VoiceProfiles.isUnnamed(speaker) {
             title.append(NSAttributedString(string: "  " + String(localized: "Name…"), attributes: [
                 .font: NSFont.systemFont(ofSize: NSFont.systemFontSize), .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: oneLine,
             ]))
         }
         name.attributedTitle = title
@@ -298,7 +373,6 @@ private final class SegmentCell: NSTableCellView {
         me.isHidden = !(showsName && (speaker.map(AppSettings.isMe) ?? false))
         time.stringValue = segment.start.clockString
         text.stringValue = segment.text
-        fit(to: width)
         updateLayer()
         setAccessibilityElement(true)
         setAccessibilityRole(canPlay ? .button : .group)
