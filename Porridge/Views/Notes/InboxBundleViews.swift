@@ -13,6 +13,7 @@ struct InboxBundleCard: View {
     @Environment(\.modelContext) private var context
     @State private var bundle: InboxBundle?
     @State private var reviewing: InboxBundle?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// What the suggestion depends on: the inbox's entries, their suggestions and tags, and the index's vectors.
     private var signature: String {
@@ -46,44 +47,81 @@ struct InboxBundleCard: View {
 
     /// "✦ New bowl “Berlin Trip” for 3 entries?", Review…, and the cross. The sentence is whole: where the row is
     /// too narrow for it (a long bowl name, the iPad's list column) it takes up to three lines (it was cut after
-    /// "for 3…"); Review… and the cross keep their size. The entries' titles are in the review sheet (and read by
-    /// VoiceOver).
+    /// "for 3…"); Review… and the cross keep their size. With the largest text sizes the sentence has the card's whole
+    /// width and as many lines as it needs, Review… and the cross a line of their own below it (beside them on the
+    /// iPhone SE the sentence was cut after "for 3 ent…" in three lines). The entries' titles are in the review sheet
+    /// (and read by VoiceOver).
+    @ViewBuilder
     private func suggestion(_ bundle: InboxBundle) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(Color.brandProject.readable)
-                .accessibilityHidden(true)
-            Text(bundle.line)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Color.brandProject.readable)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 6)
-                .accessibilityHint(titles(bundle))
-            Spacer(minLength: 4)
-            Button("Review…") { reviewing = bundle }
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Color.brandNavy.readable)
-                .fixedSize()
-                .accessibilityIdentifier("InboxBundleReview")
-            Button {
-                withAnimation(.snappy) {
-                    InboxBundler.dismiss(bundle)
-                    self.bundle = nil
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        sparkle
+                        sentence(bundle, lineLimit: nil)
+                    }
+                    HStack(spacing: 8) {
+                        Spacer(minLength: 0)
+                        reviewButton(bundle)
+                        dismissButton(bundle)
+                    }
                 }
-            } label: {
-                Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
-                    .frame(width: 26, height: 32)
-                    .contentShape(Rectangle())
+                .padding(.vertical, 4)
+            } else {
+                HStack(spacing: 8) {
+                    sparkle
+                    sentence(bundle, lineLimit: 3)
+                    Spacer(minLength: 4)
+                    reviewButton(bundle)
+                    dismissButton(bundle)
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss Suggestion")
         }
         .padding(.leading, 12)
         .padding(.trailing, 4)
         .frame(minHeight: 40)
         .background(Color.brandProject.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.brandProject.opacity(0.25), lineWidth: 1))
+    }
+
+    private var sparkle: some View {
+        Image(systemName: "sparkles")
+            .foregroundStyle(Color.brandProject.readable)
+            .accessibilityHidden(true)
+    }
+
+    private func sentence(_ bundle: InboxBundle, lineLimit: Int?) -> some View {
+        Text(bundle.line)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.brandProject.readable)
+            .lineLimit(lineLimit)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 6)
+            .frame(maxWidth: lineLimit == nil ? .infinity : nil, alignment: .leading)
+            .accessibilityHint(titles(bundle))
+    }
+
+    private func reviewButton(_ bundle: InboxBundle) -> some View {
+        Button("Review…") { reviewing = bundle }
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.brandNavy.readable)
+            .fixedSize()
+            .accessibilityIdentifier("InboxBundleReview")
+    }
+
+    private func dismissButton(_ bundle: InboxBundle) -> some View {
+        Button {
+            withAnimation(.snappy) {
+                InboxBundler.dismiss(bundle)
+                self.bundle = nil
+            }
+        } label: {
+            Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                .frame(width: 26, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Dismiss Suggestion")
     }
 
     private func titles(_ bundle: InboxBundle) -> String {
