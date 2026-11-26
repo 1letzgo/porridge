@@ -43,7 +43,10 @@ final class AppointmentCellView: NSTableCellView {
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             row.topAnchor.constraint(equalTo: topAnchor, constant: 9),
             row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -9),
-            name.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
+            // The title is as wide as the text column (as the two-line preview of `NoteCellView`): a wrapping label
+            // works out its height for the width it is given. Only "at most as wide", it kept its one-line width as
+            // its own, was squeezed to the column and measured one line high, so it was cut after the first line.
+            name.widthAnchor.constraint(equalTo: text.widthAnchor),
             summary.widthAnchor.constraint(lessThanOrEqualTo: text.widthAnchor),
         ])
     }
