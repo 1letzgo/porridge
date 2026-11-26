@@ -1371,7 +1371,7 @@ private struct EntryChrome<Actions: View>: ViewModifier {
         } else {
             content
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    ChromeBar(title: title, systemImage: systemImage, tint: tint, onBack: onBack) {
+                    ChromeBar(title: title, systemImage: systemImage, tint: tint, onBack: onBack, titleIsKind: true) {
                         actions
                     }
                     .padding(.bottom, Look.headerGap)

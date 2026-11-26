@@ -396,6 +396,10 @@ struct ChromeBar<Actions: View>: View {
     /// Makes the title a button (Today: back to today from another day), with the hint VoiceOver reads for it.
     var onTitleTap: (() -> Void)?
     var titleHint = ""
+    /// The title is a short fixed word that says what the page is (an entry's kind: "Note", "Meeting", "PDF"): it is
+    /// never cut with "…". It shrinks further (`minimumTitleScale`), and where even that does not fit (iPhone SE) the
+    /// bar shows only the square with the symbol; VoiceOver still reads the word.
+    var titleIsKind = false
     @ViewBuilder var actions: Actions
 
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 30
@@ -408,10 +412,14 @@ struct ChromeBar<Actions: View>: View {
     var body: some View {
         // The pills never wrap or shrink. What gives way where the row is narrow (iPhone SE, larger text): first the
         // title, down to its smallest scale; then the pills that have a short form drop their words
-        // (`ChromeBarPillLabel`: "+ To-do" becomes "+"); only then is the title cut with "…".
+        // (`ChromeBarPillLabel`: "+ To-do" becomes "+"); only then is the title cut with "…". A kind's word
+        // (`titleIsKind`) is never cut: the bar shows only its symbol instead.
         ViewThatFits(in: .horizontal) {
             row(compact: false)
             row(compact: true)
+            if titleIsKind && !typeSize.isAccessibilitySize {
+                row(compact: true, wordless: true)
+            }
         }
         // An iPad window of compact width (the phone's layout): the row starts right of the window's controls. In
         // regular width the system's navigation bar keeps clear of them by itself.
@@ -420,10 +428,12 @@ struct ChromeBar<Actions: View>: View {
         .padding(.top, 8)
     }
 
-    /// The bar's row; `compact` asks the pills for their short form. The full row is measured with the title at its
-    /// smallest scale (its ideal width), so the title shrinks before a pill drops its words.
+    /// The bar's row; `compact` asks the pills for their short form, `wordless` leaves out the title's word (only
+    /// with `titleIsKind`). The full row is measured with the title at its smallest scale (its ideal width), so the
+    /// title shrinks before a pill drops its words; with `titleIsKind` the compact row is measured so too, so the
+    /// word goes before it would be cut.
     @ViewBuilder
-    private func row(compact: Bool) -> some View {
+    private func row(compact: Bool, wordless: Bool = false) -> some View {
         if typeSize.isAccessibilitySize {
             // The largest text sizes: the pills keep their row, the title gets one of its own below them and may
             // take two lines, so neither is cut to "Meeti…" or shrinks the pills.
@@ -440,8 +450,8 @@ struct ChromeBar<Actions: View>: View {
         } else {
             HStack(alignment: .center, spacing: 10) {
                 backButton
-                titleView(lineLimit: 1)
-                    .frame(idealWidth: compact ? nil : smallestTitleWidth, alignment: .leading)
+                titleView(lineLimit: 1, wordless: wordless)
+                    .frame(idealWidth: wordless || (compact && !titleIsKind) ? nil : smallestTitleWidth, alignment: .leading)
                 Spacer(minLength: 8)
                 // The pills first: they keep their own width, the title takes what is left.
                 pills.layoutPriority(1)
@@ -450,12 +460,16 @@ struct ChromeBar<Actions: View>: View {
         }
     }
 
-    /// Square, gap and the title at its smallest scale (`minimumScaleFactor` 0.6), rounded up.
+    /// How far the title shrinks: "Meeting" beside three pills on a 390 pt iPhone needs a little more than 70 %; a
+    /// kind's word goes down to half before the bar shows only its symbol (iPhone SE: "Meeting" has about 61 pt).
+    private var minimumTitleScale: CGFloat { titleIsKind ? 0.5 : 0.6 }
+
+    /// Square, gap and the title at its smallest scale (`minimumTitleScale`), rounded up.
     private var smallestTitleWidth: CGFloat {
         let size = min(titleSize, 52)
         let font = UIFont.systemFont(ofSize: size, weight: .bold)
         let textWidth = (title as NSString).size(withAttributes: [.font: font, .kern: -0.5]).width
-        return min(squareSize, 44) + 10 + (textWidth * 0.6).rounded(.up) + 1
+        return min(squareSize, 44) + 10 + (textWidth * minimumTitleScale).rounded(.up) + 1
     }
 
     @ViewBuilder
@@ -472,7 +486,7 @@ struct ChromeBar<Actions: View>: View {
         }
     }
 
-    private func titleView(lineLimit: Int) -> some View {
+    private func titleView(lineLimit: Int, wordless: Bool = false) -> some View {
         HStack(spacing: 10) {
             SymbolImage(systemImage, textStyle: .body)
                 .font(.body.weight(.bold))
@@ -480,15 +494,17 @@ struct ChromeBar<Actions: View>: View {
                 .foregroundStyle(tint.onFill)
                 .frame(width: min(squareSize, 44), height: min(squareSize, 44))
                 .background(tint, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-            Text(title)
-                .font(.system(size: min(titleSize, 52), weight: .bold))
-                .tracking(-0.5)
-                .foregroundStyle(.primary)
-                .lineLimit(lineLimit)
-                // "Meeting" beside three pills on a 390 pt iPhone needs a little more than 70 %.
-                .minimumScaleFactor(0.6)
+            if !wordless {
+                Text(title)
+                    .font(.system(size: min(titleSize, 52), weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundStyle(.primary)
+                    .lineLimit(lineLimit)
+                    .minimumScaleFactor(minimumTitleScale)
+            }
         }
         .accessibilityElement(children: .combine)
+        .chromeTitleLabel(wordless ? title : nil)
         .accessibilityAddTraits(onTitleTap == nil ? .isHeader : [.isHeader, .isButton])
         .accessibilityHint(onTitleTap == nil ? "" : titleHint)
         .contentShape(Rectangle())
@@ -506,6 +522,14 @@ struct ChromeBar<Actions: View>: View {
         .tint(buttonTint ?? .accentColor)
         .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
         .menuStyle(.button)
+    }
+}
+
+private extension View {
+    /// The bar's title without its word (`ChromeBar.titleIsKind`): VoiceOver reads the word all the same.
+    @ViewBuilder
+    func chromeTitleLabel(_ word: String?) -> some View {
+        if let word { accessibilityLabel(word) } else { self }
     }
 }
 
