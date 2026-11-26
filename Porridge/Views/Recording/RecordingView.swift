@@ -387,10 +387,12 @@ struct LiveTranscriptCard: View {
         for id in ids {
             speakers[id] = TranscriptBubbles.liveSpeaker(
                 id: id, allIDs: ids, knownNames: live.knownNames, meName: AppSettings.myName ?? "Me",
-                othersName: SystemAudioMix.othersName, isMeName: { AppSettings.isMe($0) })
+                othersName: SystemAudioMix.othersName, isMeName: { AppSettings.isMe($0) }, userIDs: live.userIDs)
         }
         return TranscriptBubbles.bubbles(utterances.map {
-            TranscriptBubbles.Item(id: $0.id, speakerID: $0.speakerID, text: $0.text, isFinal: $0.isFinal, start: $0.start, end: $0.end)
+            TranscriptBubbles.Item(
+                id: $0.id, speakerID: $0.speakerID, text: $0.text, isFinal: $0.isFinal, start: $0.start, end: $0.end,
+                speakerIsSure: $0.speakerIsSure)
         }, speakers: speakers)
     }
 

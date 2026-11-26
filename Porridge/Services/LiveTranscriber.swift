@@ -15,6 +15,9 @@ struct LiveUtterance: Identifiable, Equatable, Sendable {
     /// Seconds since the recording started (pauses left out, as in the file).
     var start: Double
     var end: Double
+    /// The speaker was measured, is the track's own, or the track's only voice so far; false: taken from a
+    /// neighbour (`LiveShortUtterances`), so an open piece is not hung onto another speaker's bubble.
+    var speakerIsSure = true
 }
 
 /// How the live transcript listens.
@@ -45,7 +48,7 @@ struct LiveTranscript {
         }
         var speakers = note.speakers
         for id in spoken.compactMap(\.speakerID) where !speakers.contains(where: { $0.id == id }) {
-            speakers.append(Speaker(id: id, name: "Speaker \(speakers.count + 1)", colorIndex: speakers.count))
+            speakers.append(Self.addedSpeaker(id: id, existing: speakers))
         }
         note.segments = spoken.map {
             TranscriptSegment(speakerId: $0.speakerID, start: max(0, $0.start), end: max($0.start, $0.end), text: $0.text)
@@ -54,6 +57,19 @@ struct LiveTranscript {
             note.speakers = speakers
             if note.speakerMode == .none { note.speakerMode = .diarized }
         }
+    }
+
+    /// A speaker heard live that the note does not have yet. A voice of one microphone ("s2") gets the name and
+    /// color it had live and gets after recording (`SpeakerAssigner.byDiarization` keeps a speaker of the same id),
+    /// unless the note uses them already; any other the next free "Speaker n".
+    static func addedSpeaker(id: String, existing: [Speaker]) -> Speaker {
+        if id.hasPrefix("s"), let number = Int(id.dropFirst()), number >= 1 {
+            let name = "Speaker \(number)"
+            if !existing.contains(where: { $0.name == name || $0.colorIndex == number - 1 }) {
+                return Speaker(id: id, name: name, colorIndex: number - 1)
+            }
+        }
+        return Speaker(id: id, name: "Speaker \(existing.count + 1)", colorIndex: existing.count)
     }
 }
 
@@ -84,6 +100,8 @@ final class LiveTranscriber {
     private(set) var utterances: [LiveUtterance] = []
     /// Known voices recognized live: speaker id → name.
     private(set) var knownNames: [String: String] = [:]
+    /// Speaker ids recognized live as the user's own voice (on the right even on a single microphone).
+    private(set) var userIDs: Set<String> = []
     private(set) var layout: LiveLayout = .single(separatesVoices: false)
 
     var text: String {
@@ -110,6 +128,9 @@ final class LiveTranscriber {
     @ObservationIgnored private var assigned: [UUID: String] = [:]
     @ObservationIgnored private var voiceBusy = false
     @ObservationIgnored private var voiceQueue: [VoiceRequest] = []
+    @ObservationIgnored private var voiceWaits = false
+    @ObservationIgnored private var lastVoiceStart: Double?
+    @ObservationIgnored private let voiceBudget = LiveVoiceBudget.current
     @ObservationIgnored private var echoes: [UUID: Bool] = [:]
 
     init() {
@@ -295,10 +316,13 @@ final class LiveTranscriber {
             if let scheme = track.scheme {
                 // Short utterances, and those not measured yet, follow a measured neighbour of the same turn, or
                 // have no speaker (`LiveShortUtterances`).
-                let ids = LiveShortUtterances.speakers(
+                let ids = LiveShortUtterances.assignments(
                     list.map { LiveShortUtterances.Item(start: $0.start, end: $0.end, measured: assigned[$0.id]) },
                     firstID: scheme.id(at: 0))
-                for index in list.indices { list[index].speakerID = ids[index] }
+                for index in list.indices {
+                    list[index].speakerID = ids[index].id
+                    list[index].speakerIsSure = ids[index].isSure
+                }
             }
             all += list
         }
@@ -353,11 +377,9 @@ final class LiveTranscriber {
         let learns: Bool
     }
 
-    /// Requests waiting while one is measured; beyond this the oldest is left out (it follows its neighbours).
-    private static let voiceQueueLimit = 6
-
     /// Measures the voice of a confirmed utterance that is long enough (`LiveSpeakers.shortSeconds`; from
-    /// `LiveSpeakers.minimumSeconds` it also teaches the voices). One at a time, the others wait in order.
+    /// `LiveSpeakers.minimumSeconds` it also teaches the voices). One at a time, the others wait in order, as many
+    /// and as far apart as the device's `LiveVoiceBudget` allows.
     private func requestVoice(for utterance: LiveUtterance, on track: Track) {
         let seconds = utterance.end - utterance.start
         guard voices != nil, track.scheme != nil, seconds >= LiveSpeakers.shortSeconds else { return }
@@ -366,11 +388,32 @@ final class LiveTranscriber {
         guard Double(samples.count) >= LiveSpeakers.shortSeconds * Double(TrackAudio.sampleRate) * 0.8 else { return }
         let request = VoiceRequest(
             utterance: utterance.id, track: track.index, samples: samples, learns: seconds >= LiveSpeakers.minimumSeconds)
-        if voiceBusy {
-            voiceQueue.append(request)
-            if voiceQueue.count > Self.voiceQueueLimit { voiceQueue.removeFirst() }
-        } else {
-            measure(request)
+        voiceQueue = voiceBudget.trimmed(voiceQueue + [request])
+        measureNext()
+    }
+
+    /// Starts the next waiting print when none is being made and the budget allows it; under load the waiting
+    /// ones are left out (their utterances follow their neighbours or have no speaker).
+    private func measureNext() {
+        guard !voiceBusy, !voiceWaits, !voiceQueue.isEmpty else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        switch voiceBudget.decision(
+            now: now, lastStart: lastVoiceStart, lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled,
+            thermal: ProcessInfo.processInfo.thermalState
+        ) {
+        case .paused:
+            voiceQueue.removeAll()
+        case .wait(let seconds):
+            voiceWaits = true
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(seconds))
+                guard let self else { return }
+                self.voiceWaits = false
+                self.measureNext()
+            }
+        case .now:
+            lastVoiceStart = now
+            measure(voiceQueue.removeFirst())
         }
     }
 
@@ -384,11 +427,10 @@ final class LiveTranscriber {
             if let assignment {
                 if let id = assignment.speakerID { self.assigned[request.utterance] = id }
                 if self.knownNames != assignment.knownNames { self.knownNames = assignment.knownNames }
+                if self.userIDs != assignment.userIDs { self.userIDs = assignment.userIDs }
                 self.rebuild()
             }
-            if !self.voiceQueue.isEmpty {
-                self.measure(self.voiceQueue.removeFirst())
-            }
+            self.measureNext()
         }
     }
 }

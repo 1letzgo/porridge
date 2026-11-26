@@ -6,8 +6,8 @@ import XCTest
 final class LiveSpeakerTests: XCTestCase {
     // MARK: Bubbles
 
-    private func item(_ speaker: String?, _ text: String, at start: Double, final: Bool = true) -> TranscriptBubbles.Item {
-        TranscriptBubbles.Item(id: UUID(), speakerID: speaker, text: text, isFinal: final, start: start, end: start + 2)
+    private func item(_ speaker: String?, _ text: String, at start: Double, final: Bool = true, sure: Bool = true) -> TranscriptBubbles.Item {
+        TranscriptBubbles.Item(id: UUID(), speakerID: speaker, text: text, isFinal: final, start: start, end: start + 2, speakerIsSure: sure)
     }
 
     private let speakers: [String: BubbleSpeaker] = [
@@ -52,6 +52,43 @@ final class LiveSpeakerTests: XCTestCase {
         XCTAssertEqual(bubbles.count, 1)
         XCTAssertEqual(bubbles[0].side, .leading)
         XCTAssertFalse(bubbles[0].showsName)
+    }
+
+    func testOpenPieceWithAGuessedSpeakerIsANeutralBubbleOfItsOwn() {
+        // B's open beginning took Speaker 3's id from the sentence before it: not hung onto that bubble.
+        let items = [item("ch1", "Hello.", at: 0), item("ch1.2", "I think so.", at: 3), item("ch1.2", "Well actually", at: 5.3, final: false, sure: false)]
+        let bubbles = TranscriptBubbles.bubbles(items, speakers: speakers)
+        XCTAssertEqual(bubbles.count, 3)
+        XCTAssertEqual(bubbles[1].text, "I think so.")
+        XCTAssertNil(bubbles[2].speaker)
+        XCTAssertNil(bubbles[2].speakerID)
+        XCTAssertFalse(bubbles[2].showsName)
+        XCTAssertEqual(bubbles[2].side, .leading)
+        XCTAssertEqual(bubbles[2].id, items[2].id, "the piece keeps its bubble's id once it is confirmed")
+    }
+
+    func testOpenPieceOfASureSpeakerJoinsTheBubble() {
+        let items = [item("ch1.2", "I think so.", at: 0), item("ch1.2", "and more", at: 2.3, final: false, sure: true)]
+        let bubbles = TranscriptBubbles.bubbles(items, speakers: speakers)
+        XCTAssertEqual(bubbles.count, 1)
+        XCTAssertEqual(bubbles[0].speaker?.name, "Speaker 3")
+    }
+
+    func testConfirmedUtteranceWithAGuessedSpeakerStillFollowsItsTurn() {
+        let items = [item("ch1.2", "I think so.", at: 0), item("ch1.2", "Yes.", at: 2.3, final: true, sure: false)]
+        XCTAssertEqual(TranscriptBubbles.bubbles(items, speakers: speakers).count, 1)
+    }
+
+    func testSingleMicrophoneVoiceRecognizedAsTheUserIsOnTheRight() {
+        let ids: Set<String> = ["s1", "s2"]
+        func speaker(_ id: String, users: Set<String>) -> BubbleSpeaker {
+            TranscriptBubbles.liveSpeaker(id: id, allIDs: ids, knownNames: ["s2": "Robin"], meName: "Me", othersName: "Others",
+                                          isMeName: { _ in false }, userIDs: users)
+        }
+        XCTAssertFalse(speaker("s1", users: []).isMe)
+        XCTAssertEqual(speaker("s1", users: []).name, "Speaker 1")
+        XCTAssertTrue(speaker("s2", users: ["s2"]).isMe)
+        XCTAssertEqual(speaker("s2", users: ["s2"]).name, "Robin")
     }
 
     func testEmptyTextMakesNoBubble() {
@@ -270,9 +307,51 @@ final class LiveSpeakerTests: XCTestCase {
         XCTAssertEqual(LiveShortUtterances.speakers(items, firstID: "ch1"), ["ch1", "ch1.2", "ch1.2", nil, "ch1", "ch1"])
     }
 
+    func testOnlyMeasuredOrSoleVoicesAreSure() {
+        let items = [short(0, 5, "ch1"), short(5.6, 6.4), short(6.6, 10, "ch1.2"), short(13, 13.8)]
+        XCTAssertEqual(LiveShortUtterances.assignments(items, firstID: "ch1").map(\.isSure), [true, false, true, false])
+        XCTAssertEqual(LiveShortUtterances.assignments([short(0, 5, "s1"), short(5.2, 6)], firstID: "s1").map(\.isSure), [true, true],
+                       "one voice so far: every utterance is that voice")
+    }
+
     func testWithOneVoiceEverythingIsThatVoice() {
         XCTAssertEqual(LiveShortUtterances.speakers([short(0, 1), short(5, 9)], firstID: "ch1"), ["ch1", "ch1"])
         XCTAssertEqual(LiveShortUtterances.speakers([short(0, 1), short(5, 9, "s2")], firstID: "s1"), ["s2", "s2"])
+    }
+
+    // MARK: Voice budget
+
+    func testMacMeasuresAtOnce() {
+        let mac = LiveVoiceBudget.mac
+        XCTAssertEqual(mac.decision(now: 10, lastStart: 9.9, lowPower: true, thermal: .critical), .now)
+        XCTAssertEqual(mac.trimmed(Array(1...7)), Array(2...7))
+    }
+
+    func testMobileSpacesPrintsAndKeepsFewWaiting() {
+        let mobile = LiveVoiceBudget.mobile
+        XCTAssertEqual(mobile.decision(now: 10, lastStart: nil, lowPower: false, thermal: .nominal), .now)
+        XCTAssertEqual(mobile.decision(now: 10, lastStart: 9, lowPower: false, thermal: .fair), .wait(0.5))
+        XCTAssertEqual(mobile.decision(now: 10, lastStart: 8.5, lowPower: false, thermal: .nominal), .now)
+        XCTAssertEqual(mobile.trimmed([1, 2, 3]), [2, 3], "the oldest is left out")
+        XCTAssertEqual(mobile.trimmed([1]), [1])
+    }
+
+    func testMobilePausesUnderLoad() {
+        let mobile = LiveVoiceBudget.mobile
+        XCTAssertEqual(mobile.decision(now: 10, lastStart: nil, lowPower: true, thermal: .nominal), .paused)
+        XCTAssertEqual(mobile.decision(now: 10, lastStart: nil, lowPower: false, thermal: .serious), .paused)
+        XCTAssertEqual(mobile.decision(now: 10, lastStart: nil, lowPower: false, thermal: .critical), .paused)
+    }
+
+    // MARK: After Stop
+
+    func testLiveVoicesKeepTheNamesAndColorsTheyGetAfterRecording() {
+        XCTAssertEqual(LiveTranscript.addedSpeaker(id: "s2", existing: []), Speaker(id: "s2", name: "Speaker 2", colorIndex: 1))
+        let first = LiveTranscript.addedSpeaker(id: "s1", existing: [])
+        XCTAssertEqual(first, Speaker(id: "s1", name: "Speaker 1", colorIndex: 0))
+        let taken = [Speaker(id: "x", name: "Speaker 1", colorIndex: 0)]
+        XCTAssertEqual(LiveTranscript.addedSpeaker(id: "s1", existing: taken), Speaker(id: "s1", name: "Speaker 2", colorIndex: 1))
+        XCTAssertEqual(LiveTranscript.addedSpeaker(id: "ch1.2", existing: taken), Speaker(id: "ch1.2", name: "Speaker 2", colorIndex: 1))
     }
 
     // MARK: Pauses

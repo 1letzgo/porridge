@@ -54,6 +54,11 @@ enum TranscriptBubbles {
         var isFinal: Bool
         var start: Double
         var end: Double
+        /// False: the speaker is only taken from a neighbour (`LiveShortUtterances`), not measured.
+        var speakerIsSure = true
+
+        /// An open piece without a sure speaker is shown as nobody's yet: a neutral bubble of its own.
+        var isNeutral: Bool { !isFinal && !speakerIsSure }
     }
 
     static func side(isMe: Bool) -> BubbleSide {
@@ -61,10 +66,14 @@ enum TranscriptBubbles {
     }
 
     /// Consecutive items of one speaker become one bubble; `speakers` by id (items without one: no name, left).
+    /// An open piece whose speaker is only a guess (`Item.isNeutral`, a track with several voices) is not hung onto
+    /// the bubble before it: it stands as a bubble of its own without a name, on the left (such tracks are the
+    /// others' or a single microphone's), until its voice is measured.
     static func bubbles(_ items: [Item], speakers: [String: BubbleSpeaker]) -> [TranscriptBubble] {
         var result: [TranscriptBubble] = []
         var lastEnd = -Double.infinity
-        for item in items where !item.text.isEmpty {
+        for var item in items where !item.text.isEmpty {
+            if item.isNeutral { item.speakerID = nil }
             let part = TranscriptBubble.Part(id: item.id, text: item.text, isFinal: item.isFinal)
             if var last = result.last, last.speakerID == item.speakerID, item.start - lastEnd <= groupingGap {
                 last.parts.append(part)
@@ -111,7 +120,7 @@ enum TranscriptBubbles {
 
     /// How a live speaker is shown. "ch0" is the microphone of a call on the Mac (the user, `meName`); "ch1" the Mac's
     /// sound (`othersName`, "Speaker 2" once more voices are heard there), "ch1.2"… its further voices; "s1"… the
-    /// voices of a single microphone. A known voice gives its name, except the user's on the Mac's sound. Names and colors are those the speakers get
+    /// voices of a single microphone (on the right when recognized as the user's voice, `userIDs`). A known voice gives its name, except the user's on the Mac's sound. Names and colors are those the speakers get
     /// after recording (`ProcessingService`).
     static func liveSpeaker(
         id: String,
@@ -119,7 +128,8 @@ enum TranscriptBubbles {
         knownNames: [String: String],
         meName: String,
         othersName: String,
-        isMeName: (String) -> Bool
+        isMeName: (String) -> Bool,
+        userIDs: Set<String> = []
     ) -> BubbleSpeaker {
         let left = SpeakerAssigner.leftChannelID
         let right = SpeakerAssigner.rightChannelID
@@ -138,7 +148,9 @@ enum TranscriptBubbles {
             return BubbleSpeaker(id: id, name: other ?? "Speaker \(number + 1)", colorIndex: number, isMe: false)
         }
         if id.hasPrefix("s"), let number = Int(id.dropFirst()) {
-            return BubbleSpeaker(id: id, name: known ?? "Speaker \(number)", colorIndex: max(0, number - 1), isMe: known.map(isMeName) ?? false)
+            // One microphone has no fixed "Me": a voice recognized as the user's (`LiveKnownVoice.isUser`) is.
+            let isMe = userIDs.contains(id) || (known.map(isMeName) ?? false)
+            return BubbleSpeaker(id: id, name: known ?? "Speaker \(number)", colorIndex: max(0, number - 1), isMe: isMe)
         }
         return BubbleSpeaker(id: id, name: known ?? id, colorIndex: 0, isMe: false)
     }

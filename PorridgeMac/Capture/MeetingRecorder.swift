@@ -436,7 +436,7 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
             if utterances.isEmpty {
                 transcript.show(message: recorder.isPaused ? String(localized: "Paused") : String(localized: "Listening…"), bubbles: [])
             } else {
-                transcript.show(message: nil, bubbles: Self.bubbles(utterances, knownNames: live.knownNames, names: currentNames))
+                transcript.show(message: nil, bubbles: Self.bubbles(utterances, knownNames: live.knownNames, userIDs: live.userIDs, names: currentNames))
             }
         }
     }
@@ -448,16 +448,20 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
         return (me.isEmpty ? (AppSettings.myName ?? "Me") : me, others.isEmpty ? SystemAudioMix.othersName : others)
     }
 
-    static func bubbles(_ utterances: [LiveUtterance], knownNames: [String: String], names: (me: String, others: String)) -> [TranscriptBubble] {
+    static func bubbles(
+        _ utterances: [LiveUtterance], knownNames: [String: String], userIDs: Set<String> = [], names: (me: String, others: String)
+    ) -> [TranscriptBubble] {
         let ids = Set(utterances.compactMap(\.speakerID))
         var speakers: [String: BubbleSpeaker] = [:]
         for id in ids {
             speakers[id] = TranscriptBubbles.liveSpeaker(
                 id: id, allIDs: ids, knownNames: knownNames, meName: names.me, othersName: names.others,
-                isMeName: { AppSettings.isMe($0) })
+                isMeName: { AppSettings.isMe($0) }, userIDs: userIDs)
         }
         let items = utterances.map {
-            TranscriptBubbles.Item(id: $0.id, speakerID: $0.speakerID, text: $0.text, isFinal: $0.isFinal, start: $0.start, end: $0.end)
+            TranscriptBubbles.Item(
+                id: $0.id, speakerID: $0.speakerID, text: $0.text, isFinal: $0.isFinal, start: $0.start, end: $0.end,
+                speakerIsSure: $0.speakerIsSure)
         }
         return TranscriptBubbles.bubbles(items, speakers: speakers)
     }

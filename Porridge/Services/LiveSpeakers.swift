@@ -20,13 +20,9 @@ actor LiveSpeakers {
     /// Longer utterances are measured on their last this many seconds.
     static let maximumSeconds = 10.0
 
-    /// Whether voices are told apart live on this device. The iPhone runs the live speech model next to the
-    /// recording already; until its load is measured, voices are only told apart after recording there.
-    #if os(macOS)
+    /// Whether voices are told apart live on this device: on every device, the iPhone and iPad with a lighter
+    /// budget (`LiveVoiceBudget`) that pauses under load.
     static let isEnabledOnThisDevice = true
-    #else
-    static let isEnabledOnThisDevice = false
-    #endif
 
     /// Whether voices are told apart live: on this device, with speaker detection on and its model on the device.
     static var isAvailable: Bool {
@@ -38,6 +34,8 @@ actor LiveSpeakers {
         let speakerID: String?
         /// Known voices recognized so far: speaker id → name.
         let knownNames: [String: String]
+        /// The speaker ids recognized as the user's own voice (`LiveKnownVoice.isUser`).
+        var userIDs: Set<String> = []
     }
 
     private let schemes: [Int: LiveSpeakerIDs]
@@ -65,11 +63,13 @@ actor LiveSpeakers {
         } else {
             id = voices.match(embedding)
         }
-        var names: [String: String] = [:]
+        var matches: [String: LiveKnownVoice] = [:]
         for voices in clusters.values {
-            names.merge(LiveVoiceMatch.names(for: voices.voices, known: known)) { first, _ in first }
+            matches.merge(LiveVoiceMatch.matches(for: voices.voices, known: known)) { first, _ in first }
         }
-        return Assignment(speakerID: id, knownNames: names)
+        return Assignment(
+            speakerID: id, knownNames: matches.mapValues(\.name),
+            userIDs: Set(matches.filter { $0.value.isUser }.keys))
     }
 
     private func embed(_ samples: [Float]) async -> [Float]? {
@@ -201,6 +201,11 @@ enum LiveVoiceMatch {
 
     /// Voice id → the known voice's name. Voices of the Mac's sound are never named after the user (`isUser`).
     static func names(for voices: [LiveVoiceClusters.Voice], known: [LiveKnownVoice]) -> [String: String] {
+        matches(for: voices, known: known).mapValues(\.name)
+    }
+
+    /// Voice id → the known voice it is (with `isUser`, so the user's voice of a single microphone goes right).
+    static func matches(for voices: [LiveVoiceClusters.Voice], known: [LiveKnownVoice]) -> [String: LiveKnownVoice] {
         guard !known.isEmpty else { return [:] }
         struct Candidate { let voice: String; let known: LiveKnownVoice; let score: Float }
         var candidates: [Candidate] = []
@@ -216,12 +221,12 @@ enum LiveVoiceMatch {
             candidates.append(Candidate(voice: voice.id, known: best.known, score: best.score))
         }
         var taken = Set<String>()
-        var names: [String: String] = [:]
+        var matches: [String: LiveKnownVoice] = [:]
         for candidate in candidates.sorted(by: { $0.score > $1.score }) where !taken.contains(candidate.known.id) {
             taken.insert(candidate.known.id)
-            names[candidate.voice] = candidate.known.name
+            matches[candidate.voice] = candidate.known
         }
-        return names
+        return matches
     }
 }
 
@@ -240,21 +245,82 @@ enum LiveShortUtterances {
     }
 
     static func speakers(_ items: [Item], firstID: String) -> [String?] {
+        assignments(items, firstID: firstID).map(\.id)
+    }
+
+    /// A speaker and whether it is sure: measured, or the track's only voice so far. A speaker taken from a
+    /// neighbour is not (`TranscriptBubbles` never hangs an open piece with such a speaker onto another's bubble).
+    struct Assignment: Equatable {
+        var id: String?
+        var isSure: Bool
+    }
+
+    static func assignments(_ items: [Item], firstID: String) -> [Assignment] {
         let voices = Set(items.compactMap(\.measured))
-        guard voices.count > 1 else { return items.map { $0.measured ?? voices.first ?? firstID } }
+        guard voices.count > 1 else { return items.map { Assignment(id: $0.measured ?? voices.first ?? firstID, isSure: true) } }
         return items.indices.map { index in
-            if let measured = items[index].measured { return measured }
-            var next = index
-            while next + 1 < items.count, items[next + 1].start - items[next].end < joinPause {
-                next += 1
-                if let measured = items[next].measured { return measured }
-            }
-            var previous = index
-            while previous > 0, items[previous].start - items[previous - 1].end < joinPause {
-                previous -= 1
-                if let measured = items[previous].measured { return measured }
-            }
-            return nil
+            if let measured = items[index].measured { return Assignment(id: measured, isSure: true) }
+            return Assignment(id: neighbour(of: index, in: items), isSure: false)
         }
+    }
+
+    private static func neighbour(of index: Int, in items: [Item]) -> String? {
+        var next = index
+        while next + 1 < items.count, items[next + 1].start - items[next].end < joinPause {
+            next += 1
+            if let measured = items[next].measured { return measured }
+        }
+        var previous = index
+        while previous > 0, items[previous].start - items[previous - 1].end < joinPause {
+            previous -= 1
+            if let measured = items[previous].measured { return measured }
+        }
+        return nil
+    }
+}
+
+/// How much voice printing a device takes on while recording. The Mac measures every utterance as it comes; the
+/// iPhone and iPad already run the live speech model next to the recording, so there fewer prints wait, they are
+/// spaced out, and none are made in Low Power Mode or when the device runs hot (the utterances then follow their
+/// neighbours or have no speaker, as without live voices).
+struct LiveVoiceBudget: Equatable, Sendable {
+    /// Prints waiting while one is made; beyond this the oldest is left out (it follows its neighbours).
+    var queueLimit: Int
+    /// Seconds from the start of one print to the start of the next.
+    var minimumInterval: Double
+    /// No prints in Low Power Mode or at a serious or critical thermal state.
+    var pausesUnderLoad: Bool
+
+    static let mac = LiveVoiceBudget(queueLimit: 6, minimumInterval: 0, pausesUnderLoad: false)
+    static let mobile = LiveVoiceBudget(queueLimit: 2, minimumInterval: 1.5, pausesUnderLoad: true)
+
+    static var current: LiveVoiceBudget {
+        #if os(macOS)
+        .mac
+        #else
+        .mobile
+        #endif
+    }
+
+    enum Decision: Equatable {
+        /// Make the next print now.
+        case now
+        /// Make it once this many seconds have passed.
+        case wait(Double)
+        /// Make none now; the waiting ones are left out.
+        case paused
+    }
+
+    /// Whether the next print may be made (`lastStart`: when the last one started, nil before the first).
+    func decision(now: Double, lastStart: Double?, lowPower: Bool, thermal: ProcessInfo.ThermalState) -> Decision {
+        if pausesUnderLoad, lowPower || thermal == .serious || thermal == .critical { return .paused }
+        guard let lastStart else { return .now }
+        let remaining = lastStart + minimumInterval - now
+        return remaining > 0 ? .wait(remaining) : .now
+    }
+
+    /// The waiting prints after one more joined them: at most `queueLimit`, the oldest left out.
+    func trimmed<T>(_ queue: [T]) -> [T] {
+        queue.count > queueLimit ? Array(queue.suffix(queueLimit)) : queue
     }
 }
