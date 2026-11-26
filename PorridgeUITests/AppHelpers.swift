@@ -102,9 +102,26 @@ extension XCUIApplication {
         descendants(matching: .any).matching(identifier: "PlaceTabBar").firstMatch
     }
 
-    /// A tab of the app's tab bar by its name: Today, Inbox, Bowls, Search ("Add" is "+" in its middle).
+    /// A tab of the app's tab bar by its place: Today, Inbox, Bowls, Search ("Add" is "+" in its middle). Found by its
+    /// identifier, not its words: the Search tab says "Chat" while its Chat side is chosen (its identifier stays
+    /// "TabSearch", so there is never a "TabChat").
     func tab(_ name: String) -> XCUIElement {
         name == "Add" ? buttons["PlaceAdd"] : buttons["Tab" + name]
+    }
+
+    /// Whether the page's head is titled `name`: the phone's bar (`ChromeBar`, above the page's switch and the tab
+    /// bar), on an iPad of regular width the list column's navigation bar.
+    func headTitled(_ name: String, timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if navigationBars[name].exists { return true }
+            let control = segmentedControls["SearchSide"]
+            let top = control.exists ? control.frame.minY : placeTabBar.exists ? placeTabBar.frame.minY : .greatestFiniteMagnitude
+            let texts = staticTexts.matching(NSPredicate(format: "label == %@", name)).allElementsBoundByIndex
+            if texts.contains(where: { $0.exists && $0.frame.maxY <= top + 1 }) { return true }
+            usleep(200_000)
+        } while Date() < deadline
+        return false
     }
 
     /// The chat's Send, once the keyboard has come in and the field has risen above it, and pressed again if the press
@@ -164,12 +181,15 @@ extension XCUIApplication {
     /// sizes.
     func searchSide(_ name: String) {
         let control = segmentedControls["SearchSide"]
-        // With the largest text sizes: capsules, above the tab bar (whose "Search" has the same label).
+        // With the largest text sizes: capsules, above the tab bar (whose last tab is named "Search" or "Chat" after
+        // the side, and the iPad's sidebar row too: never those).
         let barTop = placeTabBar.exists ? placeTabBar.frame.minY : .greatestFiniteMagnitude
+        let capsules = buttons.matching(NSPredicate(
+            format: "label == %@ AND identifier != 'TabSearch' AND identifier != 'SidebarSearch'", name
+        ))
         let side = control.waitForExistence(timeout: 5) ? control.buttons[name]
-            : buttons.matching(NSPredicate(format: "label == %@", name)).allElementsBoundByIndex
-                .first { $0.exists && $0.isHittable && $0.frame.maxY < barTop }
-                ?? buttons[name].firstMatch
+            : capsules.allElementsBoundByIndex.first { $0.exists && $0.isHittable && $0.frame.maxY < barTop }
+                ?? capsules.firstMatch
         XCTAssertTrue(side.waitForExistence(timeout: 10), "Search | Chat has no \(name)")
         if !side.isSelected { side.tap() }
     }

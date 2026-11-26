@@ -123,6 +123,8 @@ final class Revision6FlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["ChatNewChat"].waitForExistence(timeout: 5), "no New Chat while a conversation is open")
         XCTAssertTrue(app.buttons["Back"].exists, "no back pill while a conversation is open")
         XCTAssertEqual(app.searchSideShown, "Chat")
+        XCTAssertTrue(app.headTitled("Chat"), "an open conversation's head is not titled Chat")
+        XCTAssertEqual(app.tab("Search").label, "Chat", "the last tab does not say Chat in a conversation")
 
         // Back: the chat's start, with this chat among the recent ones.
         app.buttons["Back"].firstMatch.tap()
@@ -135,6 +137,7 @@ final class Revision6FlowTests: XCTestCase {
         let row = app.staticTexts[question].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5), "the chat is not in All Chats")
         XCTAssertTrue(app.buttons["Back"].exists, "All Chats has no back pill")
+        XCTAssertTrue(app.headTitled("All Chats"), "All Chats is not titled All Chats")
         row.tap()
         XCTAssertTrue(app.buttons["ChatNewChat"].waitForExistence(timeout: 5), "the chat did not open from All Chats")
         app.buttons["Back"].firstMatch.tap()

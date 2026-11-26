@@ -39,12 +39,19 @@ final class SearchAskFlowTests: XCTestCase {
         XCTAssertEqual(order, order.sorted(), "the tabs are not in the order Today · Inbox · + · Bowls · Search")
         XCTAssertFalse(app.tab("Chat").exists, "Chat still has a tab of its own")
         app.openTab("Search")
+        XCTAssertEqual(app.tab("Search").label, "Search", "the last tab is not named Search on the Search side")
+        XCTAssertTrue(app.headTitled("Search"), "the Search side's head is not titled Search")
         app.searchSide("Chat")
         XCTAssertTrue(app.buttons["Chat About"].waitForExistence(timeout: 5), "the Chat side shows no chat")
         XCTAssertTrue(chatField(app).exists, "the Chat side has no field")
         XCTAssertFalse(app.textFields["SearchField"].exists, "the Chat side still shows the search field")
-        // Away and back: the side stays.
+        // The place is named after its side: head and tab say "Chat".
+        XCTAssertTrue(app.headTitled("Chat"), "the Chat side's head is not titled Chat")
+        XCTAssertFalse(app.headTitled("Search", timeout: 1), "the Chat side's head still says Search")
+        XCTAssertEqual(app.tab("Search").label, "Chat", "the last tab does not say Chat on the Chat side")
+        // Away and back: the side stays, and the tab keeps its name while another one is in front.
         app.openTab("Inbox")
+        XCTAssertEqual(app.tab("Search").label, "Chat", "the last tab changed its name while another tab is in front")
         app.openTab("Search")
         XCTAssertEqual(app.searchSideShown, "Chat", "the Search tab forgot its side")
         // A new launch comes back to the side chosen last.
@@ -53,9 +60,12 @@ final class SearchAskFlowTests: XCTestCase {
         app.openTab("Search")
         XCTAssertTrue(app.segmentedControls["SearchSide"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.searchSideShown, "Chat", "the side chosen last was not kept")
+        XCTAssertEqual(app.tab("Search").label, "Chat", "the last tab forgot its Chat side after a new launch")
         app.searchSide("Search")
         XCTAssertTrue(app.textFields["SearchField"].waitForExistence(timeout: 5), "the Search side has no field")
         XCTAssertFalse(chatField(app).exists, "the Search side still shows the chat")
+        XCTAssertTrue(app.headTitled("Search"), "back on the Search side the head is not titled Search")
+        XCTAssertEqual(app.tab("Search").label, "Search", "back on the Search side the last tab does not say Search")
         XCTAssertFalse(app.buttons["SearchChat"].exists, "the search still has the old Chat row")
     }
 

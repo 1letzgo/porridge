@@ -8,13 +8,15 @@ import SwiftUI
 struct PadSidebar: View {
     let notes: [Note]
     @Binding var selection: Place?
+    /// The Search place's chosen side is Chat: its row says "Chat" with the chat's symbol.
+    var searchShowsChat = false
     var onSettings: () -> Void
 
     var body: some View {
         List(selection: $selection) {
             ForEach(Place.allCases, id: \.self) { shown in
                 Label {
-                    Text(shown.tabTitle)
+                    Text(shown.tabTitle(showsChat: searchShowsChat))
                 } icon: {
                     // The place's symbol in its color (the bowl for Bowls: the outlined one, as wide as the
                     // symbols beside it; the bowl's own drawing leaves room above it, so it is drawn a size larger).
@@ -22,13 +24,14 @@ struct PadSidebar: View {
                         if shown == .bowls {
                             SymbolImage("BowlPlace", textStyle: .title2)
                         } else {
-                            SymbolImage(shown.tabSymbol)
+                            SymbolImage(shown.tabSymbol(showsChat: searchShowsChat))
                         }
                     }
                     .foregroundStyle(tint(of: shown).readable)
                 }
                 .badge(count(of: shown))
                 .tag(shown)
+                // The place's own name ("SidebarSearch" on the Chat side too).
                 .accessibilityIdentifier("Sidebar" + shown.tabTitle)
             }
         }

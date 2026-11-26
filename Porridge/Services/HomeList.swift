@@ -81,6 +81,9 @@ enum Places {
     /// (template images `BowlPlaceFill`, `BowlPlace` outlined; SF Symbols has no bowl). A single bowl keeps the folder.
     static let bowlsSymbol = "BowlPlaceFill"
 
+    /// The chat (Recent Chats, All Chats, the Search place on its Chat side: head, tab, iPad sidebar row).
+    static let chatSymbol = "bubble.left.and.bubble.right.fill"
+
     static func todayCount(_ notes: [Note], now: Date = Date()) -> Int {
         TodayTodos.open(notes, now: now).count
     }

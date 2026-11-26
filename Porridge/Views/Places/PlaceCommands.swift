@@ -19,11 +19,13 @@ extension FocusedValues {
 }
 
 /// The menus of the iPad's menu bar: File (New Note ⌘N, New To-do ⇧⌘N, Record Meeting ⌘R), the app's Settings… ⌘,,
-/// View (Show/Hide Sidebar ⌃⌘S from the system, the places ⌘1–⌘4, Search ⌘F, Weekly Review) and Entry (Delete, without
+/// View (Show/Hide Sidebar ⌃⌘S from the system, the places ⌘1–⌘4, the last named Search or Chat after its side, Search ⌘F, Weekly Review) and Entry (Delete, without
 /// a shortcut: ⌘⌫ belongs to the text being typed, it deletes to the line's start in a title, a text or the search field;
 /// a menu shortcut took that key from the text field and could cost an entry).
 struct PlaceCommands: Commands {
     @FocusedValue(\.placeCommands) private var actions
+    /// The last place is named after its side: "Chat" while the Chat side is chosen.
+    @AppStorage(SearchSide.key) private var searchSide = SearchSide.search
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -50,7 +52,7 @@ struct PlaceCommands: Commands {
                 .keyboardShortcut("2")
             Button("Bowls") { actions?.showPlace(.bowls) }
                 .keyboardShortcut("3")
-            Button("Search") { actions?.showPlace(.search) }
+            Button(Place.search.tabTitle(showsChat: searchSide == .chat)) { actions?.showPlace(.search) }
                 .keyboardShortcut("4")
             Divider()
             Button("Search or Ask…") { actions?.search() }

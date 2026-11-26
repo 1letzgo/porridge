@@ -148,6 +148,7 @@ struct NotesView: View {
                     // Where the three columns do not fit, the sidebar steps aside for the place it chose.
                     if !fitsThreeColumns { columnVisibility = .doubleColumn }
                 }),
+                searchShowsChat: searchSide == .chat,
                 onSettings: { go(.settings) }
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: min(sidebarWidth, 320), max: 340)
@@ -271,7 +272,7 @@ struct NotesView: View {
                             .toolbar(.hidden, for: .tabBar)
                     }
                 } else {
-                    Tab(shown.tabTitle, systemImage: shown.tabSymbol, value: shown) {
+                    Tab(shown.tabTitle(showsChat: searchSide == .chat), systemImage: shown.tabSymbol(showsChat: searchSide == .chat), value: shown) {
                         placeStack(shown)
                             .toolbar(.hidden, for: .tabBar)
                     }
@@ -291,7 +292,7 @@ struct NotesView: View {
             // Counted from the screen's bottom edge; the keyboard covers the bar instead of lifting it.
             if showsBar {
                 PlaceTabBar(
-                    layout: layout, selection: selected, badges: badges,
+                    layout: layout, selection: selected, badges: badges, searchShowsChat: searchSide == .chat,
                     onSelect: { chooseTab($0) },
                     onAdd: { tapAdd() },
                     onAddLongPress: { longPressAdd() }
@@ -1589,7 +1590,7 @@ struct NotesView: View {
         case .inbox: "Inbox"
         case .today: todayDay.map { TodayDay.title($0) } ?? "Today"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Smart Filter"
-        case .chat, .search: "Search"
+        case .chat, .search: searchSide == .chat ? chatPageTitle : "Search"
         case .archive: "Archive"
         case .trash: "Recently Deleted"
         case .weeklyReview: "Weekly Review"
@@ -1597,6 +1598,13 @@ struct NotesView: View {
         case .voices: "Known Voices"
         case .acknowledgements: "Acknowledgements"
         }
+    }
+
+    /// The head on the Chat side: "Chat" at the chat's start and in an open conversation (its question is the first
+    /// bubble right below, the chat's title would only repeat it); on a phone All Chats is a page of its own. The iPad's
+    /// list column always lists the chats ("Chat"), the conversation has the entry column with its own title.
+    private var chatPageTitle: String {
+        !usesSystemBars && chatNavigation.showsList ? String(localized: "All Chats") : String(localized: "Chat")
     }
 
     /// Color of the square in front of the title.
@@ -1630,7 +1638,7 @@ struct NotesView: View {
         case .inbox: "tray.fill"
         case .today: "calendar"
         case .smartFilter: "line.3.horizontal.decrease"
-        case .chat, .search: "magnifyingglass"
+        case .chat, .search: searchSide == .chat ? Places.chatSymbol : "magnifyingglass"
         case .archive: "archivebox.fill"
         case .trash: "trash.fill"
         case .weeklyReview: "calendar.badge.checkmark"
