@@ -95,7 +95,6 @@ struct NotesView: View {
     /// The document camera is open.
     @State private var showScanner = false
     @State private var audioImportError: String?
-    @State private var showPlaud = false
     @State private var linkText = ""
     /// Title of the calendar appointment the next recording is made for.
     @State private var appointmentTitle: String?
@@ -531,11 +530,6 @@ struct NotesView: View {
         .fullScreenCoverOrSheet(isPresented: $showRecorder) {
             RecordingView(title: appointmentTitle) { result, names, liveText, written in
                 addRecording(from: result, speakerNames: names, liveText: liveText, written: written)
-            }
-        }
-        .sheet(isPresented: $showPlaud) {
-            PlaudImportSheet { audio in
-                PlaudImporter.addNote(audio, projectID: projectForNew, context: context, processing: processing)
             }
         }
         .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio, .movie]) { result in
@@ -1739,7 +1733,6 @@ struct NotesView: View {
         case .scan: showScanner = true
         case .file: showFileImporter = true
         case .audio: showAudioImporter = true
-        case .plaud: showPlaud = true
         case .template(let template):
             if template.needsTitle {
                 templateTitle = ""

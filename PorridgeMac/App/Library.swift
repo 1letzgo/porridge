@@ -18,8 +18,6 @@ final class Library {
     private(set) var notes: [Note] = []
     private(set) var projects: [NoteFolder] = []
     private(set) var threads: [ChatThread] = []
-    /// Plaud is signed in: its import shows in the menus.
-    private(set) var plaudSignedIn = PlaudAccount.isSignedIn
     /// Counts the reloads; a view that remembers it knows whether it is behind.
     private(set) var generation = 0
 
@@ -45,17 +43,10 @@ final class Library {
         center.addObserver(forName: .NSPersistentStoreRemoteChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.setNeedsReload() }
         }
-        center.addObserver(forName: .plaudAccountChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.plaudSignedIn = PlaudAccount.isSignedIn
-                self?.notify()
-            }
-        }
         center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 ShareImport.importInbox(context: self.context, processing: self.processing)
-                self.plaudSignedIn = PlaudAccount.isSignedIn
                 self.setNeedsReload()
             }
         }

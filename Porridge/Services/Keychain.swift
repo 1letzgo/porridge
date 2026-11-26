@@ -29,7 +29,7 @@ enum Keychain {
     }
 
     #if os(macOS) && DEBUG
-    /// Test runs of the Mac app (`PORRIDGE_TEST_DATA`) never see the owner's secrets (model keys, Plaud account):
+    /// Test runs of the Mac app (`PORRIDGE_TEST_DATA`) never see the owner's secrets (model keys):
     /// what they store lives in memory for the run (`TestDefaults`).
     nonisolated(unsafe) private static var testItems: [String: String] = [:]
     private static var usesTestItems: Bool { DataLocation.testFolder != nil }

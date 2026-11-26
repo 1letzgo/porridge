@@ -247,7 +247,7 @@ enum EntryDetails {
         if note.isRecording {
             let how: String
             switch note.source {
-            case .plaud: how = "Plaud"
+            case .plaud: how = "Plaud"   // older recordings from the removed Plaud import
             case .audioImport: how = String(localized: "Imported Audio")
             default: how = note.inputName ?? String(localized: "Microphone")
             }

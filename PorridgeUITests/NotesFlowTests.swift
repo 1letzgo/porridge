@@ -236,7 +236,7 @@ final class NotesFlowTests: XCTestCase {
             XCTAssertTrue(app.buttons[item].exists, "Add sheet lacks \(item)")
         }
         app.collectionViews.firstMatch.swipeUp()
-        for item in ["Import Audio", "Import from Plaud", "New Bowl…"] {
+        for item in ["Import Audio", "New Bowl…"] {
             XCTAssertTrue(app.buttons[item].waitForExistence(timeout: 3), "Add sheet lacks \(item)")
         }
         app.collectionViews.firstMatch.swipeDown()

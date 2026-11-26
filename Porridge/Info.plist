@@ -44,8 +44,6 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Porridge connects to your Plaud recorder over Bluetooth to import your recordings.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Porridge reads your calendars to name recorded meetings after their appointment, offer the people invited as speaker names, and alert you shortly before a meeting so you can record it. It never changes your calendars.</string>
 	<key>NSCameraUsageDescription</key>

@@ -2,7 +2,7 @@ import Foundation
 
 /// What comes in from outside gets a summary by itself, as soon as its content is there: a link once its page is
 /// loaded, an image or a file once its text is read, text shared from another app, and imported audio (a file, a
-/// recording shared from another app, or Plaud) once it is transcribed. The user's own notes, to-dos and recordings
+/// recording shared from another app, or an older Plaud import) once it is transcribed. The user's own notes, to-dos and recordings
 /// are summarized only when asked.
 ///
 /// One device does the work: the one the entry came in on (`markOrigin`, kept on that device only). Another device

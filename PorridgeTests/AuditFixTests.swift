@@ -59,10 +59,4 @@ final class AuditFixTests: XCTestCase {
         XCTAssertFalse(CloudLLM.isTruncation("stop"))
         XCTAssertFalse(CloudLLM.isTruncation(nil))
     }
-
-    func testThePlaudTokenOnlyGoesToPlaud() {
-        XCTAssertTrue(PlaudAPI.isPlaudHost("https://api-euc1.plaud.ai"))
-        XCTAssertFalse(PlaudAPI.isPlaudHost("http://api.plaud.ai"))
-        XCTAssertFalse(PlaudAPI.isPlaudHost("https://plaud.ai.example.com"))
-    }
 }

@@ -9,6 +9,8 @@ enum NoteSource: String {
     case link
     /// Shared into the app from another one, or dropped onto it.
     case share
+    /// Legacy, kept for the CloudKit schema: recordings imported from a Plaud recorder before that import was
+    /// removed. Nothing new gets it; older entries still decode, show and play.
     case plaud
     /// An audio file brought in from outside.
     case audioImport = "import"

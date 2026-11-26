@@ -4,13 +4,13 @@ import SwiftUI
 /// What the Add sheet starts.
 enum AddChoice {
     case note, todo, meeting, link
-    case scan, file, audio, plaud
+    case scan, file, audio
     case template(NoteTemplate)
     case bowl
 }
 
 /// "+" of every place: one sheet in place of the "+" fan and the Import menu. Four kinds (Note, To-do, Meeting,
-/// Link), Capture (Scan Document, Photo or File, Import Audio, Import from Plaud), From Template (with "Edit") and
+/// Link), Capture (Scan Document, Photo or File, Import Audio), From Template (with "Edit") and
 /// New Bowl…. "Into:" is the place it was opened from (Today and Inbox: the Inbox; a bowl: that bowl) and can be
 /// changed. The choice is handed back; the place starts it once the sheet is gone.
 struct AddSheet: View {
@@ -133,7 +133,6 @@ struct AddSheet: View {
                     }
                     row("Photo or File", systemImage: "paperclip", tint: .brandNavy, choice: .file)
                     row("Import Audio", systemImage: "waveform", tint: .brandNavy, choice: .audio)
-                    row("Import from Plaud", systemImage: "recordingtape", tint: .brandNavy, choice: .plaud)
                 }
                 Section {
                     if templates.templates.isEmpty {

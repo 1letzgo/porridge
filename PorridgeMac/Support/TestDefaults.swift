@@ -4,9 +4,8 @@ import ObjectiveC
 /// Test runs of the Mac app (`PORRIDGE_TEST_DATA=<folder>`, Debug only) keep their settings apart from the owner's.
 ///
 /// The Debug app is not sandboxed, so without this every run would read and write
-/// `~/Library/Preferences/de.letzgo.porridge.plist`: recent searches, window frames, the default model, the MCP token,
-/// the Plaud settings. With test data, `UserDefaults.standard` (and with it `@AppStorage` and AppKit's own autosaves)
-/// is a suite stored in the test folder (`<folder>/Preferences.plist`), new for every new folder. Launch arguments
+/// `~/Library/Preferences/de.letzgo.porridge.plist`: recent searches, window frames, the default model, the MCP token.
+/// With test data, `UserDefaults.standard` (and with it `@AppStorage` and AppKit's own autosaves) is a suite stored in the test folder (`<folder>/Preferences.plist`), new for every new folder. Launch arguments
 /// (`-key value`) still win as before. Secrets stay in memory (`Keychain`), so no cloud model has a key and none is
 /// asked. Normal runs are unchanged.
 enum TestDefaults {

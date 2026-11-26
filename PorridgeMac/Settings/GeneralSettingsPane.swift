@@ -1,13 +1,11 @@
 import AppKit
 
-/// General: who the user is (the summaries name them), iCloud sync, the Plaud account, Sort Bowls By, note
-/// templates, hints, export and the version with the acknowledgements. Switching sync takes effect at the next launch; updates come through TestFlight.
+/// General: who the user is (the summaries name them), iCloud sync, Sort Bowls By, note templates, hints,
+/// export and the version with the acknowledgements. Switching sync takes effect at the next launch; updates come through TestFlight.
 final class GeneralSettingsPane: SettingsPane {
     private lazy var nameField = SettingsTextField(placeholder: "Your Name") { name in
         UserDefaults.standard.set(name, forKey: AppSettings.myNameKey)
     }
-    private let plaudStatus = NSTextField.label()
-    private lazy var plaudButton = NSButton.push("Sign In…") { [weak self] in self?.plaudTapped() }
 
     private lazy var iCloudSync = SettingsCheckbox("iCloud Sync") { [weak self] on in
         self?.syncTapped(on ? .iCloud : .off)
@@ -24,16 +22,13 @@ final class GeneralSettingsPane: SettingsPane {
     }
 
     override func build() {
-        // The order of the iPhone's General: who you are, sync, Plaud, how bowls are sorted, note templates, hints,
-        // export, the version.
+        // The order of the iPhone's General: who you are, sync, how bowls are sorted, note templates, hints, export,
+        // the version.
         form.row("Your Name", nameField)
         form.note("Summaries call you by this name.")
         form.separator()
 
         form.row("", iCloudSync)
-        form.separator()
-
-        form.row("Plaud", NSStackView.horizontal([plaudStatus, plaudButton], spacing: 12))
         form.separator()
 
         form.row("Sort Bowls By", bowlOrder)
@@ -65,10 +60,6 @@ final class GeneralSettingsPane: SettingsPane {
 
     override func render() {
         nameField.show(UserDefaults.standard.string(forKey: AppSettings.myNameKey) ?? "")
-        let signedIn = PlaudAccount.isSignedIn
-        plaudStatus.stringValue = signedIn ? "Signed In" : "Not Signed In"
-        plaudButton.title = signedIn ? "Sign Out" : "Sign In…"
-        plaudButton.hasDestructiveAction = signedIn
         iCloudSync.isOn = SyncMode.chosen == .iCloud
         dailyHint.isOn = DailyHint.isEnabled
         bowlOrder.set(HomeList.BowlOrder.allCases.map(\.title), selected: HomeList.BowlOrder.allCases.firstIndex(of: HomeList.bowlOrder))
@@ -84,23 +75,5 @@ final class GeneralSettingsPane: SettingsPane {
             UserDefaults.standard.set(target.rawValue, forKey: SyncMode.key)
             self?.render()
         }
-    }
-
-    private func plaudTapped() {
-        if PlaudAccount.isSignedIn {
-            PlaudAccount.clear()
-            Task { await PlaudLogin.clearSession() }
-            plaudChanged()
-        } else {
-            PlaudLogin.present(in: view.window) { [weak self] token, refreshToken in
-                PlaudImporter().signIn(token: token, refreshToken: refreshToken)
-                self?.plaudChanged()
-            }
-        }
-    }
-
-    private func plaudChanged() {
-        render()
-        NotificationCenter.default.post(name: .plaudAccountChanged, object: nil)
     }
 }

@@ -348,5 +348,5 @@ enum SmartFilters {
     }
 
     /// The sources a filter can ask for, in the order the editors offer them.
-    nonisolated static let sources: [NoteSource] = [.note, .meeting, .link, .share, .plaud, .audioImport]
+    nonisolated static let sources: [NoteSource] = [.note, .meeting, .link, .share, .audioImport]
 }

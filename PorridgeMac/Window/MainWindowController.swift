@@ -340,7 +340,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         menu.addItem(.separator())
         add("Photo or File…", "paperclip", #selector(importFile(_:)), .brandNavy, key: "i", modifiers: [.command, .shift])
         add("Audio…", "waveform", #selector(importAudio(_:)), .brandNavy)
-        add("From Plaud…", "recordingtape", #selector(importPlaud(_:)), .brandNavy)
         // Continuity Camera: the system fills it with "Take Photo" and "Scan Documents" of the iPhone or iPad nearby.
         let device = NSMenuItem(title: "From iPhone or iPad", action: nil, keyEquivalent: "")
         device.identifier = NSMenuItem.importFromDeviceIdentifier
@@ -672,10 +671,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    @objc func importPlaud(_ sender: Any?) {
-        Capture.importPlaud(in: self)
-    }
-
     @objc func emptyTrash(_ sender: Any?) {
         guard let window else { return }
         NoteOperations.confirmEmptyTrash(in: window, state: state)
@@ -765,8 +760,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return true
         case #selector(recordMeeting(_:)), #selector(addLink(_:)), #selector(importAudio(_:)), #selector(importFile(_:)):
             return state.page.allowsCreating
-        case #selector(importPlaud(_:)):
-            return state.page.allowsCreating && library.plaudSignedIn
         case #selector(emptyTrash(_:)):
             return library.notes.contains(where: \.isDeleted)
         case #selector(togglePin(_:)):

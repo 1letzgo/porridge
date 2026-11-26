@@ -51,7 +51,7 @@ enum FullExport {
         var title: String
         /// "note", "todo", "link", "image", "file" or "meeting".
         var kind: String
-        /// The channel it came in through: "note", "meeting", "link", "share", "plaud", "import", or "" (older).
+        /// The channel it came in through: "note", "meeting", "link", "share", "plaud" (older imports from Plaud), "import", or "" (older).
         var source: String
         /// The bowl (`Bowl.id`); nil in the inbox.
         var bowlID: String?

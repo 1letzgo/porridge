@@ -205,11 +205,6 @@ enum CommandBarItems {
             go(String(localized: "Go to Archive"), "archivebox.fill", .brandNavy, "show archived", .archive),
             go(String(localized: "Go to Recently Deleted"), "trash.fill", .systemRed, "show trash bin", .trash),
         ]
-        if Library.shared.plaudSignedIn {
-            items.append(CommandItem(kind: .command, title: String(localized: "Import from Plaud…"), symbol: "recordingtape", tint: .brandNavy, keywords: "import recorder") { [weak controller] in
-                controller?.importPlaud(nil)
-            })
-        }
         // A note or to-do from each note template.
         for template in NoteTemplateStore.shared.templates {
             items.append(CommandItem(

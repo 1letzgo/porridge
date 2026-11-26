@@ -40,9 +40,7 @@ struct SettingsView: View {
     @State private var inputDescription = ""
     @State private var pendingDeletion: ModelKind?
     @State private var modelError: String?
-    @State private var showPlaudLogin = false
     @State private var modelToRemove: SummaryModel?
-    @State private var plaudSignedIn = PlaudAccount.isSignedIn
 
     /// A downloaded model that can be deleted.
     private enum ModelKind: Identifiable {
@@ -159,12 +157,6 @@ struct SettingsView: View {
         .sheet(isPresented: $showAddModel, onDismiss: refreshSummaryModels) {
             AddModelSheet(onChange: refreshSummaryModels)
         }
-        .sheet(isPresented: $showPlaudLogin) {
-            PlaudLoginView { token, refreshToken in
-                PlaudImporter().signIn(token: token, refreshToken: refreshToken)
-                plaudChanged()
-            }
-        }
         .alert("Download Failed", isPresented: Binding(get: { modelError != nil }, set: { if !$0 { modelError = nil } })) {
             Button("OK") { modelError = nil }
         } message: {
@@ -186,11 +178,10 @@ struct SettingsView: View {
     private var cards: some View {
         switch area {
         case .general:
-            // The order of the Mac's General pane: who you are, sync, Plaud, how bowls are sorted, note templates,
+            // The order of the Mac's General pane: who you are, sync, how bowls are sorted, note templates,
             // hints, export, about.
             youCard
             SyncCard()
-            plaudCard
             BowlsCard()
             NoteTemplatesCard()
             HintCard()
@@ -303,30 +294,6 @@ struct SettingsView: View {
                 VoicesRow()
             }
         }
-    }
-
-    private var plaudCard: some View {
-        SettingsCard(title: "Plaud") {
-            HStack {
-                Text(plaudSignedIn ? "Signed In" : "Plaud Account").font(.body)
-                Spacer(minLength: 12)
-                Button(plaudSignedIn ? "Sign Out" : "Sign In", role: plaudSignedIn ? .destructive : nil) {
-                    if plaudSignedIn {
-                        PlaudAccount.clear()
-                        Task { await PlaudLoginView.clearSession() }
-                        plaudChanged()
-                    } else {
-                        showPlaudLogin = true
-                    }
-                }
-                .buttonStyle(PillButtonStyle())
-            }
-        }
-    }
-
-    private func plaudChanged() {
-        plaudSignedIn = PlaudAccount.isSignedIn
-        NotificationCenter.default.post(name: .plaudAccountChanged, object: nil)
     }
 
     private var summaryCard: some View {

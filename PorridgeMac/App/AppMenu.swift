@@ -68,7 +68,6 @@ enum AppMenu {
         item(menu, "New Bowl…", #selector(MainWindowController.newBucket(_:)), "n", [.command, .control])
         menu.addItem(.separator())
         item(menu, "Import Audio…", #selector(MainWindowController.importAudio(_:)))
-        item(menu, "Import Plaud…", #selector(MainWindowController.importPlaud(_:)))
         item(menu, "Import Photo or File…", #selector(MainWindowController.importFile(_:)), "i", [.command, .shift])
         // Continuity Camera: the system fills it with "Take Photo" and "Scan Documents" of the iPhone or iPad nearby.
         let device = NSMenuItem(title: "Import from iPhone or iPad", action: nil, keyEquivalent: "")

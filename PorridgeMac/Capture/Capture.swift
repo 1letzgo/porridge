@@ -1,6 +1,6 @@
 import AppKit
 
-/// Bringing things in: recording a meeting (for an appointment or not), continuing a recording, and Plaud.
+/// Bringing things in: recording a meeting (for an appointment or not), and continuing a recording.
 @MainActor
 enum Capture {
     /// Today's appointments in the inspector's Record mode; the recording takes their place there. Asked again
@@ -90,15 +90,5 @@ enum Capture {
             library.save()
             library.processing.enqueue(.note(id))
         }
-    }
-
-    static func importPlaud(in controller: MainWindowController) {
-        let state = controller.state
-        let sheet = PlaudImportViewController { audio in
-            let library = Library.shared
-            PlaudImporter.addNote(audio, projectID: state.projectForNew, context: library.context, processing: library.processing)
-            library.setNeedsReload()
-        }
-        controller.window?.contentViewController?.presentAsSheet(sheet)
     }
 }

@@ -92,6 +92,7 @@ final class SmartFiltersTests: XCTestCase {
     func testTagsSourceAndDeletedEntries() {
         let tagged = makeNote("Tagged", text: "Plan #travel and #Food")
         let other = makeNote("Other", text: "#travel")
+        // Older entries from the removed Plaud import keep their channel, and a saved filter still finds them.
         let plaud = makeNote("From Plaud", source: .plaud)
         let deleted = makeNote("Gone", text: "#travel #food")
         deleted.deletedAt = Date()

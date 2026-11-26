@@ -90,7 +90,6 @@ def apple():
         ("Swift Syntax", v["swift-syntax"], "Apache 2.0", "https://github.com/swiftlang/swift-syntax", lambda: local("swift-syntax/LICENSE.txt")),
         ("Swift Transformers", v["swift-transformers"], "Apache 2.0", "https://github.com/huggingface/swift-transformers", lambda: local("swift-transformers/LICENSE")),
         ("yyjson", v["yyjson"], "MIT", "https://github.com/ibireme/yyjson", lambda: local("yyjson/LICENSE")),
-        ("plaude-archiver (Plaud Bluetooth protocol)", "", "MIT", "https://github.com/roopen219/plaude-archiver", lambda: gh("roopen219/plaude-archiver")),
     ]
     models = [
         ("Parakeet TDT v3 (Core ML)", "0.6B", "CC BY 4.0", "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml",
