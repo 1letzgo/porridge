@@ -1,6 +1,6 @@
 import AppKit
 
-/// On top of the Inbox: one suggestion, in one line, to put entries that belong together into a new bowl (`InboxBundler`). Once
+/// On top of the Inbox: one suggestion, in one line (a narrow list: the sentence, then Review… below it), to put entries that belong together into a new bowl (`InboxBundler`). Once
 /// that is done, the way back is the one undo toast (and ⌘Z).
 @MainActor
 final class InboxBundleBanner: NSView {
@@ -23,6 +23,8 @@ final class InboxBundleBanner: NSView {
         close.target = self
         close.action = #selector(closeTapped)
         close.translatesAutoresizingMaskIntoConstraints = false
+        // A narrow list (260 pt): the sentence over the card's whole width, Review… on a line of its own below it.
+        panel.stackedBelowWidth = 300
         addSubview(panel)
         addSubview(close)
         NSLayoutConstraint.activate([

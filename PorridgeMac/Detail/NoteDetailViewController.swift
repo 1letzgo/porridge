@@ -1288,6 +1288,13 @@ final class PanelView: NSView {
     private let detail = NSTextField.label(font: .systemFont(ofSize: NSFont.smallSystemFontSize), color: .secondaryLabelColor, lines: 2)
     private let button = ActionButton(title: "") {}
     private var tint: NSColor = .brandSky
+    private var row = NSStackView()
+    /// The button's own line under the text, used while the panel is narrower than `stackedBelowWidth`.
+    private let actionRow = NSStackView()
+    /// Below this width the button leaves the text's line for a line of its own, so the text keeps the panel's whole
+    /// width (the Inbox's bundle card at the list's narrowest, 260 pt: four lines beside "Review…", now two). 0: never.
+    var stackedBelowWidth: CGFloat = 0
+    private var isStacked = false
 
     init() {
         super.init(frame: .zero)
@@ -1303,9 +1310,13 @@ final class PanelView: NSView {
         label.lineBreakMode = .byWordWrapping
         detail.lineBreakMode = .byWordWrapping
         let text = NSStackView.vertical([label, detail], spacing: 2)
-        let row = NSStackView.horizontal([icon, spinner, text, NSView(), button], spacing: 10)
-        addSubview(row)
-        row.pinEdges(to: self, insets: NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12))
+        row = NSStackView.horizontal([icon, spinner, text, NSView(), button], spacing: 10)
+        actionRow.orientation = .horizontal
+        actionRow.isHidden = true
+        let column = NSStackView.vertical([row, actionRow], spacing: 8)
+        addSubview(column)
+        column.pinEdges(to: self, insets: NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12))
+        row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
     }
 
     @available(*, unavailable)
@@ -1321,9 +1332,23 @@ final class PanelView: NSView {
     override func layout() {
         super.layout()
         guard bounds.width > 0 else { return }
+        let stacked = stackedBelowWidth > 0 && !button.isHidden && bounds.width < stackedBelowWidth
+        if stacked != isStacked {
+            isStacked = stacked
+            if stacked {
+                row.removeView(button)
+                actionRow.addArrangedSubview(button)
+                // Under the text, not under the symbol.
+                actionRow.edgeInsets = NSEdgeInsets(top: 0, left: icon.isHidden ? 0 : icon.fittingSize.width + 10, bottom: 0, right: 0)
+            } else {
+                actionRow.removeView(button)
+                row.addArrangedSubview(button)
+            }
+            actionRow.isHidden = !stacked
+        }
         // The panel's insets and the parts beside the text, each with the row's spacing.
         var others: CGFloat = 12 + 12
-        for view in [icon, spinner, button] where !view.isHidden { others += view.fittingSize.width + 10 }
+        for view in [icon, spinner] + (stacked ? [] : [button]) where !view.isHidden { others += view.fittingSize.width + 10 }
         let width = max(bounds.width - others - 10, 80)
         var changed = false
         for field in [label, detail] where abs(field.preferredMaxLayoutWidth - width) > 0.5 {
@@ -1347,6 +1372,8 @@ final class PanelView: NSView {
         self.detail.stringValue = detail ?? ""
         self.detail.isHidden = detail == nil
         button.isHidden = action == nil
+        actionRow.isHidden = !isStacked || action == nil
+        needsLayout = true
         if let action {
             button.title = action.0
             button.setHandler(action.1)
