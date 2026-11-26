@@ -1,22 +1,21 @@
 import SwiftUI
 
-/// The iPad's sidebar (regular width), the first column of the system's split view: only the places Today · Inbox ·
-/// Bowls · Search (with the counts of the phone's tab badges, only when there are any), as a sidebar list with the
-/// system's selection. Single bowls and the smart filters are not listed here: they open from the Bowls page in the
+/// The iPad's sidebar (regular width), the first column of the system's split view: the six places Today · Inbox ·
+/// To-dos · Bowls · Search · Chat (owner revision 13: the phone's two switches are places of their own here), with
+/// counts only when there are any (Today the to-dos due, the Inbox what waits, To-dos the open ones), as a sidebar
+/// list with the system's selection. Single bowls and the smart filters are not listed here: they open from the Bowls page in the
 /// list column, as on the phone. Settings is the gear in the sidebar's bottom bar. The system's sidebar button, the
 /// edge swipe and ⌃⌘S show and hide it.
 struct PadSidebar: View {
     let notes: [Note]
     @Binding var selection: Place?
-    /// The Search place's chosen side is Chat: its row says "Chat" with the chat's symbol.
-    var searchShowsChat = false
     var onSettings: () -> Void
 
     var body: some View {
         List(selection: $selection) {
             ForEach(Place.allCases, id: \.self) { shown in
                 Label {
-                    Text(shown.tabTitle(showsChat: searchShowsChat))
+                    Text(shown.tabTitle)
                 } icon: {
                     // The place's symbol in its color (the bowl for Bowls: the outlined one, as wide as the
                     // symbols beside it; the bowl's own drawing leaves room above it, so it is drawn a size larger).
@@ -24,15 +23,15 @@ struct PadSidebar: View {
                         if shown == .bowls {
                             SymbolImage("BowlPlace", textStyle: .title2)
                         } else {
-                            SymbolImage(shown.tabSymbol(showsChat: searchShowsChat))
+                            SymbolImage(shown.tabSymbol)
                         }
                     }
                     .foregroundStyle(tint(of: shown).readable)
                 }
                 .badge(count(of: shown))
                 .tag(shown)
-                // The place's own name ("SidebarSearch" on the Chat side too).
-                .accessibilityIdentifier("Sidebar" + shown.tabTitle)
+                // SidebarToday, SidebarInbox, SidebarTodos, SidebarBowls, SidebarSearch, SidebarChat.
+                .accessibilityIdentifier("Sidebar" + shown.rawValue.capitalized)
             }
         }
         .listStyle(.sidebar)
@@ -48,20 +47,23 @@ struct PadSidebar: View {
         }
     }
 
-    /// The count of a place as its tab badge shows it: Today the to-dos due, the Inbox what waits.
+    /// The count of a place: Today the to-dos due, the Inbox what waits (as the phone's tab badges), To-dos the open
+    /// ones (as the phone's Inbox | To-dos switch).
     private func count(of shown: Place) -> Int {
         switch shown {
         case .today: Places.todayCount(notes)
         case .inbox: Places.inboxCount(notes)
-        case .bowls, .search: 0
+        case .todos: Todos.folder(notes).open
+        case .bowls, .search, .chat: 0
         }
     }
 
-    /// The colors of the places' heads on the phone.
+    /// The colors of the places' heads on the phone; To-dos in the to-dos' green.
     private func tint(of shown: Place) -> Color {
         switch shown {
-        case .today, .search: .brandNavy
+        case .today, .search, .chat: .brandNavy
         case .inbox: .brandSky
+        case .todos: .brandTask
         case .bowls: .brandProject
         }
     }

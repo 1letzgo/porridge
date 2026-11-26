@@ -24,13 +24,13 @@ extension FocusedValues {
 }
 
 /// The menus of the iPad's menu bar: File (New Note ⌘N, New To-do ⇧⌘N, Record Meeting ⌘R), the app's Settings… ⌘,,
-/// View (Show/Hide Sidebar ⌃⌘S, through the split view's column visibility, the places ⌘1–⌘4, the last named Search or Chat after its side, Search ⌘F, Weekly Review) and Entry (Delete, without
+/// View (Show/Hide Sidebar ⌃⌘S, through the split view's column visibility, the six places Today ⌘1, Inbox ⌘2, To-dos ⌘3,
+/// Bowls ⌘4, Search ⌘5, Chat ⌘6 (on a phone To-dos and Chat are the other sides of the Inbox and Search tabs), Search or
+/// Ask… ⌘F, Weekly Review) and Entry (Delete, without
 /// a shortcut: ⌘⌫ belongs to the text being typed, it deletes to the line's start in a title, a text or the search field;
 /// a menu shortcut took that key from the text field and could cost an entry).
 struct PlaceCommands: Commands {
     @FocusedValue(\.placeCommands) private var actions
-    /// The last place is named after its side: "Chat" while the Chat side is chosen.
-    @AppStorage(SearchSide.key) private var searchSide = SearchSide.search
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -57,14 +57,10 @@ struct PlaceCommands: Commands {
                 .disabled(actions?.toggleSidebar == nil)
         }
         CommandGroup(before: .sidebar) {
-            Button("Today") { actions?.showPlace(.today) }
-                .keyboardShortcut("1")
-            Button("Inbox") { actions?.showPlace(.inbox) }
-                .keyboardShortcut("2")
-            Button("Bowls") { actions?.showPlace(.bowls) }
-                .keyboardShortcut("3")
-            Button(Place.search.tabTitle(showsChat: searchSide == .chat)) { actions?.showPlace(.search) }
-                .keyboardShortcut("4")
+            ForEach(Array(Place.allCases.enumerated()), id: \.element) { index, shown in
+                Button(shown.tabTitle) { actions?.showPlace(shown) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+            }
             Divider()
             Button("Search or Ask…") { actions?.search() }
                 .keyboardShortcut("f")

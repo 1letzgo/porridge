@@ -13,7 +13,8 @@ enum QuickAction: Equatable {
     case openBowls
     /// The chat (the Search tab on its Chat side on the iPhone, a sidebar row on the Mac).
     case openChat
-    /// "Open To-dos" (every open to-do by due day; on the iPhone on the Inbox tab, from its end card).
+    /// "Open To-dos" (every open to-do by due day): the place To-dos (iPad and Mac), on the iPhone the Inbox tab on its
+    /// To-dos side.
     case openTodos
     /// The search page with this query (on the iPhone the Search tab on its Search side).
     case search(String)

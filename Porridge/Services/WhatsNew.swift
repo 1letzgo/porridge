@@ -21,7 +21,7 @@ enum WhatsNew {
             Item(
                 symbol: "square.grid.2x2", title: String(localized: "Three Places"),
                 text: mac
-                    ? String(localized: "Today, Inbox and Bowls lead the sidebar (⌘1–3); Chat has its own row (⌘4).")
+                    ? String(localized: "Today, Inbox, To-dos and Bowls lead the sidebar (⌘1–4); Chat has its own row (⌘5).")
                     : String(localized: "Today, Inbox, Bowls and Search are the tabs, with the big “+” in the middle to add anything. Settings is the gear in Today and in Bowls.")
             ),
             Item(
@@ -57,24 +57,27 @@ enum WhatsNew {
             Item(
                 symbol: "calendar", title: String(localized: "Today Shows What Is Open"),
                 text: mac
-                    ? String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is on the To-dos side of Bowls; the Weekly Review is a button in Today’s head.")
-                    : String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is on the To-dos side of Bowls; the Weekly Review opens from Today’s bar.")
+                    ? String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is in To-dos, the row after the Inbox; the Weekly Review is a button in Today’s head.")
+                    : String(localized: "A ticked to-do leaves Today (with Undo) and stays in its bowl. Every open to-do is on the To-dos side of the Inbox; the Weekly Review opens from Today’s bar.")
             ),
         ]
     }
 
     /// The last page of the onboarding: the places and what each is for. iPhone: the tab bar from left to right
-    /// (Today, Inbox, "+", Bowls, Search with Chat); Mac: the sidebar (Chat has its own row) and the field.
+    /// (Today, Inbox with To-dos, "+", Bowls, Search with Chat); Mac: the sidebar (To-dos and Chat have their own rows)
+    /// and the field.
     static func places(mac: Bool) -> [Item] {
         let today = Item(symbol: "calendar", title: String(localized: "Today"), text: String(localized: "Appointments and the to-dos that are due."))
-        let inbox = Item(symbol: "tray.fill", title: String(localized: "Inbox"),
-                         text: String(localized: "Everything new lands here first and stays until it is filed into a bowl."))
+        let inbox = Item(symbol: "tray.fill", title: String(localized: "Inbox"), text: mac
+            ? String(localized: "Everything new lands here first and stays until it is filed into a bowl.")
+            : String(localized: "Everything new lands here first and stays until it is filed into a bowl; the switch on top shows every open to-do."))
+        let todos = Item(symbol: "checklist", title: String(localized: "To-dos"), text: String(localized: "Every open to-do, from the Inbox and every bowl, by when it is due."))
         let bowls = Item(symbol: Places.bowlsSymbol, title: String(localized: "Bowls"), text: mac
-            ? String(localized: "One bowl per topic, the smart filters and every open to-do; Archive and Recently Deleted have their own rows.")
-            : String(localized: "One bowl per topic, the smart filters and the Archive; the switch on top shows every open to-do, the trash Recently Deleted."))
+            ? String(localized: "One bowl per topic and the smart filters; Archive and Recently Deleted have their own rows.")
+            : String(localized: "One bowl per topic, the smart filters and the Archive; the trash shows Recently Deleted."))
         if mac {
             return [
-                today, inbox, bowls,
+                today, inbox, todos, bowls,
                 Item(symbol: "bubble.left.and.bubble.right.fill", title: String(localized: "Chat"), text: String(localized: "Ask about your notes; answers name their sources.")),
                 Item(symbol: "magnifyingglass", title: String(localized: "Search or Ask (⌘K)"), text: String(localized: "Find any entry, go to a bowl, or ask Porridge.")),
             ]

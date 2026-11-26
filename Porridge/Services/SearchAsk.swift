@@ -113,15 +113,15 @@ enum SearchAsk {
         }
     }
 
-    /// The places and fixed views (iPhone: Go To rows; the Mac has them as commands): Today, Inbox, Bowls, Open
-    /// To-dos, Weekly Review, Triage Inbox (a command), Archive, Recently Deleted, Settings, All Chats.
+    /// The places and fixed views (iPhone: Go To rows; the Mac has them as commands): Today, Inbox, To-dos (owner
+    /// revision 13: a place; before "Open To-dos", a view), Bowls, Weekly Review, Triage Inbox (a command), Archive, Recently Deleted, Settings, All Chats.
     static func places() -> [Target] {
         let place = String(localized: "Place"), view = String(localized: "View")
         return [
             Target(destination: .today, title: String(localized: "Today"), subtitle: place, symbol: "calendar", keywords: "day due appointments"),
             Target(destination: .inbox, title: String(localized: "Inbox"), subtitle: place, symbol: "tray.fill", keywords: "new unfiled"),
+            Target(destination: .openTodos, title: String(localized: "To-dos"), subtitle: place, symbol: "checklist", keywords: "open tasks todo"),
             Target(destination: .bowls, title: String(localized: "Bowls"), subtitle: place, symbol: Places.bowlsSymbol, keywords: "all"),
-            Target(destination: .openTodos, title: String(localized: "Open To-dos"), subtitle: view, symbol: "checklist", keywords: "tasks todo bowls"),
             Target(destination: .weeklyReview, title: String(localized: "Weekly Review"), subtitle: view, symbol: "calendar.badge.checkmark", keywords: "week summary"),
             Target(destination: .triage, title: String(localized: "Triage Inbox"), subtitle: String(localized: "Command"), symbol: "bolt.fill", keywords: "file sort one by one"),
             Target(destination: .archive, title: String(localized: "Archive"), subtitle: view, symbol: "archivebox.fill", keywords: "archived bowls"),

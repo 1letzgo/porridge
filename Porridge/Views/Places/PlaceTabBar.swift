@@ -176,24 +176,26 @@ struct PlaceTabBar: View {
 }
 
 extension Place {
-    /// The tab's name in the bar.
+    /// The place's name: the tab's in the bar, the iPad's sidebar row and the menu.
     var tabTitle: String {
         switch self {
         case .today: String(localized: "Today")
         case .inbox: String(localized: "Inbox")
+        case .todos: String(localized: "To-dos")
         case .bowls: String(localized: "Bowls")
         case .search: String(localized: "Search")
+        case .chat: String(localized: "Chat")
         }
     }
 
-    /// The name in the tab bar, the iPad's sidebar and the menu: the Search place on its Chat side is "Chat".
+    /// The name in the phone's tab bar: the Search tab on its Chat side is "Chat".
     func tabTitle(showsChat: Bool) -> String {
-        self == .search && showsChat ? String(localized: "Chat") : tabTitle
+        self == .search && showsChat ? Place.chat.tabTitle : tabTitle
     }
 
-    /// The symbol, the chat's on the Chat side of the Search place.
+    /// The symbol, the chat's on the Chat side of the Search tab.
     func tabSymbol(showsChat: Bool) -> String {
-        self == .search && showsChat ? Places.chatSymbol : tabSymbol
+        self == .search && showsChat ? Place.chat.tabSymbol : tabSymbol
     }
 
     /// The tab's symbol: an SF Symbol, for Bowls a bowl of the app's own (`BowlPlace`, `BowlPlaceFill` when chosen:
@@ -216,8 +218,11 @@ extension Place {
         switch self {
         case .today: "calendar"
         case .inbox: "tray.fill"
+        // The to-do's own symbol (`Note.kindSymbol`).
+        case .todos: "checklist"
         case .bowls: Places.bowlsSymbol
         case .search: "magnifyingglass"
+        case .chat: Places.chatSymbol
         }
     }
 }

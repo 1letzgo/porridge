@@ -855,7 +855,7 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     }
 }
 
-/// A bar between a page's head and its list: a switch (Bowls · To-dos, Search | Chat), chips, the hint of the day, a
+/// A bar between a page's head and its list: a switch (Inbox | To-dos, Search | Chat, phone), chips, the hint of the day, a
 /// selection header, the week's head. On a phone it stands above the list (the app's own head is no navigation bar).
 /// On an iPad of regular width (system bars) it lies over the top of the list as the system's bars do
 /// (`safeAreaBar`, iPadOS 26): the list is the page's scroll view, so the navigation bar's large title collapses

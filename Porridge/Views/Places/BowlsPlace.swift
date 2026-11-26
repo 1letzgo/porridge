@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// Bowls, the third place, on the Bowls side of its switch (Bowls · To-dos, `BowlsSide`): every bowl (pinned first,
+/// Bowls, a place without a switch (owner revision 13): every bowl (pinned first,
 /// then "All Bowls" in the order of Sort Bowls By, no limit), then the smart filters with "New Smart Filter…", always
 /// there, and last the section Archive with its one row (owner revision 10), which opens the archived bowls.
 struct BowlsPlace: View {
@@ -114,7 +114,8 @@ struct BowlsPlace: View {
     }
 }
 
-/// The Bowls tab's To-dos side (owner revision 10; before, the Inbox's To-dos side and the page Open To-dos): every
+/// The place To-dos (owner revision 13): on a phone the Inbox tab's To-dos side, on an iPad of regular width a place of
+/// its own in the sidebar, on the Mac a sidebar row (owner revision 10 had it as the Bowls tab's To-dos side): every
 /// open to-do by due day, grouped as the search's "Open To-dos", then those done today. Each row names its bowl. Only
 /// a view: the to-dos stay where they are.
 struct OpenTodosList: View {
