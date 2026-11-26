@@ -35,8 +35,11 @@ struct EntryMetaLine: View {
             ForEach(values.prefix(shown)) { value in
                 Button { onOpen(value.section) } label: {
                     HStack(spacing: 3) {
-                        Image(systemName: Self.symbol(of: value))
-                            .imageScale(.small)
+                        // A tag's "#" is its symbol already ("#bills", not "# #bills").
+                        if value.kind != .tag {
+                            Image(systemName: Self.symbol(of: value))
+                                .imageScale(.small)
+                        }
                         Text(value.text).lineLimit(1)
                     }
                     .fontWeight(.semibold)
@@ -109,7 +112,7 @@ struct EntryMetaLine: View {
         let symbol = ceil(bold.pointSize * 1.05) + 3
         let fixed = factParts.map { text($0, regular) }
             + (suggestion.map { [text(String(localized: "File into \($0.name)"), bold) + symbol + 18] } ?? [])
-        let valueWidths = values.map { text($0.text, bold) + symbol }
+        let valueWidths = values.map { text($0.text, bold) + ($0.kind == .tag ? 0 : symbol) }
         let details = text(String(localized: "Details"), bold) + symbol
         for count in stride(from: values.count, through: 0, by: -1) {
             var items = fixed + valueWidths.prefix(count)
