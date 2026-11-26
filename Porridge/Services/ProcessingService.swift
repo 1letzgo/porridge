@@ -356,6 +356,8 @@ final class ProcessingService {
         try stillThere(meeting, id)
 
         var speakers = meeting.speakers
+        // What the speakers were called when this pass took them: a name given while speakers are detected is kept.
+        let taken = speakers
         var mode = meeting.speakerMode
         var diagnostics: String?
         var speakerIds: [String?] = output.words.map { _ in nil }
@@ -429,7 +431,7 @@ final class ProcessingService {
         meeting.segments = SpeakerAssigner.group(output.words, speakerIds: speakerIds)
         // Drop speakers that ended up without any text (e.g. brief false detections).
         let used = Set(meeting.segments.compactMap(\.speakerId))
-        meeting.speakers = speakers.filter { used.contains($0.id) }
+        meeting.speakers = Self.keepingRenames(speakers.filter { used.contains($0.id) }, taken: taken, now: meeting.speakers)
         if meeting.speakerMode == .diarized, meeting.speakers.isEmpty {
             meeting.speakers = []
             meeting.speakerMode = .none
@@ -441,17 +443,35 @@ final class ProcessingService {
         }
         if AppSettings.voiceRecognitionEnabled, !meeting.speakers.isEmpty {
             stages[id] = "Recognizing voices…"
+            let handed = meeting.speakers
             let identified = await VoiceProfiles.identify(
-                meeting.speakers, segments: meeting.segments, audio: prepared.monoURL, rightChannelAudio: prepared.rightURL,
+                handed, segments: meeting.segments, audio: prepared.monoURL, rightChannelAudio: prepared.rightURL,
                 leftChannelAudio: prepared.leftURL, context: context)
             try stillThere(meeting, id)
             // One person split in two by speaker detection becomes one again (`SpeakerMerge.sameVoiceThreshold`).
-            let merged = SpeakerMerge.mergingSameVoices(identified, segments: meeting.segments)
+            let merged = SpeakerMerge.mergingSameVoices(
+                Self.keepingRenames(identified, taken: handed, now: meeting.speakers), segments: meeting.segments)
             meeting.speakers = merged.speakers
             if merged.segments != meeting.segments { meeting.segments = merged.segments }
         }
         meeting.duration = prepared.duration
         meeting.status = .ready
+    }
+
+    /// `result` (the speakers a pass of `transcribe` worked out from `taken`) with the names the user gave meanwhile:
+    /// a speaker whose name in `now` (the meeting's speakers by then) differs from the one in `taken` was renamed
+    /// while the recording was processed (the live speakers are shown and can be named), so that name wins over a
+    /// default or recognized one. Speakers `result` does not have stay gone.
+    nonisolated static func keepingRenames(_ result: [Speaker], taken: [Speaker], now: [Speaker]) -> [Speaker] {
+        result.map { speaker in
+            guard let before = taken.first(where: { $0.id == speaker.id }),
+                  let current = now.first(where: { $0.id == speaker.id }),
+                  current.name != before.name else { return speaker }
+            var renamed = speaker
+            renamed.name = current.name
+            renamed.profileID = current.profileID
+            return renamed
+        }
     }
 
     /// A meeting that was recorded further: the new part gets its own transcript, then joins the meeting. What was

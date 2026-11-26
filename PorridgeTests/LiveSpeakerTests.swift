@@ -458,4 +458,46 @@ final class LiveSpeakerTests: XCTestCase {
         XCTAssertNil(note.segments[0].speakerId)
         XCTAssertEqual(note.segments[0].end, 9)
     }
+
+    // MARK: Names given while the recording is processed
+
+    func testNameGivenWhileProcessingWinsOverTheFinalDefault() {
+        // Live: the user, the others, a second voice of the Mac's sound; renamed while speakers were detected.
+        let taken = [
+            Speaker(id: "ch0", name: "Me", colorIndex: 0),
+            Speaker(id: "ch1", name: "Others", colorIndex: 1),
+            Speaker(id: "ch1.2", name: "Speaker 3", colorIndex: 2),
+        ]
+        var now = taken
+        now[2].name = "Anna"
+        // The final pass split the Mac's sound: "Others" became "Speaker 2", and found a third voice of its own.
+        let result = [
+            Speaker(id: "ch0", name: "Me", colorIndex: 0),
+            Speaker(id: "ch1", name: "Speaker 2", colorIndex: 1),
+            Speaker(id: "ch1.2", name: "Speaker 3", colorIndex: 2, voiceSeconds: 12),
+            Speaker(id: "ch1.3", name: "Speaker 4", colorIndex: 3),
+        ]
+        let kept = ProcessingService.keepingRenames(result, taken: taken, now: now)
+        XCTAssertEqual(kept.map(\.name), ["Me", "Speaker 2", "Anna", "Speaker 4"])
+        XCTAssertEqual(kept[2].voiceSeconds, 12, "the final pass's voice stays with the renamed speaker")
+    }
+
+    func testWithoutRenamesTheFinalSpeakersStayAsTheyAre() {
+        let taken = [Speaker(id: "ch0", name: "Me", colorIndex: 0), Speaker(id: "ch1.2", name: "Speaker 3", colorIndex: 2)]
+        let result = [Speaker(id: "ch0", name: "Me", colorIndex: 0), Speaker(id: "ch1", name: "Others", colorIndex: 1)]
+        XCTAssertEqual(ProcessingService.keepingRenames(result, taken: taken, now: taken), result,
+                       "a live speaker the final transcript does not have is not brought back")
+    }
+
+    func testRecognizedNameGivesWayToTheUsersNameGivenMeanwhile() {
+        let handed = [Speaker(id: "s1", name: "Speaker 1", colorIndex: 0)]
+        var identified = handed
+        identified[0].name = "Bob"
+        identified[0].profileID = "bob"
+        var now = handed
+        now[0].name = "Carla"
+        let kept = ProcessingService.keepingRenames(identified, taken: handed, now: now)
+        XCTAssertEqual(kept[0].name, "Carla")
+        XCTAssertNil(kept[0].profileID, "Bob's profile does not stay on Carla")
+    }
 }
