@@ -1713,8 +1713,8 @@ struct NotesView: View {
         AddSheet(
             into: defaultInto, projects: projects, inPopover: inPopover,
             // iPadOS lays the popover over "+", just under the status bar (y 32 of 834 pt in landscape), and it may
-            // reach down to the home indicator's safe area: the 11-inch iPad in landscape has about 770 pt for the
-            // sheet of about 700 pt (`AddSheet.popoverHeight` measures its own top once shown).
+            // reach down to the home indicator's safe area: the 11-inch iPad in landscape has 770 pt for the sheet of
+            // about 740 pt. Both from the window only (`AddSheet.popoverRoom`), never from the popover's own frame.
             popoverBottom: windowArea.size.height > 0 ? windowArea.size.height - windowArea.bottom : 0,
             expectedPopoverTop: windowArea.top + 8
         ) { choice, into in
