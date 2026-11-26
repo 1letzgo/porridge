@@ -11,6 +11,11 @@ struct PadSidebar: View {
     @Binding var selection: Place?
     var onSettings: () -> Void
 
+    /// The sidebar column's width (0 until measured).
+    @State private var width: CGFloat = 0
+    /// From this column width the rows have room for the text sizes up to AX2.
+    private static let roomyWidth: CGFloat = 260
+
     var body: some View {
         List(selection: $selection) {
             ForEach(Place.allCases, id: \.self) { shown in
@@ -40,8 +45,13 @@ struct PadSidebar: View {
         }
         .listStyle(.sidebar)
         // The rows grow with the text size up to AX2 (33 pt body), so "To-dos 5" stays one line with its count in the
-        // sidebar's column (AX5 broke "Today" and "To-dos" inside the word).
-        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        // sidebar's column (AX5 broke "Today" and "To-dos" inside the word). That needs a column of about 250 pt
+        // (row: margin 16, symbol column about 60, "To-dos" about 103 at 33 pt, the count and its margins about 45);
+        // where the split view leaves the sidebar narrower (a window of 968 pt beside the list: 219 pt, rows of
+        // 187 pt) the rows go up to xxxLarge (23 pt: "To-dos" about 72 pt, a smaller symbol), else they read
+        // "To… 2", "Inb… 4", "To-… 5" even at the smallest scale factor.
+        .dynamicTypeSize(...(width > 0 && width < Self.roomyWidth ? DynamicTypeSize.xxxLarge : .accessibility2))
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .navigationTitle("Porridge")
         // No title in the sidebar's bar: in a window (Stage Manager, not full screen) the window's buttons left it
         // "Porrid…", and the places speak for themselves. The title stays the column's name (VoiceOver, the app

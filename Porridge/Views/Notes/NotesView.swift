@@ -925,7 +925,7 @@ struct NotesView: View {
 
     /// iPad, iOS 27: the Weekly Review as a bar item (lowest priority, into the overflow menu ⋯ where it does not
     /// fit). On another day only from 280 pt of room: the bar's trailing end holds three glass items in a window of
-    /// 829–968 pt (about 218 pt: ‹ › 84, "+" 45, a symbol or ⋯ 45, with their gaps), and the overflow menu is an item
+    /// 829–968 pt (about 218 pt: ‹ › 60 since round 9, "+" 45, a symbol or ⋯ 45, with their gaps), and the overflow menu is an item
     /// itself, so with the Weekly Review in ⋯ "Today" went into ⋯ too ("‹ › + ⋯"). Below 280 pt the bar is
     /// "↺ ‹ › +" and the Weekly Review is in the day pair's long press, View › Weekly Review, Search's Go To and in
     /// today's bar. From 280 pt the four items fit ("Today ‹ › Weekly Review +" in landscape, 340 pt).
@@ -949,15 +949,19 @@ struct NotesView: View {
 
     /// iPad: the previous and the next day as one toolbar item (one glass capsule), so they stay together; its long
     /// press has "Today" and the Weekly Review on another day. The chevrons keep the size of the bar's other symbols
-    /// (at most the `.large` text size, the large content viewer beyond), as the system's bar buttons do: grown with
-    /// the accessibility sizes the pair no longer fit a window's bar beside "+" and ⋯, and a custom view that does
-    /// not fit is not put into the overflow menu, it is left out (round 8: only "+ ⋯" at accessibility-large).
+    /// (at most the `.large` text size). A custom view that does not fit the bar is not put into the overflow menu,
+    /// it is left out, so the pair is narrow: 2 × 30 pt (the phone's halves are 38). In a window of 829 or 916 pt
+    /// (list column 340 pt, the window's buttons and the sidebar button at its leading end) the bar had no room to
+    /// spare at the standard size: sidebar button to 309, ‹ › 329–405, "+" 425–461, ⋯ 481–517 (20 pt gaps, 14 pt
+    /// margin). With the accessibility sizes the system's sidebar button grows from 36 to 42.5 pt, the pair no longer
+    /// fit by 6.5 pt and was left out ("+ ⋯", rounds 8 and 9). At 60 pt it fits with 9.5 pt to spare on today and
+    /// about 3 pt on another day ("↺ ‹ › +", the symbol grown from 40 to 46.5 pt).
+    /// No large content viewer: at the accessibility sizes its long press took the pair's long press, so the menu
+    /// with "Today" and the Weekly Review did not open (round 9, N2).
     private var padDayPair: some View {
         HStack(spacing: 0) {
-            dayButton(-1, inPill: true)
-                .accessibilityShowsLargeContentViewer()
-            dayButton(1, inPill: true)
-                .accessibilityShowsLargeContentViewer()
+            dayButton(-1, inPill: true, width: 30)
+            dayButton(1, inPill: true, width: 30)
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.plain)
@@ -1796,7 +1800,7 @@ struct NotesView: View {
     private var shownDay: Date { todayDay ?? TodayCalendar.shared.today }
 
     /// A day back (-1) or on (1): half of the phone's pill, or a toolbar item of its own (iPad).
-    private func dayButton(_ days: Int, inPill: Bool) -> some View {
+    private func dayButton(_ days: Int, inPill: Bool, width: CGFloat = 38) -> some View {
         Button { stepToday(days) } label: {
             Group {
                 if days < 0 {
@@ -1805,7 +1809,7 @@ struct NotesView: View {
                     Label("Next Day", systemImage: "chevron.right")
                 }
             }
-            .frame(minWidth: inPill ? 38 : nil, minHeight: inPill ? 36 : nil)
+            .frame(minWidth: inPill ? width : nil, minHeight: inPill ? 36 : nil)
             .contentShape(Rectangle())
         }
         .help(days < 0 ? "Previous Day" : "Next Day")
