@@ -149,8 +149,10 @@ struct NoteDetailView: View {
             }
         }
         .padding()
-        .frame(maxWidth: 820)
-        .frame(maxWidth: .infinity)
+        // A readable measure: on a wide entry column (13-inch iPad, 830 pt and more) the lines stop at 760 pt, at
+        // the column's leading margin like the title above them, not centered.
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(NotePageScroll(following: liveText, isEditing: editor.isEditing))
         .overlay(alignment: .bottom) {
             if editor.isEditing, !isLocked, tab == .note, dictation.phase == .idle {
