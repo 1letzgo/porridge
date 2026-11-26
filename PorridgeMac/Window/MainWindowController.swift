@@ -137,7 +137,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case .today: "Today"
         case .inbox: "Inbox"
         case .bowls: "Bowls"
-        case .todos: "Bowls"
+        case .todos: "To-dos"
         case .chat: "Chat"
         case .project(let id): library.project(id)?.name ?? "Porridge"
         case .smartFilter(let id): SmartFilterStore.shared.filter(id)?.name ?? "Porridge"
@@ -599,7 +599,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         split.detail.noteDetail?.focusTitle()
     }
 
-    /// A new note opens at once; it is stored once it has content. In a bowl it goes into it; in Open To-dos it is
+    /// A new note opens at once; it is stored once it has content. In a bowl it goes into it; in To-dos it is
     /// a to-do, in no bowl. From the Bowls place, the chat or the search it goes into the Inbox, which opens.
     private func addNote(todo asked: Bool) {
         let todo = asked || state.page == .todos

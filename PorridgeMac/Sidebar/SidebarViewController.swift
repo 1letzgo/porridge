@@ -35,9 +35,9 @@ private final class SidebarNode: NSObject {
     }
 }
 
-/// The sidebar as a source list: the places Today, Inbox, Bowls and Chat (⌘1–4; Bowls unfolds into every bowl in the
-/// order of Sort Bowls By, no limit), the smart filters with "New Smart Filter…", then Archive and Recently Deleted
-/// (⌘5, ⌘6), always there. Notes dropped on a bowl go into it; files dropped on it are brought in there.
+/// The sidebar as a source list: the places Today, Inbox, To-dos, Bowls and Chat (⌘1–5; Bowls unfolds into every bowl
+/// in the order of Sort Bowls By, no limit), the smart filters with "New Smart Filter…", then Archive and Recently
+/// Deleted (⌘6, ⌘7), always there. Notes dropped on a bowl go into it; files dropped on it are brought in there.
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSTextFieldDelegate {
     private let state: WindowState
     private let library = Library.shared
@@ -145,8 +145,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         var top: [SidebarNode] = [
             SidebarNode(.page(.today)),
             SidebarNode(.page(.inbox)),
+            // Every open to-do (owner revision 13: a row of its own again, no segment in the Bowls head).
+            SidebarNode(.page(.todos)),
             SidebarNode(.page(.bowls), children: bowls.map { SidebarNode(.page(.project($0.id))) }),
-            // The chat is the fourth place (⌘4): its chats in the list column, the open one in the detail.
+            // The chat is the fifth place (⌘5): its chats in the list column, the open one in the detail.
             SidebarNode(.page(.chat)),
         ]
         let filters = SmartFilterStore.shared.filters
@@ -173,8 +175,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private func syncSelection() {
         isSyncingSelection = true
         defer { isSyncingSelection = false }
-        // The To-dos side of Bowls is the Bowls row (owner revision 10).
-        if let node = node(for: state.page == .todos ? .bowls : state.page) {
+        if let node = node(for: state.page) {
             let row = outline.row(forItem: node)
             if row >= 0, outline.selectedRow != row { outline.selectRowIndexes([row], byExtendingSelection: false) }
         } else {
@@ -280,6 +281,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         switch page {
         case .today: return Places.todayCount(notes)
         case .inbox: return Places.inboxCount(notes)
+        case .todos: return Todos.folder(notes).open
         case .archive: return HomeList.archivedProjects(library.projects).count
         case .trash: return notes.lazy.filter(\.isDeleted).count
         default: return nil
@@ -308,7 +310,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             cell.configure(title: "Today", symbol: "calendar", tint: .brandNavy, badge: cellBadge(for: page) ?? 0)
         case .inbox:
             cell.configure(title: "Inbox", symbol: "tray.fill", tint: .brandSky, badge: cellBadge(for: .inbox) ?? 0)
-        case .bowls, .todos:
+        case .todos:
+            // The to-do's symbol in its green, the open ones counted.
+            cell.configure(title: "To-dos", symbol: "checklist", tint: .brandTask, badge: cellBadge(for: .todos) ?? 0)
+        case .bowls:
             // A bowl of the app's own (SF Symbols has none); single bowls keep the folder.
             cell.configure(title: "Bowls", symbol: Places.bowlsSymbol, tint: .brandProject, badge: 0)
         case .chat:

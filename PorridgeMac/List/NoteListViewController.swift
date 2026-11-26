@@ -122,8 +122,6 @@ final class NoteListViewController: NSViewController, NSTableViewDelegate, NSMen
             DailyHintFeed.open(hint, in: self?.view.window?.windowController as? MainWindowController)
         }
         header.onTriage = { [weak self] in self?.toggleTriage() }
-        // The segment Bowls · To-dos of Bowls: the To-dos side is the page `.todos`.
-        header.onBowlsSide = { [weak self] todos in self?.state.page = todos ? .todos : .bowls }
         header.onStepDay = { [weak self] days in self?.state.stepToday(by: days) }
         header.onToday = { [weak self] in self?.state.todayDay = nil }
         table.onKey = { [weak self] event in

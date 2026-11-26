@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// What the sidebar of a window shows; the Mac form of the list pages of iOS (`ListPage`). The places Today, Inbox,
-/// Bowls and Chat come first in the sidebar (⌘1–4), Archive and Recently Deleted last (⌘5, ⌘6).
+/// To-dos, Bowls and Chat come first in the sidebar (⌘1–5), Archive and Recently Deleted last (⌘6, ⌘7).
 enum SidebarPage: Hashable, Codable {
     /// The day's appointments with what is linked to them, and the to-dos due (`TodayCalendar`, `TodayTodos`).
     case today
@@ -10,11 +10,11 @@ enum SidebarPage: Hashable, Codable {
     case inbox
     /// Every bowl like the iPhone's Bowls place, the smart filters, Archive and Recently Deleted (`NoteListContent`).
     case bowls
-    /// Bowls on the To-dos side of its segment Bowls · To-dos (owner revision 10; before, the Inbox's To-dos side):
-    /// every open to-do by due day, wherever it is filed (`Todos.folder`). View › Open To-dos, the command bar, the
-    /// hint and the widgets lead here. Not a sidebar row of its own: the Bowls row stays selected.
+    /// To-dos, a sidebar row of its own after the Inbox (owner revision 13; owner revision 10 had it as the To-dos side
+    /// of a segment Bowls · To-dos): every open to-do by due day, wherever it is filed (`Todos.folder`). View ›
+    /// To-dos (⌘3), the command bar, the hint and the widgets lead here.
     case todos
-    /// The chat with the bowls, the fourth place (⌘4): the chats in the list column, the open one in the detail. Also
+    /// The chat with the bowls, the fifth place (⌘5): the chats in the list column, the open one in the detail. Also
     /// AI › New Chat, Ask About This Bowl and "Ask Porridge: …" of Search or Ask.
     case chat
     /// One bowl with everything in it.

@@ -42,7 +42,7 @@ struct CommandSection {
 }
 
 /// What Search or Ask offers for a window, in the order of `SearchAsk`: "Ask Porridge: …" first (⌘↩; it hands the
-/// question over to the Chat place), the commands that fit (every place, Open To-dos, Triage, Weekly Review, Import,
+/// question over to the Chat place), the commands that fit (every place (To-dos one of them), Triage, Weekly Review, Import,
 /// Export, the open bowl's actions, moving the selection), the bowls and smart filters (`SearchAsk.goTo`), the entries
 /// by date (`SearchAsk.entries`), and "Show All Results" (⇧↩, the search page). The empty field shows the recent chats,
 /// the recent searches, the usual commands and the latest entries.
@@ -199,9 +199,9 @@ enum CommandBarItems {
             },
             go(String(localized: "Go to Today"), "calendar", .brandNavy, "show day appointments", .today),
             go(String(localized: "Go to Inbox"), "tray.fill", .brandSky, "show new", .inbox),
+            go(String(localized: "Go to To-dos"), "checklist", .brandTask, "show open tasks todos", .todos),
             go(String(localized: "Go to Bowls"), Places.bowlsSymbol, .brandProject, "show all bowls", .bowls),
             go(String(localized: "Go to Chat"), "bubble.left.and.bubble.right.fill", .brandNavy, "show chats all chats ask", .chat),
-            go(String(localized: "Open To-dos"), "checklist", .brandTask, "show tasks go to", .todos),
             go(String(localized: "Go to Archive"), "archivebox.fill", .brandNavy, "show archived", .archive),
             go(String(localized: "Go to Recently Deleted"), "trash.fill", .systemRed, "show trash bin", .trash),
         ]

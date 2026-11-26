@@ -51,7 +51,7 @@ enum NoteListContent {
         case .today:
             return today(notes, day: state.todayShownDay)
         case .inbox:
-            // The New side of the header's segment: everything in no bowl, until it is filed (owner revision 9).
+            // Everything in no bowl, until it is filed (owner revision 9).
             let waiting = Inbox.notes(notes)
             // On top: today's appointments not filed into a bowl (`InboxAppointments`).
             let calendar = TodayCalendar.shared
@@ -60,13 +60,20 @@ enum NoteListContent {
                 (ListSection(id: "inbox-appointments", title: String(localized: "Appointments"), tint: .navy, count: appointments.count), appointments.map { .appointment($0.key) }),
             ]
             return Built(
-                sections: appointmentSection + (waiting.isEmpty ? [] : [(ListSection(id: "inbox", title: "", tint: .sky), waiting.map { .note($0.id) })]),
+                // Below the appointments the entries have a header of their own, "New" (as the iPhone's); without
+                // appointments the list starts with them.
+                sections: appointmentSection + (waiting.isEmpty ? [] : [(
+                    appointments.isEmpty
+                        ? ListSection(id: "inbox", title: "", tint: .sky)
+                        : ListSection(id: "inbox", title: String(localized: "New"), tint: .sky, count: waiting.count),
+                    waiting.map { .note($0.id) }
+                )]),
                 emptyTitle: "Inbox Empty", emptyMessage: "Everything is filed. Drop files, mails or links here, or press ⌘N.", emptySymbol: "tray"
             )
         case .bowls:
             return bowls(notes, library: library)
         case .todos:
-            // The To-dos side of the segment Bowls · To-dos (owner revision 10; before, the Inbox's To-dos side and the page Open To-dos): exactly the groups of the search's "Open To-dos", then those done today (`Todos.folder`).
+            // The place To-dos, a sidebar row of its own (owner revision 13; owner revision 10 had it as the To-dos side of a segment Bowls · To-dos): exactly the groups of the search's "Open To-dos", then those done today (`Todos.folder`).
             let folder = Todos.folder(notes)
             var sections = folder.groups.enumerated().map { index, group -> (ListSection, [ListItem]) in
                 let late = group.notes.first.flatMap { TodoBridge.dueStatus(of: $0) } == .overdue
@@ -229,7 +236,7 @@ enum NoteListContent {
         )
     }
 
-    /// The Bowls place (⌘3): every bowl like the iPhone's tab (pinned, then all in the order of Sort Bowls By), the
+    /// The Bowls place (⌘4): every bowl like the iPhone's tab (pinned, then all in the order of Sort Bowls By), the
     /// smart filters with "New Smart Filter…", Archive and Recently Deleted. Never empty.
     static func bowls(_ notes: [Note], library: Library) -> Built {
         let bowls = HomeList.bowls(library.projects, notes: notes)
