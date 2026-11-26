@@ -405,6 +405,8 @@ struct NotesView: View {
 
     var body: some View {
         smartFilterDialogs(bowlDialogs(columns))
+        // The menu bar and the keyboard shortcuts (`PlaceCommands`).
+        .focusedSceneValue(\.placeCommands, commandActions)
         .onChange(of: page) { old, new in
             // Another page: what was chosen there is let go, and so is the Add sheet's last "Into:".
             isSelecting = false
@@ -1279,6 +1281,35 @@ struct NotesView: View {
         case .archive, .weeklyReview, .settings, .voices, .acknowledgements:
             EmptyView()
         }
+    }
+
+    /// What the menu bar's commands do (`PlaceCommands`): the same actions as the bars and the Add sheet.
+    private var commandActions: PlaceCommandActions {
+        let open = selectedNote
+        return PlaceCommandActions(
+            newNote: {
+                addInto = nil
+                addNote()
+            },
+            newTodo: {
+                addInto = nil
+                addNote(todo: true)
+            },
+            recordMeeting: { showCalendar = true },
+            search: {
+                go(.search)
+                // iPad: the system's search field takes the keyboard.
+                if usesSystemBars { Task { searchFieldFocused = true } }
+            },
+            showPlace: { shown in
+                if place != shown { place = shown }
+            },
+            weeklyReview: { go(.weeklyReview) },
+            settings: { go(.settings) },
+            deleteEntry: open.flatMap { note in
+                note.modelContext == nil || note.isDeleted ? nil : { remove(note) }
+            }
+        )
     }
 
     /// "+" of the tab bar: the Add sheet, into the open bowl, else the Inbox. A long press makes a note at once (the

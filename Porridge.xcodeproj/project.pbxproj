@@ -517,6 +517,7 @@
 		F7FE4EF71ABE9BD19E9954CC /* PDFTextLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C4BA1C675687EC6A2CF198 /* PDFTextLayer.swift */; };
 		F80A7288F6DC3593D70885A7 /* MeetingExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5582F9A53CD62754BE769F6 /* MeetingExport.swift */; };
 		F8C811CA5FFCA8A1BD440F07 /* InboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB038AA5CA73FAFCB022177 /* InboxTests.swift */; };
+		F9E7D066C519262E7CC2BA8B /* PlaceCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 582CCCF36E2A21911AC101F9 /* PlaceCommands.swift */; };
 		FA2A4DC4238B9DA075556788 /* ListHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2289A720E28E5BBD9740B6C /* ListHeaderView.swift */; };
 		FA990843B0A896E21C75A45F /* InboxBundleBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E41824215B6D02EAAC042EE /* InboxBundleBanner.swift */; };
 		FB8121476EABC6F81B093C1E /* Controls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7C628FC99158C189CF6117 /* Controls.swift */; };
@@ -707,6 +708,7 @@
 		56347D6DCA553B0BFCD0F0A3 /* SummaryTasks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryTasks.swift; sourceTree = "<group>"; };
 		56FD02EAB29161B15D0292BF /* VoicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicesView.swift; sourceTree = "<group>"; };
 		57BF795A84D83E11A08E94D4 /* QuickActionWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionWidgets.swift; sourceTree = "<group>"; };
+		582CCCF36E2A21911AC101F9 /* PlaceCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceCommands.swift; sourceTree = "<group>"; };
 		587232E3493583272FE0396E /* SearchAskShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchAskShotsTests.swift; sourceTree = "<group>"; };
 		58E5D27589A0149DC6CA925F /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		58F5A36E4957C3F1BE0DF20A /* NoteSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteSplitter.swift; sourceTree = "<group>"; };
@@ -1068,6 +1070,7 @@
 				5DEF86778268782DD30AAAF0 /* InboxActions.swift */,
 				E31E818A6F32B24E2825C13E /* InboxPlace.swift */,
 				17714697162DCB024DD1F5D7 /* PadSidebar.swift */,
+				582CCCF36E2A21911AC101F9 /* PlaceCommands.swift */,
 				A77652CA7E1DB76E348FCBF5 /* PlaceTabBar.swift */,
 				51E6BB4517E4FE6449D7F24C /* TabBarAddButton.swift */,
 				9A2B39AD7D4CD6FFEC62C42D /* TriageView.swift */,
@@ -2031,6 +2034,7 @@
 				8F0CB0AEA96E1AA6321254A8 /* PadSettingsSheet.swift in Sources */,
 				73283E2D1D1719A0FF5F7E10 /* PadSidebar.swift in Sources */,
 				96EE3621CBC49AA8BFF6B318 /* Paragraphs.swift in Sources */,
+				F9E7D066C519262E7CC2BA8B /* PlaceCommands.swift in Sources */,
 				E0E0388BAE141780DD09FD86 /* PlaceTabBar.swift in Sources */,
 				8595D00FE8DD1E7469896BD2 /* PlaudAPI.swift in Sources */,
 				380691879005D99F07069D0B /* PlaudAccount.swift in Sources */,

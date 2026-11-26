@@ -98,6 +98,8 @@ struct PorridgeApp: App {
                 }
         }
         .modelContainer(container)
+        // The menu bar of an iPad (and the shortcuts of a hardware keyboard): New Note, the places, Search, Settings….
+        .commands { PlaceCommands() }
         .onChange(of: scenePhase) { _, phase in
             // A big model in memory gets an app in the background ended first.
             if phase == .background { Task { await ModelManager.shared.releaseLLM() } }
