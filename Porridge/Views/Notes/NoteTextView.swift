@@ -15,7 +15,8 @@ struct NoteTextView: UIViewRepresentable {
     var placeholder: String?
     /// As tall as its text, inside a page that scrolls as a whole; at least `minimumGrowingHeight`, so a tap below a short text still lands here.
     var growsWithText = false
-    private let minimumGrowingHeight: CGFloat = 480
+    /// A to-do's body is shorter: its "Add Subtask" follows right below instead of 480 pt down the page.
+    var minimumGrowingHeight: CGFloat = 480
 
     func makeCoordinator() -> NoteTextCoordinator {
         NoteTextCoordinator(text: NoteTextBinding($text), controller: controller)

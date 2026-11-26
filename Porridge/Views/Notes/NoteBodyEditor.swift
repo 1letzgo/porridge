@@ -12,12 +12,14 @@ struct NoteBodyEditor: View {
     var placeholder: String?
     /// iOS: as tall as its text, for a page that scrolls as a whole; that page then shows `NoteKeyboardBar` itself.
     var growsWithText = false
+    /// The least height while it grows with its text (`NoteTextView.minimumGrowingHeight`).
+    var minimumGrowingHeight: CGFloat = 480
 
     var body: some View {
         VStack(spacing: 0) {
             // The text view shows the placeholder itself: an overlay here read `controller.isEmpty`, which the
             // editor sets while SwiftUI is updating (loading a note), and could stay over the text.
-            NoteTextView(text: $text, isEditable: isEditable, controller: controller, placeholder: placeholder, growsWithText: growsWithText)
+            NoteTextView(text: $text, isEditable: isEditable, controller: controller, placeholder: placeholder, growsWithText: growsWithText, minimumGrowingHeight: minimumGrowingHeight)
         }
         .modifier(NoteEditorPresentations(controller: controller))
         .overlay(alignment: .bottom) {
