@@ -178,6 +178,9 @@ enum DebugDriver {
             log("replay-live: \(argument)")
         case "live-dump":
             log(MeetingRecorder.liveLines.joined(separator: "\n"))
+        case "discard-recording":
+            // The running recording (a replay too) is discarded as Discard… does, without asking.
+            log(MeetingRecorder.discardCurrent() ? "discard-recording: discarded" : "discard-recording: no recording")
         case "seed-meeting":
             // A summarized meeting whose summary has three tasks (the user's, somebody else's with a date,
             // nobody's), as the iOS test seed makes it but without a bowl.

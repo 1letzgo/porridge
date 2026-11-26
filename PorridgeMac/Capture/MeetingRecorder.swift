@@ -37,6 +37,14 @@ enum MeetingRecorder {
 
     /// `DebugDriver`'s `live-dump`: the live utterances of the running recording, one per line.
     static var liveLines: [String] { current?.liveLines ?? [] }
+
+    /// `DebugDriver`'s `discard-recording`: discards the running recording (a replay too) as Discard… does, without
+    /// asking. False when none runs.
+    static func discardCurrent() -> Bool {
+        guard let current else { return false }
+        current.discard()
+        return true
+    }
     #endif
 
     /// Ends the running recording as Stop does, so the meeting is kept (before quitting).
@@ -203,6 +211,15 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
 
     override func loadView() {
         view = buildContent()
+    }
+
+    /// Wrapping labels measured at the column's width, so their height never asks the window for more room.
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let width = max(100, view.bounds.width - 40)
+        for label in [heading, hint] where abs(label.preferredMaxLayoutWidth - width) > 0.5 {
+            label.preferredMaxLayoutWidth = width
+        }
     }
 
     @available(*, unavailable)
@@ -500,17 +517,22 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
     func confirmDiscard() {
         guard !finished else { onClose?(); return }
         Alerts.confirm("Discard Recording?", message: "The recording and the notes written during it are deleted.", action: "Discard", in: view.window) { [weak self] in
-            guard let self else { return }
-            self.finished = true
-            self.recorder.cancel()
-            self.live.cancel()
-            #if DEBUG
-            self.replayTask?.cancel()
-            #endif
-            self.journal?.finish()
-            LiveRecording.end()
-            self.onClose?()
+            self?.discard()
         }
+    }
+
+    /// Deletes the recording and its notes without asking (`confirmDiscard`, and the debug driver).
+    func discard() {
+        guard !finished else { onClose?(); return }
+        finished = true
+        recorder.cancel()
+        live.cancel()
+        #if DEBUG
+        replayTask?.cancel()
+        #endif
+        journal?.finish()
+        LiveRecording.end()
+        onClose?()
     }
 
     #if DEBUG
