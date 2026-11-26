@@ -82,6 +82,9 @@ final class LiveSpeakerTests: XCTestCase {
         XCTAssertEqual(speaker("s2", all: ["s1", "s2"]), BubbleSpeaker(id: "s2", name: "Speaker 2", colorIndex: 1, isMe: false))
         // A known voice that is the user is on the user's side.
         XCTAssertTrue(speaker("s1", all: ["s1"], known: ["s1": "Dana"]).isMe)
+        // The Mac's sound is never the user, not even by a known voice's name.
+        XCTAssertEqual(speaker("ch1.2", all: ["ch1", "ch1.2"], known: ["ch1.2": "Dana"]), BubbleSpeaker(id: "ch1.2", name: "Speaker 3", colorIndex: 2, isMe: false))
+        XCTAssertEqual(speaker("ch1", all: ["ch1"], known: ["ch1": "Me"]).name, "Others")
     }
 
     // MARK: Echo
@@ -108,6 +111,22 @@ final class LiveSpeakerTests: XCTestCase {
         XCTAssertFalse(LiveEcho.isEcho(microphone: "ship it on Monday", microphoneLevel: nil, systemLevel: -20, system: ["ship it on Monday"]))
         // Nothing said on the Mac at that time.
         XCTAssertFalse(LiveEcho.isEcho(microphone: "ship it on Monday", microphoneLevel: -50, systemLevel: -20, system: []))
+    }
+
+    func testALoneEchoWordInsideTheMacsSentenceIsAnEcho() {
+        // "in." on the microphone, inside the others' sentence that says it, the Mac's sound much louder.
+        XCTAssertTrue(LiveEcho.isEcho(
+            microphone: "in.", microphoneLevel: -50, systemLevel: -22,
+            system: ["I can help with the copy once the numbers are in."], insideSystem: true))
+        XCTAssertTrue(LiveEcho.isInside(start: 26.9, end: 27.1, systemStart: 24.5, systemEnd: 27.1))
+        XCTAssertFalse(LiveEcho.isInside(start: 28.0, end: 28.3, systemStart: 24.5, systemEnd: 27.1))
+        // The user's own short reply, not said by the others, stays.
+        XCTAssertFalse(LiveEcho.isEcho(
+            microphone: "Okay.", microphoneLevel: -50, systemLevel: -22,
+            system: ["I can help with the copy once the numbers are in."], insideSystem: true))
+        // Said loudly by the user: stays.
+        XCTAssertFalse(LiveEcho.isEcho(
+            microphone: "in", microphoneLevel: -20, systemLevel: -22, system: ["the numbers are in"], insideSystem: true))
     }
 
     func testSimilarityIgnoresCaseAndPunctuation() {
@@ -189,6 +208,71 @@ final class LiveSpeakerTests: XCTestCase {
         // Two live voices like Anna: only the closer one is her.
         let names = LiveVoiceMatch.names(for: [cluster("s1", voice(0, 1, mix: 0.4)), cluster("s2", voice(0))], known: [anna])
         XCTAssertEqual(names, ["s2": "Anna"])
+    }
+
+    func testTheUsersVoiceNeverNamesTheMacsSound() {
+        let me = LiveKnownVoice(id: "m", name: "Me", voice: voice(0), isUser: true)
+        let anna = LiveKnownVoice(id: "a", name: "Anna", voice: voice(1))
+        // A voice of the Mac's sound like the user's: not named after the user.
+        XCTAssertEqual(LiveVoiceMatch.names(for: [cluster("ch1.2", voice(0)), cluster("ch1", voice(1))], known: [me, anna]), ["ch1": "Anna"])
+        // The voices of a single microphone may be the user.
+        XCTAssertEqual(LiveVoiceMatch.names(for: [cluster("s1", voice(0))], known: [me, anna]), ["s1": "Me"])
+        XCTAssertTrue(LiveVoiceMatch.isOthers("ch1"))
+        XCTAssertTrue(LiveVoiceMatch.isOthers("ch1.3"))
+        XCTAssertFalse(LiveVoiceMatch.isOthers("ch0"))
+        XCTAssertFalse(LiveVoiceMatch.isOthers("s1"))
+    }
+
+    @MainActor
+    func testTheUsersProfileIsNeverMatchedOnTheMacsSound() throws {
+        let context = try TestStore.context()
+        let mine = VoiceProfile(name: "Me", voice: voice(0), seconds: 60)
+        let anna = VoiceProfile(name: "Anna", voice: voice(1), seconds: 60)
+        context.insert(mine)
+        context.insert(anna)
+        let unnamed = Speaker(id: "ch1.2", name: "Speaker 3", colorIndex: 2, voice: VoiceMath.data(from: voice(0)), voiceSeconds: 20)
+        let call = VoiceProfiles.match([unnamed], against: [mine, anna], refine: false, systemAudio: true)
+        XCTAssertEqual(call[0].name, "Speaker 3")
+        XCTAssertNil(call[0].profileID)
+        // Two microphones (not the Mac's sound): the right one may be the user.
+        let microphones = VoiceProfiles.match([unnamed], against: [mine, anna], refine: false)
+        XCTAssertEqual(microphones[0].name, "Me")
+        XCTAssertTrue(VoiceProfiles.isUser(id: "x", name: "me"))
+        XCTAssertFalse(VoiceProfiles.isUser(id: "x", name: "Anna"))
+    }
+
+    // MARK: Short utterances
+
+    func testShortUtteranceJoinsOnlyAClearlySimilarVoice() {
+        var clusters = LiveVoiceClusters(scheme: .channel("ch1"))
+        _ = clusters.assign(voice(0), seconds: 3)
+        _ = clusters.assign(voice(1), seconds: 3)
+        XCTAssertEqual(clusters.match(voice(1, 2, mix: 0.2)), "ch1.2", "cos 0.98")
+        XCTAssertNil(clusters.match(voice(1, 2, mix: 1)), "cos 0.71: not sure enough for a short one")
+        XCTAssertNil(clusters.match(voice(5)), "like none: no new voice from a short one")
+        XCTAssertEqual(clusters.voices.count, 2)
+        XCTAssertEqual(clusters.voices.map(\.seconds), [3, 3], "a short one teaches nothing")
+    }
+
+    private func short(_ start: Double, _ end: Double, _ measured: String? = nil) -> LiveShortUtterances.Item {
+        LiveShortUtterances.Item(start: start, end: end, measured: measured)
+    }
+
+    func testShortUtterancesFollowTheirTurnOrHaveNoSpeaker() {
+        let items = [
+            short(0, 5, "ch1"),        // B
+            short(5.6, 6.4),           // short, then C goes on at once: C
+            short(6.6, 10, "ch1.2"),   // C
+            short(13, 13.8),           // short, alone: no speaker
+            short(16, 20, "ch1"),      // B
+            short(20.5, 21.2),         // short, after B, nothing after: B
+        ]
+        XCTAssertEqual(LiveShortUtterances.speakers(items, firstID: "ch1"), ["ch1", "ch1.2", "ch1.2", nil, "ch1", "ch1"])
+    }
+
+    func testWithOneVoiceEverythingIsThatVoice() {
+        XCTAssertEqual(LiveShortUtterances.speakers([short(0, 1), short(5, 9)], firstID: "ch1"), ["ch1", "ch1"])
+        XCTAssertEqual(LiveShortUtterances.speakers([short(0, 1), short(5, 9, "s2")], firstID: "s1"), ["s2", "s2"])
     }
 
     // MARK: Pauses

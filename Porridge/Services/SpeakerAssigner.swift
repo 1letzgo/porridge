@@ -158,14 +158,18 @@ enum SpeakerAssigner {
         return result
     }
 
-    /// Each phrase goes to the voice with most of its speech; a tie leaves the words as they are.
+    /// Seconds of speech closer than this count as the same (sums of word lengths are not exact).
+    static let majorityTolerance = 0.005
+
+    /// Each phrase goes to the voice with most of its speech; a tie (within `majorityTolerance`) leaves the words as
+    /// they are.
     static func majorityByPhrase(_ ids: [String], words: [Word], among: Set<Int>) -> [String] {
         var out = ids
         for phrase in phrases(words, among: among) where phrase.count > 1 {
             var seconds: [String: Double] = [:]
             for index in phrase { seconds[ids[index], default: 0] += max(0.01, words[index].end - words[index].start) }
             let ranked = seconds.sorted { $0.value > $1.value }
-            guard let best = ranked.first, ranked.count > 1, best.value > ranked[1].value else { continue }
+            guard let best = ranked.first, ranked.count > 1, best.value - ranked[1].value > majorityTolerance else { continue }
             for index in phrase { out[index] = best.key }
         }
         return out
@@ -198,33 +202,87 @@ enum SpeakerAssigner {
     /// How much louder (dB) the right channel must be in a left word's time for it to count as the speakers'
     /// sound picked up by the microphone.
     static let echoMarginDB: Float = 6
-    /// How far (seconds) the start of a left word may be from the right word it repeats.
+    /// How far (seconds) the start, or the end, of a left word may be from the right word it repeats.
     static let echoWindow = 0.5
+    /// The loudspeaker reaches the microphone a little later, and the two recognizers place a word a little apart:
+    /// the right channel's level is also taken up to this many seconds earlier than the left word.
+    static let echoDelay = 0.2
+    /// A lone left word or two (no other left word within `phrasePause`), at most this long, that lies within a
+    /// phrase of the right channel and is said there too, is that phrase's echo (with the right channel louder).
+    static let echoIslandSeconds = 0.8
+    static let echoIslandWords = 2
 
     /// Drops the left words that are only the others' voices from the loudspeaker, picked up again by the user's
-    /// microphone: the right channel is clearly louder in the word's time (by its typical level, or plainly) and a
-    /// right word starting within `echoWindow` reads the same. When in doubt a word is kept.
+    /// microphone: the right channel is clearly louder in the word's time (by its typical level, or plainly; the
+    /// right side also taken up to `echoDelay` earlier) and a right word reads the same and starts or ends within
+    /// `echoWindow` of it, or the word is a lone short piece inside a right phrase that says it (`echoIslandSeconds`).
+    /// Short words count only when equal (`sameWord`). When in doubt a word is kept: a "Yes." of the user that the
+    /// others did not say stays, and so does anything louder on the microphone.
     static func droppingEcho(left: [Word], right: [Word], energy: ChannelEnergy) -> [Word] {
         let count = min(energy.left.count, energy.right.count)
         guard count > 0, !right.isEmpty else { return left }
         let leftRef = percentile(energy.left, 0.9)
         let rightRef = percentile(energy.right, 0.9)
         let eps: Float = 1e-10
-        let sortedRight = right.sorted { $0.start < $1.start }
-        return left.filter { word in
-            let a = min(count - 1, max(0, Int(word.start / energy.frameDuration)))
-            let b = min(count - 1, max(a, Int((word.end / energy.frameDuration).rounded(.up))))
-            var l: Float = 0
-            var r: Float = 0
-            for i in a...b {
-                l += energy.left[i]
-                r += energy.right[i]
+        let shifts = max(0, Int((echoDelay / energy.frameDuration).rounded()))
+
+        func frames(_ start: Double, _ end: Double) -> ClosedRange<Int> {
+            let a = min(count - 1, max(0, Int(start / energy.frameDuration)))
+            let b = min(count - 1, max(a, Int((end / energy.frameDuration).rounded(.up))))
+            return a...b
+        }
+        /// The right channel clearly louder than the left between two times.
+        func louderOnRight(_ start: Double, _ end: Double) -> Bool {
+            let range = frames(start, end)
+            let l = range.reduce(Float(0)) { $0 + energy.left[$1] }
+            for shift in 0...shifts {
+                var r: Float = 0
+                for i in range { r += energy.right[max(0, i - shift)] }
+                let normalized = 10 * log10((r / max(rightRef, eps) + eps) / (l / max(leftRef, eps) + eps))
+                let plain = 10 * log10((r + eps) / (l + eps))
+                if normalized > echoMarginDB || plain > echoMarginDB { return true }
             }
-            let normalized = 10 * log10((r / max(rightRef, eps) + eps) / (l / max(leftRef, eps) + eps))
-            let plain = 10 * log10((r + eps) / (l + eps))
-            guard normalized > echoMarginDB || plain > echoMarginDB else { return true }
-            let repeated = sortedRight.contains { abs($0.start - word.start) <= echoWindow && sameWord($0.text, word.text) }
-            return !repeated
+            return false
+        }
+
+        let sortedRight = right.sorted { $0.start < $1.start }
+        var dropped = Set<Int>()
+        for (index, word) in left.enumerated() where louderOnRight(word.start, word.end) {
+            let repeated = sortedRight.contains {
+                (abs($0.start - word.start) <= echoWindow || abs($0.end - word.end) <= echoWindow) && sameWord($0.text, word.text)
+            }
+            if repeated { dropped.insert(index) }
+        }
+
+        // Lone short pieces inside a phrase of the others that says them.
+        let rightPhrases = phrases(sortedRight, among: Set(sortedRight.indices)).map { phrase in
+            (start: sortedRight[phrase[0]].start, end: sortedRight[phrase[phrase.count - 1]].end, words: phrase.map { sortedRight[$0].text })
+        }
+        for island in echoIslands(left) where island.contains(where: { !dropped.contains($0) }) {
+            let start = left[island[0]].start
+            let end = left[island[island.count - 1]].end
+            let inside = rightPhrases.contains { phrase in
+                start >= phrase.start - 0.1 && end <= phrase.end + 0.3
+                    && island.allSatisfy { index in phrase.words.contains { sameWord($0, left[index].text) } }
+            }
+            if inside, louderOnRight(start, end) { dropped.formUnion(island) }
+        }
+        return left.enumerated().filter { !dropped.contains($0.offset) }.map(\.element)
+    }
+
+    /// Runs of at most `echoIslandWords` left words, together at most `echoIslandSeconds` long, with no other left
+    /// word within `phrasePause` before or after.
+    static func echoIslands(_ words: [Word]) -> [[Int]] {
+        var runs: [[Int]] = []
+        for index in words.indices {
+            if let last = runs.last?.last, words[index].start - words[last].end < phrasePause {
+                runs[runs.count - 1].append(index)
+            } else {
+                runs.append([index])
+            }
+        }
+        return runs.filter { run in
+            run.count <= echoIslandWords && words[run[run.count - 1]].end - words[run[0]].start <= echoIslandSeconds
         }
     }
 

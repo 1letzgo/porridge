@@ -68,6 +68,24 @@ enum VoiceProfiles {
         speaker.profileID == nil && speaker.name.hasPrefix(defaultNamePrefix)
     }
 
+    /// Whether a known voice is the user's: the voice marked as the user's, a name of the user, or "Me" (the
+    /// microphone's default name when recording a call on the Mac, learned from it).
+    static func isUser(_ profile: VoiceProfile) -> Bool {
+        isUser(id: profile.id.uuidString, name: profile.name)
+    }
+
+    static func isUser(id: String, name: String) -> Bool {
+        id == UserDefaults.standard.string(forKey: AppSettings.myVoiceKey)
+            || AppSettings.isMe(name)
+            || name.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Me") == .orderedSame
+    }
+
+    /// A speaker of the right channel ("ch1", "ch1.2"…). In a call recorded with the Mac's sound
+    /// (`SystemAudioMix`) that is one of the others, never the user; with two microphones it may be the user.
+    static func isOthers(_ speakerID: String) -> Bool {
+        speakerID == SpeakerAssigner.rightChannelID || speakerID.hasPrefix(SpeakerAssigner.rightChannelID + ".")
+    }
+
     // MARK: - New meeting
 
     /// Adds a voice print to every speaker and names those that match a known person.
@@ -87,7 +105,7 @@ enum VoiceProfiles {
             // The voices of the Mac's sound are measured on that channel alone, without the user's microphone, and
             // the user's voice on the microphone alone, without the others.
             let id = result[index].id
-            let onRight = id == SpeakerAssigner.rightChannelID || id.hasPrefix(SpeakerAssigner.rightChannelID + ".")
+            let onRight = isOthers(id)
             let onLeft = id == SpeakerAssigner.leftChannelID
             let source = onRight ? (rightChannelAudio ?? audio) : onLeft ? (leftChannelAudio ?? audio) : audio
             guard let print = await fingerprint(of: id, in: segments, audio: source) else { continue }
@@ -104,7 +122,7 @@ enum VoiceProfiles {
         try? context.save()
 
         let profiles = (try? context.fetch(FetchDescriptor<VoiceProfile>())) ?? []
-        return match(result, against: profiles, refine: true)
+        return match(result, against: profiles, refine: true, systemAudio: rightChannelAudio != nil)
     }
 
     private static func fingerprint(of speakerID: String, in segments: [TranscriptSegment], audio: URL) async -> (voice: [Float], seconds: Double)? {
@@ -129,10 +147,13 @@ enum VoiceProfiles {
 
     // MARK: - Matching
 
-    /// Names speakers that still carry their default name when a profile fits clearly.
+    /// Names speakers that still carry their default name when a profile fits clearly. `systemAudio`: a call
+    /// recorded with the Mac's sound, whose right channel (`isOthers`) is never matched with the user's voice
+    /// (`isUser`); its left channel is the user anyway (named while recording).
     @discardableResult
-    static func match(_ speakers: [Speaker], against profiles: [VoiceProfile], refine: Bool) -> [Speaker] {
+    static func match(_ speakers: [Speaker], against profiles: [VoiceProfile], refine: Bool, systemAudio: Bool = false) -> [Speaker] {
         guard !profiles.isEmpty else { return speakers }
+        let othersProfiles = profiles.filter { !isUser($0) }
         var result = speakers
 
         struct Candidate { let speaker: Int; let profile: VoiceProfile; let score: Float; let runnerUp: Float }
@@ -141,7 +162,7 @@ enum VoiceProfiles {
             guard speaker.profileID == nil, speaker.name.hasPrefix(defaultNamePrefix),
                   let data = speaker.voice, (speaker.voiceSeconds ?? 0) >= minSeconds else { continue }
             let voice = VoiceMath.floats(from: data)
-            let scored = profiles
+            let scored = (systemAudio && isOthers(speaker.id) ? othersProfiles : profiles)
                 .map { (profile: $0, score: VoiceMath.cosine(voice, $0.voice)) }
                 .sorted { $0.score > $1.score }
             guard let best = scored.first else { continue }
@@ -215,7 +236,8 @@ enum VoiceProfiles {
         guard !profiles.isEmpty else { return }
         for meeting in (try? context.fetch(FetchDescriptor<Note>())) ?? [] {
             let before = meeting.speakers
-            let after = match(before, against: profiles, refine: false)
+            let after = match(before, against: profiles, refine: false,
+                              systemAudio: SystemAudioMix.isSystemAudio(inputName: meeting.inputName))
             if after != before { meeting.speakers = after }
         }
         try? context.save()

@@ -100,6 +100,57 @@ final class MeetingChannelsTests: XCTestCase {
         XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: [], energy: energy).count, 1)
     }
 
+    /// Thirty seconds: the user speaks loudly at 0–4 s; the others at 24.5–26.95 s and 27.2–28.7 s, picked up by
+    /// the microphone 80 ms later and 15 dB quieter (as `scripts/make-meeting-fixture.sh` builds the echo).
+    private var callEnergy: ChannelEnergy {
+        var left = [Float](repeating: 0, count: 600)
+        var right = [Float](repeating: 0, count: 600)
+        for i in 0..<80 { left[i] = 1 }
+        for i in Array(490..<539) + Array(544..<574) {
+            right[i] = 1
+            left[min(599, i + 2)] = 0.03
+        }
+        return ChannelEnergy(frameDuration: 0.05, left: left, right: right)
+    }
+
+    private let othersSentence = [
+        Word(text: "once", start: 25.5, end: 25.8), Word(text: "the", start: 25.8, end: 25.95),
+        Word(text: "numbers", start: 26.0, end: 26.35), Word(text: "are", start: 26.35, end: 26.45),
+        Word(text: "in.", start: 26.45, end: 26.95),
+        Word(text: "The", start: 27.2, end: 27.4), Word(text: "layout", start: 27.4, end: 27.8),
+    ]
+
+    func testALoneEchoWordInsideTheOthersSentenceIsDropped() {
+        // The echo's last word, recognized late on the microphone where the others' sound has nearly ended.
+        let left = [Word(text: "Good", start: 0.1, end: 0.5), Word(text: "morning.", start: 0.5, end: 1.0), Word(text: "in.", start: 27.0, end: 27.2)]
+        let kept = SpeakerAssigner.droppingEcho(left: left, right: othersSentence, energy: callEnergy)
+        XCTAssertEqual(kept.map(\.text), ["Good", "morning."])
+    }
+
+    func testTheUsersShortReplyIsKept() {
+        // "Okay." while the others speak, quieter on the microphone than their sound, but not said by them: kept.
+        let left = [Word(text: "Okay.", start: 26.1, end: 26.4)]
+        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: othersSentence, energy: callEnergy).map(\.text), ["Okay."])
+        // "Yes." of the user after the others, loud on the microphone: kept, even when the others said "yes" before.
+        var energy = callEnergy
+        var louder = energy.left
+        for i in 580..<590 { louder[i] = 1 }
+        energy = ChannelEnergy(frameDuration: 0.05, left: louder, right: energy.right)
+        let yes = [Word(text: "Yes.", start: 29.0, end: 29.4)]
+        let said = othersSentence + [Word(text: "yes", start: 28.4, end: 28.7)]
+        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: yes, right: said, energy: energy).map(\.text), ["Yes."])
+    }
+
+    func testEchoIslands() {
+        let words = [
+            Word(text: "a", start: 0, end: 0.2), Word(text: "b", start: 0.3, end: 0.5),
+            Word(text: "c", start: 2, end: 2.2),
+            Word(text: "d", start: 4, end: 4.2), Word(text: "e", start: 4.3, end: 4.5), Word(text: "f", start: 4.6, end: 4.8),
+            Word(text: "g", start: 6, end: 7.5),
+        ]
+        XCTAssertEqual(SpeakerAssigner.echoIslands(words), [[0, 1], [2]])
+    }
+
     func testSameWord() {
         XCTAssertTrue(SpeakerAssigner.sameWord("Launch,", "launch"))
         XCTAssertTrue(SpeakerAssigner.sameWord("tomorrow", "tomorow"))

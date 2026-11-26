@@ -109,7 +109,7 @@ final class LiveTranscriber {
     @ObservationIgnored private var voices: LiveSpeakers?
     @ObservationIgnored private var assigned: [UUID: String] = [:]
     @ObservationIgnored private var voiceBusy = false
-    @ObservationIgnored private var voiceQueued: VoiceRequest?
+    @ObservationIgnored private var voiceQueue: [VoiceRequest] = []
     @ObservationIgnored private var echoes: [UUID: Bool] = [:]
 
     init() {
@@ -286,12 +286,12 @@ final class LiveTranscriber {
             var list = track.finals
             if let pending = track.pending { list.append(pending) }
             if let scheme = track.scheme {
-                // Short utterances, and those not measured yet, keep the voice before them.
-                var current = scheme.id(at: 0)
-                for index in list.indices {
-                    if let id = assigned[list[index].id] { current = id }
-                    list[index].speakerID = current
-                }
+                // Short utterances, and those not measured yet, follow a measured neighbour of the same turn, or
+                // have no speaker (`LiveShortUtterances`).
+                let ids = LiveShortUtterances.speakers(
+                    list.map { LiveShortUtterances.Item(start: $0.start, end: $0.end, measured: assigned[$0.id]) },
+                    firstID: scheme.id(at: 0))
+                for index in list.indices { list[index].speakerID = ids[index] }
             }
             all += list
         }
@@ -312,12 +312,20 @@ final class LiveTranscriber {
         var others = system.finals
         if let pending = system.pending { others.append(pending) }
         let near = others.filter { $0.end >= utterance.start - LiveEcho.window && $0.start <= utterance.end + LiveEcho.window }
+        let around = others.filter {
+            LiveEcho.isInside(start: utterance.start, end: utterance.end, systemStart: $0.start, systemEnd: $0.end)
+        }
+        let levels = [
+            system.audio.level(from: utterance.start, to: utterance.end),
+            system.audio.level(from: max(0, utterance.start - LiveEcho.delay), to: max(0, utterance.end - LiveEcho.delay)),
+        ].compactMap { $0 }
+        let microphoneLevel = tracks[0].audio.level(from: utterance.start, to: utterance.end)
         let echo = LiveEcho.isEcho(
-            microphone: utterance.text,
-            microphoneLevel: tracks[0].audio.level(from: utterance.start, to: utterance.end),
-            systemLevel: system.audio.level(from: utterance.start, to: utterance.end),
-            system: near.map(\.text)
-        )
+            microphone: utterance.text, microphoneLevel: microphoneLevel, systemLevel: levels.max(), system: near.map(\.text)
+        ) || (!around.isEmpty && LiveEcho.isEcho(
+            microphone: utterance.text, microphoneLevel: microphoneLevel, systemLevel: levels.max(),
+            system: around.map(\.text), insideSystem: true
+        ))
         let settled = utterance.isFinal && system.audio.duration > utterance.end + LiveEcho.settleSeconds
         if settled { echoes[utterance.id] = echo }
         return echo
@@ -329,18 +337,25 @@ final class LiveTranscriber {
         let utterance: UUID
         let track: Int
         let samples: [Float]
+        let learns: Bool
     }
 
-    /// Measures the voice of a confirmed utterance that is long enough. One at a time: while one is measured, only the
-    /// newest waiting one is kept, the others keep the voice before them.
+    /// Requests waiting while one is measured; beyond this the oldest is left out (it follows its neighbours).
+    private static let voiceQueueLimit = 6
+
+    /// Measures the voice of a confirmed utterance that is long enough (`LiveSpeakers.shortSeconds`; from
+    /// `LiveSpeakers.minimumSeconds` it also teaches the voices). One at a time, the others wait in order.
     private func requestVoice(for utterance: LiveUtterance, on track: Track) {
-        guard voices != nil, track.scheme != nil, utterance.end - utterance.start >= LiveSpeakers.minimumSeconds else { return }
+        let seconds = utterance.end - utterance.start
+        guard voices != nil, track.scheme != nil, seconds >= LiveSpeakers.shortSeconds else { return }
         let from = max(utterance.start, utterance.end - LiveSpeakers.maximumSeconds)
         let samples = track.audio.samples(from: from, to: utterance.end)
-        guard Double(samples.count) >= LiveSpeakers.minimumSeconds * Double(TrackAudio.sampleRate) * 0.8 else { return }
-        let request = VoiceRequest(utterance: utterance.id, track: track.index, samples: samples)
+        guard Double(samples.count) >= LiveSpeakers.shortSeconds * Double(TrackAudio.sampleRate) * 0.8 else { return }
+        let request = VoiceRequest(
+            utterance: utterance.id, track: track.index, samples: samples, learns: seconds >= LiveSpeakers.minimumSeconds)
         if voiceBusy {
-            voiceQueued = request
+            voiceQueue.append(request)
+            if voiceQueue.count > Self.voiceQueueLimit { voiceQueue.removeFirst() }
         } else {
             measure(request)
         }
@@ -350,17 +365,16 @@ final class LiveTranscriber {
         guard let voices else { return }
         voiceBusy = true
         Task { [weak self] in
-            let assignment = await voices.assign(request.samples, track: request.track)
+            let assignment = await voices.assign(request.samples, track: request.track, learns: request.learns)
             guard let self else { return }
             self.voiceBusy = false
             if let assignment {
-                self.assigned[request.utterance] = assignment.speakerID
+                if let id = assignment.speakerID { self.assigned[request.utterance] = id }
                 if self.knownNames != assignment.knownNames { self.knownNames = assignment.knownNames }
                 self.rebuild()
             }
-            if let next = self.voiceQueued {
-                self.voiceQueued = nil
-                self.measure(next)
+            if !self.voiceQueue.isEmpty {
+                self.measure(self.voiceQueue.removeFirst())
             }
         }
     }
@@ -515,11 +529,23 @@ enum LiveEcho {
         return Double(mine.filter(theirs.contains).count) / Double(mine.count)
     }
 
-    static func isEcho(microphone: String, microphoneLevel: Float?, systemLevel: Float?, system: [String]) -> Bool {
-        guard words(microphone).count >= minimumWords,
+    /// `insideSystem`: the microphone's utterance lies within one of the Mac's utterances in time (`isInside`). Then
+    /// a single word is enough, when that utterance says it: a lone "in." in the middle of the others' sentence.
+    static func isEcho(microphone: String, microphoneLevel: Float?, systemLevel: Float?, system: [String], insideSystem: Bool = false) -> Bool {
+        let count = words(microphone).count
+        guard count >= minimumWords || (insideSystem && count >= 1),
               let microphoneLevel, let systemLevel,
               systemLevel - microphoneLevel >= louder,
               !system.isEmpty else { return false }
         return similarity(microphone: microphone, system: system.joined(separator: " ")) >= sameWords
     }
+
+    /// Whether a microphone utterance (`start`–`end`) lies within a Mac utterance in time: it starts no earlier than
+    /// shortly before it and ends at most shortly after it (the loudspeaker's delay and the recognizers' timing).
+    static func isInside(start: Double, end: Double, systemStart: Double, systemEnd: Double) -> Bool {
+        start >= systemStart - 0.2 && end <= systemEnd + 0.5
+    }
+
+    /// The Mac's sound reaches the microphone a little later: its level is also taken this much earlier.
+    static let delay = 0.2
 }

@@ -111,7 +111,7 @@ enum TranscriptBubbles {
 
     /// How a live speaker is shown. "ch0" is the microphone of a call on the Mac (the user, `meName`); "ch1" the Mac's
     /// sound (`othersName`, "Speaker 2" once more voices are heard there), "ch1.2"… its further voices; "s1"… the
-    /// voices of a single microphone. A known voice gives its name. Names and colors are those the speakers get
+    /// voices of a single microphone. A known voice gives its name, except the user's on the Mac's sound. Names and colors are those the speakers get
     /// after recording (`ProcessingService`).
     static func liveSpeaker(
         id: String,
@@ -127,12 +127,15 @@ enum TranscriptBubbles {
         if id == left {
             return BubbleSpeaker(id: id, name: known ?? meName, colorIndex: 0, isMe: true)
         }
+        // The Mac's sound is the others: never the user, not even by a known voice's name.
+        let isOthers = id == right || id.hasPrefix(right + ".")
+        let other = isOthers && known.map { isMeName($0) || $0.caseInsensitiveCompare("Me") == .orderedSame } == true ? nil : known
         if id == right {
             let split = allIDs.contains { $0.hasPrefix(right + ".") }
-            return BubbleSpeaker(id: id, name: known ?? (split ? "Speaker 2" : othersName), colorIndex: 1, isMe: known.map(isMeName) ?? false)
+            return BubbleSpeaker(id: id, name: other ?? (split ? "Speaker 2" : othersName), colorIndex: 1, isMe: false)
         }
         if id.hasPrefix(right + "."), let number = Int(id.dropFirst(right.count + 1)) {
-            return BubbleSpeaker(id: id, name: known ?? "Speaker \(number + 1)", colorIndex: number, isMe: known.map(isMeName) ?? false)
+            return BubbleSpeaker(id: id, name: other ?? "Speaker \(number + 1)", colorIndex: number, isMe: false)
         }
         if id.hasPrefix("s"), let number = Int(id.dropFirst()) {
             return BubbleSpeaker(id: id, name: known ?? "Speaker \(number)", colorIndex: max(0, number - 1), isMe: known.map(isMeName) ?? false)

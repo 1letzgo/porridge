@@ -3,16 +3,20 @@ import Foundation
 import SwiftData
 
 /// Telling voices apart while recording, deliberately simple: every confirmed utterance of at least
-/// `minimumSeconds` gets a voice print, compared with the voices heard so far in this meeting (`LiveVoiceClusters`);
-/// shorter ones keep the voice before them (`LiveTranscriber`). Known voices (`VoiceProfile`) only give a name;
+/// `minimumSeconds` gets a voice print, compared with the voices heard so far in this meeting (`LiveVoiceClusters`),
+/// and only these teach the voices. Shorter ones from `shortSeconds` get a print too, but only a clearly similar
+/// voice takes them (`LiveVoiceClusters.match`); the rest follow a measured neighbour or stay without a speaker
+/// (`LiveShortUtterances`). Known voices (`VoiceProfile`) only give a name;
 /// nothing is learned live. The final transcript's speakers still come from the recording (`ProcessingService`).
 ///
 /// Its own `OfflineDiarizerManager` (the processing's one in `TranscriptionEngine` may be busy with another
 /// meeting); one voice print at a time, off the main thread. Only when the speaker detection model is on the
 /// device: nothing is downloaded for this.
 actor LiveSpeakers {
-    /// Utterances shorter than this keep the voice before them.
+    /// Utterances from this long teach the voices (a new voice, or a voice's center).
     static let minimumSeconds = 1.5
+    /// Utterances from this long, but shorter than `minimumSeconds`, are only compared with the voices heard so far.
+    static let shortSeconds = 0.8
     /// Longer utterances are measured on their last this many seconds.
     static let maximumSeconds = 10.0
 
@@ -30,7 +34,8 @@ actor LiveSpeakers {
     }
 
     struct Assignment: Sendable {
-        let speakerID: String
+        /// nil: a short utterance like none of the voices clearly.
+        let speakerID: String?
         /// Known voices recognized so far: speaker id → name.
         let knownNames: [String: String]
     }
@@ -47,13 +52,19 @@ actor LiveSpeakers {
         self.known = known
     }
 
-    /// The voice of `samples` (16 kHz mono) on `track`; nil when no voice print could be made.
-    func assign(_ samples: [Float], track: Int) async -> Assignment? {
+    /// The voice of `samples` (16 kHz mono) on `track`; nil when no voice print could be made. `learns`: the
+    /// utterance is long enough to teach the voices (`minimumSeconds`); otherwise it only joins a clearly similar one.
+    func assign(_ samples: [Float], track: Int, learns: Bool) async -> Assignment? {
         guard let scheme = schemes[track], !failed, !samples.isEmpty else { return nil }
         guard let embedding = await embed(samples) else { return nil }
         var voices = clusters[track] ?? LiveVoiceClusters(scheme: scheme)
-        let id = voices.assign(embedding, seconds: Double(samples.count) / 16_000)
-        clusters[track] = voices
+        let id: String?
+        if learns {
+            id = voices.assign(embedding, seconds: Double(samples.count) / 16_000)
+            clusters[track] = voices
+        } else {
+            id = voices.match(embedding)
+        }
         var names: [String: String] = [:]
         for voices in clusters.values {
             names.merge(LiveVoiceMatch.names(for: voices.voices, known: known)) { first, _ in first }
@@ -85,7 +96,9 @@ actor LiveSpeakers {
     static func knownVoices(in context: ModelContext) -> [LiveKnownVoice] {
         guard AppSettings.voiceRecognitionEnabled else { return [] }
         let profiles = (try? context.fetch(FetchDescriptor<VoiceProfile>())) ?? []
-        return profiles.map { LiveKnownVoice(id: $0.id.uuidString, name: $0.name, voice: $0.voice) }
+        return profiles.map {
+            LiveKnownVoice(id: $0.id.uuidString, name: $0.name, voice: $0.voice, isUser: VoiceProfiles.isUser($0))
+        }
     }
 }
 
@@ -94,6 +107,8 @@ struct LiveKnownVoice: Sendable, Equatable {
     let id: String
     let name: String
     let voice: [Float]
+    /// The user's own voice (`VoiceProfiles.isUser`): never a voice of the Mac's sound.
+    var isUser = false
 }
 
 /// How the voices of one track are named, in order of appearance.
@@ -135,6 +150,19 @@ struct LiveVoiceClusters: Sendable {
         self.scheme = scheme
     }
 
+    /// A short utterance's print takes a voice only at this similarity, and this much ahead of the next voice.
+    static let shortSameSpeaker: Float = 0.8
+    static let shortMargin: Float = 0.1
+
+    /// The voice a short utterance's print clearly belongs to, without learning from it; nil when none is clear.
+    func match(_ embedding: [Float]) -> String? {
+        let print = VoiceMath.normalized(embedding)
+        let scored = voices.map { (id: $0.id, score: VoiceMath.cosine(print, $0.centroid)) }.sorted { $0.score > $1.score }
+        guard let best = scored.first, best.score >= Self.shortSameSpeaker else { return nil }
+        let runnerUp = scored.count > 1 ? scored[1].score : -1
+        return best.score - runnerUp >= Self.shortMargin ? best.id : nil
+    }
+
     /// The id of the voice `embedding` belongs to (`seconds`: the speech behind it).
     mutating func assign(_ embedding: [Float], seconds: Double) -> String {
         let print = VoiceMath.normalized(embedding)
@@ -166,13 +194,20 @@ enum LiveVoiceMatch {
     /// `VoiceProfiles.minSeconds`.
     static let minimumSeconds = 4.0
 
-    /// Voice id → the known voice's name.
+    /// A voice of the Mac's sound ("ch1", "ch1.2"…): one of the others, never the user.
+    static func isOthers(_ id: String) -> Bool {
+        id == SpeakerAssigner.rightChannelID || id.hasPrefix(SpeakerAssigner.rightChannelID + ".")
+    }
+
+    /// Voice id → the known voice's name. Voices of the Mac's sound are never named after the user (`isUser`).
     static func names(for voices: [LiveVoiceClusters.Voice], known: [LiveKnownVoice]) -> [String: String] {
         guard !known.isEmpty else { return [:] }
         struct Candidate { let voice: String; let known: LiveKnownVoice; let score: Float }
         var candidates: [Candidate] = []
         for voice in voices where voice.seconds >= minimumSeconds {
-            let scored = known
+            // The Mac's sound is the others: the user's own voice is never one of them.
+            let allowed = isOthers(voice.id) ? known.filter { !$0.isUser } : known
+            let scored = allowed
                 .map { (known: $0, score: VoiceMath.cosine(voice.centroid, $0.voice)) }
                 .sorted { $0.score > $1.score }
             guard let best = scored.first else { continue }
@@ -187,5 +222,39 @@ enum LiveVoiceMatch {
             names[candidate.voice] = candidate.known.name
         }
         return names
+    }
+}
+
+/// The speakers of one track's utterances while recording. Measured utterances (`LiveSpeakers`) have theirs. One
+/// without (too short, unclear, not measured yet) takes the speaker of the measured utterance it runs into, each
+/// pause before it shorter than `joinPause` (the same turn going on), else of the one it follows that closely;
+/// otherwise it has none (shown on its side without a name) rather than a wrong one. While only one voice was heard
+/// on the track, every utterance is that voice (`firstID` before any was measured).
+enum LiveShortUtterances {
+    static let joinPause = 1.0
+
+    struct Item: Equatable {
+        var start: Double
+        var end: Double
+        var measured: String?
+    }
+
+    static func speakers(_ items: [Item], firstID: String) -> [String?] {
+        let voices = Set(items.compactMap(\.measured))
+        guard voices.count > 1 else { return items.map { $0.measured ?? voices.first ?? firstID } }
+        return items.indices.map { index in
+            if let measured = items[index].measured { return measured }
+            var next = index
+            while next + 1 < items.count, items[next + 1].start - items[next].end < joinPause {
+                next += 1
+                if let measured = items[next].measured { return measured }
+            }
+            var previous = index
+            while previous > 0, items[previous].start - items[previous - 1].end < joinPause {
+                previous -= 1
+                if let measured = items[previous].measured { return measured }
+            }
+            return nil
+        }
     }
 }
