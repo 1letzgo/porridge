@@ -36,6 +36,10 @@ struct PadSidebar: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Porridge")
+        // No title in the sidebar's bar: in a window (Stage Manager, not full screen) the window's buttons left it
+        // "Porrid…", and the places speak for themselves. The title stays the column's name (VoiceOver, the app
+        // switcher).
+        .toolbar(removing: .title)
         .toolbar {
             ToolbarItem(placement: .bottomBar) {
                 Button(action: onSettings) {
