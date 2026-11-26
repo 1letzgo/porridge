@@ -612,7 +612,14 @@ final class DetailsInspectorViewController: NSViewController {
 }
 
 /// A label that wraps at the width Auto Layout gives it.
+/// Its own width is that of its text in one line (at most `preferredMaxLayoutWidth`, when its owner sets one), so it
+/// takes the room there is; its height is that of the lines at the width it was laid out at. The width it asks for
+/// never follows the width it got: measured that way, a label once laid out narrow (a card shown in a column not yet
+/// at its width) kept asking for that width and broke its text after every word ("New / bowl / “New / Bowl” …").
 final class WrappingLabel: NSTextField {
+    /// The width the label was laid out at: its lines are counted for it.
+    private var laidOutWidth: CGFloat = 0
+
     convenience init(_ text: String, font: NSFont, color: NSColor, lines: Int) {
         self.init(wrappingLabelWithString: text)
         self.font = font
@@ -622,14 +629,30 @@ final class WrappingLabel: NSTextField {
         cell?.truncatesLastVisibleLine = true
         isSelectable = false
         translatesAutoresizingMaskIntoConstraints = false
+        // Too long for the room, it takes another line rather than pushing buttons beside it or its window wider.
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
 
-    override func layout() {
-        super.layout()
-        if preferredMaxLayoutWidth != bounds.width {
-            preferredMaxLayoutWidth = bounds.width
-            invalidateIntrinsicContentSize()
+    override var intrinsicContentSize: NSSize {
+        guard let cell else { return super.intrinsicContentSize }
+        let unbounded = CGFloat.greatestFiniteMagnitude
+        let oneLine = cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: unbounded, height: unbounded))
+        var width = ceil(oneLine.width)
+        if preferredMaxLayoutWidth > 0 { width = min(width, preferredMaxLayoutWidth) }
+        let wrapAt = laidOutWidth > 0 ? laidOutWidth : width
+        var height = cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: wrapAt, height: unbounded)).height
+        if maximumNumberOfLines > 0, let font {
+            let lineHeight = NSLayoutManager().defaultLineHeight(for: font)
+            height = min(height, oneLine.height + lineHeight * CGFloat(maximumNumberOfLines - 1))
         }
+        return NSSize(width: width, height: ceil(height))
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        guard newSize.width > 0, abs(newSize.width - laidOutWidth) > 0.5 else { return }
+        laidOutWidth = newSize.width
+        invalidateIntrinsicContentSize()
     }
 }
 
