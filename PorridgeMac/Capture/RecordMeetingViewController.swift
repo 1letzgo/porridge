@@ -73,7 +73,7 @@ final class RecordMeetingViewController: NSViewController, NSTableViewDataSource
         stack.setCustomSpacing(2, after: systemAudio)
         let root = NSView()
         root.addSubview(stack)
-        stack.pinEdges(to: root, insets: NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20))
+        stack.pinEdgesKeepingWindowSize(to: root, insets: NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20))
         // The appointments take the height the column has.
         let filler = NSView()
         stack.insertArrangedSubview(filler, at: stack.arrangedSubviews.firstIndex(of: systemAudio) ?? 0)

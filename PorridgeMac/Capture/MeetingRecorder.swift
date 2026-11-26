@@ -213,7 +213,8 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
         view = buildContent()
     }
 
-    /// Wrapping labels measured at the column's width, so their height never asks the window for more room.
+    /// Wrapping labels no wider than the column (their height comes from the width they are laid out at; that they
+    /// never make the window taller is the bottom's low priority, see `buildContent`).
     override func viewDidLayout() {
         super.viewDidLayout()
         let width = max(100, view.bounds.width - 40)
@@ -292,7 +293,9 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
 
         let stack = NSStackView.vertical([heading, inputLabel, clock, meter, stereo, transcriptScroll, notesList, noteRow, hint, buttons], spacing: 14, alignment: .centerX)
         root.addSubview(stack)
-        stack.pinEdges(to: root, insets: NSEdgeInsets(top: 18, left: 20, bottom: 16, right: 20))
+        // Nothing in the column decides the window's height: a wrapping label laid out while the inspector opens (a
+        // few pt wide) counts one character per line (the hint became some 2700 pt high and the window 2799).
+        stack.pinEdgesKeepingWindowSize(to: root, insets: NSEdgeInsets(top: 18, left: 20, bottom: 16, right: 20))
         NSLayoutConstraint.activate([
             meter.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.7),
             heading.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor),

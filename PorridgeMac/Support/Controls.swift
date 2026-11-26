@@ -347,4 +347,20 @@ extension NSView {
             bottomAnchor.constraint(equalTo: other.bottomAnchor, constant: -insets.bottom),
         ])
     }
+
+    /// Pins the view to the edges of its superview, its bottom only just below the priority a window keeps its size
+    /// with (500): the view fills the room it is given, but however high its content asks to be (a wrapping label
+    /// measured in a column still opening, a few pt wide, counts one character per line), it never makes the window
+    /// taller; it is cut at the bottom instead.
+    func pinEdgesKeepingWindowSize(to other: NSView, insets: NSEdgeInsets = NSEdgeInsets()) {
+        translatesAutoresizingMaskIntoConstraints = false
+        let bottom = bottomAnchor.constraint(equalTo: other.bottomAnchor, constant: -insets.bottom)
+        bottom.priority = .init(NSLayoutConstraint.Priority.windowSizeStayPut.rawValue - 1)
+        NSLayoutConstraint.activate([
+            leadingAnchor.constraint(equalTo: other.leadingAnchor, constant: insets.left),
+            trailingAnchor.constraint(equalTo: other.trailingAnchor, constant: -insets.right),
+            topAnchor.constraint(equalTo: other.topAnchor, constant: insets.top),
+            bottom,
+        ])
+    }
 }

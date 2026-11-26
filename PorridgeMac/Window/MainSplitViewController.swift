@@ -105,7 +105,7 @@ final class MainSplitViewController: NSSplitViewController {
         if opening {
             openInspector()
         } else {
-            inspectorItem.animator().isCollapsed = true
+            keepingWindowFrame { inspectorItem.animator().isCollapsed = true }
             openedForRecord = false
         }
     }
@@ -114,35 +114,48 @@ final class MainSplitViewController: NSSplitViewController {
     func enforceSharedWidth() {
         guard let width = view.window?.frame.width, width < Self.sharedWidth,
               !sidebarItem.isCollapsed, !inspectorItem.isCollapsed else { return }
-        switch lastOpened {
-        case .sidebar: inspectorItem.animator().isCollapsed = true
-        case .inspector: sidebarItem.animator().isCollapsed = true
+        keepingWindowFrame {
+            switch lastOpened {
+            case .sidebar: inspectorItem.animator().isCollapsed = true
+            case .inspector: sidebarItem.animator().isCollapsed = true
+            }
+        }
+    }
+
+    /// Opens or closes a side (`change`, animated or not) without changing the window's frame: its size and origin
+    /// before are given back exactly when the split view (or a column's content) changed them on the way, unless the
+    /// user resizes the window meanwhile. Opened while the sidebar still took its room, the inspector made the window
+    /// wider; content measured in the opening inspector made it taller (2799 pt instead of 1025).
+    private func keepingWindowFrame(_ change: () -> Void) {
+        guard let window = view.window, !window.styleMask.contains(.fullScreen) else {
+            change()
+            return
+        }
+        let frame = window.frame
+        NSAnimationContext.runAnimationGroup { _ in
+            change()
+        } completionHandler: { [weak window] in
+            MainActor.assumeIsolated {
+                guard let window, !window.inLiveResize, !window.styleMask.contains(.fullScreen), window.frame != frame else { return }
+                window.setFrame(frame, display: true)
+            }
         }
     }
 
     var isInspectorOpen: Bool { !inspectorItem.isCollapsed }
 
-    /// Opens the inspector without changing the window's size. Where both sides do not fit (below `sharedWidth`),
+    /// Opens the inspector without changing the window's frame. Where both sides do not fit (below `sharedWidth`),
     /// the sidebar closes first, at once: opened while the sidebar still took its room, the inspector made the
     /// window wider, and the sidebar closing right after made it narrower again by its own width (900 pt became 861
-    /// when a recording started). Should the split view still resize the window, it gets its width back.
+    /// when a recording started). Should the window change anyway, it gets its whole frame back (`keepingWindowFrame`).
     private func openInspector() {
         guard inspectorItem.isCollapsed else { return }
         lastOpened = .inspector
-        let window = view.window
-        let width = window?.frame.width
-        if let width, width < Self.sharedWidth, !sidebarItem.isCollapsed {
-            sidebarItem.isCollapsed = true
-        }
-        NSAnimationContext.runAnimationGroup { _ in
-            inspectorItem.animator().isCollapsed = false
-        } completionHandler: { [weak window] in
-            MainActor.assumeIsolated {
-                guard let window, let width, !window.inLiveResize, abs(window.frame.width - width) > 0.5 else { return }
-                var frame = window.frame
-                frame.size.width = width
-                window.setFrame(frame, display: true)
+        keepingWindowFrame {
+            if let width = view.window?.frame.width, width < Self.sharedWidth, !sidebarItem.isCollapsed {
+                sidebarItem.isCollapsed = true
             }
+            inspectorItem.animator().isCollapsed = false
         }
         enforceSharedWidth()
     }
@@ -187,7 +200,7 @@ final class MainSplitViewController: NSSplitViewController {
         inspector.show(.details)
         if openedForRecord {
             openedForRecord = false
-            inspectorItem.animator().isCollapsed = true
+            keepingWindowFrame { inspectorItem.animator().isCollapsed = true }
         }
     }
 
