@@ -264,6 +264,9 @@ final class LiveTranscriber {
         guard tracks.indices.contains(index) else { return }
         let track = tracks[index]
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A recognizer's open piece starts where its last confirmed one ended, with the silence since then: it
+        // starts where the voice does, or it is sorted before the others' utterances of that silence.
+        let start = isFinal ? start : (track.audio.voicedStart(from: start, to: end) ?? start)
         // The open piece's id goes on to its confirmed text, so its bubble stays where it is.
         let id = track.pending?.id ?? UUID()
         if isFinal {
@@ -482,6 +485,24 @@ final class TrackAudio: @unchecked Sendable {
             return Array(samples[from..<to])
         }
     }
+
+    /// Where a voice starts between two times: the first 100 ms that is not silence and at most
+    /// `voicedBelowPeak` dB below the loudest 100 ms there; nil when nothing was measured or all of it is silence.
+    func voicedStart(from start: Double, to end: Double) -> Double? {
+        lock.withLock {
+            let from = max(0, Int(start * 10))
+            let to = min(levels.count, Int((end * 10).rounded(.up)))
+            guard to > from, let peak = levels[from..<to].max() else { return nil }
+            let threshold = max(Self.silenceDecibels, peak - Self.voicedBelowPeak)
+            guard let first = levels[from..<to].firstIndex(where: { $0 >= threshold }) else { return nil }
+            return min(max(start, Double(first) / 10), end)
+        }
+    }
+
+    /// About -54 dBFS (`RollingRecognizer.silenceLevel`).
+    private static let silenceDecibels = LiveEcho.decibels(rms: 0.002)
+    /// Quieter than the loudest part by this much: still the silence before the voice (or an echo in it).
+    private static let voicedBelowPeak: Float = 15
 
     /// The average level (dBFS) between two times; nil when nothing was measured there.
     func level(from start: Double, to end: Double) -> Float? {
