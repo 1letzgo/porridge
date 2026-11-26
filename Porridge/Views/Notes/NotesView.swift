@@ -46,6 +46,8 @@ struct NotesView: View {
     @State private var splitWidth: CGFloat = 0
     /// iPad: the window's height, measured: the Add popover may be as high as the window leaves room for.
     @State private var splitHeight: CGFloat = 0
+    /// iPad: the list column's width, measured (0 until it is): Today's bar makes room for "+" in a narrow column.
+    @State private var listColumnWidth: CGFloat = 0
     /// iPad: the sidebar's width grows with the text size, so the places and their counts are not cut.
     @ScaledMetric(relativeTo: .body) private var sidebarWidth: CGFloat = 210
     /// iPad: Settings as a sheet over the window (on a phone a page of the stack).
@@ -756,6 +758,7 @@ struct NotesView: View {
             pageContent(shown)
                 .emptyStateArea()
                 .background(Color.appBackground)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { listColumnWidth = $0 }
                 .environment(\.highlightedEntry, selection)
                 .navigationTitle(listTitle(shown))
                 // Search: inline, the search field and its chips right under the bar. A large title there left an
@@ -804,14 +807,52 @@ struct NotesView: View {
 
     /// iPad: the page's actions as toolbar items at the trailing end of the list column's bar, "+" last on its own,
     /// the one prominent action (the system moves what does not fit into its overflow menu).
+    /// "+" is an item of its own with the highest visibility priority (iOS 27), so the system never moves it into
+    /// the overflow menu; Today's Weekly Review has the lowest. Today's bar also makes room itself (`todayBarIsTight`),
+    /// so "+" stays in the bar on every system and at every width of the column (from 300 pt).
     @ToolbarContentBuilder
     private func pageToolbar(_ shown: ListPage) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .topBarTrailing) {
-            listActions(shown)
+        if #available(iOS 27.0, *) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                listActions(shown)
+            }
+            if shown == .today, showsPadWeeklyReview {
+                ToolbarItem(placement: .topBarTrailing) {
+                    weeklyReviewButton
+                }
+                .visibilityPriority(.low)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                barAddButton(shown)
+            }
+            .visibilityPriority(.high)
+        } else {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                listActions(shown)
+            }
+            if shown == .today, showsPadWeeklyReview {
+                ToolbarItem(placement: .topBarTrailing) {
+                    weeklyReviewButton
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                barAddButton(shown)
+            }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            barAddButton(shown)
-        }
+    }
+
+    /// iPad, Today on another day: "Today", ‹ › and "+" leave no room for the Weekly Review in a list column narrower
+    /// than this (portrait: 325 pt; "Today ‹ ›" alone is one capsule of about 170 pt). Then the Weekly Review is not in
+    /// the bar (View › Weekly Review and Today's own day have it), and in a column narrower still, or with the largest
+    /// text sizes, "Today" is a symbol.
+    private var todayBarIsTight: Bool {
+        todayDay != nil && (listColumnWidth < 400 || typeSize.isAccessibilitySize)
+    }
+
+    private var showsPadWeeklyReview: Bool { !todayBarIsTight }
+
+    private var todayButtonIsSymbol: Bool {
+        todayDay != nil && (listColumnWidth < 330 || typeSize >= .xxxLarge)
     }
 
     @ViewBuilder
@@ -1253,18 +1294,26 @@ struct NotesView: View {
             if usesSystemBars {
                 // iPad: the day back and on as toolbar items; "Today" brings back today from another day (the phone
                 // taps the title for it).
+                // The Weekly Review is an item of its own (`pageToolbar`), the first to give way to "+".
                 if todayDay != nil {
-                    Button("Today") { withAnimation(.snappy) { todayDay = nil } }
-                        .help("Back to today")
-                        .accessibilityIdentifier("TodayBackToToday")
+                    Button { withAnimation(.snappy) { todayDay = nil } } label: {
+                        if todayButtonIsSymbol {
+                            Label("Today", systemImage: "arrow.uturn.backward.circle")
+                        } else {
+                            Text("Today")
+                        }
+                    }
+                    .help("Back to today")
+                    .accessibilityLabel("Today")
+                    .accessibilityIdentifier("TodayBackToToday")
                 }
                 previousDayButton
                 nextDayButton
             } else {
                 todayPager
+                weeklyReviewButton
+                settingsButton
             }
-            weeklyReviewButton
-            settingsButton
         case .inbox:
             if isSelecting {
                 doneSelectingButton
