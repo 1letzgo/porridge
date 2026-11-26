@@ -498,29 +498,17 @@ struct ChatView: View {
                 }
                 let sources = entry.sources
                 if !sources.isEmpty {
-                    // In a row that scrolls; with the largest text sizes one under the other, each whole.
-                    let large = typeSize.isAccessibilitySize
-                    ScrollView(large ? [] : .horizontal, showsIndicators: false) {
-                        (large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))) {
-                            ForEach(sources) { source in
-                                // Gone since (deleted, or a copy of a bowl that was left): shown, not opened.
-                                let note = notes.first { $0.id == source.noteID }
-                                Button { onOpen(source.noteID) } label: {
-                                    HStack(spacing: 6) {
-                                        // The kind of the note it comes from (`checklist` for a to-do), or a page when it is gone.
-                                        Image(systemName: note?.kindSymbol ?? "doc.text").font(.caption.weight(.bold))
-                                        Text(source.title).lineLimit(large ? 3 : 1)
-                                    }
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color.brandNavy)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .chunkyPill(fill: .brandSky)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(note == nil)
-                                .opacity(note == nil ? 0.5 : 1)
-                                .accessibilityHint(note == nil ? "The note is gone" : "Opens the note")
+                    // In a row that scrolls; with the largest text sizes one under the other, each whole, and not in
+                    // a scroll view: one without axes took no height of its own and showed the chips as a thin strip.
+                    if typeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(sources) { source in sourceChip(source, large: true) }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(sources) { source in sourceChip(source, large: false) }
                             }
                         }
                     }
@@ -529,6 +517,31 @@ struct ChatView: View {
             .padding(.vertical, 4)
             .padding(.trailing, 24)
         }
+    }
+
+    /// A source of an answer as a chip: the kind of the note and its title (cut after one line, three with the
+    /// largest text sizes). A note gone since (deleted, or a copy of a bowl that was left) is shown, not opened.
+    private func sourceChip(_ source: ChatSource, large: Bool) -> some View {
+        let note = notes.first { $0.id == source.noteID }
+        return Button { onOpen(source.noteID) } label: {
+            HStack(alignment: large ? .firstTextBaseline : .center, spacing: 6) {
+                // The kind of the note it comes from (`checklist` for a to-do), or a page when it is gone.
+                Image(systemName: note?.kindSymbol ?? "doc.text").font(.caption.weight(.bold))
+                Text(source.title)
+                    .lineLimit(large ? 3 : 1)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: large)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.brandNavy)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .chunkyPill(fill: .brandSky)
+        }
+        .buttonStyle(.plain)
+        .disabled(note == nil)
+        .opacity(note == nil ? 0.5 : 1)
+        .accessibilityHint(note == nil ? "The note is gone" : "Opens the note")
     }
 
     private var inputBar: some View {
