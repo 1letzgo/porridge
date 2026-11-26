@@ -539,9 +539,14 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
     }
 
     #if DEBUG
+    /// Silence fed after the replayed file: more than a decode interval (0.9 s) and a pause (0.6 s) of
+    /// `RollingRecognizer`, so the last piece is confirmed.
+    private static let replayTailSeconds = 2.5
+
     /// Feeds the file to the live transcript at the pace it plays.
     private func replay(_ url: URL) {
         let channels = live.feedChannels
+        let tail = Self.replayTailSeconds
         replayTask = Task.detached {
             guard let file = try? AVAudioFile(forReading: url) else {
                 print("[live] replay: cannot read \(url.path)")
@@ -562,7 +567,25 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
                 let wait = played - Date().timeIntervalSince(began)
                 if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
             }
-            print("[live] replay: done after \(Int(played)) s")
+            // Then a little silence, as a meeting goes on after the last word: the recognizers decode their last
+            // piece once more and close it at the pause (with nothing more coming, the last sentence stayed as it
+            // was decoded a second before, or not there at all, until Stop).
+            let fileSeconds = played
+            while !Task.isCancelled, played < fileSeconds + tail {
+                guard let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096) else { break }
+                silence.frameLength = 4096
+                for channel in 0..<Int(format.channelCount) {
+                    silence.floatChannelData?[channel].update(repeating: 0, count: 4096)
+                }
+                if let left = AudioRecorder.channelCopy(of: silence, channel: 0),
+                   let right = AudioRecorder.channelCopy(of: silence, channel: min(1, last)) {
+                    channels(left, right)
+                }
+                played += 4096 / format.sampleRate
+                let wait = played - Date().timeIntervalSince(began)
+                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            }
+            print("[live] replay: done after \(Int(fileSeconds)) s (and \(Int(played - fileSeconds)) s of silence)")
         }
     }
 

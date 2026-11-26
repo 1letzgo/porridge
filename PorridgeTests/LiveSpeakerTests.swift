@@ -315,6 +315,40 @@ final class LiveSpeakerTests: XCTestCase {
         XCTAssertNil(audio.level(from: 5, to: 6))
     }
 
+    /// The replayed call (`meeting-fixture-echo.wav`, microphone side): the user's last sentence (52.2–56.8 s) comes
+    /// after the echo of the others (41–51.4 s, some 15–20 dB quieter) in one open piece the recognizer starts at
+    /// 39.6. The open piece is always shown, and the echo rule judges it by the recognizer's start, never by a later one.
+    func testAnOpenPieceIsAlwaysShownAndItsEchoRuleIsNotStricter() {
+        let audio = TrackAudio()
+        audio.append(tone(39.6, level: 0))
+        audio.append(tone(0.6, level: 0.2))     // the end of the sentence before
+        audio.append(tone(0.8, level: 0))
+        audio.append(tone(10.4, level: 0.03))   // the echo of the Mac's sound
+        audio.append(tone(0.8, level: 0))
+        audio.append(tone(4.6, level: 0.25))    // the user's last sentence
+        let voiced = audio.voicedStart(from: 39.6, to: 56.8)
+        XCTAssertNotNil(voiced)
+        let shown = LiveEcho.shownStart(recognizerStart: 39.6, end: 56.8, voiced: voiced)
+        XCTAssertGreaterThanOrEqual(shown, 39.6)
+        XCTAssertLessThanOrEqual(shown, 56.8)
+        // Moved to the voice of the last sentence (nothing measured before it, the levels are only now there).
+        let late = LiveEcho.shownStart(recognizerStart: 51.9, end: 56.8, voiced: audio.voicedStart(from: 51.9, to: 56.8))
+        XCTAssertEqual(late, 52.2, accuracy: 0.15)
+        // Nothing measured, all silence, or a start after its end: the recognizer's start, still shown.
+        XCTAssertNil(audio.voicedStart(from: 70, to: 72))
+        XCTAssertNil(audio.voicedStart(from: 51.5, to: 51.9))
+        XCTAssertEqual(LiveEcho.shownStart(recognizerStart: 39.6, end: 56.8, voiced: nil), 39.6)
+        XCTAssertEqual(LiveEcho.shownStart(recognizerStart: 39.6, end: 56.8, voiced: 60), 39.6)
+        XCTAssertEqual(LiveEcho.shownStart(recognizerStart: 39.6, end: 56.8, voiced: .nan), 39.6)
+        // The Mac's open piece runs on to 57: at the shown start the user's sentence lies "inside" it, at the
+        // recognizer's it does not, so a single word of it does not hide the user's sentence.
+        XCTAssertTrue(LiveEcho.isInside(start: late, end: 56.8, systemStart: 47.4, systemEnd: 57))
+        let judged = LiveEcho.judgedStart(shownStart: late, recognizerStart: 39.6)
+        XCTAssertEqual(judged, 39.6)
+        XCTAssertFalse(LiveEcho.isInside(start: judged, end: 56.8, systemStart: 47.4, systemEnd: 57))
+        XCTAssertEqual(LiveEcho.judgedStart(shownStart: 52.2, recognizerStart: nil), 52.2)
+    }
+
     // MARK: Keeping the live transcript
 
     @MainActor

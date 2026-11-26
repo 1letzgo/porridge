@@ -265,12 +265,15 @@ final class LiveTranscriber {
         let track = tracks[index]
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // A recognizer's open piece starts where its last confirmed one ended, with the silence since then: it
-        // starts where the voice does, or it is sorted before the others' utterances of that silence.
-        let start = isFinal ? start : (track.audio.voicedStart(from: start, to: end) ?? start)
+        // starts where the voice does, or it is sorted before the others' utterances of that silence. Its span as
+        // the recognizer gave it is kept for the echo rule (`isEcho`).
+        let recognizerStart = start
+        let start = isFinal ? start : LiveEcho.shownStart(recognizerStart: start, end: end, voiced: track.audio.voicedStart(from: start, to: end))
         // The open piece's id goes on to its confirmed text, so its bubble stays where it is.
         let id = track.pending?.id ?? UUID()
         if isFinal {
             track.pending = nil
+            track.pendingRecognizerStart = nil
             if !text.isEmpty {
                 let utterance = LiveUtterance(id: id, track: index, speakerID: track.fixedID, text: text, isFinal: true, start: start, end: end)
                 track.finals.append(utterance)
@@ -279,6 +282,7 @@ final class LiveTranscriber {
         } else {
             track.pending = text.isEmpty ? nil
                 : LiveUtterance(id: id, track: index, speakerID: track.fixedID, text: text, isFinal: false, start: start, end: end)
+            track.pendingRecognizerStart = text.isEmpty ? nil : recognizerStart
         }
         rebuild()
     }
@@ -311,6 +315,12 @@ final class LiveTranscriber {
     /// add text around it, then kept.
     private func isEcho(_ utterance: LiveUtterance) -> Bool {
         if let known = echoes[utterance.id] { return known }
+        // An open piece is judged by the span its recognizer gave, as before its start was moved to the voice: with
+        // the later start it could lie "inside" one of the Mac's utterances and a single word would make it an echo.
+        var utterance = utterance
+        if !utterance.isFinal, tracks[0].pending?.id == utterance.id {
+            utterance.start = LiveEcho.judgedStart(shownStart: utterance.start, recognizerStart: tracks[0].pendingRecognizerStart)
+        }
         let system = tracks[1]
         var others = system.finals
         if let pending = system.pending { others.append(pending) }
@@ -393,6 +403,8 @@ private final class Track {
     let audio = TrackAudio()
     var finals: [LiveUtterance] = []
     var pending: LiveUtterance?
+    /// Where the recognizer said the open piece starts (`pending.start` is where the voice does).
+    var pendingRecognizerStart: Double?
     var rolling: RollingRecognizer?
     var apple: AnyObject?
 
@@ -569,4 +581,18 @@ enum LiveEcho {
 
     /// The Mac's sound reaches the microphone a little later: its level is also taken this much earlier.
     static let delay = 0.2
+
+    /// Where an open piece is shown to start: where the voice does (`voiced`, `TrackAudio.voicedStart`) when that
+    /// lies within the piece, else where its recognizer said. Never nil and never after its end, so the piece is
+    /// always shown.
+    static func shownStart(recognizerStart: Double, end: Double, voiced: Double?) -> Double {
+        guard let voiced, voiced.isFinite, voiced >= recognizerStart, voiced <= max(recognizerStart, end) else { return recognizerStart }
+        return voiced
+    }
+
+    /// The start the echo rule judges an open microphone piece by: the recognizer's (the earlier one), so moving
+    /// the shown start to the voice never makes the rule stricter for it.
+    static func judgedStart(shownStart: Double, recognizerStart: Double?) -> Double {
+        min(shownStart, recognizerStart ?? shownStart)
+    }
 }
