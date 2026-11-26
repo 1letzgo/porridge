@@ -25,8 +25,10 @@ final class RecordingJournal: @unchecked Sendable {
 
     private static let sampleRate = 16_000.0
     private static let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: sampleRate, channels: 1, interleaved: true)!
+    /// In the data's own folder (`DataLocation`): a test run (`PORRIDGE_TEST_DATA`) keeps its copies in the test
+    /// folder, so a test recording is never recovered into the real notes, nor a real one into the test data.
     private static let folder: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let base = DataLocation.applicationSupport
         var dir = base.appendingPathComponent("Porridge/RecordingJournal", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var values = URLResourceValues()
