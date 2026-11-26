@@ -389,6 +389,8 @@ struct ChromeBar<Actions: View>: View {
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 30
     @ScaledMetric(relativeTo: .body) private var squareSize: CGFloat = 34
     @Environment(\.dynamicTypeSize) private var typeSize
+    /// iPad with the sidebar hidden: a pill at the front brings it back.
+    @Environment(\.showSidebar) private var showSidebar
 
     /// The pills take the screen's color too; the sky screens keep the accent color for contrast.
     private var buttonTint: Color? { tint == .brandSky ? nil : tint.readable }
@@ -400,6 +402,7 @@ struct ChromeBar<Actions: View>: View {
                 // take two lines, so neither is cut to "Meeti…" or shrinks the pills.
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
+                        sidebarButton
                         backButton
                         Spacer(minLength: 8)
                         pills
@@ -408,6 +411,7 @@ struct ChromeBar<Actions: View>: View {
                 }
             } else {
                 HStack(alignment: .center, spacing: 10) {
+                    sidebarButton
                     backButton
                     titleView(lineLimit: 1)
                     Spacer(minLength: 8)
@@ -417,6 +421,22 @@ struct ChromeBar<Actions: View>: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
+    }
+
+    @ViewBuilder
+    private var sidebarButton: some View {
+        if let showSidebar {
+            Button(action: showSidebar) {
+                Label("Show Sidebar", systemImage: "sidebar.left")
+                    .labelStyle(.iconOnly)
+                    .font(.body.weight(.medium))
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                    .foregroundStyle(buttonTint ?? .accentColor)
+            }
+            .buttonStyle(ChromePillButtonStyle(tint: buttonTint))
+            .help("Show Sidebar")
+            .accessibilityIdentifier("ShowSidebar")
+        }
     }
 
     @ViewBuilder

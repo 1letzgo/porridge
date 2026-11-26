@@ -238,6 +238,7 @@
 		702C359F31F72816F9A66A99 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF941D555D2BB61CC2812CAA /* AudioRecorder.swift */; };
 		71D9104DEEEF73F05889C528 /* ChatViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06256EB296D7E31830725EB4 /* ChatViewController.swift */; };
 		7253E6C995F961122D9D92FC /* SidebarViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4556139F4733006CF1FBEE11 /* SidebarViewController.swift */; };
+		73283E2D1D1719A0FF5F7E10 /* PadSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17714697162DCB024DD1F5D7 /* PadSidebar.swift */; };
 		73BE952D183D51BDA275CA13 /* TaskDetectionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 968E269B396F7489301488C0 /* TaskDetectionBar.swift */; };
 		744688299BB907A3650D324D /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBD2AC97D80DA996092A5A73 /* WidgetData.swift */; };
 		761B2625442DD5A3B5039979 /* NoteWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75133650D3341878711A7DE0 /* NoteWindowController.swift */; };
@@ -622,6 +623,7 @@
 		14FED8C06993DE82444EF29D /* NoteMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteMarkdown.swift; sourceTree = "<group>"; };
 		1663F34D2531BEB766F25FFB /* AICaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICaptureTests.swift; sourceTree = "<group>"; };
 		16DE4E413BE5BF9AB81A046E /* ChatActionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatActionViews.swift; sourceTree = "<group>"; };
+		17714697162DCB024DD1F5D7 /* PadSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadSidebar.swift; sourceTree = "<group>"; };
 		180028AB41CE995AB41CE3F8 /* BowlShareViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlShareViews.swift; sourceTree = "<group>"; };
 		1871870FC6707C39D01FE52E /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
 		18E02FDC85B30CF580A0C780 /* NoteTemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTemplatesView.swift; sourceTree = "<group>"; };
@@ -1062,6 +1064,7 @@
 				DA9CB6F2CFBA99AC4480C004 /* BowlsPlace.swift */,
 				5DEF86778268782DD30AAAF0 /* InboxActions.swift */,
 				E31E818A6F32B24E2825C13E /* InboxPlace.swift */,
+				17714697162DCB024DD1F5D7 /* PadSidebar.swift */,
 				A77652CA7E1DB76E348FCBF5 /* PlaceTabBar.swift */,
 				51E6BB4517E4FE6449D7F24C /* TabBarAddButton.swift */,
 				9A2B39AD7D4CD6FFEC62C42D /* TriageView.swift */,
@@ -2022,6 +2025,7 @@
 				179CF1D750C84E09B9978330 /* OpusOggDecoder.swift in Sources */,
 				0AEDFE9766914D54A7AFB73A /* PDFPageEditor.swift in Sources */,
 				F7FE4EF71ABE9BD19E9954CC /* PDFTextLayer.swift in Sources */,
+				73283E2D1D1719A0FF5F7E10 /* PadSidebar.swift in Sources */,
 				96EE3621CBC49AA8BFF6B318 /* Paragraphs.swift in Sources */,
 				E0E0388BAE141780DD09FD86 /* PlaceTabBar.swift in Sources */,
 				8595D00FE8DD1E7469896BD2 /* PlaudAPI.swift in Sources */,

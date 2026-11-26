@@ -2,10 +2,13 @@ import SwiftData
 import SwiftUI
 import UserNotifications
 
-/// The app's root on iPhone and iPad: the three places Today · Inbox · Bowls and the search. On a phone each place is
-/// a tab with its own stack (an entry opens on top of it); on an iPad the places share one stack in the sidebar of a
-/// split view, the Bowls place at its root with the other places on top of it. Holds what every place shares: the
-/// Add sheet and what it starts, quick actions, links and the dialogs about bowls and smart filters.
+/// The app's root on iPhone and iPad: the three places Today · Inbox · Bowls and the search. On a phone (and an iPad
+/// window of compact width) each place is a tab with its own stack (an entry opens on top of it). On an iPad of
+/// regular width a split view: the sidebar lists the places, the pinned and all bowls and the smart filters
+/// (`PadSidebar`); right of it the place's own stack with the same pages as on the phone, and, where the width allows
+/// and the page lists entries, the open entry in a column beside the list (else it is pushed onto the stack, as on a
+/// phone). Holds what every place shares: the Add sheet and what it starts, quick actions, links and the dialogs about
+/// bowls and smart filters.
 struct NotesView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
@@ -25,8 +28,11 @@ struct NotesView: View {
     @State private var paths: [Place: [ListRoute]] = [:]
     /// A new note that is not saved yet; it is stored when it gets its first content.
     @State private var draft: Note?
-    /// Which column is shown on a narrow screen. Set from code so a new note opens reliably.
-    @State private var column = NavigationSplitViewColumn.sidebar
+    /// iPad: whether the sidebar with the places shows (its pill in the sidebar's head hides it, the pill at the
+    /// front of the page's bar brings it back).
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
+    /// iPad: the width right of the sidebar. Wide enough, an entry opens in a column beside the list.
+    @State private var padWidth: CGFloat = 0
     @State private var search = ""
     /// Tags picked in the search field; a note must have all of them.
     @State private var tagTokens: [TagToken] = []
@@ -102,8 +108,8 @@ struct NotesView: View {
         return notes.first { $0.id == selection } ?? (draft?.id == selection ? draft : nil)
     }
 
-    /// The stack that is in front: the tab's on a phone, the sidebar's (the Bowls place) on an iPad.
-    private var activePlace: Place { sizeClass == .compact ? place : .bowls }
+    /// The stack that is in front: the tab's on a phone, the place chosen in the sidebar on an iPad.
+    private var activePlace: Place { place }
 
     private var currentPath: [ListRoute] { paths[activePlace] ?? [] }
 
@@ -114,15 +120,108 @@ struct NotesView: View {
         Binding(get: { paths[place] ?? [] }, set: { paths[place] = $0 })
     }
 
+    /// iPad, regular width: the sidebar with the places, bowls and smart filters (as the Mac's main window), and right
+    /// of it the place's stack (`padContent`). Two columns of the system's split view, not three: the third column
+    /// (the entry beside the list) is laid out here, so it shows only where it fits and the page lists entries; in a
+    /// narrower window (portrait) the entry is pushed onto the place's stack instead, with the back pill.
     private var splitView: some View {
-        NavigationSplitView(preferredCompactColumn: $column) {
-            placeStack(.bowls)
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            PadSidebar(
+                notes: notes, projects: projects, order: bowlOrder,
+                selection: Binding(get: { sidebarItem }, set: { if let item = $0 { chooseSidebar(item) } }),
+                onSettings: { go(.settings) },
+                onHide: { withAnimation(.snappy) { columnVisibility = .detailOnly } }
+            )
+            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+            .toolbar(removing: .sidebarToggle)
+            .toolbar(.hidden, for: .navigationBar)
         } detail: {
-            if let note = selectedNote {
-                noteView(note, onBack: nil)
-            } else {
-                EmptyStateView(title: "No Entry Selected", message: "Pick an entry from the list.", systemImage: "note.text")
+            padContent
+                .toolbar(.hidden, for: .navigationBar)
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    /// Right of the sidebar: the stack of the place in front, and beside it the open entry when there is room.
+    private var padContent: some View {
+        let beside = entriesBeside
+        return HStack(spacing: 0) {
+            placeStack(place)
+                // One stack per place, as the phone's tabs: its pages come back from `paths` when the place does.
+                .id(place)
+                .frame(width: beside ? padListWidth : nil)
+                .frame(maxWidth: beside ? nil : .infinity)
+                // The sidebar is hidden: a pill at the front of the page's bar brings it back.
+                .environment(\.showSidebar, columnVisibility == .detailOnly
+                    ? { withAnimation(.snappy) { columnVisibility = .all } } : nil)
+            if beside {
+                Rectangle().fill(Look.hairline).frame(width: 0.5).ignoresSafeArea()
+                Group {
+                    if let note = selectedNote {
+                        noteView(note, onBack: nil)
+                    } else {
+                        EmptyStateView(title: "No Entry Selected", message: "Pick an entry from the list.", systemImage: "note.text")
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.appBackground)
             }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { padWidth = $0 }
+    }
+
+    /// iPad: the list's width when the entry stands beside it.
+    private var padListWidth: CGFloat { min(400, max(370, (padWidth * 0.38).rounded())) }
+
+    /// iPad: the entry opens beside the list: the width leaves the entry at least 480 pt, and the page lists entries
+    /// (Chat, Weekly Review and Settings take the whole width instead).
+    private var entriesBeside: Bool {
+        sizeClass != .compact && padWidth >= padListWidth + 480 && !usesWholeWidth(page)
+    }
+
+    /// The open entry is a page of the stack (phone, or an iPad page without room beside it); else it has its column.
+    private var entriesOnStack: Bool { sizeClass == .compact || !entriesBeside }
+
+    /// iPad: pages without a list of entries that need the room: the whole width right of the sidebar, their content
+    /// at a readable width in the middle.
+    private func usesWholeWidth(_ shown: ListPage) -> Bool {
+        switch shown {
+        case .weeklyReview, .settings, .voices, .acknowledgements, .chat: true
+        case .search: searchSide == .chat
+        default: false
+        }
+    }
+
+    /// What decides on an iPad where the open entry stands.
+    private var padLayout: PadLayout {
+        PadLayout(page: page, wholeWidth: usesWholeWidth(page), beside: entriesBeside)
+    }
+
+    /// The row of the sidebar that belongs to what is in front: a bowl or smart filter on top of the Bowls stack, else
+    /// the place.
+    private var sidebarItem: SidebarItem? {
+        if place == .bowls, let top = currentPath.compactMap(\.page).last {
+            switch top {
+            case .project(let id): return .bowl(id)
+            case .smartFilter(let id): return .smartFilter(id)
+            default: break
+            }
+        }
+        return .place(place)
+    }
+
+    /// A row of the sidebar: a place as a tab of the phone (the one in front goes back to its start); a bowl or smart
+    /// filter opens on the Bowls stack with Bowls below it, so the back pill leads there.
+    private func chooseSidebar(_ item: SidebarItem) {
+        switch item {
+        case .place(let chosen):
+            chooseTab(chosen)
+        case .bowl(let id):
+            paths[.bowls] = [.page(.project(id))]
+            place = .bowls
+        case .smartFilter(let id):
+            paths[.bowls] = [.page(.smartFilter(id))]
+            place = .bowls
         }
     }
 
@@ -229,17 +328,19 @@ struct NotesView: View {
             .environment(\.allNotes, notes)
     }
 
-    /// The open note is on the stack only on a phone; elsewhere it has the detail column.
+    /// The open note is on the stack on a phone and where an iPad has no room beside the list; elsewhere it has the
+    /// column beside the list.
     private func syncNoteRoute() {
         var routes = currentPath.filter(\.isPage)
-        if sizeClass == .compact, let selection { routes.append(.note(selection)) }
+        if entriesOnStack, let selection { routes.append(.note(selection)) }
         if routes != currentPath { paths[activePlace] = routes }
     }
 
-    /// Goes to a page: a place's own page brings its tab to the front at its start; the chat is the Search tab on its
-    /// Chat side; any other page is pushed onto the stack it belongs to (a bowl, a smart filter, Archive, Recently
-    /// Deleted and Settings onto Bowls; the Weekly Review onto Today; Settings onto Today when Today is in front, from
-    /// its gear), or the stack is taken back to it when it is on it already.
+    /// Goes to a page: a place's own page brings its tab (on an iPad its row of the sidebar) to the front at its start;
+    /// the chat is the Search place on its Chat side; any other page is pushed onto the stack it belongs to (a bowl, a
+    /// smart filter, Archive, Recently Deleted and Settings onto Bowls; the Weekly Review onto Today; Settings onto
+    /// Today when Today is in front, from its gear, and on an iPad onto the place in front, from the sidebar's gear),
+    /// or the stack is taken back to it when it is on it already.
     private func go(_ target: ListPage) {
         // Search and Chat are the two sides of one place.
         var target = target
@@ -252,18 +353,13 @@ struct NotesView: View {
         default:
             break
         }
-        if sizeClass != .compact {
-            // iPad: one stack in the sidebar with the Bowls place at its root.
-            push(target, on: .bowls)
-            return
-        }
         if let root = Place(root: target) {
             place = root
             paths[root] = []
             return
         }
         let owner = currentPath.contains(.page(target)) ? place
-            : target.isSettings && place == .today ? .today : target.place
+            : target.isSettings && (place == .today || sizeClass != .compact) ? place : target.place
         place = owner
         push(target, on: owner)
     }
@@ -296,10 +392,20 @@ struct NotesView: View {
         .onChange(of: sizeClass) { syncNoteRoute() }
         .onChange(of: currentPath) {
             // Swiped back from the note.
-            if sizeClass == .compact, selection != nil, currentPath.last?.isPage != false { selection = nil }
+            if entriesOnStack, selection != nil, currentPath.last?.isPage != false { selection = nil }
+        }
+        .onChange(of: padLayout) { old, new in
+            guard sizeClass != .compact else { return }
+            // iPad: the entry beside the list belonged to the page that was left (or that now takes the whole
+            // width); a page on its own does not show another page's entry.
+            if old.beside, old.page != new.page || new.wholeWidth, let selection, !currentPath.contains(.note(selection)) {
+                self.selection = nil
+            }
+            // The room changed (turned, the sidebar shown or hidden): the open entry moves beside the list or onto
+            // the stack.
+            syncNoteRoute()
         }
         .onChange(of: place) { old, new in
-            guard sizeClass == .compact else { return }
             // A new note left empty in the tab that was left goes with it.
             if let draft, draft.modelContext == nil, paths[old]?.last == .note(draft.id) { paths[old]?.removeLast() }
             // The tab in front says which note is open: the one on top of its stack, if any.
@@ -310,14 +416,6 @@ struct NotesView: View {
     var body: some View {
         smartFilterDialogs(bowlDialogs(columns))
         .onChange(of: page) { old, new in
-            // iPad: the search page was left, what was asked is forgotten. On a phone the Search tab keeps its query
-            // like every tab keeps its place (a field left with text while it was off screen showed it again anyway).
-            if old == .search, new != .search, sizeClass != .compact {
-                search = ""
-                tagTokens = []
-                searchKind = nil
-                searchScope = .everywhere
-            }
             // Another page: what was chosen there is let go, and so is the Add sheet's last "Into:".
             isSelecting = false
             chosen = []
@@ -562,14 +660,19 @@ struct NotesView: View {
                 titleHint: String(localized: "Back to today")
             ) {
                 listActions(shown)
+                barAddButton(shown)
             }
             .padding(.bottom, Look.headerGap)
 
             // The room of empty views: from here (the head's lower edge) to the tab bar, bars or not.
             pageContent(shown)
                 .emptyStateArea()
+                // iPad: a page that takes the whole width keeps its content at a readable width in the middle.
+                .frame(maxWidth: sizeClass != .compact && usesWholeWidth(shown) ? Self.readableWidth : .infinity)
+                .frame(maxWidth: .infinity)
         }
         .background(Color.appBackground)
+
         .keepsTabBarRoom()
         .navigationTitle(listTitle(shown))
         // Own bar (ChromeBar) instead of the system one: title on the left as in Things, plain icons on the right.
@@ -660,7 +763,7 @@ struct NotesView: View {
 
     private var bowlsList: some View {
         BowlsPlace(
-            notes: notes, projects: projects, order: bowlOrder, showsPlaces: sizeClass != .compact,
+            notes: notes, projects: projects, order: bowlOrder,
             onOpen: { go($0) },
             onNewBowl: { showNewProject = true },
             onRename: { project in
@@ -990,11 +1093,13 @@ struct NotesView: View {
     private func openNote(_ id: UUID) {
         Task {
             selection = id
-            column = .detail
         }
     }
 
     // MARK: - The bar
+
+    /// iPad: the widest a page that takes the whole width lets its content grow (Chat, Weekly Review, Settings).
+    private static let readableWidth: CGFloat = 760
 
     /// The actions of the one-row bar of each page (iOS), "+" last: what does not fit the row is the first row of
     /// the content (the Bowls tab's Bowls · To-dos, a bowl's sharing line) or in a menu (a bowl's ⋯).
@@ -1008,7 +1113,6 @@ struct NotesView: View {
             todayPager
             weeklyReviewButton
             settingsButton
-            barAddButton
         case .inbox:
             if isSelecting {
                 doneSelectingButton
@@ -1027,7 +1131,6 @@ struct NotesView: View {
                 }
                 .help("Select")
                 .disabled(isEmpty)
-                barAddButton
             }
         case .bowls:
             // Recently Deleted on both sides (owner revision 10); Sort applies to the bowls; on To-dos a new to-do at
@@ -1044,7 +1147,6 @@ struct NotesView: View {
                 .help("New To-do")
                 .accessibilityIdentifier("TodosAdd")
             }
-            barAddButton
         case .project:
             if isSelecting {
                 doneSelectingButton
@@ -1069,7 +1171,6 @@ struct NotesView: View {
                 .accessibilityLabel("Bowl")
                 .accessibilityIdentifier("BowlMenu")
                 .help("Bowl")
-                barAddButton
             }
         case .trash:
             deleteAllButton
@@ -1143,10 +1244,12 @@ struct NotesView: View {
         }
     }
 
-    /// "+" in the bar where there is no tab bar (iPad: the sidebar's stack); on a phone "+" is the middle of the tab bar.
+    /// "+" where there is no tab bar (iPad): the last pill of every page's bar, so it is always at the same place, at
+    /// the right of the head of the column with the list (never in the entry's column); while choosing several, Done
+    /// takes its place. On a phone "+" is the middle of the tab bar.
     @ViewBuilder
-    private var barAddButton: some View {
-        if sizeClass != .compact {
+    private func barAddButton(_ shown: ListPage) -> some View {
+        if sizeClass != .compact, !(isSelecting && (shown == .inbox || shown.isProject)) {
             Button { tapAdd() } label: {
                 Label("Add", systemImage: "plus")
                     .fontWeight(.semibold)
@@ -1195,13 +1298,16 @@ struct NotesView: View {
         .accessibilityIdentifier("TodayWeeklyReview")
     }
 
-    /// The gear: Settings (Today and Bowls).
+    /// The gear: Settings (Today and Bowls). On an iPad the sidebar has it.
+    @ViewBuilder
     private var settingsButton: some View {
-        Button { go(.settings) } label: {
-            Label("Settings", systemImage: "gearshape")
+        if sizeClass == .compact {
+            Button { go(.settings) } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .help("Settings")
+            .accessibilityIdentifier("PlaceSettings")
         }
-        .help("Settings")
-        .accessibilityIdentifier("PlaceSettings")
     }
 
     private var doneSelectingButton: some View {
@@ -1336,15 +1442,14 @@ struct NotesView: View {
         }
     }
 
-    /// The back pill of the bar: on every page above the place's own (on an iPad above the Bowls place).
+    /// The back pill of the bar: on every page above the place's own.
     /// On the Chat side an open conversation and All Chats have one too: back to All Chats when the conversation was
     /// opened from it, else to the chat's start.
     private func barBack(_ shown: ListPage) -> (() -> Void)? {
         if shown == .search || shown == .chat, searchSide == .chat, chatNavigation.openID != nil || chatNavigation.showsList {
             return { withAnimation(.snappy) { chatNavigation.back() } }
         }
-        let isRoot = sizeClass == .compact ? Place(root: shown) != nil : shown == .bowls
-        guard !isRoot else { return nil }
+        guard Place(root: shown) == nil else { return nil }
         return { if !currentPath.isEmpty { paths[activePlace]?.removeLast() } }
     }
 
@@ -1390,7 +1495,6 @@ struct NotesView: View {
             try? context.save()
         }
         selection = note.id
-        column = .detail
     }
 
     /// An imported recording opens, as a new one does; in a project it goes into it.
@@ -1402,7 +1506,6 @@ struct NotesView: View {
                 try? context.save()
             }
             selection = note.id
-            column = .detail
         } catch {
             audioImportError = error.localizedDescription
         }
@@ -1416,7 +1519,6 @@ struct NotesView: View {
     private func addFiles(_ urls: [URL]) {
         guard let note = ShareImport.add(files: urls, project: projectForNew, context: context, processing: processing) else { return }
         selection = note.id
-        column = .detail
     }
 
     /// The bowl new things go into: the Add sheet's "Into:", else the one that is open (not one shared with me to
@@ -1437,7 +1539,6 @@ struct NotesView: View {
         }
         draft = note
         selection = note.id
-        column = .detail
     }
 
     /// A new note for an appointment: named after it, linked to it and in its bowl (else the one open).
@@ -1451,14 +1552,12 @@ struct NotesView: View {
         AppointmentLinks.shared.link(note, to: appointment, in: nil)
         draft = note
         selection = note.id
-        column = .detail
     }
 
     /// A note or to-do made from a template, opened at once. Into the template's bowl, else the bowl chosen.
     private func addFromTemplate(_ template: NoteTemplate, title: String) {
         let note = NoteTemplates.create(from: template, title: title, fallbackBowl: projectForNew, in: context)
         selection = note.id
-        column = .detail
     }
 
     /// Opens the entry an entry link asked for, when this device has it. On a cold start the link comes before the
@@ -1468,7 +1567,6 @@ struct NotesView: View {
         _ = EntryLinkRouter.take()
         // Straight away, not in a later task: the tab's stack takes the entry in the same update.
         selection = id
-        column = .detail
     }
 
     private func runQuickAction() {
@@ -1571,7 +1669,6 @@ struct NotesView: View {
         try? context.save()
         draft = nil
         selection = note.id
-        column = .detail
         processing.enqueue(.transcript(note.id))
     }
 
@@ -1593,7 +1690,6 @@ struct NotesView: View {
     /// Closes the open note (after it was deleted or recovered).
     private func close(_ note: Note) {
         selection = nil
-        column = .sidebar
     }
 
     /// Notes left empty by earlier versions (no title, text or recording) are not worth keeping.
@@ -1782,6 +1878,21 @@ extension View {
     }
 }
 
+/// A row of the iPad's sidebar (`PadSidebar`).
+enum SidebarItem: Hashable {
+    case place(Place)
+    case bowl(UUID)
+    case smartFilter(UUID)
+}
+
+/// What decides on an iPad where the open entry stands: the page in front, whether it takes the whole width, and
+/// whether the entry has a column beside the list.
+struct PadLayout: Equatable {
+    let page: ListPage
+    let wholeWidth: Bool
+    let beside: Bool
+}
+
 /// A page on the stack.
 enum ListRoute: Hashable {
     case page(ListPage)
@@ -1876,6 +1987,10 @@ enum ListPage: Hashable {
         }
     }
 
+    var isProject: Bool {
+        if case .project = self { true } else { false }
+    }
+
     var isSettings: Bool {
         switch self {
         case .settings, .voices, .acknowledgements: true
@@ -1894,6 +2009,8 @@ extension EnvironmentValues {
     @Entry var openNote: (UUID) -> Void = { _ in }
     /// ✦ AI › Ask About This Bowl: the chat about a bowl (`Projects.key`), the last one about it taken up again.
     @Entry var askAboutBowl: (String) -> Void = { _ in }
+    /// iPad: brings back the hidden sidebar; the bar (`ChromeBar`) shows a pill for it at its front. Nil: no pill.
+    @Entry var showSidebar: (() -> Void)?
     /// Every note of the list, for views that look up others (the to-dos made from a summary).
     @Entry var allNotes: [Note] = []
     /// The list shows only open to-dos (Today): a to-do ticked done leaves it, so the tick offers Undo.

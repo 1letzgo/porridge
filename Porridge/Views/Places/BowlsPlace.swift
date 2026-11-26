@@ -3,14 +3,11 @@ import SwiftUI
 
 /// Bowls, the third place, on the Bowls side of its switch (Bowls · To-dos, `BowlsSide`): every bowl (pinned first,
 /// then "All Bowls" in the order of Sort Bowls By, no limit), then the smart filters with "New Smart Filter…", always
-/// there, and last the section Archive with its one row (owner revision 10), which opens the archived bowls. On an
-/// iPad (the sidebar has no tab bar) the other places come first.
+/// there, and last the section Archive with its one row (owner revision 10), which opens the archived bowls.
 struct BowlsPlace: View {
     let notes: [Note]
     let projects: [NoteFolder]
     let order: HomeList.BowlOrder
-    /// The other places as the first section (iPad).
-    var showsPlaces = false
     var onOpen: (ListPage) -> Void
     var onNewBowl: () -> Void
     var onRename: (NoteFolder) -> Void
@@ -30,17 +27,6 @@ struct BowlsPlace: View {
         let contents = ProjectContent.byProject(notes, appointments: AppointmentLinks.shared.appointmentCounts())
         let filters = SmartFilterStore.shared.filters
         List {
-            if showsPlaces {
-                Section {
-                    PlaceLinkRow(title: String(localized: "Today"), systemImage: "calendar", tint: .brandNavy, count: Places.todayCount(notes)) { onOpen(.today) }
-                    PlaceLinkRow(title: String(localized: "Inbox"), systemImage: "tray.fill", tint: .brandSky, count: Places.inboxCount(notes)) { onOpen(.inbox) }
-                    PlaceLinkRow(title: String(localized: "Chat"), systemImage: "bubble.left.and.bubble.right.fill", tint: .brandNavy) { onOpen(.chat) }
-                    PlaceLinkRow(title: String(localized: "Search"), systemImage: "magnifyingglass", tint: .brandNavy) { onOpen(.search) }
-                        .lastInSection(true)
-                } header: {
-                    ListHeader(title: String(localized: "Places"), tint: .brandNavy, isFirst: true)
-                }
-            }
             if bowls.isEmpty {
                 Section {
                     VStack(alignment: .leading, spacing: 10) {
@@ -61,14 +47,14 @@ struct BowlsPlace: View {
                     .cardListRow()
                     .lastInSection(true)
                 } header: {
-                    ListHeader(title: String(localized: "All Bowls"), tint: .brandProject, isFirst: !showsPlaces)
+                    ListHeader(title: String(localized: "All Bowls"), tint: .brandProject, isFirst: true)
                 }
             }
             if !pinned.isEmpty {
                 CardSection {
                     rows(pinned, contents: contents)
                 } header: {
-                    ListHeader(title: String(localized: "Pinned"), tint: .brandProject, isFirst: !showsPlaces)
+                    ListHeader(title: String(localized: "Pinned"), tint: .brandProject, isFirst: true)
                 }
             }
             if !others.isEmpty {
@@ -76,7 +62,7 @@ struct BowlsPlace: View {
                     rows(others, contents: contents)
                 } header: {
                     ListHeader(
-                        title: String(localized: "All Bowls"), tint: .brandProject, isFirst: pinned.isEmpty && !showsPlaces,
+                        title: String(localized: "All Bowls"), tint: .brandProject, isFirst: pinned.isEmpty,
                         detail: String(localized: "by \(order.title)")
                     )
                 }
@@ -175,7 +161,7 @@ struct OpenTodosList: View {
     }
 }
 
-/// A fixed row that leads somewhere (the places on an iPad, New Smart Filter…): a
+/// A fixed row that leads somewhere (Archive, New Smart Filter…): a
 /// symbol in its color, the name, a line about what is there and how many.
 struct PlaceLinkRow: View {
     let title: String
