@@ -322,6 +322,11 @@ struct SharedBowlInfo: Codable, Equatable {
     /// of the bowl here becomes an entry of my own (`SharedBowlEnding.mustFork`). Nil in the state of earlier
     /// versions: filled from the copies in the bowl and the zone's notes (`BowlSharing.scan`).
     var copiedNotes: Set<String>?
+    /// Entries of the bowl deleted for good here while the zone did not have them in Recently Deleted yet: the
+    /// trashed version of each (by id), sent before its record is deleted (`SharedBowlEnding.trashedVersion`), so
+    /// everyone else reads the deletion as one and not as a move out of the bowl. Nil when there are none (and in the
+    /// state of earlier versions).
+    var deletedNotes: [String: SharedNotePayload]?
 
     init(bowlID: UUID, role: SharedBowlRole, zoneOwnerName: String, name: String = "") {
         self.bowlID = bowlID
@@ -495,11 +500,26 @@ enum SharedBowlPlanner {
             referenced.formUnion(files)
             for file in files { result.fileOwners[file] = id }
             guard isSendable(note), info.pendingRemovals[id] == nil else { continue }
+            // In Recently Deleted and not in the zone: someone deleted it for good (it stays here in Recently
+            // Deleted, `SharedBowlEnding.removal`), or it was deleted before the bowl was shared. Never sent again
+            // from there; restored, it is sent like a new entry.
+            guard !SharedBowlEnding.staysOutOfTheZone(isTrashed: note.deletedAt != nil, zoneHasIt: info.noteHashes[id] != nil) else { continue }
             if SharedNotePayload(note).fingerprint != info.noteHashes[id], !saves.contains(note.id) { saves.append(note.id) }
             wanted.formUnion(files)
         }
+        // Gone from the bowl here: its record goes. One deleted for good here before the zone had it in Recently
+        // Deleted first sends that trashed version, and goes once the zone has it (`SharedBowlEnding.trashedVersion`).
+        var deletes: [UUID] = []
+        for id in info.noteHashes.keys.filter({ !present.contains($0) }).sorted() {
+            guard let uuid = UUID(uuidString: id) else { continue }
+            if let trashed = info.deletedNotes?[id], trashed.fingerprint != info.noteHashes[id] {
+                if !saves.contains(uuid) { saves.append(uuid) }
+            } else {
+                deletes.append(uuid)
+            }
+        }
         result.noteSaves = saves
-        result.noteDeletes = info.noteHashes.keys.filter { !present.contains($0) }.compactMap(UUID.init(uuidString:)).sorted { $0.uuidString < $1.uuidString }
+        result.noteDeletes = deletes
         for name in wanted.subtracting(info.fileNames).sorted() {
             if isReadable(name) { result.fileSaves.append(name) } else { result.filesToDownload.append(name) }
         }
@@ -565,6 +585,9 @@ enum SharedBowlMerge {
         case moveToInbox
         /// A copy taken from the zone goes, with its files where no other entry points at them.
         case deleteCopy
+        /// Deleted for good by someone else while it was in Recently Deleted: it stays there (and in the bowl), is
+        /// deleted for good after the usual days (`NoteStore.purgeExpired`), and is not sent again unless restored.
+        case keepInTrash
     }
 
     // What happens to the entries when the zone drops one or the share ends, and to a copy taken out of the bowl

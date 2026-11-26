@@ -307,6 +307,7 @@
 		94CAC0B3AB374DEE2947117C /* AppointmentLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BA3F6B2C0B65A3385DE7C4F /* AppointmentLinks.swift */; };
 		94E6AB7936FAC09907A7A595 /* EntryLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A192BB472C152BD07A3682A0 /* EntryLinksTests.swift */; };
 		956EAF59C6A6F0136ABFD95F /* InboxBundler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290A49FE86404918247E7F55 /* InboxBundler.swift */; };
+		95F5875400FE14916172B013 /* BowlSharingDeletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0762B11392FADC43B22F532 /* BowlSharingDeletionTests.swift */; };
 		960F80116CCB3F30A0084E05 /* WidgetSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9A8EB36415B274BB114A672 /* WidgetSync.swift */; };
 		96EE3621CBC49AA8BFF6B318 /* Paragraphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247726A150A883574F9E6CC5 /* Paragraphs.swift */; };
 		96F82061A3D4E63BDE5440CA /* WindowExtras.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11016B83B499B5F56D547D82 /* WindowExtras.swift */; };
@@ -850,6 +851,7 @@
 		BE59B16FB8350F8617863947 /* NoteIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteIndex.swift; sourceTree = "<group>"; };
 		BE6FAD6923A33CEED95AFCE0 /* QuickActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActions.swift; sourceTree = "<group>"; };
 		BEE9713B21FFE32E1F295931 /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
+		C0762B11392FADC43B22F532 /* BowlSharingDeletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlSharingDeletionTests.swift; sourceTree = "<group>"; };
 		C3197A9B7198182A33C9D730 /* SmartFilters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartFilters.swift; sourceTree = "<group>"; };
 		C433787064093CB91B3D4661 /* SmartFilterViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartFilterViews.swift; sourceTree = "<group>"; };
 		C4C28AE706845A32FC5A06B4 /* EntryLinkViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntryLinkViews.swift; sourceTree = "<group>"; };
@@ -1206,6 +1208,7 @@
 				D4FD2A9BECD26688E68FAFE9 /* AppSettingsTests.swift */,
 				1AADB916819D9833BFAD3910 /* AuditFixTests.swift */,
 				AC82EC350B85940475F85526 /* AutoSummaryTests.swift */,
+				C0762B11392FADC43B22F532 /* BowlSharingDeletionTests.swift */,
 				9091C19CB445B4E70941DCD6 /* BowlSharingEndingTests.swift */,
 				A2F71C61FDF13327EF337197 /* BowlSharingExtrasTests.swift */,
 				EAE5ADC45320E0B52DA9A95E /* BowlSharingTests.swift */,
@@ -2404,6 +2407,7 @@
 				85BD9605320D0EAC7314A43B /* AppointmentLinkTests.swift in Sources */,
 				CB5D95C09FAF214C1E99988C /* AuditFixTests.swift in Sources */,
 				7858B39FC06FB932D97B8FE6 /* AutoSummaryTests.swift in Sources */,
+				95F5875400FE14916172B013 /* BowlSharingDeletionTests.swift in Sources */,
 				FDB040E9BE1F6AAEEB57AF4A /* BowlSharingEndingTests.swift in Sources */,
 				31BD4154FE7813B59868D489 /* BowlSharingExtrasTests.swift in Sources */,
 				7B31462F47C2BA18E448C852 /* BowlSharingTests.swift in Sources */,

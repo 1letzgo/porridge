@@ -6,22 +6,59 @@ import Foundation
 /// in what it sees and does what these say. Every deletion here is of a copy (`Note.shareCopyToken` set) of a bowl
 /// shared with me, never of an original and never on the owner's side.
 ///
-/// - A copy of a bowl shared with me is deleted when the owner takes the entry out of the bowl or deletes it, and
-///   when the share ends (left, stopped, deleted, removed), wherever the copy is then. What I made myself goes to my
-///   inbox. On the owner's devices nothing is deleted: what leaves the zone goes to the inbox.
+/// - A copy of a bowl shared with me is deleted when the owner takes the entry out of the bowl, when anyone deletes
+///   it for good, and when the share ends (left, stopped, deleted, removed), wherever the copy is then. What I made
+///   myself goes to my inbox (taken out, share ended) or stays in Recently Deleted (deleted for good by someone).
+///   On the owner's devices nothing is deleted: what leaves the zone goes to the inbox, or stays in Recently Deleted
+///   when it was deleted for good, and goes from there after the usual days.
+/// - Recently Deleted travels with the entry (`deletedAt` in its record), both ways: trashed or restored by anyone,
+///   it is so for everyone. A deletion for good reaches the zone as the trashed entry first, then as the deletion of
+///   its record (`trashedVersion`, `removal`).
 /// - A copy I take out of a bowl shared with me (into another bowl or the inbox) becomes an entry of my own (a new
 ///   id, no token, its files copied); the shared entry stays in the shared bowl, and nothing is deleted in the zone.
 /// - A file of a deleted copy goes only when no entry left here points at it.
 enum SharedBowlEnding {
     // MARK: Which copies go
 
-    /// What happens to an entry when the zone dropped it (the owner, or someone, took it out of the bowl or deleted
-    /// it for good), once the private sync spoke (`SharedBowlMerge.dueRemovals`). Only an entry still in the bowl
-    /// here is touched. Of a bowl shared with me a copy goes; everything else (mine, and anything on the owner's
-    /// devices) goes to the inbox.
-    static func removal(role: SharedBowlRole, isCopy: Bool, isInBowl: Bool) -> SharedBowlMerge.Removal {
+    /// What happens to an entry when the zone dropped it (someone took it out of the bowl or deleted it for good),
+    /// once the private sync spoke (`SharedBowlMerge.dueRemovals`). Only an entry still in the bowl here is touched.
+    /// Of a bowl shared with me a copy goes either way. Everything else (what I made myself, and anything on the
+    /// owner's devices) is never deleted here: deleted for good, it stays in Recently Deleted; taken out of the bowl,
+    /// it goes to the inbox.
+    ///
+    /// Deleted for good or taken out: a deletion for everyone always reaches the zone as the entry in Recently Deleted
+    /// first and only then as the record's deletion (`trashedVersion`), so `isTrashed` (the entry here is in Recently
+    /// Deleted, as the zone last said) tells them apart. A record deleted without that (a move out of the bowl, an
+    /// older version, a device that missed the trashed version) never counts as a deletion: nothing is lost then.
+    /// The end of a share deletes the zone, not its records, and never comes here (`shareEnd`).
+    static func removal(role: SharedBowlRole, isCopy: Bool, isInBowl: Bool, isTrashed: Bool = false) -> SharedBowlMerge.Removal {
         guard isInBowl else { return .none }
-        return role == .participant && isCopy ? .deleteCopy : .moveToInbox
+        if role == .participant && isCopy { return .deleteCopy }
+        return isTrashed ? .keepInTrash : .moveToInbox
+    }
+
+    // MARK: Deleted for good, for everyone
+
+    /// An entry of a shared bowl in Recently Deleted that the zone does not have (someone deleted it for good, or it
+    /// was deleted before the bowl was shared) is not sent: it stays out of the zone until it is restored.
+    static func staysOutOfTheZone(isTrashed: Bool, zoneHasIt: Bool) -> Bool {
+        isTrashed && !zoneHasIt
+    }
+
+    /// An entry of a shared bowl is deleted for good here. `zonePrint`: the fingerprint of the zone's version as far
+    /// as this device knows (`SharedBowlInfo.noteHashes`), nil when the zone does not have it. Returns the version to
+    /// send before its record is deleted: the entry in Recently Deleted (since `now` if it was not there), when the
+    /// zone does not have exactly that yet (trashed and emptied before the trash was sent, or deleted at once). Nil
+    /// when the record may go right away: the zone has it in Recently Deleted already, or does not have it at all.
+    static func trashedVersion(of payload: SharedNotePayload, zonePrint: String?, now: Date = Date()) -> SharedNotePayload? {
+        guard let zonePrint else { return nil }
+        if payload.deletedAt != nil, payload.fingerprint == zonePrint { return nil }
+        var trashed = payload
+        if trashed.deletedAt == nil {
+            trashed.deletedAt = now
+            trashed.updatedAt = now
+        }
+        return trashed
     }
 
     /// The share ended for me (I left, the owner stopped sharing or deleted the bowl, or I was taken out of it).

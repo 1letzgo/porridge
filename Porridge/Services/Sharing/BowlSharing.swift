@@ -56,7 +56,7 @@ enum BowlSharingError: LocalizedError {
 /// off the shared bowls are still known (left or deleted then, it is done on the server once sync is back on).
 ///
 /// Sharing never deletes what someone may still want: on the owner's devices an entry that leaves a shared bowl goes
-/// to the inbox. Only copies taken from someone else's bowl are deleted (`SharedBowlEnding`): when the owner takes
+/// to the inbox, or stays in Recently Deleted when someone deleted it for good (`SharedBowlEnding.removal`). Only copies taken from someone else's bowl are deleted (`SharedBowlEnding`): when the owner takes
 /// the entry out of the bowl or deletes it, and when the share ends, wherever the copy is then; their files go only
 /// where no entry left points at them. A copy I take out of such a bowl becomes an entry of my own.
 @MainActor
@@ -526,7 +526,7 @@ final class BowlSharing {
             switch decision {
             case .deleteCopy: doomed.append(note)
             case .moveToInbox: note.projectIDs.removeAll { $0 == key }
-            case .none: break
+            case .keepInTrash, .none: break
             }
         }
         deleteCopies(doomed, in: context)
@@ -616,6 +616,29 @@ final class BowlSharing {
         guard let engine = engine(for: info.role) else { return false }
         let id = SharedBowlRecords.recordID(.note(noteID), in: SharedBowlRecords.zoneID(info))
         return engine.state.pendingRecordZoneChanges.contains(.saveRecord(id)) || inFlight[Self.flightKey(id)] != nil
+    }
+
+    // MARK: - Deleting for good
+
+    /// An entry is about to be deleted for good here (`NoteStore.deletePermanently`). In a shared bowl whose zone does
+    /// not have it in Recently Deleted yet, its trashed version is kept and sent before its record is deleted
+    /// (`SharedBowlEnding.trashedVersion`), so the others read the deletion as one: gone for the other participants,
+    /// in Recently Deleted for the owner and for whoever made it.
+    func willDeletePermanently(_ note: Note) {
+        guard var info = sharedBowl(of: note), info.endingSince == nil, info.maySend else { return }
+        let id = note.id.uuidString
+        guard let trashed = SharedBowlEnding.trashedVersion(of: SharedNotePayload(note), zonePrint: info.noteHashes[id]) else { return }
+        var deleted = info.deletedNotes ?? [:]
+        deleted[id] = trashed
+        info.deletedNotes = deleted
+        store(info)
+        persist()
+    }
+
+    private static func forgetDeletion(_ noteID: String, in info: inout SharedBowlInfo) {
+        guard info.deletedNotes?[noteID] != nil else { return }
+        info.deletedNotes?[noteID] = nil
+        if info.deletedNotes?.isEmpty == true { info.deletedNotes = nil }
     }
 
     // MARK: - Accepting
@@ -740,7 +763,11 @@ final class BowlSharing {
                 info.pendingRemovals[id] = nil
                 guard info.noteHashes[id] == nil else { continue }
                 for note in inBowl where note.id.uuidString == id && !removed.contains(ObjectIdentifier(note)) {
-                    switch SharedBowlEnding.removal(role: info.role, isCopy: note.shareCopyToken != nil, isInBowl: note.projectIDs.contains(key)) {
+                    let removal = SharedBowlEnding.removal(
+                        role: info.role, isCopy: note.shareCopyToken != nil, isInBowl: note.projectIDs.contains(key),
+                        isTrashed: note.deletedAt != nil
+                    )
+                    switch removal {
                     case .deleteCopy:
                         doomed.append(note)
                         removed.insert(ObjectIdentifier(note))
@@ -748,7 +775,9 @@ final class BowlSharing {
                     case .moveToInbox:
                         note.projectIDs.removeAll { $0 == key }
                         changed = true
-                    case .none:
+                    case .keepInTrash, .none:
+                        // Deleted for good by someone: it stays in Recently Deleted here, out of the zone
+                        // (`SharedBowlEnding.staysOutOfTheZone`), and goes after the usual days.
                         break
                     }
                 }
@@ -869,9 +898,17 @@ final class BowlSharing {
             inFlight[Self.flightKey(id)] = SharedBowlNames.bowlFingerprint(name: folder.name)
         case .note(let noteID):
             let matches = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == noteID }))) ?? []
-            guard let note = matches.first(where: { $0.projectIDs.contains(key) }), SharedBowlPlanner.isSendable(note),
-                  let written = SharedBowlRecords.fillNote(record, payload: SharedNotePayload(note), temporaryDirectory: temporaryDirectory)
-            else { return nil }
+            let payload: SharedNotePayload
+            if let note = matches.first(where: { $0.projectIDs.contains(key) }) {
+                guard SharedBowlPlanner.isSendable(note) else { return nil }
+                payload = SharedNotePayload(note)
+            } else if matches.isEmpty, let trashed = info.deletedNotes?[noteID.uuidString] {
+                // Deleted for good here: its trashed version goes first, then the record (`SharedBowlPlanner`).
+                payload = trashed
+            } else {
+                return nil
+            }
+            guard let written = SharedBowlRecords.fillNote(record, payload: payload, temporaryDirectory: temporaryDirectory) else { return nil }
             inFlight[Self.flightKey(id)] = written
         case .file(let name):
             let notes = ((try? context.fetch(FetchDescriptor<Note>())) ?? []).filter { $0.projectIDs.contains(key) }
@@ -1022,7 +1059,8 @@ final class BowlSharing {
     }
 
     /// A record left the zone (someone deleted it): what this device knew of it goes; a note still in the bowl here
-    /// waits to be taken out (`scan`: a copy of a bowl shared with me is deleted, anything else goes to the inbox).
+    /// waits to be taken out (`scan`: a copy of a bowl shared with me is deleted, anything else goes to the inbox, or
+    /// stays in Recently Deleted when it was there: deleted for good by someone, `SharedBowlEnding.removal`).
     /// A copy I had taken out of the bowl here a moment ago becomes mine first.
     private func recordWasDeleted(_ id: CKRecord.ID, info: inout SharedBowlInfo, in context: ModelContext) {
         guard let kind = SharedBowlNames.kind(ofRecordName: id.recordName) else { return }
@@ -1034,6 +1072,7 @@ final class BowlSharing {
             for copy in local where copy.shareCopyToken != nil { forkIfMovedOut(copy, info: &info, in: context) }
             info.noteHashes[key] = nil
             info.unreadNotes?.remove(key)
+            Self.forgetDeletion(key, in: &info)
             SharedBowlActivity.seen(key, in: &info)
             let bowlKey = SharedBowlNames.bowlKey(info.bowlID)
             if local.contains(where: { $0.projectIDs.contains(bowlKey) }) { info.pendingRemovals[key] = Date() }
@@ -1080,6 +1119,13 @@ final class BowlSharing {
         }
         info.unreadNotes?.remove(key)
         if info.unreadNotes?.isEmpty == true { info.unreadNotes = nil }
+        if info.deletedNotes?[key] != nil {
+            // Deleted for good here and on its way out of the zone: what comes in does not bring it back. Its
+            // trashed version goes on top of this one (`SharedBowlPlanner`), then the record.
+            info.noteHashes[key] = payload.fingerprint
+            info.pendingRemovals[key] = nil
+            return true
+        }
         let bowlKey = SharedBowlNames.bowlKey(info.bowlID)
         var matches = (try? context.fetch(FetchDescriptor<Note>(predicate: #Predicate { $0.id == id }))) ?? []
         for extra in SharedBowlMerge.duplicatesToDelete(matches, token: \.shareCopyToken) {
@@ -1229,6 +1275,7 @@ final class BowlSharing {
             switch kind {
             case .note(let noteID):
                 info.noteHashes[noteID.uuidString] = nil
+                Self.forgetDeletion(noteID.uuidString, in: &info)
                 SharedBowlActivity.seen(noteID.uuidString, in: &info)
             case .file(let name):
                 info.fileNames.remove(name)

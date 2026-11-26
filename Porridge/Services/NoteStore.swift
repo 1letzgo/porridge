@@ -54,6 +54,10 @@ enum NoteStore {
     }
 
     static func deletePermanently(_ note: Note, in context: ModelContext) {
+        // In a shared bowl the deletion is for everyone: the zone learns it as such (`BowlSharing`).
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { BowlSharing.shared.willDeletePermanently(note) }
+        }
         note.storedFileNames.forEach(AudioStore.delete)
         context.delete(note)
         try? context.save()
