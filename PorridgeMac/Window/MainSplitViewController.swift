@@ -122,10 +122,28 @@ final class MainSplitViewController: NSSplitViewController {
 
     var isInspectorOpen: Bool { !inspectorItem.isCollapsed }
 
+    /// Opens the inspector without changing the window's size. Where both sides do not fit (below `sharedWidth`),
+    /// the sidebar closes first, at once: opened while the sidebar still took its room, the inspector made the
+    /// window wider, and the sidebar closing right after made it narrower again by its own width (900 pt became 861
+    /// when a recording started). Should the split view still resize the window, it gets its width back.
     private func openInspector() {
         guard inspectorItem.isCollapsed else { return }
         lastOpened = .inspector
-        inspectorItem.animator().isCollapsed = false
+        let window = view.window
+        let width = window?.frame.width
+        if let width, width < Self.sharedWidth, !sidebarItem.isCollapsed {
+            sidebarItem.isCollapsed = true
+        }
+        NSAnimationContext.runAnimationGroup { _ in
+            inspectorItem.animator().isCollapsed = false
+        } completionHandler: { [weak window] in
+            MainActor.assumeIsolated {
+                guard let window, let width, !window.inLiveResize, abs(window.frame.width - width) > 0.5 else { return }
+                var frame = window.frame
+                frame.size.width = width
+                window.setFrame(frame, display: true)
+            }
+        }
         enforceSharedWidth()
     }
 
