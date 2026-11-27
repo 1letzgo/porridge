@@ -8,6 +8,8 @@ import SwiftData
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
+    /// Puts up "Bring Reminders into Porridge?" when the sync with Reminders asks for it.
+    private var reminderImport: Observing?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         setvbuf(stdout, nil, _IONBF, 0)
@@ -47,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The undo toast, the hint of the day.
         UndoToastPanel.start()
         DailyHintFeed.start()
+        reminderImport = Observing {
+            if ReminderSync.shared.isAskingImport, ReminderSync.shared.preview != nil { ReminderImportSheetController.present() }
+        }
         Task { @MainActor in
             await Library.shared.start()
             // Loading the speech model takes a moment; do it before the first dictation.

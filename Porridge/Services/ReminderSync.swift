@@ -90,6 +90,12 @@ struct ReminderSyncState: Codable, Equatable {
     var lastSync: Date?
     /// The lists that disappeared from Reminders in the last runs (their bowls no longer sync).
     var goneListTitles: [String] = []
+    /// Reminders being made into to-dos, by the new to-do's id: written before the reminder gets the to-do's URL,
+    /// so that a run cut off between the two makes the to-do the next time. Optional: files of stage 2 lack it.
+    var importing: [String: ReminderImporting]?
+    /// To-dos whose reminder the user moved into a list that takes no part: they are not brought into Reminders
+    /// again (that would copy the reminder).
+    var released: [String]?
 
     static var fileURL: URL { DataLocation.applicationSupport.appendingPathComponent("ReminderSyncState.json") }
 
@@ -109,11 +115,18 @@ struct ReminderSyncState: Codable, Equatable {
     var listCount: Int { Set(items.values.map(\.listKey)).count }
 }
 
+/// A reminder being made into a to-do (`ReminderSyncState.importing`).
+struct ReminderImporting: Codable, Equatable {
+    var localID: String
+    var listKey: String
+}
+
 // MARK: - One run
 
 /// One run of the sync with Reminders: reads the bowls, to-dos, lists and reminders, plans (`ReminderListPlan`,
-/// `ReminderSyncPlan`) and carries out what goes into Reminders. With `direction` `.toReminders` (stage 2) nothing
-/// that changed in Reminders is taken into Porridge; the brakes and "a list disappeared" act all the same.
+/// `ReminderSyncPlan`) and carries it out both ways. Until the first import was confirmed (`ReminderListLedger.isImported`)
+/// only Porridge writes into Reminders and nothing is taken in; the run then only works out what an import would
+/// bring (`preview`). The brakes and "a list disappeared" act all the same.
 @MainActor
 final class ReminderSyncEngine {
     let store: ReminderStore
@@ -121,7 +134,8 @@ final class ReminderSyncEngine {
     let device: String
     let stateURL: URL?
     private(set) var state: ReminderSyncState
-    var direction: ReminderSyncDirection = .toReminders
+    /// Both ways once the first import was confirmed (on any device).
+    var direction: ReminderSyncDirection { lists.ledger.isImported ? .both : .toReminders }
     /// The bowl is shared (either way): its entries never carry `@reminder` (the copies of the other person would
     /// carry mine).
     var isShared: (String) -> Bool = { _ in false }
@@ -129,6 +143,13 @@ final class ReminderSyncEngine {
     var isReadOnly: (String) -> Bool = { _ in false }
     /// How long a to-do waits for the reminder another device made for it before it gets one here.
     static let waitForOtherDevice: TimeInterval = 86400
+
+    /// What the first import would bring (before it was confirmed; nil when there is nothing).
+    private(set) var preview: ReminderImportPreview?
+    /// The lists of the default list's account and what they are to Porridge (Settings › Reminders › Lists).
+    private(set) var listRows: [ReminderListRow] = []
+    /// A claim on a list waits to settle: a run after `ReminderListPlan.adoptSettle` makes its bowl.
+    private(set) var adoptPending = false
 
     init(store: ReminderStore, lists: ReminderLists, device: String, stateURL: URL?) {
         self.store = store
@@ -158,10 +179,15 @@ final class ReminderSyncEngine {
         if let pause = state.pause, pause.canResume, !acceptOnce { return state }
         guard store.access == .granted else { return state }
 
-        let notes = (try? context.fetch(FetchDescriptor<Note>())) ?? []
+        var notes = (try? context.fetch(FetchDescriptor<Note>())) ?? []
         let folders = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
-        let noteByID = Dictionary(notes.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
-        let bowlKeys = Set(folders.map(Projects.key))
+        var noteByID = Dictionary(notes.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
+        var bowlKeys = Set(folders.map(Projects.key))
+        let pulling = direction == .both
+        // Nothing is taken in on a store that is empty while this device or the ledger knows linked things (the
+        // notes not loaded yet, or lost): the brakes below hold the rest.
+        let storeLooksEmpty = notes.isEmpty && folders.isEmpty && (!state.items.isEmpty || lists.ledger.linkedBowlCount > 0)
+        let importing = pulling && !storeUnavailable && !storeLooksEmpty
 
         // Lists and reminders: every list of the default list's account, and the lists known here.
         let allLists = store.lists()
@@ -193,14 +219,15 @@ final class ReminderSyncEngine {
         var plan = ReminderListPlan.plan(ReminderListPlan.Input(
             bowls: bowls, ledger: lists.ledger, local: state.lists, detachedListIDs: Set(state.detachedListIDs),
             lists: snapshots, defaultListID: defaultID, device: device, now: now,
-            storeUnavailable: storeUnavailable, acceptGoneLists: acceptOnce
+            storeUnavailable: storeUnavailable, acceptGoneLists: acceptOnce, adoptLists: importing
         ))
         if let pause = plan.pause {
             state.pause = pause
             state.save(to: stateURL)
             return state
         }
-        // The claims go into the ledger before any list is made.
+        adoptPending = plan.adoptPending
+        // The claims go into the ledger before any list or bowl is made.
         lists.update(plan.ledger)
 
         // The lists.
@@ -229,9 +256,27 @@ final class ReminderSyncEngine {
                 }
                 // Made here and empty now: it goes. Anything left (a reminder that could not move) keeps it.
                 if moved == inList.count { try? store.deleteList(from) }
-            case .createBowl, .renameBowl:
-                // The way back (stage 3/4) is not carried out yet.
-                break
+            case .createBowl(let listID, let title):
+                // A list that is no bowl becomes one (this device's claim settled): an ordinary new bowl, linked.
+                guard importing, let folder = Projects.create(title, in: context) else { continue }
+                let key = Projects.key(folder)
+                bowlKeys.insert(key)
+                plan.local[key] = ReminderLocalList(listID: listID, title: title, createdHere: false)
+                plan.targets[key] = listID
+                plan.ledger = plan.ledger.linking(key, title: title, createdByPorridge: false, now: now)
+            case .renameBowl(let key, let title):
+                // Renamed in Reminders only. A shared bowl is not renamed from here (that would rename it for the
+                // others too): its list gets the bowl's name back.
+                guard pulling, let folder = folders.first(where: { Projects.key($0) == key }), let local = plan.local[key] else { continue }
+                if isShared(key) || isReadOnly(key) {
+                    try? store.renameList(local.listID, to: folder.name)
+                    plan.local[key]?.title = folder.name
+                    plan.ledger = plan.ledger.linking(key, title: folder.name, now: now)
+                } else {
+                    Projects.rename(folder, to: title, in: context)
+                    plan.local[key]?.title = folder.name
+                    plan.ledger = plan.ledger.linking(key, title: folder.name, now: now)
+                }
             }
         }
         lists.update(plan.ledger)
@@ -258,6 +303,54 @@ final class ReminderSyncEngine {
         for (key, local) in plan.local { keyOfList[local.listID] = key }
         if let defaultID { keyOfList[defaultID] = ReminderMapping.inboxKey }
         for (key, id) in plan.targets { keyOfList[id] = key }
+        /// The bowl (or `inbox`) a reminder in this list belongs to, when that list takes part now.
+        func takingPart(_ listID: String) -> String? {
+            guard let key = keyOfList[listID] else { return nil }
+            if key == ReminderMapping.inboxKey { return listID == defaultID ? key : nil }
+            return plan.targets[key] == listID && !plan.paused.contains(key) && bowlKeys.contains(key) ? key : nil
+        }
+
+        // A run cut off between giving a reminder a to-do's URL and making the to-do: the to-do is made now.
+        var importingState = state.importing ?? [:]
+        for (id, record) in importingState.sorted(by: { $0.key < $1.key }) {
+            importingState[id] = nil
+            guard noteByID[id] == nil, let uuid = UUID(uuidString: id),
+                  let item = reminders.first(where: { $0.localID == record.localID }),
+                  ReminderMapping.noteID(from: item.url) == uuid else { continue }
+            let bowl = record.listKey == ReminderMapping.inboxKey || !bowlKeys.contains(record.listKey) ? nil : record.listKey
+            let note = ReminderPull.makeTodo(id: uuid, from: item, bowl: bowl, now: now)
+            note.fromReminder = item.stableID
+            context.insert(note)
+            notes.append(note)
+            noteByID[id] = note
+        }
+        state.importing = importingState.isEmpty ? nil : importingState
+
+        // Two devices that made a to-do of the same reminder at once: the older to-do stays, the other goes to
+        // Recently Deleted (without its link, so its reminder stays), and the reminder points to the one that stays.
+        if pulling {
+            for group in ReminderPull.duplicates(notes) {
+                let keepKey = ReminderMapping.listKey(of: group.keep)
+                guard keepKey == ReminderMapping.inboxKey || !isShared(keepKey) else { continue }
+                let removed = Set(group.remove.map(\.id))
+                for dup in group.remove {
+                    state.items[dup.id.uuidString] = nil
+                    dup.reminderLink = nil
+                    dup.fromReminder = nil
+                    NoteStore.trash(dup, in: context)
+                }
+                let from = group.keep.fromReminder
+                for (index, item) in reminders.enumerated() {
+                    guard let pointsTo = ReminderMapping.noteID(from: item.url), removed.contains(pointsTo)
+                            || (item.stableID == from && pointsTo != group.keep.id) else { continue }
+                    let write = ReminderWrite(
+                        localID: item.localID, listID: item.listID, title: item.title, notes: item.notes, isDone: item.isDone,
+                        due: item.due, url: ReminderMapping.url(for: group.keep.id)
+                    )
+                    if let saved = try? store.save(write) { reminders[index] = saved }
+                }
+            }
+        }
 
         let byLocal = Dictionary(reminders.map { ($0.localID, $0) }, uniquingKeysWith: { a, _ in a })
         var byExternal: [String: ReminderItem] = [:]
@@ -272,6 +365,8 @@ final class ReminderSyncEngine {
         for note in notes where note.isTodo || note.reminderLink != nil || byNote[note.id.uuidString] != nil {
             ids.insert(note.id.uuidString)
         }
+        // To-dos the user took out of Reminders (moved to a list that takes no part) stay out while they are to-dos.
+        var released = Set(state.released ?? []).filter { id in noteByID[id].map { $0.isTodo && !$0.isDeleted } ?? false }
 
         struct Planned {
             var id: String
@@ -286,6 +381,7 @@ final class ReminderSyncEngine {
         for id in ids.sorted() {
             let note = noteByID[id]
             let base = state.items[id]
+            if base == nil, released.contains(id) { continue }
             // A to-do gone from the store counts in the list it was in.
             let listKey = note.map(ReminderMapping.listKey(of:)) ?? base?.listKey
             let shared = listKey.map { $0 != ReminderMapping.inboxKey && isShared($0) } ?? false
@@ -322,7 +418,9 @@ final class ReminderSyncEngine {
             }
             var input = ReminderSyncPlan.Input(porridge: side, base: base, direction: direction)
             if let found {
-                input.reminder = ReminderNow(fields: Self.fields(of: found), listKey: keyOfList[found.listID])
+                // Taking in: a list that takes no part now (an archived or left-out bowl's) counts as none.
+                let key = pulling ? takingPart(found.listID) : keyOfList[found.listID]
+                input.reminder = ReminderNow(fields: Self.fields(of: found), listKey: key)
             }
             if let listKey {
                 input.targetReady = plan.targets[listKey] != nil
@@ -342,11 +440,12 @@ final class ReminderSyncEngine {
 
         if !acceptOnce, let pause = ReminderSyncPlan.brake(planned.map(\.decision)) {
             state.pause = pause
+            if context.hasChanges { try? context.save() }
             state.save(to: stateURL)
             return state
         }
 
-        // Into Reminders.
+        // Carried out.
         for localID in Set(duplicatesToDelete) { try? store.deleteReminder(localID: localID) }
 
         for item in planned {
@@ -363,10 +462,25 @@ final class ReminderSyncEngine {
                 setLink(note, saved.stableID, listKey: listKey)
             case .update(let update):
                 guard let found = item.found else { continue }
+                var fields = update.toReminder ?? Self.fields(of: found)
+                var listID = update.moveTo.flatMap { plan.targets[$0] } ?? found.listID
+                var base = update.base
+                var baseListKey = update.baseListKey
+                if pulling, let change = update.toPorridge, let note {
+                    // Into Porridge, through the app's own calls; then the reminder carries what the to-do has now
+                    // (all subtasks ticked when it was done, the next round of a repeating one, the merged ticks).
+                    ReminderPull.apply(change, reminderDue: Self.fields(of: found).dueDay, to: note, in: context, now: now)
+                    let after = ReminderMapping.fields(of: note)
+                    let afterKey = ReminderMapping.listKey(of: note)
+                    fields = after
+                    base = after
+                    if let target = plan.targets[afterKey] {
+                        listID = target
+                        baseListKey = afterKey
+                    }
+                }
                 var saved = found
-                if update.toReminder != nil || update.moveTo != nil {
-                    let fields = update.toReminder ?? Self.fields(of: found)
-                    let listID = update.moveTo.flatMap { plan.targets[$0] } ?? found.listID
+                if fields != Self.fields(of: found) || listID != found.listID {
                     let write = ReminderWrite(
                         localID: found.localID, listID: listID, title: fields.title, notes: fields.notes, isDone: fields.isDone,
                         due: ReminderMapping.dueComponents(day: fields.dueDay, keeping: found.due),
@@ -375,8 +489,7 @@ final class ReminderSyncEngine {
                     guard let result = try? store.save(write) else { continue }
                     saved = result
                 }
-                // The way back (`toPorridge`) is not carried out in stage 2; the plan does not ask for it then.
-                state.items[item.id] = ReminderBase(reminderID: saved.stableID, localID: saved.localID, fields: update.base, listKey: update.baseListKey)
+                state.items[item.id] = ReminderBase(reminderID: saved.stableID, localID: saved.localID, fields: base, listKey: baseListKey)
                 setLink(note, saved.stableID, listKey: item.listKey)
             case .nothing:
                 if let found = item.found, var base = state.items[item.id], base.localID != found.localID || base.reminderID != found.stableID {
@@ -390,12 +503,30 @@ final class ReminderSyncEngine {
                 state.items[item.id] = nil
                 setLink(note, nil, listKey: item.listKey)
             case .unlink, .forget:
+                // Moved by the user into a list that takes no part: not brought back into Reminders.
+                if item.decision == .unlink, item.found != nil, note?.isTodo == true { released.insert(item.id) }
                 state.items[item.id] = nil
                 setLink(note, nil, listKey: item.listKey)
-            case .trashTodo, .skip, .wait:
-                // `trashTodo` is the way back (stage 3): the to-do stays, and so does its base.
+            case .trashTodo:
+                // The open reminder was deleted in Reminders: the to-do goes to Recently Deleted (it can be put
+                // back; then it gets a new reminder). Before the first import it stays as it is.
+                guard pulling, let note, !note.isDeleted else { continue }
+                NoteStore.trash(note, in: context)
+                state.items[item.id] = nil
+                setLink(note, nil, listKey: item.listKey)
+            case .skip, .wait:
                 break
             }
+        }
+        state.released = released.isEmpty ? nil : released.sorted()
+
+        // New reminders (no to-do's URL, open) in a list that takes part become to-dos: in its bowl, or in the
+        // Inbox from the default list (left out by the user: only those made after that).
+        if importing {
+            importReminders(
+                reminders.filter { !duplicatesToDelete.contains($0.localID) }, notes: notes, defaultID: defaultID,
+                takingPart: takingPart, context: context, setLink: setLink, now: now
+            )
         }
 
         // Deleted bowls: their lists once their reminders moved with their to-dos.
@@ -412,10 +543,132 @@ final class ReminderSyncEngine {
         }
 
         if context.hasChanges { try? context.save() }
+        describe(plan: plan, allLists: allLists, account: account, defaultID: defaultID, reminders: reminders, folders: folders, pulling: pulling)
         state.pause = nil
         state.lastSync = now
         state.save(to: stateURL)
         return state
+    }
+
+    /// Makes to-dos of the reminders that have none. The reminder gets the new to-do's URL first (and that is noted
+    /// here before), the to-do is made only once that was saved: another device sees it is taken, and no run ever
+    /// takes in a reminder Porridge wrote (they all carry an entry's URL).
+    private func importReminders(
+        _ reminders: [ReminderItem], notes: [Note], defaultID: String?, takingPart: (String) -> String?,
+        context: ModelContext, setLink: (Note?, String?, String?) -> Void, now: Date
+    ) {
+        let inboxLink = lists.ledger.lists[ReminderMapping.inboxKey]
+        let inboxSince = inboxLink?.state == .excluded ? inboxLink?.changedAt : nil
+        let knownLocal = Set(state.items.values.compactMap(\.localID))
+        let knownStable = Set(state.items.values.map(\.reminderID))
+        var claimed: [String: Note] = [:]
+        for note in notes where !note.isDeleted {
+            if let from = note.fromReminder { claimed[from] = claimed[from] ?? note }
+            if let link = note.reminderLink { claimed[link] = claimed[link] ?? note }
+        }
+        let fresh = reminders
+            .filter { !$0.isDone && $0.url.flatMap(ReminderMapping.noteID(from:)) == nil }
+            .sorted { ($0.created ?? .distantPast, $0.localID) < ($1.created ?? .distantPast, $1.localID) }
+        for item in fresh {
+            guard !knownLocal.contains(item.localID), !knownStable.contains(item.stableID),
+                  let key = takingPart(item.listID) else { continue }
+            if key == ReminderMapping.inboxKey, let inboxSince {
+                guard let created = item.created, created > inboxSince else { continue }
+            }
+            // A bowl shared with me to view only takes nothing in.
+            if key != ReminderMapping.inboxKey, isReadOnly(key) { continue }
+            // Another device made its to-do already (the URL it wrote is not here yet): it is pointed to that one.
+            if let existing = claimed[item.stableID] {
+                let fields = Self.fields(of: item)
+                _ = try? store.save(ReminderWrite(
+                    localID: item.localID, listID: item.listID, title: fields.title, notes: fields.notes, isDone: item.isDone,
+                    due: item.due, url: ReminderMapping.url(for: existing.id)
+                ))
+                continue
+            }
+            let id = UUID()
+            let bowl = key == ReminderMapping.inboxKey ? nil : key
+            let note = ReminderPull.makeTodo(id: id, from: item, bowl: bowl, now: now)
+            let fields = ReminderMapping.fields(of: note)
+            var record = state.importing ?? [:]
+            record[id.uuidString] = ReminderImporting(localID: item.localID, listKey: key)
+            state.importing = record
+            state.save(to: stateURL)
+            let write = ReminderWrite(
+                localID: item.localID, listID: item.listID, title: fields.title, notes: fields.notes, isDone: false,
+                due: ReminderMapping.dueComponents(day: fields.dueDay, keeping: item.due), url: ReminderMapping.url(for: id)
+            )
+            guard let saved = try? store.save(write) else {
+                state.importing?[id.uuidString] = nil
+                continue
+            }
+            note.fromReminder = saved.stableID
+            context.insert(note)
+            try? context.save()
+            state.items[id.uuidString] = ReminderBase(reminderID: saved.stableID, localID: saved.localID, fields: fields, listKey: key)
+            setLink(note, saved.stableID, key)
+            state.importing?[id.uuidString] = nil
+            if state.importing?.isEmpty == true { state.importing = nil }
+            claimed[saved.stableID] = note
+        }
+    }
+
+    /// What the first import would bring (`preview`, only before it) and the lists for Settings (`listRows`).
+    private func describe(
+        plan: ReminderListPlan.Result, allLists: [ReminderListInfo], account: String?, defaultID: String?,
+        reminders: [ReminderItem], folders: [NoteFolder], pulling: Bool
+    ) {
+        let names = Dictionary(folders.map { (Projects.key($0), $0) }, uniquingKeysWith: { a, _ in a })
+        let knownLocal = Set(state.items.values.compactMap(\.localID))
+        var open: [String: Int] = [:]
+        for item in reminders where !item.isDone && item.url.flatMap(ReminderMapping.noteID(from:)) == nil && !knownLocal.contains(item.localID) {
+            open[item.listID, default: 0] += 1
+        }
+        let byID = Dictionary(allLists.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var keyOfList: [String: String] = [:]
+        for (key, local) in plan.local where names[key] != nil { keyOfList[local.listID] = key }
+
+        if pulling {
+            preview = nil
+        } else {
+            var entries: [ReminderImportPreview.Entry] = []
+            if let defaultID, let list = byID[defaultID], let count = open[defaultID], count > 0 {
+                entries.append(.init(listID: defaultID, title: list.title, kind: .inbox, openCount: count))
+            }
+            for (listID, key) in keyOfList.sorted(by: { $0.value < $1.value }) where !plan.paused.contains(key) {
+                guard let folder = names[key], let list = byID[listID], let count = open[listID], count > 0 else { continue }
+                entries.append(.init(listID: listID, title: list.title, kind: .bowl(key: key, name: folder.name), openCount: count))
+            }
+            for listID in plan.adoptable {
+                guard let list = byID[listID] else { continue }
+                entries.append(.init(listID: listID, title: list.title, kind: .newBowl, openCount: open[listID] ?? 0))
+            }
+            preview = entries.isEmpty ? nil : ReminderImportPreview(entries: entries)
+        }
+
+        var rows: [ReminderListRow] = []
+        let detached = Set(state.detachedListIDs)
+        let ledger = lists.ledger
+        for list in allLists where list.account == account && list.isWritable && !list.isSubscribed && !detached.contains(list.id) {
+            if list.id == defaultID {
+                let on = ledger.lists[ReminderMapping.inboxKey]?.state != .excluded
+                rows.append(.init(id: list.id, title: list.title, detail: String(localized: "Inbox"), isOn: on, target: .inbox))
+            } else if let key = keyOfList[list.id], let folder = names[key] {
+                let on = ledger.lists[key]?.state != .excluded
+                let detail = folder.isArchived
+                    ? String(localized: "Bowl “\(folder.name)” (archived)")
+                    : String(localized: "Bowl “\(folder.name)”")
+                rows.append(.init(id: list.id, title: list.title, detail: detail, isOn: on, target: .bowl(key)))
+            } else if plan.excludedLists.contains(list.id) {
+                rows.append(.init(id: list.id, title: list.title, detail: String(localized: "Not synced"), isOn: false, target: .list(list.title)))
+            } else if plan.adoptable.contains(list.id) {
+                rows.append(.init(id: list.id, title: list.title, detail: String(localized: "Becomes a bowl"), isOn: true, target: .list(list.title)))
+            }
+        }
+        listRows = rows.sorted { a, b in
+            if (a.target == .inbox) != (b.target == .inbox) { return a.target == .inbox }
+            return a.title.localizedStandardCompare(b.title) == .orderedAscending
+        }
     }
 
     static func fields(of item: ReminderItem) -> ReminderFields {
@@ -427,15 +680,18 @@ final class ReminderSyncEngine {
 
 /// The sync of to-dos with Apple's Reminders (one list = one bowl; the Inbox's to-dos in the default list). Per
 /// device, off until turned on in Settings › General. Runs a moment after every save of the notes (this app's and
-/// the iCloud sync's), at launch and when the app comes to the front; only while it is on and Porridge has access,
-/// never on a store that failed to open, and never in a test run (test data, an empty store, unit tests: there it is
-/// off for good and never touches the real Reminders). Stage 2: Porridge writes into Reminders only.
+/// the iCloud sync's), when Reminders changed, at launch and when the app comes to the front; only while it is on and
+/// Porridge has access, never on a store that failed to open, and never in a test run (test data, an empty store,
+/// unit tests: there it is off for good and never touches the real Reminders). Both ways once the first import was
+/// confirmed ("Bring Reminders into Porridge?", asked once per device; a ledger with the import done asks no more).
 @MainActor
 @Observable
 final class ReminderSync {
     static let shared = ReminderSync()
     static let enabledKey = "remindersSyncEnabled"
     static let deviceKey = "remindersSyncDevice"
+    /// This device asked "Bring Reminders into Porridge?" (answered either way).
+    static let importAskedKey = "remindersImportAsked"
 
     /// Test runs never sync with the real Reminders: test data, an empty store, unit tests, and (Debug) UI tests,
     /// which start the app with settings as launch arguments (`-onboardingDone`).
@@ -463,6 +719,12 @@ final class ReminderSync {
     private(set) var isEnabled: Bool
     private(set) var status: Status = .off
     private(set) var goneListTitles: [String] = []
+    /// What the first import would bring; nil once it was confirmed or when there is nothing.
+    private(set) var preview: ReminderImportPreview?
+    /// The sheet "Bring Reminders into Porridge?" is up (iOS: `ReminderImportHost`; Mac: `ReminderImportSheetController`).
+    var isAskingImport = false
+    /// The lists in Settings › Reminders.
+    private(set) var listRows: [ReminderListRow] = []
 
     @ObservationIgnored private var container: ModelContainer?
     @ObservationIgnored private var engine: ReminderSyncEngine?
@@ -509,6 +771,56 @@ final class ReminderSync {
 
     /// The switch. Turned on: access is asked for, then every open to-do goes into Reminders. Turned off: everything
     /// stays in Reminders as it is.
+    /// The first import is not confirmed yet while there is something to bring in ("Reminders not imported yet",
+    /// with "Review").
+    var isImportPending: Bool { isEnabled && preview != nil && !ReminderLists.shared.ledger.isImported }
+
+    /// "Import": the lists left out go into the ledger as excluded (for every device; the default list left out
+    /// brings only reminders made from now on), the import is marked done, and a run takes them in.
+    func confirmImport(leavingOut listIDs: Set<String>, now: Date = Date()) {
+        UserDefaults.standard.set(true, forKey: Self.importAskedKey)
+        isAskingImport = false
+        guard let preview else { return }
+        var ledger = ReminderLists.shared.ledger
+        for entry in preview.entries where listIDs.contains(entry.listID) {
+            switch entry.kind {
+            case .inbox: ledger = ledger.excluding(ReminderMapping.inboxKey, title: entry.title, now: now)
+            case .bowl(let key, _): ledger = ledger.excluding(key, title: entry.title, now: now)
+            case .newBowl: ledger = ledger.excluding(ReminderListLedger.listKey(entry.title), title: entry.title, now: now)
+            }
+        }
+        ReminderLists.shared.update(ledger.markingImported(now: now))
+        self.preview = nil
+        syncSoon(after: .zero)
+    }
+
+    /// "Not Now": Porridge goes on writing into Reminders; the status says "Reminders not imported yet" with "Review".
+    func declineImport() {
+        UserDefaults.standard.set(true, forKey: Self.importAskedKey)
+        isAskingImport = false
+    }
+
+    /// "Review": the question again.
+    func reviewImport() {
+        isAskingImport = isImportPending
+    }
+
+    /// A list's switch in Settings: left out (its reminders stay out, a bowl's to-dos no longer sync) or taking part
+    /// again (a list that is no bowl becomes one). Kept in the ledger: the same on every device.
+    func setList(_ row: ReminderListRow, on: Bool, now: Date = Date()) {
+        var ledger = ReminderLists.shared.ledger
+        let key: String
+        switch row.target {
+        case .inbox: key = ReminderMapping.inboxKey
+        case .bowl(let bowl): key = bowl
+        case .list(let title): key = ReminderListLedger.listKey(title)
+        }
+        ledger = on ? ledger.including(key, title: row.title, now: now) : ledger.excluding(key, title: row.title, now: now)
+        ReminderLists.shared.update(ledger)
+        if let index = listRows.firstIndex(where: { $0.id == row.id }) { listRows[index].isOn = on }
+        syncSoon(after: .seconds(1))
+    }
+
     func setEnabled(_ on: Bool) async {
         guard !Self.isHardDisabled else { return }
         if on {
@@ -586,9 +898,16 @@ final class ReminderSync {
         isRunning = false
         lastRunEnded = Date()
         show(state)
+        preview = engine.preview
+        listRows = engine.listRows
+        // Asked once per device, and not when another device's import is in the ledger.
+        if isImportPending, !UserDefaults.standard.bool(forKey: Self.importAskedKey) { isAskingImport = true }
         if runAgain {
             runAgain = false
             syncSoon(after: .seconds(1))
+        } else if engine.adoptPending {
+            // A claim on a list settles: its bowl is made by the run after.
+            syncSoon(after: .seconds(Int(ReminderListPlan.adoptSettle) + 2))
         }
     }
 
@@ -605,6 +924,8 @@ final class ReminderSync {
             status = .denied
         } else if let engine = makeEngine() {
             show(engine.state)
+            if preview == nil { preview = engine.preview }
+            if listRows.isEmpty { listRows = engine.listRows }
         }
     }
 
@@ -636,6 +957,7 @@ final class ReminderSync {
             let listWord = lists == 1 ? String(localized: "1 list") : String(localized: "\(lists) lists")
             let todoWord = todos == 1 ? String(localized: "1 to-do") : String(localized: "\(todos) to-dos")
             var line = String(localized: "Synced \(when)") + " · " + listWord + " · " + todoWord
+            if isImportPending { line += "\n" + String(localized: "Reminders not imported yet.") }
             if !goneListTitles.isEmpty {
                 let names = goneListTitles.map { "“\($0)”" }.joined(separator: ", ")
                 line += "\n" + String(localized: "Removed in Reminders, no longer synced: \(names).")
@@ -658,6 +980,5 @@ final class ReminderSync {
         #endif
     }
 
-    static let betaNote = String(localized: "Beta: changes made in Reminders are not read yet.")
     static let localOnlyNote = String(localized: "iCloud Sync is off: only the to-dos on this device go into Reminders, and turning this on on other devices can make lists twice.")
 }

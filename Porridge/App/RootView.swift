@@ -35,6 +35,8 @@ struct RootView: View {
             .modifier(ExportSheetHost())
             // Sharing a bowl: the system's sheet for its people, and the questions before stopping or leaving.
             .modifier(BowlShareHost())
+            // "Bring Reminders into Porridge?" before the first import from Reminders.
+            .modifier(ReminderImportHost())
             .fullScreenCoverOrSheet(isPresented: .init(get: { !onboardingDone }, set: { onboardingDone = !$0 })) {
                 OnboardingView {
                     // The onboarding showed the places already: no "What's New" card after it.

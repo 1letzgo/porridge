@@ -265,6 +265,7 @@
 		7C8CA9EE25BD343E40001EF6 /* ShortcutConflicts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1148FFE8EC5A20989BD1F0D0 /* ShortcutConflicts.swift */; };
 		7D5BF7C631178ECD1A777639 /* VoiceProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C965C4F93692B80D211F105 /* VoiceProfile.swift */; };
 		7E253188CF388148E97211ED /* UndoToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DB7874ED41B4B4186A3AD50 /* UndoToast.swift */; };
+		7E3F5AD72D42B6EF51D1AEF9 /* ReminderImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD64850A160F32BE62BC2DE2 /* ReminderImportSheet.swift */; };
 		7E76BA80B6ABB14ACA09AA5A /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1871870FC6707C39D01FE52E /* Meeting.swift */; };
 		7FDD8D3BAFB7764EAC618645 /* Todos.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F6629672192B55C1E9445B /* Todos.swift */; };
 		80B6E0734E3D8CC1F45294AA /* NoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B2572B8D2D94B28605C5CAB /* NoteStore.swift */; };
@@ -356,6 +357,7 @@
 		A7A006CE6D9AD345C9704617 /* MCPBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 288B37CF6F5150265C76115D /* MCPBridge.swift */; };
 		A819629738166262659E7403 /* AIRewrite.swift in Sources */ = {isa = PBXBuildFile; fileRef = F59362A4ECBB13A9F6E5801C /* AIRewrite.swift */; };
 		A82761451E9F7DA554423BAF /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE58A880C5B9B6EC148CC29 /* AppContainer.swift */; };
+		A884C4464AFF573C4CA52B8C /* ReminderImportSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A513CA288F293536BB74AD49 /* ReminderImportSheetController.swift */; };
 		A88E8AEEA760329950E7B501 /* FuzzyMatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7145C5E50D1166216B227D45 /* FuzzyMatch.swift */; };
 		A8AC7A986DDEDB055D6D2854 /* MetaLineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFE957A75B04FE561EB3D69C /* MetaLineView.swift */; };
 		A960CBE9C4C443D4FE6B1927 /* TodoSuggestionsDateGuessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7FF1452B4C9F52060E78DA1 /* TodoSuggestionsDateGuessTests.swift */; };
@@ -371,6 +373,7 @@
 		B1AFC996F0E1DFC3DC4A105F /* NoteImageAttaching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FDADE8C1BFCE48C9E9BD19 /* NoteImageAttaching.swift */; };
 		B1C32999FC316EDC790C9137 /* TodayDayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 937957DBCBF155C63D4ABB3F /* TodayDayTests.swift */; };
 		B21DB0DD5212BC47128F41F7 /* LiveSpeakerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1C06C07F6D96593435734 /* LiveSpeakerTests.swift */; };
+		B254FB513634F324824781B3 /* ReminderWayBackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 279A01D5714101F4FD143260 /* ReminderWayBackTests.swift */; };
 		B2D38982B34590617CA67AEC /* DocumentExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F51C5E9B32E6036E0FCDBB /* DocumentExtractor.swift */; };
 		B3A8C7FC85418E9ED39D1811 /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB2150AC1E2D50129B73B9 /* SummaryService.swift */; };
 		B50072C1228DE96659168489 /* CloudLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F68F49429875E63DC4CCB6 /* CloudLLM.swift */; };
@@ -422,6 +425,7 @@
 		D00965D8E1D5FF480691CEF9 /* PorridgeShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10833D7F907B9A5F448D31C3 /* PorridgeShortcuts.swift */; };
 		D05B5BA9D9272258A3DE9AA3 /* DocumentInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E5C28C8ABFB4B83D46FA9A /* DocumentInfo.swift */; };
 		D069E274CFB36A02490956B2 /* TodoFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B18D4E1FCD44198331EA4C /* TodoFlowTests.swift */; };
+		D0803D8E7AF857D273E80CFF /* ReminderImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D4DB4994C649BD7DC6E3CA /* ReminderImport.swift */; };
 		D0C14BFBE41660A18822A153 /* NoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7825A3F61D5732826AD5E47 /* NoteEditorView.swift */; };
 		D0C4C0EBF2FB41F1E6F43CF0 /* MeetingExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9B98C438AED2F5E6E75969 /* MeetingExportTests.swift */; };
 		D0D774EEEF91221B3810FCDD /* ChatActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300DC273D8697A3CFE6EA33 /* ChatActions.swift */; };
@@ -489,6 +493,7 @@
 		E9D84FE7B4A9767ED4196CE5 /* SummaryRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17F6E93AE3273098D5810CF /* SummaryRefresh.swift */; };
 		E9FE0E016AFDC457C315FB07 /* ProjectPills.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35BE11751AA4852709A2028 /* ProjectPills.swift */; };
 		EA6A1F01B404D63F409AF86F /* BowlShareMac.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED8254A2B3CC9E35F498711 /* BowlShareMac.swift */; };
+		EAE9EF9F407E6D01C5CEA745 /* ReminderImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D4DB4994C649BD7DC6E3CA /* ReminderImport.swift */; };
 		EBF1BBD501A46C0DC7A53DE7 /* MCPProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855EAA46381AC2FD7FB0137C /* MCPProtocol.swift */; };
 		EBFF986EF48E445E580CB94E /* EntryMenus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98DD8614D9945ABB837A368C /* EntryMenus.swift */; };
 		EC39F1B7F56E16FC802D3FC4 /* ShareInboxFixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5BA31269396F576ACB04B7 /* ShareInboxFixTests.swift */; };
@@ -656,6 +661,7 @@
 		255DE065E8D69FCAA601B70B /* ExportSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSheetController.swift; sourceTree = "<group>"; };
 		25E87649F3B401A28250CB89 /* TabBarFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabBarFlowTests.swift; sourceTree = "<group>"; };
 		27814E8416095568B1D5AFCC /* AddModelSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddModelSheetController.swift; sourceTree = "<group>"; };
+		279A01D5714101F4FD143260 /* ReminderWayBackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderWayBackTests.swift; sourceTree = "<group>"; };
 		288B37CF6F5150265C76115D /* MCPBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPBridge.swift; sourceTree = "<group>"; };
 		28E351C35792659E6BC889F1 /* Thumbnails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Thumbnails.swift; sourceTree = "<group>"; };
 		290A49FE86404918247E7F55 /* InboxBundler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBundler.swift; sourceTree = "<group>"; };
@@ -822,6 +828,7 @@
 		A2EF8775CF439144C3EC58B2 /* NoteStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteStoreTests.swift; sourceTree = "<group>"; };
 		A2F71C61FDF13327EF337197 /* BowlSharingExtrasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlSharingExtrasTests.swift; sourceTree = "<group>"; };
 		A4A27C57B3ED869FF1E87F8E /* AttachmentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentStore.swift; sourceTree = "<group>"; };
+		A513CA288F293536BB74AD49 /* ReminderImportSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderImportSheetController.swift; sourceTree = "<group>"; };
 		A774E41E8B24EDEAF494FF5C /* NoteCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteCellView.swift; sourceTree = "<group>"; };
 		A77652CA7E1DB76E348FCBF5 /* PlaceTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceTabBar.swift; sourceTree = "<group>"; };
 		A7825A3F61D5732826AD5E47 /* NoteEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEditorView.swift; sourceTree = "<group>"; };
@@ -831,6 +838,7 @@
 		AC82EC350B85940475F85526 /* AutoSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSummaryTests.swift; sourceTree = "<group>"; };
 		ACA4500AB20688F1A1FE622B /* SmartFilterStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartFilterStore.swift; sourceTree = "<group>"; };
 		ACB6219F5C02008C1A976313 /* AppMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMenu.swift; sourceTree = "<group>"; };
+		AD64850A160F32BE62BC2DE2 /* ReminderImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderImportSheet.swift; sourceTree = "<group>"; };
 		AD72827A43DFA3EBA4B8546F /* Acknowledgements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Acknowledgements.swift; sourceTree = "<group>"; };
 		AE4B566693EFC182A7E75F5F /* MeetingRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRecorder.swift; sourceTree = "<group>"; };
 		AE91145DD729AA591C619B47 /* AttachmentStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentStrip.swift; sourceTree = "<group>"; };
@@ -856,6 +864,7 @@
 		C0762B11392FADC43B22F532 /* BowlSharingDeletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlSharingDeletionTests.swift; sourceTree = "<group>"; };
 		C0A1C06C07F6D96593435734 /* LiveSpeakerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSpeakerTests.swift; sourceTree = "<group>"; };
 		C2161442133918520FE8CB0E /* ReminderSyncEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderSyncEngineTests.swift; sourceTree = "<group>"; };
+		C2D4DB4994C649BD7DC6E3CA /* ReminderImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderImport.swift; sourceTree = "<group>"; };
 		C3197A9B7198182A33C9D730 /* SmartFilters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartFilters.swift; sourceTree = "<group>"; };
 		C36232F7C84C19CEFA4A602F /* AddPopoverHeightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPopoverHeightTests.swift; sourceTree = "<group>"; };
 		C433787064093CB91B3D4661 /* SmartFilterViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartFilterViews.swift; sourceTree = "<group>"; };
@@ -1009,6 +1018,7 @@
 				358506EA71C01A91EB123C70 /* MeetingAlertsCard.swift */,
 				18E02FDC85B30CF580A0C780 /* NoteTemplatesView.swift */,
 				A86BAAAE3A4C0F241F7470A7 /* PadSettingsSheet.swift */,
+				AD64850A160F32BE62BC2DE2 /* ReminderImportSheet.swift */,
 				EB0384279FBB5C1A2424DD1B /* SettingsView.swift */,
 				60A0B43E6BF68BEF6D3BF395 /* SummaryTemplatesView.swift */,
 				56FD02EAB29161B15D0292BF /* VoicesView.swift */,
@@ -1027,6 +1037,7 @@
 				6B247FB69D1F33A4625C5E77 /* KeyboardSettingsPane.swift */,
 				93420CE470F379F0877B30D2 /* MCPSettingsPane.swift */,
 				C83B748DEEC0D1AECB47A771 /* RecordingSettingsPane.swift */,
+				A513CA288F293536BB74AD49 /* ReminderImportSheetController.swift */,
 				50396E878D361D57D9F258E3 /* SettingsForm.swift */,
 				3F735F14B0C0668CAD2411D9 /* SettingsWindowController.swift */,
 				803F8FA2ADF97C745A2BCDC1 /* TemplatesSheetController.swift */,
@@ -1254,6 +1265,7 @@
 				F67C08D5432EF8F4AEE359D8 /* ReminderListPlanTests.swift */,
 				C2161442133918520FE8CB0E /* ReminderSyncEngineTests.swift */,
 				CADF7702344A8AFC395A56C8 /* ReminderSyncTests.swift */,
+				279A01D5714101F4FD143260 /* ReminderWayBackTests.swift */,
 				D4357252C001C44C71B1EC7E /* RightChannelTests.swift */,
 				4667E36A1EFD0A7354B3D189 /* SearchAskTests.swift */,
 				24321B9F0C72D598DEEDDE5F /* SharedSpeakerTests.swift */,
@@ -1524,6 +1536,7 @@
 				F0C6D4089FE130492BCC55C9 /* ProcessingService.swift */,
 				4E639258A983029655F3B803 /* Projects.swift */,
 				3E7511785C6CC41FB53AC539 /* RecordingJournal.swift */,
+				C2D4DB4994C649BD7DC6E3CA /* ReminderImport.swift */,
 				148BE21DE2877C35AA322648 /* ReminderListLedger.swift */,
 				9D4F71034BB80403D48F449F /* ReminderListPlan.swift */,
 				4DF1B9EDCDF272B1541170F7 /* ReminderMapping.swift */,
@@ -2055,6 +2068,8 @@
 				9D2861EFFABAC0F25E72B4B6 /* RecordingActivity.swift in Sources */,
 				BDDD05206A0D868FAEABA672 /* RecordingJournal.swift in Sources */,
 				9AB821A5996B06FA3F60D76B /* RecordingView.swift in Sources */,
+				EAE9EF9F407E6D01C5CEA745 /* ReminderImport.swift in Sources */,
+				7E3F5AD72D42B6EF51D1AEF9 /* ReminderImportSheet.swift in Sources */,
 				8EA35702E9EC7891B7C12974 /* ReminderListLedger.swift in Sources */,
 				426CF6136F42087460BD8E41 /* ReminderListPlan.swift in Sources */,
 				584EFA8A40256478820CFAA2 /* ReminderMapping.swift in Sources */,
@@ -2307,6 +2322,8 @@
 				48C60C370EC336B5F9465953 /* RecordingActivity.swift in Sources */,
 				A5FF3D1F2C04F7A95360E2FF /* RecordingJournal.swift in Sources */,
 				E7DEDC41A17EFCCE0690B3CB /* RecordingSettingsPane.swift in Sources */,
+				D0803D8E7AF857D273E80CFF /* ReminderImport.swift in Sources */,
+				A884C4464AFF573C4CA52B8C /* ReminderImportSheetController.swift in Sources */,
 				77CF09A6A256378D8C08B1C1 /* ReminderListLedger.swift in Sources */,
 				338B059490E9ABD65917FA08 /* ReminderListPlan.swift in Sources */,
 				57AEDB1C669D3451D5D3A1EA /* ReminderMapping.swift in Sources */,
@@ -2449,6 +2466,7 @@
 				6FE22E9891B0C1868DD29182 /* ReminderListPlanTests.swift in Sources */,
 				E7B2F9FA2245E9C953B41A73 /* ReminderSyncEngineTests.swift in Sources */,
 				7A5785CCC68AC07F94C3DB79 /* ReminderSyncTests.swift in Sources */,
+				B254FB513634F324824781B3 /* ReminderWayBackTests.swift in Sources */,
 				4226AB5D284B277A207D7316 /* RightChannelTests.swift in Sources */,
 				FF27A3046A665DCD5108B780 /* SearchAskTests.swift in Sources */,
 				12F183F86F60F25E874B2E76 /* ShareImportTests.swift in Sources */,

@@ -19,7 +19,12 @@ final class GeneralSettingsPane: SettingsPane {
     }
     private var reminderStatus: (row: NSGridRow, label: NSTextField)?
     private var resumeRow: NSGridRow?
+    private var reviewRow: NSGridRow?
     private var localOnlyRow: NSGridRow?
+    /// The lists of Reminders with what each is to Porridge, each with its switch.
+    private let reminderLists = NSStackView.vertical([], spacing: 6)
+    private var reminderListRows: [NSGridRow] = []
+    private var shownListRows: [ReminderListRow] = []
     /// Sort Bowls By: the order of the sidebar's bowls and the Bowls place (the iPhone has the same setting).
     private lazy var bowlOrder = SettingsPopUp { index in
         guard HomeList.BowlOrder.allCases.indices.contains(index) else { return }
@@ -44,8 +49,10 @@ final class GeneralSettingsPane: SettingsPane {
         form.row("Reminders", reminders)
         reminderStatus = form.note()
         resumeRow = form.row("", NSButton.push("Resume") { ReminderSync.shared.resume() })
-        form.note(ReminderSync.betaNote)
+        reviewRow = form.row("", NSButton.push("Review…") { ReminderSync.shared.reviewImport() })
         localOnlyRow = form.note(ReminderSync.localOnlyNote).row
+        reminderListRows.append(form.row("Lists", reminderLists, top: true))
+        reminderListRows.append(form.note("A list switched off stays in Reminders: nothing of it comes into Porridge, and a bowl's to-dos no longer go there.").row)
         form.separator()
 
         form.row("Sort Bowls By", bowlOrder)
@@ -82,13 +89,28 @@ final class GeneralSettingsPane: SettingsPane {
         reminders.isOn = sync.isEnabled
         reminders.isEnabled = sync.status != .unavailable
         let line = sync.statusLine()
-        let hidden = (status: line == nil, resume: !sync.canResume, localOnly: !(sync.isEnabled && SyncMode.chosen != .iCloud))
-        let changed = reminderStatus?.row.isHidden != hidden.status || resumeRow?.isHidden != hidden.resume
-            || localOnlyRow?.isHidden != hidden.localOnly
+        let hidden = (
+            status: line == nil, resume: !sync.canResume, review: !sync.isImportPending,
+            localOnly: !(sync.isEnabled && SyncMode.chosen != .iCloud), lists: !(sync.isEnabled && !sync.listRows.isEmpty)
+        )
+        var changed = reminderStatus?.row.isHidden != hidden.status || resumeRow?.isHidden != hidden.resume
+            || reviewRow?.isHidden != hidden.review || localOnlyRow?.isHidden != hidden.localOnly
+            || reminderListRows.first?.isHidden != hidden.lists
         reminderStatus?.label.stringValue = line ?? ""
         reminderStatus?.row.isHidden = hidden.status
         resumeRow?.isHidden = hidden.resume
+        reviewRow?.isHidden = hidden.review
         localOnlyRow?.isHidden = hidden.localOnly
+        reminderListRows.forEach { $0.isHidden = hidden.lists }
+        if sync.listRows != shownListRows {
+            shownListRows = sync.listRows
+            reminderLists.setViews(sync.listRows.map { row in
+                let box = SettingsCheckbox("\(row.title) · \(row.detail)") { on in ReminderSync.shared.setList(row, on: on) }
+                box.isOn = row.isOn
+                return box
+            }, in: .top)
+            changed = true
+        }
         if changed { contentChanged() }
         dailyHint.isOn = DailyHint.isEnabled
         bowlOrder.set(HomeList.BowlOrder.allCases.map(\.title), selected: HomeList.BowlOrder.allCases.firstIndex(of: HomeList.bowlOrder))

@@ -483,7 +483,8 @@ private struct SyncCard: View {
 }
 
 /// To-dos in Apple's Reminders (`ReminderSync`), on this device: the switch, how the last run went (with "Resume"
-/// after a pause), the beta note, and a word when iCloud Sync is off.
+/// after a pause, "Review" while the first import waits), a word when iCloud Sync is off, and the lists with what
+/// each is to Porridge (a bowl's, the Inbox's, one left out), each with its switch.
 private struct RemindersCard: View {
     @AppStorage(SyncMode.key) private var mode: SyncMode = .iCloud
     private let sync = ReminderSync.shared
@@ -503,11 +504,29 @@ private struct RemindersCard: View {
                 Button("Resume") { sync.resume() }
                     .font(.body)
             }
-            Text(ReminderSync.betaNote)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            if sync.isImportPending {
+                Button("Review") { sync.reviewImport() }
+                    .font(.body)
+            }
             if sync.isEnabled, mode != .iCloud {
                 Text(ReminderSync.localOnlyNote)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            if sync.isEnabled, !sync.listRows.isEmpty {
+                CardDivider()
+                Text("Lists")
+                    .font(.subheadline.weight(.semibold))
+                ForEach(sync.listRows) { row in
+                    Toggle(isOn: Binding(get: { row.isOn }, set: { sync.setList(row, on: $0) })) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.title).font(.body)
+                            Text(row.detail).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .tint(Color.brandSky)
+                }
+                Text("A list switched off stays in Reminders: nothing of it comes into Porridge, and a bowl's to-dos no longer go there.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
