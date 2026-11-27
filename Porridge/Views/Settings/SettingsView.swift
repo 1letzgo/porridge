@@ -178,10 +178,11 @@ struct SettingsView: View {
     private var cards: some View {
         switch area {
         case .general:
-            // The order of the Mac's General pane: who you are, sync, how bowls are sorted, note templates,
-            // hints, export, about.
+            // The order of the Mac's General pane: who you are, sync, Reminders, how bowls are sorted, note
+            // templates, hints, export, about.
             youCard
             SyncCard()
+            RemindersCard()
             BowlsCard()
             NoteTemplatesCard()
             HintCard()
@@ -477,6 +478,39 @@ private struct SyncCard: View {
             Button("Cancel", role: .cancel) {}
         } message: { target in
             Text(target.confirmMessage)
+        }
+    }
+}
+
+/// To-dos in Apple's Reminders (`ReminderSync`), on this device: the switch, how the last run went (with "Resume"
+/// after a pause), the beta note, and a word when iCloud Sync is off.
+private struct RemindersCard: View {
+    @AppStorage(SyncMode.key) private var mode: SyncMode = .iCloud
+    private let sync = ReminderSync.shared
+
+    var body: some View {
+        SettingsCard(title: "Reminders") {
+            Toggle("Sync To-dos with Reminders", isOn: Binding(get: { sync.isEnabled }, set: { on in Task { await sync.setEnabled(on) } }))
+                .font(.body)
+                .tint(Color.brandSky)
+                .disabled(sync.status == .unavailable)
+            if let line = sync.statusLine() {
+                Text(line)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            if sync.canResume {
+                Button("Resume") { sync.resume() }
+                    .font(.body)
+            }
+            Text(ReminderSync.betaNote)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            if sync.isEnabled, mode != .iCloud {
+                Text(ReminderSync.localOnlyNote)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

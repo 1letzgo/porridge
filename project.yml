@@ -88,6 +88,7 @@ targets:
         NSMicrophoneUsageDescription: Porridge records meetings and notes with the microphone and transcribes them on your device.
         NSCameraUsageDescription: Porridge scans letters, receipts and other documents with the camera and reads their text on your device.
         NSCalendarsFullAccessUsageDescription: Porridge reads your calendars to name recorded meetings after their appointment, offer the people invited as speaker names, and alert you shortly before a meeting so you can record it. It never changes your calendars.
+        NSRemindersFullAccessUsageDescription: When you turn on Sync To-dos with Reminders in Settings, Porridge writes your to-dos into Reminders, one list for each bowl, and keeps them up to date. It does not touch your other reminders.
         # A server of your own at home (Ollama) often has no certificate: plain http is allowed there, and only there.
         NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model.
         NSAppTransportSecurity:
@@ -192,6 +193,7 @@ targets:
         # Meetings record the Mac's sound too (Core Audio process tap, SystemAudioTap): the other side of a call.
         NSAudioCaptureUsageDescription: Porridge records the sound of your Mac during a meeting, such as the other side of a Zoom, Meet or Teams call, and transcribes it on your Mac, so the transcript has everyone.
         NSCalendarsFullAccessUsageDescription: Porridge reads your calendars to name recorded meetings after their appointment, offer the people invited as speaker names, and alert you shortly before a meeting so you can record it. It never changes your calendars.
+        NSRemindersFullAccessUsageDescription: When you turn on Sync To-dos with Reminders in Settings, Porridge writes your to-dos into Reminders, one list for each bowl, and keeps them up to date. It does not touch your other reminders.
         # A server of your own at home (Ollama) often has no certificate: plain http is allowed there, and only there.
         NSLocalNetworkUsageDescription: Porridge connects to servers in your network that you entered yourself, such as your own AI model.
         NSAppTransportSecurity:

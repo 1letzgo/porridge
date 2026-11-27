@@ -1,6 +1,6 @@
 import AppKit
 
-/// General: who the user is (the summaries name them), iCloud sync, Sort Bowls By, note templates, hints,
+/// General: who the user is (the summaries name them), iCloud sync, to-dos in Reminders, Sort Bowls By, note templates, hints,
 /// export and the version with the acknowledgements. Switching sync takes effect at the next launch; updates come through TestFlight.
 final class GeneralSettingsPane: SettingsPane {
     private lazy var nameField = SettingsTextField(placeholder: "Your Name") { name in
@@ -10,6 +10,16 @@ final class GeneralSettingsPane: SettingsPane {
     private lazy var iCloudSync = SettingsCheckbox("iCloud Sync") { [weak self] on in
         self?.syncTapped(on ? .iCloud : .off)
     }
+    /// To-dos in Apple's Reminders (`ReminderSync`), on this Mac, with how the last run went.
+    private lazy var reminders = SettingsCheckbox("Sync To-dos with Reminders") { [weak self] on in
+        Task { @MainActor in
+            await ReminderSync.shared.setEnabled(on)
+            self?.render()
+        }
+    }
+    private var reminderStatus: (row: NSGridRow, label: NSTextField)?
+    private var resumeRow: NSGridRow?
+    private var localOnlyRow: NSGridRow?
     /// Sort Bowls By: the order of the sidebar's bowls and the Bowls place (the iPhone has the same setting).
     private lazy var bowlOrder = SettingsPopUp { index in
         guard HomeList.BowlOrder.allCases.indices.contains(index) else { return }
@@ -29,6 +39,13 @@ final class GeneralSettingsPane: SettingsPane {
         form.separator()
 
         form.row("", iCloudSync)
+        form.separator()
+
+        form.row("Reminders", reminders)
+        reminderStatus = form.note()
+        resumeRow = form.row("", NSButton.push("Resume") { ReminderSync.shared.resume() })
+        form.note(ReminderSync.betaNote)
+        localOnlyRow = form.note(ReminderSync.localOnlyNote).row
         form.separator()
 
         form.row("Sort Bowls By", bowlOrder)
@@ -61,6 +78,18 @@ final class GeneralSettingsPane: SettingsPane {
     override func render() {
         nameField.show(UserDefaults.standard.string(forKey: AppSettings.myNameKey) ?? "")
         iCloudSync.isOn = SyncMode.chosen == .iCloud
+        let sync = ReminderSync.shared
+        reminders.isOn = sync.isEnabled
+        reminders.isEnabled = sync.status != .unavailable
+        let line = sync.statusLine()
+        let hidden = (status: line == nil, resume: !sync.canResume, localOnly: !(sync.isEnabled && SyncMode.chosen != .iCloud))
+        let changed = reminderStatus?.row.isHidden != hidden.status || resumeRow?.isHidden != hidden.resume
+            || localOnlyRow?.isHidden != hidden.localOnly
+        reminderStatus?.label.stringValue = line ?? ""
+        reminderStatus?.row.isHidden = hidden.status
+        resumeRow?.isHidden = hidden.resume
+        localOnlyRow?.isHidden = hidden.localOnly
+        if changed { contentChanged() }
         dailyHint.isOn = DailyHint.isEnabled
         bowlOrder.set(HomeList.BowlOrder.allCases.map(\.title), selected: HomeList.BowlOrder.allCases.firstIndex(of: HomeList.bowlOrder))
     }

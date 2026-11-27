@@ -52,6 +52,8 @@
 	<string>Porridge connects to servers in your network that you entered yourself, such as your own AI model.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Porridge records meetings and notes with the microphone and transcribes them on your device.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>When you turn on Sync To-dos with Reminders in Settings, Porridge writes your to-dos into Reminders, one list for each bowl, and keeps them up to date. It does not touch your other reminders.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
