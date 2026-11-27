@@ -309,7 +309,10 @@ enum EntryActions {
                 guard let bowl = folder(id, in: context) else { continue }
                 let key = Projects.key(bowl)
                 let used = ((try? context.fetch(FetchDescriptor<Note>())) ?? []).contains { $0.projectIDs.contains(key) }
-                if !used { context.delete(bowl) }
+                if !used {
+                    context.delete(bowl)
+                    ReminderLists.shared.bowlWasDeleted(key)
+                }
             }
         }
         try? context.save()

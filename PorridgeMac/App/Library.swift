@@ -35,6 +35,8 @@ final class Library {
         CloudFiles.start(container)
         // Shared bowls: follows the zones of the bowls this person shares and of those shared with them.
         BowlSharing.shared.start(container)
+        // To-dos into Reminders, when turned on in Settings › General (never in a test run).
+        ReminderSync.shared.start(container)
 
         let center = NotificationCenter.default
         center.addObserver(forName: ModelContext.didSave, object: nil, queue: .main) { [weak self] _ in
@@ -48,6 +50,7 @@ final class Library {
                 guard let self else { return }
                 ShareImport.importInbox(context: self.context, processing: self.processing)
                 self.setNeedsReload()
+                ReminderSync.shared.appBecameActive()
             }
         }
         reload()

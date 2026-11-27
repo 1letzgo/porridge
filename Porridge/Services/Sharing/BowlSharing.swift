@@ -539,6 +539,7 @@ final class BowlSharing {
         }
         try? context.save()
         AppointmentLinks.shared.bowlWasDeleted(key)
+        ReminderLists.shared.bowlWasDeleted(key)
     }
 
     /// Deletes copies taken from a shared zone (never an original: anything without a token is left alone), their

@@ -95,7 +95,10 @@ enum BowlMaking {
             let undone = Set(change.createdNoteIDs).subtracting(kept)
             let stillUsed = notes.contains { !undone.contains($0.id) && $0.projectIDs.contains(key) }
             let bowls = (try? context.fetch(FetchDescriptor<NoteFolder>())) ?? []
-            if !stillUsed, let bowl = bowls.first(where: { $0.id == change.bowlID }) { context.delete(bowl) }
+            if !stillUsed, let bowl = bowls.first(where: { $0.id == change.bowlID }) {
+                context.delete(bowl)
+                ReminderLists.shared.bowlWasDeleted(key)
+            }
         }
         try? context.save()
     }

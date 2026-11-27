@@ -34,7 +34,8 @@ enum Projects {
         try? context.save()
     }
 
-    /// Deletes the project only: its notes stay and just leave it. Appointments filed into it are no longer.
+    /// Deletes the project only: its notes stay and just leave it. Appointments filed into it are no longer; its list in
+    /// Reminders is cleaned up or left standing (`ReminderLists.bowlWasDeleted`).
     @MainActor
     static func delete(_ project: NoteFolder, in context: ModelContext) {
         let id = key(project)
@@ -45,6 +46,7 @@ enum Projects {
         context.delete(project)
         try? context.save()
         AppointmentLinks.shared.bowlWasDeleted(id)
+        ReminderLists.shared.bowlWasDeleted(id)
     }
 
     /// Takes the note out of the bowl when it is in it, otherwise puts it into that bowl instead of the one it is in:

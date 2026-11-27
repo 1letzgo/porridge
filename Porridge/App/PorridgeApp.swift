@@ -59,6 +59,8 @@ struct PorridgeApp: App {
         MainActor.assumeIsolated { CloudFiles.start(container) }
         // Shared bowls: follows the zones of the bowls this person shares and of those shared with them.
         MainActor.assumeIsolated { BowlSharing.shared.start(container) }
+        // To-dos into Reminders, when turned on in Settings › General (never in a test run).
+        MainActor.assumeIsolated { ReminderSync.shared.start(container) }
         // Links between entries show the current title of the entry they point to.
         MainActor.assumeIsolated {
             let context = container.mainContext
@@ -105,6 +107,7 @@ struct PorridgeApp: App {
             if phase == .background { Task { await ModelManager.shared.releaseLLM() } }
             // "Back from Later" notifications planned before "Later" was taken away do not ring.
             if phase == .active { InboxSnooze.removePlannedNotifications() }
+            if phase == .active { ReminderSync.shared.appBecameActive() }
         }
     }
 }
