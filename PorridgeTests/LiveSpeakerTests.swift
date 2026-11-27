@@ -351,7 +351,12 @@ final class LiveSpeakerTests: XCTestCase {
         XCTAssertEqual(first, Speaker(id: "s1", name: "Speaker 1", colorIndex: 0))
         let taken = [Speaker(id: "x", name: "Speaker 1", colorIndex: 0)]
         XCTAssertEqual(LiveTranscript.addedSpeaker(id: "s1", existing: taken), Speaker(id: "s1", name: "Speaker 2", colorIndex: 1))
-        XCTAssertEqual(LiveTranscript.addedSpeaker(id: "ch1.2", existing: taken), Speaker(id: "ch1.2", name: "Speaker 2", colorIndex: 1))
+        XCTAssertEqual(LiveTranscript.addedSpeaker(id: "ch1.2", existing: taken), Speaker(id: "ch1.2", name: "Speaker 3", colorIndex: 2),
+                       "a further voice of the Mac's sound is named as live")
+        XCTAssertEqual(LiveTranscript.addedSpeaker(id: "ch1.3", existing: []), Speaker(id: "ch1.3", name: "Speaker 4", colorIndex: 3))
+        let used = [Speaker(id: "x", name: "Speaker 3", colorIndex: 2)]
+        XCTAssertEqual(LiveTranscript.addedSpeaker(id: "ch1.2", existing: used), Speaker(id: "ch1.2", name: "Speaker 2", colorIndex: 1),
+                       "taken already: the next free one")
     }
 
     // MARK: Pauses
@@ -446,8 +451,33 @@ final class LiveSpeakerTests: XCTestCase {
         live.store(in: note, duration: 5)
         XCTAssertEqual(note.segments.map(\.speakerId), ["ch1", "ch0", "ch1.2"])
         XCTAssertEqual(note.speakers.map(\.id), ["ch0", "ch1", "ch1.2"])
-        XCTAssertEqual(note.speakers.last?.name, "Speaker 3", "named as after recording, never by a live match")
+        XCTAssertEqual(note.speakers.map(\.name), ["Me", "Speaker 2", "Speaker 3"],
+                       "named as live and after recording, never by a live match")
+        XCTAssertEqual(note.speakers.map(\.colorIndex), [0, 1, 2])
         XCTAssertEqual(note.speakerMode, .channels)
+    }
+
+    @MainActor
+    func testOneVoiceOnTheMacsSoundStaysOthersAndANamedFieldKeepsItsName() {
+        func channelsNote(others: String) -> Note {
+            let note = Note()
+            note.speakerMode = .channels
+            note.speakers = [Speaker(id: "ch0", name: "Me", colorIndex: 0), Speaker(id: "ch1", name: others, colorIndex: 1)]
+            return note
+        }
+        let single = channelsNote(others: "Others")
+        LiveTranscript(utterances: [
+            LiveUtterance(id: UUID(), track: 1, speakerID: "ch1", text: "Hi", isFinal: true, start: 0, end: 1),
+            LiveUtterance(id: UUID(), track: 0, speakerID: "ch0", text: "Hello", isFinal: true, start: 1.5, end: 2),
+        ]).store(in: single, duration: 3)
+        XCTAssertEqual(single.speakers.map(\.name), ["Me", "Others"])
+
+        let named = channelsNote(others: "Team")
+        LiveTranscript(utterances: [
+            LiveUtterance(id: UUID(), track: 1, speakerID: "ch1", text: "Hi", isFinal: true, start: 0, end: 1),
+            LiveUtterance(id: UUID(), track: 1, speakerID: "ch1.2", text: "Bye", isFinal: true, start: 2, end: 3),
+        ]).store(in: named, duration: 4)
+        XCTAssertEqual(named.speakers.map(\.name), ["Me", "Team", "Speaker 3"], "a name the user gave stays")
     }
 
     @MainActor

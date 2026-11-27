@@ -397,6 +397,14 @@ final class ProcessingService {
                     diagnostics = "Speaker detection failed: \(error.localizedDescription)"
                 }
             }
+            // Live heard more voices on the Mac's sound ("Speaker 2", `LiveTranscript.store`), this pass one: the
+            // others are "Others" again.
+            if SystemAudioMix.isSystemAudio(inputName: meeting.inputName),
+               !speakerIds.contains(where: { $0?.hasPrefix(SpeakerAssigner.rightChannelID + ".") == true }),
+               let index = speakers.firstIndex(where: { $0.id == SpeakerAssigner.rightChannelID }),
+               speakers[index].profileID == nil, speakers[index].name == SystemAudioMix.defaultNamePrefix + "2" {
+                speakers[index].name = SystemAudioMix.othersName
+            }
         } else if AppSettings.speakerDetectionEnabled, !output.words.isEmpty {
             stages[id] = "Detecting speakers…"
             do {

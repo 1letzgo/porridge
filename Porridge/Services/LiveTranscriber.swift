@@ -47,6 +47,13 @@ struct LiveTranscript {
             return
         }
         var speakers = note.speakers
+        // More than one voice on the Mac's sound: its first one is "Speaker 2" as it was live (and is after
+        // processing), unless the user named the others' field.
+        let right = SpeakerAssigner.rightChannelID
+        if spoken.contains(where: { $0.speakerID?.hasPrefix(right + ".") == true }),
+           let index = speakers.firstIndex(where: { $0.id == right && $0.name == SystemAudioMix.othersName && $0.profileID == nil }) {
+            speakers[index].name = SystemAudioMix.defaultNamePrefix + "2"
+        }
         for id in spoken.compactMap(\.speakerID) where !speakers.contains(where: { $0.id == id }) {
             speakers.append(Self.addedSpeaker(id: id, existing: speakers))
         }
@@ -61,8 +68,16 @@ struct LiveTranscript {
 
     /// A speaker heard live that the note does not have yet. A voice of one microphone ("s2") gets the name and
     /// color it had live and gets after recording (`SpeakerAssigner.byDiarization` keeps a speaker of the same id),
-    /// unless the note uses them already; any other the next free "Speaker n".
+    /// unless the note uses them already; so does a further voice of the Mac's sound ("ch1.2" is "Speaker 3", as
+    /// `TranscriptBubbles.liveSpeaker` shows it); any other the next free "Speaker n".
     static func addedSpeaker(id: String, existing: [Speaker]) -> Speaker {
+        let further = SpeakerAssigner.rightChannelID + "."
+        if id.hasPrefix(further), let number = Int(id.dropFirst(further.count)), number >= 2 {
+            let name = "Speaker \(number + 1)"
+            if !existing.contains(where: { $0.name == name || $0.colorIndex == number }) {
+                return Speaker(id: id, name: name, colorIndex: number)
+            }
+        }
         if id.hasPrefix("s"), let number = Int(id.dropFirst()), number >= 1 {
             let name = "Speaker \(number)"
             if !existing.contains(where: { $0.name == name || $0.colorIndex == number - 1 }) {
