@@ -175,6 +175,13 @@ final class ReminderSyncTests: XCTestCase {
         XCTAssertEqual(ReminderSyncPlan.decide(input), .skip)
         input.reminder = nil
         XCTAssertEqual(ReminderSyncPlan.decide(input), .skip)
+        // Not even a to-do sent to Recently Deleted takes its reminder with it there.
+        let found = ReminderNow(fields: fields(), listKey: "B1")
+        var trashed = ReminderSyncPlan.Input(porridge: .trashed, reminder: found, base: base(fields(), list: "B1"))
+        trashed.targetPaused = true
+        XCTAssertEqual(ReminderSyncPlan.decide(trashed), .skip)
+        trashed.porridge = .missing
+        XCTAssertEqual(ReminderSyncPlan.decide(trashed), .skip)
     }
 
     func testFirstLinkPorridgeHolds() {

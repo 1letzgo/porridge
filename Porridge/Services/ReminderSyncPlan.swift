@@ -148,9 +148,12 @@ enum ReminderSyncPlan {
     static func decide(_ input: Input) -> Decision {
         switch input.porridge {
         case .missing:
+            if input.targetPaused, input.reminder != nil { return .skip }
             if input.reminder != nil { return .deleteReminder(missingNote: true) }
             return input.base == nil ? .nothing : .forget
         case .trashed, .notTodo:
+            // In an archived bowl nothing is deleted either.
+            if input.targetPaused, input.reminder != nil { return .skip }
             if input.reminder != nil { return .deleteReminder(missingNote: false) }
             return input.base == nil ? .nothing : .forget
         case .todo(let fields, let listKey):
