@@ -346,11 +346,9 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
         do {
             let journal = RecordingJournal(title: meetingTitle, continues: continues)
             self.journal = journal
-            let feed = live.feed
-            recorder.onBuffer = { buffer in
-                feed(buffer)
-                journal.append(buffer)
-            }
+            recorder.onBuffer = live.feed
+            // The safety copy keeps both channels of a split stereo recording (the user and the Mac's sound).
+            recorder.onRecordedBuffer = { buffer in journal.append(buffer) }
             // A call: the microphone and the Mac's sound each get a recognizer of their own (the user and the others).
             recorder.onChannelBuffers = live.feedChannels
             #if DEBUG
@@ -366,6 +364,8 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
             try recorder.start()
             #endif
             journal.setUnfinishedFile(recorder.fileName)
+            journal.setInput(name: recorder.inputName, isSplitStereo: recorder.isSplitStereo, includesSystemAudio: recorder.includesSystemAudio)
+            if recorder.isSplitStereo { journal.setSpeakerNames(speakerNames) }
             LiveRecording.start(kind: .meeting, title: "Meeting", onTogglePause: { [weak self] in self?.togglePause() }) { [weak self] in self?.stop() }
             observers.append(Observing { [weak self] in self?.render() })
             observers.append(Observing { [weak self] in
@@ -492,6 +492,15 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
     func controlTextDidChange(_ notification: Notification) {
         guard let field = notification.object as? NSTextField, nameFields.contains(field) else { return }
         renderTranscript()
+        if recorder.isSplitStereo { journal?.setSpeakerNames(speakerNames) }
+    }
+
+    /// The two speakers' names as Stop stores them.
+    private var speakerNames: [String] {
+        nameFields.enumerated().map { index, field in
+            let trimmed = field.stringValue.trimmingCharacters(in: .whitespaces)
+            return trimmed.isEmpty ? "Speaker \(index + 1)" : trimmed
+        }
     }
 
     @objc private func togglePause() {
@@ -526,10 +535,7 @@ final class RecordingViewController: NSViewController, NSTextFieldDelegate {
     @objc func stop() {
         guard !finished, let result = recorder.stop() else { return }
         finished = true
-        let names = nameFields.enumerated().map { index, field in
-            let trimmed = field.stringValue.trimmingCharacters(in: .whitespaces)
-            return trimmed.isEmpty ? "Speaker \(index + 1)" : trimmed
-        }
+        let names = speakerNames
         let transcript = live.transcript
         LiveRecording.end()
         live.cancel()

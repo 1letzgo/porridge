@@ -58,6 +58,9 @@ final class AudioRecorder {
     /// With the Mac's sound (`secondChannel`): the microphone (left) and the Mac's sound (right) as two mono buffers,
     /// for a live transcript per side (`LiveTranscriber`). Called next to `onBuffer`, only while both are recorded.
     @ObservationIgnored var onChannelBuffers: (@Sendable (_ microphone: AVAudioPCMBuffer, _ system: AVAudioPCMBuffer) -> Void)?
+    /// What the recording keeps apart, for its safety copy (`RecordingJournal`): both channels of a split stereo
+    /// recording (left and right as in the file, the Mac's sound on the right), else the mono copy. Set before `start`.
+    @ObservationIgnored var onRecordedBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     /// Recorded on the right channel next to the microphone (mixed to mono on the left). Set before `start`.
     @ObservationIgnored var secondChannel: (any SecondChannelSource)?
 
@@ -167,7 +170,10 @@ final class AudioRecorder {
 
         input.installTap(
             onBus: 0, bufferSize: 4096, format: hwFormat,
-            block: Self.makeTapBlock(writer: writer, second: fifo, onBuffer: onBuffer, onChannels: fifo == nil ? nil : onChannelBuffers) { [weak self] levels in
+            block: Self.makeTapBlock(
+                writer: writer, second: fifo, onBuffer: onBuffer, onChannels: fifo == nil ? nil : onChannelBuffers,
+                onRecorded: onRecordedBuffer, keepsChannels: isSplitStereo
+            ) { [weak self] levels in
                 Task { @MainActor in if self?.isPaused == false { self?.levels = levels } }
             }
         )
@@ -216,7 +222,9 @@ final class AudioRecorder {
         }
         self.writer = writer
         fileName = name
-        let tap = Self.makeTapBlock(writer: writer, second: nil, onBuffer: onBuffer, onChannels: onChannelBuffers) { [weak self] levels in
+        let tap = Self.makeTapBlock(
+            writer: writer, second: nil, onBuffer: onBuffer, onChannels: onChannelBuffers, onRecorded: onRecordedBuffer, keepsChannels: true
+        ) { [weak self] levels in
             Task { @MainActor in if self?.isPaused == false { self?.levels = levels } }
         }
         isRecording = true
@@ -442,21 +450,45 @@ final class AudioRecorder {
         second: SampleFIFO?,
         onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?,
         onChannels: (@Sendable (AVAudioPCMBuffer, AVAudioPCMBuffer) -> Void)?,
+        onRecorded: (@Sendable (AVAudioPCMBuffer) -> Void)? = nil,
+        keepsChannels: Bool = false,
         onLevels: @escaping @Sendable ([Float]) -> Void
     ) -> AVAudioNodeTapBlock {
-        { microphone, _ in
+        let keepsChannels = keepsChannels && writer.channels == 2
+        return { microphone, _ in
             guard !writer.isPaused else { return }
             // With the Mac's sound: the microphone on the left, the sound on the right.
             guard let buffer = second.map({ SystemAudioMix.stereo(microphone: microphone, fifo: $0) }) ?? microphone else { return }
             writer.write(buffer)
             onLevels(levelsOf(buffer, channels: writer.channels))
-            if let onBuffer, let mono = monoCopy(of: buffer, channels: writer.channels) {
+            let mono = onBuffer != nil || (onRecorded != nil && !keepsChannels) ? monoCopy(of: buffer, channels: writer.channels) : nil
+            if let onBuffer, let mono {
                 onBuffer(mono)
+            }
+            if let onRecorded {
+                // A copy: the engine reuses its buffers once the tap returns.
+                if keepsChannels {
+                    if let stereo = channelsCopy(of: buffer, count: 2) { onRecorded(stereo) }
+                } else if let mono {
+                    onRecorded(mono)
+                }
             }
             if let onChannels, let left = channelCopy(of: buffer, channel: 0), let right = channelCopy(of: buffer, channel: 1) {
                 onChannels(left, right)
             }
         }
+    }
+
+    /// The first `count` channels of `buffer` as a buffer of its own (nil when it has fewer).
+    nonisolated static func channelsCopy(of buffer: AVAudioPCMBuffer, count: Int) -> AVAudioPCMBuffer? {
+        let frames = Int(buffer.frameLength)
+        guard frames > 0, count >= 1, count <= Int(buffer.format.channelCount), let src = buffer.floatChannelData,
+              let format = AVAudioFormat(standardFormatWithSampleRate: buffer.format.sampleRate, channels: AVAudioChannelCount(count)),
+              let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: buffer.frameLength),
+              let dst = out.floatChannelData else { return nil }
+        out.frameLength = buffer.frameLength
+        for channel in 0..<count { dst[channel].update(from: src[channel], count: frames) }
+        return out
     }
 
     /// One channel of `buffer` as a mono buffer of its own (nil when it has no such channel).

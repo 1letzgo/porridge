@@ -72,6 +72,7 @@ struct RecordingView: View {
         }
         .onChange(of: models.asr) { live.observeDownload(models.asr) }
         .onChange(of: notes) { journal?.setNotes(notes) }
+        .onChange(of: speakerNames) { if recorder.isSplitStereo { journal?.setSpeakerNames(storedSpeakerNames) } }
         .onReceive(NotificationCenter.default.publisher(for: .porridgeStopRecording)) { _ in finish() }
         .alert("Discard Recording?", isPresented: $confirmDiscard) {
             Button("Cancel", role: .cancel) {}
@@ -305,13 +306,13 @@ struct RecordingView: View {
         do {
             let journal = RecordingJournal(title: title, continues: continues)
             self.journal = journal
-            let feed = live.feed
-            recorder.onBuffer = { buffer in
-                feed(buffer)
-                journal.append(buffer)
-            }
+            recorder.onBuffer = live.feed
+            // The safety copy keeps both microphones of a split stereo receiver apart.
+            recorder.onRecordedBuffer = { buffer in journal.append(buffer) }
             try recorder.start()
             journal.setUnfinishedFile(recorder.fileName)
+            journal.setInput(name: recorder.inputName, isSplitStereo: recorder.isSplitStereo, includesSystemAudio: recorder.includesSystemAudio)
+            if recorder.isSplitStereo { journal.setSpeakerNames(storedSpeakerNames) }
             // Keeps recording visible on the Lock Screen; recording itself continues via the audio background mode.
             LiveRecording.start(kind: .meeting, title: "Meeting", onTogglePause: { togglePause() }) { finish() }
             // One microphone: its voices are told apart live where the device allows it (`LiveSpeakers`), not when
@@ -324,13 +325,18 @@ struct RecordingView: View {
         }
     }
 
-    private func finish() {
-        guard !finished, let result = recorder.stop() else { return }
-        finished = true
-        let names = speakerNames.enumerated().map { index, name in
+    /// The two speakers' names as Stop stores them.
+    private var storedSpeakerNames: [String] {
+        speakerNames.enumerated().map { index, name in
             let trimmed = name.trimmingCharacters(in: .whitespaces)
             return trimmed.isEmpty ? "Speaker \(index + 1)" : trimmed
         }
+    }
+
+    private func finish() {
+        guard !finished, let result = recorder.stop() else { return }
+        finished = true
+        let names = storedSpeakerNames
         let transcript = live.transcript
         LiveRecording.end()
         live.cancel()
