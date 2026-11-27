@@ -438,8 +438,8 @@ struct NotesView: View {
             showPadSettings = true
             return
         }
-        let owner = currentPath.contains(.page(target)) ? place
-            : target.isSettings && place == .today ? place : target.place
+        // Settings and its subpages belong to Search's stack (its bar has the gear).
+        let owner = currentPath.contains(.page(target)) ? place : target.place
         place = owner
         push(target, on: owner)
     }
@@ -1404,15 +1404,13 @@ struct NotesView: View {
         switch shown {
         case .today:
             // Today pages a day back and on; a tap on the title (another day) goes back to today. The Weekly Review
-            // (owner revision 9; before, the card at the top of the Inbox). The gear opens Settings on Today's own
-            // stack.
+            // (owner revision 9; before, the card at the top of the Inbox). The gear is in Search's bar.
             if usesSystemBars {
                 // iPad: "Today", the day pair and the Weekly Review are items of their own (`pageToolbar`).
                 EmptyView()
             } else {
                 todayPager
                 weeklyReviewButton
-                settingsButton
             }
         case .inbox:
             if isSelecting {
@@ -1434,10 +1432,9 @@ struct NotesView: View {
                 .disabled(isEmpty)
             }
         case .bowls:
-            // Recently Deleted (owner revision 10), Sort Bowls By and the gear.
+            // Recently Deleted (owner revision 10) and Sort Bowls By.
             trashButton
             bowlSortMenu
-            settingsButton
         case .todos:
             // No own "+ To-do" (owner, round 9): a new to-do comes from "+" › To-do (the tab bar's on a phone, the
             // blue toolbar item on an iPad) or File › New To-do ⇧⌘N.
@@ -1509,6 +1506,8 @@ struct NotesView: View {
                 .help("Save as Smart Filter")
                 .accessibilityIdentifier("SaveAsSmartFilter")
             }
+            // The gear: Settings, pushed onto Search's own stack.
+            settingsButton
         case .smartFilter(let id):
             if let filter = SmartFilterStore.shared.filter(id) {
                 Menu {
@@ -1649,7 +1648,7 @@ struct NotesView: View {
         .accessibilityIdentifier("TodayWeeklyReview")
     }
 
-    /// The gear: Settings (Today and Bowls). On an iPad the sidebar has it.
+    /// The gear: Settings (Search's bar). On an iPad of regular width the sidebar has it.
     @ViewBuilder
     private var settingsButton: some View {
         if sizeClass == .compact {
@@ -2404,9 +2403,9 @@ enum ListPage: Hashable {
         case .today, .weeklyReview: .today
         case .inbox: .inbox
         case .todos: .todos
-        case .search: .search
+        case .search, .settings, .voices, .acknowledgements: .search
         case .chat: .chat
-        case .bowls, .project, .smartFilter, .archive, .trash, .settings, .voices, .acknowledgements: .bowls
+        case .bowls, .project, .smartFilter, .archive, .trash: .bowls
         }
     }
 

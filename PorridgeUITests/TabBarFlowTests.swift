@@ -1,7 +1,7 @@
 import XCTest
 
 /// Owner revision 5: "+" in the middle of the tab bar, Search | Chat in one tab, Open To-dos and the Weekly Review at
-/// the end of the Inbox, the gear in Today, the app always starting on Today, and a chat keyboard that goes away.
+/// the end of the Inbox, the gear (now in Search), the app always starting on Today, and a chat keyboard that goes away.
 /// Owner revision 6: "+" raised and bigger, in a middle slot of its own (`PlaceTabBar`). Owner revision 13: the open
 /// to-dos are the Inbox tab's To-dos side.
 final class TabBarFlowTests: XCTestCase {
@@ -124,18 +124,17 @@ final class TabBarFlowTests: XCTestCase {
         XCTAssertFalse(app.navigationBars["Add"].exists, "the long press also opened the Add sheet")
     }
 
-    /// Today has the gear: Settings opens on Today's own stack, and back is Today.
-    func testTodayHasTheSettingsGear() {
+    /// Search has the gear (Today and Bowls no longer): Settings opens on Search's own stack, and back is Search.
+    func testSearchHasTheSettingsGear() {
         let app = launch()
         app.openTab("Today")
-        let gear = app.buttons["PlaceSettings"]
-        XCTAssertTrue(gear.waitForExistence(timeout: 30), "Today has no gear")
-        XCTAssertTrue(app.buttons["TodayNextDay"].exists, "the gear pushed the day pager out of the bar")
-        gear.tap()
+        XCTAssertTrue(app.buttons["TodayNextDay"].waitForExistence(timeout: 30), "Today has no day pager")
+        XCTAssertFalse(app.buttons["PlaceSettings"].exists, "Today still has the gear")
+        app.openSettings()
         XCTAssertTrue(app.staticTexts["Settings"].waitForExistence(timeout: 5), "Settings did not open")
-        XCTAssertTrue(app.tab("Today").isSelected, "Settings did not open on Today")
+        XCTAssertTrue(app.tab("Search").isSelected, "Settings did not open on Search")
         app.buttons["Back"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["TodayNextDay"].waitForExistence(timeout: 5), "back is not Today")
+        XCTAssertTrue(app.buttons["PlaceSettings"].waitForExistence(timeout: 5), "back is not Search")
     }
 
     /// Every launch starts on Today, whatever tab was used last.

@@ -100,7 +100,7 @@ final class SearchAskFlowTests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 10), "no Settings row")
         settings.tap()
         XCTAssertTrue(app.staticTexts["Settings"].waitForExistence(timeout: 5), "Settings did not open")
-        XCTAssertTrue(app.tab("Bowls").isSelected, "Settings did not open in the Bowls tab")
+        XCTAssertTrue(app.tab("Search").isSelected, "Settings did not open in the Search tab")
 
         // What was searched for is kept: the empty field lists it.
         app.openTab("Search")

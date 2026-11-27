@@ -128,8 +128,7 @@ final class Stage7ShotsTests: XCTestCase {
         app.open(URL(string: "porridge://entry/5EED0000-0000-4000-8000-000000000001")!)
         XCTAssertTrue(app.textFields.matching(NSPredicate(format: "value == %@", "Design Review")).firstMatch.waitForExistence(timeout: 10))
         shoot("meeting")
-        app.openTab("Bowls")
-        app.buttons["Settings"].firstMatch.tap()
+        app.openSettings()
         shoot("settings-general")
     }
 }

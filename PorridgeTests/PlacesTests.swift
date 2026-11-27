@@ -231,7 +231,7 @@ final class PlacesTests: XCTestCase {
         let phone = WhatsNew.items(mac: false).map(\.text).joined(separator: " ")
         XCTAssertTrue(phone.contains("Chat"), "the Chat side is named")
         XCTAssertTrue(phone.contains("“+” in the middle"), "the + of the tab bar is named")
-        XCTAssertTrue(phone.contains("gear in Today"), "the gear in Today is named")
+        XCTAssertTrue(phone.contains("gear in Search"), "the gear in Search is named")
         XCTAssertTrue(phone.contains("To-dos side of the Inbox"), "the Inbox tab's To-dos side is named")
         XCTAssertFalse(phone.contains("To-dos side of Bowls"), "Bowls has no To-dos side any more")
         let mac = WhatsNew.items(mac: true).map(\.text).joined(separator: " ")

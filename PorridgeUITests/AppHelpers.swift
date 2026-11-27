@@ -85,6 +85,15 @@ extension XCUIApplication {
         return navigationBars["Add"].waitForExistence(timeout: 5)
     }
 
+    /// Settings: the gear in Search's bar (iPhone, iPad of compact width); it opens on Search's own stack.
+    func openSettings() {
+        openTab("Search")
+        searchSide("Search")
+        let gear = buttons["PlaceSettings"]
+        XCTAssertTrue(gear.waitForExistence(timeout: 30), "Search has no Settings gear")
+        gear.tap()
+    }
+
     /// One of the places' tabs: Today, Inbox, Bowls, Search. "Chat" is the Search tab on its Chat side.
     func openTab(_ name: String) {
         if name == "Chat" {

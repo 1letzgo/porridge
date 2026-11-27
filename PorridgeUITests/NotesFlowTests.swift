@@ -31,11 +31,8 @@ final class NotesFlowTests: XCTestCase {
     /// Settings and its subpages open in place; afterwards the list still answers as before.
     func testRecordNewNotesSwitchInSettings() throws {
         let app = launchApp()
-        // Settings is the gear in the Bowls bar.
-        app.openTab("Bowls")
-        let settings = app.buttons["Settings"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 30), "settings button missing")
-        settings.tap()
+        // Settings is the gear in the Search bar.
+        app.openSettings()
         XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
         // The settings are split into areas; the switch is in "Recording".
         app.buttons["Recording"].firstMatch.tap()
@@ -44,10 +41,7 @@ final class NotesFlowTests: XCTestCase {
 
     func testSettingsSubpageAndBack() throws {
         let app = launchApp()
-        app.openTab("Bowls")
-        let settings = app.buttons["Settings"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 30), "settings button missing")
-        settings.tap()
+        app.openSettings()
         let row = app.buttons["Acknowledgements"].firstMatch
         XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
         // The settings are split into areas; the row is in "General", which is still chosen after coming back.
@@ -116,14 +110,15 @@ final class NotesFlowTests: XCTestCase {
     }
 
     /// After an export from Settings and going back, the Bowls bar shows its sort menu right away. (Presented by UIKit
-    /// over the root, the export sheet once left a menu of the bar without its label for seconds.)
+    /// over the root, the export sheet once left a menu of the bar without its label for seconds.) Settings is on
+    /// Search's stack now; the Bowls bar is checked after coming back to it.
     func testBarMenuShowsAfterExport() throws {
         let app = launchApp()
         app.openTab("Bowls")
         let importButton = app.buttons["BowlSort"]
-        let settings = app.buttons["Settings"]
+        let trash = app.buttons["BowlsTrash"]
         XCTAssertTrue(importButton.waitForExistence(timeout: 30), "sort menu missing")
-        settings.tap()
+        app.openSettings()
         XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10), "settings did not open")
         app.buttons["General"].firstMatch.tap()
         let export = app.buttons["Export…"].firstMatch
@@ -134,12 +129,14 @@ final class NotesFlowTests: XCTestCase {
         done.tap()
         XCTAssertTrue(done.waitForNonExistence(timeout: 10), "export sheet did not close")
         app.buttons["Back"].firstMatch.tap()
-        XCTAssertTrue(settings.waitForExistence(timeout: 10), "Bowls missing after going back")
-        // The button is in the tree all along; what went missing was its picture. Compared with the gear next to it.
+        XCTAssertTrue(app.buttons["PlaceSettings"].waitForExistence(timeout: 10), "Search missing after going back")
+        app.openTab("Bowls")
+        XCTAssertTrue(trash.waitForExistence(timeout: 10), "Bowls missing after going back")
+        // The button is in the tree all along; what went missing was its picture. Compared with the trash next to it.
         let deadline = Date().addingTimeInterval(3)
         while Date() < deadline {
             let shown = Self.inkedPixels(importButton.screenshot().image)
-            let reference = Self.inkedPixels(settings.screenshot().image)
+            let reference = Self.inkedPixels(trash.screenshot().image)
             XCTAssertGreaterThan(shown, reference / 3, "sort menu drawn without its icon (\(shown) of \(reference))")
             if shown <= reference / 3 { break }
         }
@@ -163,7 +160,7 @@ final class NotesFlowTests: XCTestCase {
         return count
     }
 
-    /// The three places and the search are tabs with "+" in the middle; Today has its gear, the Inbox no switch, Bowls
+    /// The three places and the search are tabs with "+" in the middle; neither Today nor Bowls has the gear, the Inbox no switch, Bowls
     /// switches to To-dos, ends in Smart Filters and the Archive row and has the trash pill (both open pages, also
     /// when empty); the Search tab switches to Chat.
     func testThreePlacesAsTabs() throws {
@@ -175,7 +172,7 @@ final class NotesFlowTests: XCTestCase {
         app.openTab("Today")
         XCTAssertTrue(app.addButton.waitForExistence(timeout: 10), "the tab bar has no +")
         XCTAssertTrue(app.buttons["TodayNextDay"].exists, "Today has no day paging")
-        XCTAssertTrue(app.buttons["PlaceSettings"].exists, "Today has no Settings gear")
+        XCTAssertFalse(app.buttons["PlaceSettings"].exists, "Today still has the Settings gear")
         XCTAssertFalse(app.buttons["TodayOpenTodos"].exists, "Open To-dos still hangs at the end of Today")
         app.openTab("Inbox")
         XCTAssertTrue(app.buttons["Select"].waitForExistence(timeout: 5), "Inbox has no Select")
@@ -187,7 +184,7 @@ final class NotesFlowTests: XCTestCase {
         app.openTab("Bowls")
         XCTAssertTrue(app.buttons["BowlSort"].waitForExistence(timeout: 5), "Bowls has no sort menu")
         XCTAssertFalse(app.segmentedControls["BowlsSide"].exists, "Bowls still has a switch")
-        XCTAssertTrue(app.buttons["PlaceSettings"].exists, "Bowls has no Settings gear")
+        XCTAssertFalse(app.buttons["PlaceSettings"].exists, "Bowls still has the Settings gear")
         XCTAssertTrue(app.buttons["BowlsTrash"].exists, "Bowls has no trash pill")
         XCTAssertTrue(app.reveal(app.buttons["NewSmartFilter"]), "New Smart Filter… missing")
         // Archive is the last section's row, Recently Deleted the trash pill; both open pages (also when empty).

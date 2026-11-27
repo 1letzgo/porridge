@@ -22,7 +22,7 @@ enum WhatsNew {
                 symbol: "square.grid.2x2", title: String(localized: "Three Places"),
                 text: mac
                     ? String(localized: "Today, Inbox, To-dos and Bowls lead the sidebar (⌘1–4); Chat has its own row (⌘5).")
-                    : String(localized: "Today, Inbox, Bowls and Search are the tabs, with the big “+” in the middle to add anything. Settings is the gear in Today and in Bowls.")
+                    : String(localized: "Today, Inbox, Bowls and Search are the tabs, with the big “+” in the middle to add anything. Settings is the gear in Search.")
             ),
             Item(
                 symbol: "info.circle", title: String(localized: "Details"),
