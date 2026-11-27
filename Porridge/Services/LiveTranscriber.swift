@@ -94,7 +94,8 @@ struct LiveTranscript {
 ///
 /// A call on the Mac has a recognizer for each side (`LiveLayout.microphoneAndSystem`): what the microphone hears is
 /// the user, what the Mac plays the others. The microphone also hears the others from the speakers: an utterance of
-/// the microphone that repeats the Mac's sound while that was clearly louder is left out (`LiveEcho`).
+/// the microphone without the user's own voice by the levels (`MicrophoneVoice`), or that repeats the Mac's sound
+/// while that was clearly louder, is left out (`LiveEcho`).
 @MainActor
 @Observable
 final class LiveTranscriber {
@@ -350,8 +351,8 @@ final class LiveTranscriber {
         volatile = all.filter { !$0.isFinal }.map(\.text).joined(separator: " ")
     }
 
-    /// Whether an utterance of the microphone repeats the Mac's sound. Decided again while the Mac's side may still
-    /// add text around it, then kept.
+    /// Whether an utterance of the microphone is no speech of the user: no own voice in its levels, or it repeats
+    /// the Mac's sound. Decided again while the Mac's side may still add text around it, then kept.
     private func isEcho(_ utterance: LiveUtterance) -> Bool {
         if let known = echoes[utterance.id] { return known }
         // An open piece is judged by the span its recognizer gave, as before its start was moved to the voice: with
@@ -372,7 +373,10 @@ final class LiveTranscriber {
             system.audio.level(from: max(0, utterance.start - LiveEcho.delay), to: max(0, utterance.end - LiveEcho.delay)),
         ].compactMap { $0 }
         let microphoneLevel = tracks[0].audio.level(from: utterance.start, to: utterance.end)
-        let echo = LiveEcho.isEcho(
+        // No voice of the user's own in its time: the Mac's sound from the loudspeaker, noise or silence, whatever
+        // the Mac's side recognized (a muted user's microphone).
+        let withoutUser = !LiveEcho.mayBeUser(start: utterance.start, end: utterance.end, microphone: tracks[0].audio, system: system.audio)
+        let echo = withoutUser || LiveEcho.isEcho(
             microphone: utterance.text, microphoneLevel: microphoneLevel, systemLevel: levels.max(), system: near.map(\.text)
         ) || (!around.isEmpty && LiveEcho.isEcho(
             microphone: utterance.text, microphoneLevel: microphoneLevel, systemLevel: levels.max(),
@@ -573,6 +577,14 @@ final class TrackAudio: @unchecked Sendable {
     /// Quieter than the loudest part by this much: still the silence before the voice (or an echo in it).
     private static let voicedBelowPeak: Float = 15
 
+    /// Mean square power per 100 ms from a time (or the start) on, for `MicrophoneVoice`.
+    func powers(from start: Double) -> [Float] {
+        lock.withLock {
+            let from = min(levels.count, max(0, Int(start * 10)))
+            return levels[from...].map { pow(10, $0 / 10) }
+        }
+    }
+
     /// The average level (dBFS) between two times; nil when nothing was measured there.
     func level(from start: Double, to end: Double) -> Float? {
         lock.withLock {
@@ -587,7 +599,9 @@ final class TrackAudio: @unchecked Sendable {
 
 /// The microphone of a call also hears the others from the Mac's speakers. Such an echo is recognized twice: once
 /// from the Mac's sound, once from the microphone. A microphone utterance is an echo when, at the same time, the
-/// Mac's sound was clearly louder and its text says the same. In doubt (too short, no levels) it is kept.
+/// Mac's sound was clearly louder and its text says the same, or when the levels show no voice of the user's own in
+/// its time (`mayBeUser`), whether or not the Mac's side recognized the same words. In doubt (too short, no levels)
+/// it is kept.
 enum LiveEcho {
     /// The Mac's sound must be at least this much louder (dB) than the microphone.
     static let louder: Float = 6
@@ -634,6 +648,20 @@ enum LiveEcho {
     /// shortly before it and ends at most shortly after it (the loudspeaker's delay and the recognizers' timing).
     static func isInside(start: Double, end: Double, systemStart: Double, systemEnd: Double) -> Bool {
         start >= systemStart - 0.2 && end <= systemEnd + 0.5
+    }
+
+    /// The Mac's sound and the microphone before an utterance that `mayBeUser` looks at (the room's coupling
+    /// and the microphone's quiet are measured there).
+    static let contextSeconds = 120.0
+
+    /// Whether a microphone utterance holds the user's own voice by the levels alone (`MicrophoneVoice`, 100 ms
+    /// frames): without it, it is the Mac's sound from the loudspeaker, noise or silence, whatever the Mac's side
+    /// recognized. In doubt (nothing measured yet) it may be.
+    static func mayBeUser(start: Double, end: Double, microphone: TrackAudio, system: TrackAudio) -> Bool {
+        let from = max(0, start - contextSeconds)
+        let first = Double(Int(from * 10)) / 10
+        let voice = MicrophoneVoice(frameDuration: 0.1, microphone: microphone.powers(from: first), system: system.powers(from: first))
+        return voice.mayBeUser(from: start - first, to: end - first)
     }
 
     /// The Mac's sound reaches the microphone a little later: its level is also taken this much earlier.

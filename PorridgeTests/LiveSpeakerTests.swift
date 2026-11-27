@@ -166,6 +166,41 @@ final class LiveSpeakerTests: XCTestCase {
             microphone: "in", microphoneLevel: -20, systemLevel: -22, system: ["the numbers are in"], insideSystem: true))
     }
 
+    /// Both sides of a call as the live transcript keeps them (100 ms levels).
+    private func liveTracks(_ call: (microphone: [Float], system: [Float])) -> (microphone: TrackAudio, system: TrackAudio) {
+        let microphone = TrackAudio()
+        let system = TrackAudio()
+        // In buffers of 100 ms, as they come in pairs.
+        let step = 1_600
+        for start in stride(from: 0, to: min(call.microphone.count, call.system.count), by: step) {
+            microphone.append(Array(call.microphone[start..<min(start + step, call.microphone.count)]))
+            system.append(Array(call.system[start..<min(start + step, call.system.count)]))
+        }
+        return (microphone, system)
+    }
+
+    func testLiveTheMutedUsersMicrophoneHasNoUtteranceOfTheirs() {
+        // The user muted in the call: the microphone has only the others' echo and the room.
+        let tracks = liveTracks(MeetingChannelsTests.mutedCallSound())
+        for (start, end) in [(1.2, 4.8), (2.1, 2.95), (12.5, 12.8), (11.0, 19.0), (19.1, 19.4), (9.3, 10.6)] {
+            XCTAssertFalse(LiveEcho.mayBeUser(start: start, end: end, microphone: tracks.microphone, system: tracks.system),
+                           "\(start)–\(end)")
+        }
+        // Not measured yet: in doubt it may be the user.
+        XCTAssertTrue(LiveEcho.mayBeUser(start: 30, end: 31, microphone: tracks.microphone, system: tracks.system))
+    }
+
+    func testLiveTheUsersOwnUtterancesStayOverTheOthersEcho() {
+        let tracks = liveTracks(MeetingChannelsTests.callWithTheUser())
+        // Talking over the others, a short "Yes." while they speak, alone after them.
+        for (start, end) in [(6.1, 7.8), (12.2, 12.5), (20.2, 22.8)] {
+            XCTAssertTrue(LiveEcho.mayBeUser(start: start, end: end, microphone: tracks.microphone, system: tracks.system),
+                          "\(start)–\(end)")
+        }
+        // The echo alone in the same call.
+        XCTAssertFalse(LiveEcho.mayBeUser(start: 14.5, end: 16.5, microphone: tracks.microphone, system: tracks.system))
+    }
+
     func testSimilarityIgnoresCaseAndPunctuation() {
         XCTAssertEqual(LiveEcho.similarity(microphone: "Ship it, Monday!", system: "ship IT on monday"), 1)
         XCTAssertEqual(LiveEcho.similarity(microphone: "ship it now", system: "ship it"), 2.0 / 3, accuracy: 0.001)
