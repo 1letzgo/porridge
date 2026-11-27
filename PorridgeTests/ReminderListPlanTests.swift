@@ -252,12 +252,58 @@ final class ReminderListPlanTests: XCTestCase {
         let lists = [list("L1", "Garden"), list("L2", "Work"), subscribed, readOnly, list("L5", "Exchange", account: "work"), list("L6", "Old")]
         var plan = input(bowls: [bowl("B1", "Work", open: false)], lists: lists)
         plan.detachedListIDs = ["L6"]
-        let result = ReminderListPlan.plan(plan)
-        XCTAssertEqual(result.actions.filter { if case .createBowl = $0 { true } else { false } }, [.createBowl(listID: "L1", title: "Garden")])
+        // Before the import: only reported; the bowl named like a list gets that list.
+        let before = ReminderListPlan.plan(plan)
+        XCTAssertEqual(before.adoptable, ["L1"])
+        XCTAssertEqual(before.targets["B1"], "L2")
+        XCTAssertFalse(before.actions.contains { if case .createBowl = $0 { true } else { false } })
+        XCTAssertNil(before.ledger.lists[ReminderListLedger.listKey("Garden")])
+
+        // After it: a claim first, the bowl once the claim has stood.
+        plan.adoptLists = true
+        let claimed = ReminderListPlan.plan(plan)
+        XCTAssertTrue(claimed.adoptPending)
+        XCTAssertEqual(claimed.ledger.lists[ReminderListLedger.listKey("Garden")]?.claimDevice, "A")
+        XCTAssertFalse(claimed.actions.contains { if case .createBowl = $0 { true } else { false } })
+        var later = plan
+        later.ledger = claimed.ledger
+        later.now = t0.addingTimeInterval(ReminderListPlan.adoptSettle + 1)
+        XCTAssertEqual(ReminderListPlan.plan(later).actions.filter { if case .createBowl = $0 { true } else { false } },
+                       [.createBowl(listID: "L1", title: "Garden")])
 
         // A deleted bowl's list (known by its title in the ledger) does not either.
         let tomb = ReminderListLedger().linking("B9", title: "Garden", now: t0).unlinking("B9", reason: .bowlDeleted, now: t0)
-        let none = ReminderListPlan.plan(input(bowls: [bowl("B1", "Work", open: false)], lists: [list("L1", "Garden")], ledger: tomb))
-        XCTAssertFalse(none.actions.contains { if case .createBowl = $0 { true } else { false } })
+        var none = input(bowls: [bowl("B1", "Work", open: false)], lists: [list("L1", "Garden")], ledger: tomb)
+        none.adoptLists = true
+        XCTAssertTrue(ReminderListPlan.plan(none).adoptable.isEmpty)
+        // Nor a list left out, nor one named like an archived bowl.
+        var excluded = input(bowls: [], lists: [list("L1", "Garden")], ledger: ReminderListLedger().excluding(ReminderListLedger.listKey("Garden"), title: "Garden", now: t0))
+        excluded.adoptLists = true
+        let left = ReminderListPlan.plan(excluded)
+        XCTAssertEqual(left.excludedLists, ["L1"])
+        XCTAssertTrue(left.adoptable.isEmpty)
+        var archived = input(bowls: [bowl("B2", "Garden", open: false, archived: true)], lists: [list("L1", "Garden")])
+        archived.adoptLists = true
+        XCTAssertTrue(ReminderListPlan.plan(archived).adoptable.isEmpty)
+    }
+
+    func testTwoDevicesClaimTheSameListAndOnlyTheEarlierMakesTheBowl() {
+        let lists = [list("L1", "Garden")]
+        var a = input(bowls: [], lists: lists, device: "A", now: t0)
+        a.adoptLists = true
+        var b = input(bowls: [], lists: lists, device: "B", now: t0.addingTimeInterval(20))
+        b.adoptLists = true
+        let claimA = ReminderListPlan.plan(a), claimB = ReminderListPlan.plan(b)
+        let ledger = ReminderListLedger.merged(claimA.ledger, claimB.ledger)
+        XCTAssertEqual(ledger, ReminderListLedger.merged(claimB.ledger, claimA.ledger))
+
+        a.ledger = ledger
+        a.now = t0.addingTimeInterval(ReminderListPlan.adoptSettle + 1)
+        b.ledger = ledger
+        b.now = t0.addingTimeInterval(ReminderListPlan.adoptSettle + 21)
+        XCTAssertEqual(ReminderListPlan.plan(a).actions, [.createBowl(listID: "L1", title: "Garden")])
+        let other = ReminderListPlan.plan(b)
+        XCTAssertTrue(other.actions.isEmpty)
+        XCTAssertEqual(other.ledger.lists[ReminderListLedger.listKey("Garden")]?.claimDevice, "A")
     }
 }

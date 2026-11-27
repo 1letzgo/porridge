@@ -134,8 +134,52 @@ struct ReminderListLedger: Codable, Equatable {
         return result
     }
 
-    /// Bowls linked to a list (the Inbox not counted).
+    /// Bowls linked to a list (the Inbox, the import mark and lists that are no bowl yet not counted).
     var linkedBowlCount: Int {
-        lists.filter { $0.key != ReminderMapping.inboxKey && $0.value.state == .linked }.count
+        lists.filter { $0.key != ReminderMapping.inboxKey && !Self.isReserved($0.key) && $0.value.state == .linked }.count
+    }
+
+    // MARK: The way back (stage 3/4)
+
+    /// The entry that says the first import from Reminders was confirmed (on any device): from then on what changes
+    /// in Reminders is taken into Porridge, and new lists and reminders come in without asking. An entry, not a field
+    /// of its own, so that versions that do not know it keep it.
+    static let importedKey = "@imported"
+    /// Entries of lists that are no bowl (yet), by their title: the claim of the device that makes a bowl of one, or
+    /// that it was left out (`excluded`).
+    static let listPrefix = "list:"
+
+    /// The key of a list that is no bowl, by its title (trimmed, without case and accents): the same on every device.
+    static func listKey(_ title: String) -> String { listPrefix + ReminderMapping.normalized(title) }
+
+    /// Keys that are no bowl: the import mark and lists.
+    static func isReserved(_ key: String) -> Bool { key.hasPrefix("@") || key.hasPrefix(listPrefix) }
+
+    var isImported: Bool { lists[Self.importedKey] != nil }
+
+    /// The first import was confirmed.
+    func markingImported(now: Date = Date()) -> ReminderListLedger {
+        guard !isImported else { return self }
+        var result = self
+        result.lists[Self.importedKey] = Link(state: .linked, changedAt: now)
+        return result
+    }
+
+    /// The bowl's list (or the Inbox's, or a list that is no bowl) is left out by the user: it stays, nothing of it is
+    /// taken into Porridge, and the bowl's to-dos do not sync.
+    func excluding(_ key: String, title: String?, now: Date = Date()) -> ReminderListLedger {
+        guard lists[key]?.state != .excluded else { return self }
+        var result = self
+        result.lists[key] = Link(state: .excluded, title: title ?? lists[key]?.title, createdByPorridge: lists[key]?.createdByPorridge ?? false, changedAt: now)
+        return result
+    }
+
+    /// Taken part again after it was left out: linked without a claim, so the next run finds its list (or, for a list
+    /// that is no bowl, claims it and makes a bowl of it).
+    func including(_ key: String, title: String?, now: Date = Date()) -> ReminderListLedger {
+        guard lists[key]?.state != .linked else { return self }
+        var result = self
+        result.lists[key] = Link(state: .linked, title: title ?? lists[key]?.title, createdByPorridge: lists[key]?.createdByPorridge ?? false, changedAt: now)
+        return result
     }
 }

@@ -32,9 +32,9 @@ enum ReminderPorridgeSide: Equatable {
 }
 
 enum ReminderSyncDirection: Equatable {
-    /// Both ways (from stage 3 on).
+    /// Both ways: once the first import was confirmed (`ReminderListLedger.isImported`).
     case both
-    /// Porridge writes into Reminders only; what changed in Reminders is not taken over (stage 2).
+    /// Porridge writes into Reminders only; what changed in Reminders is not taken over (before the first import).
     case toReminders
 }
 
@@ -139,7 +139,8 @@ enum ReminderSyncPlan {
         case deleteReminder(missingNote: Bool)
         /// The open reminder was deleted in Reminders: the to-do goes to Recently Deleted (stage 3).
         case trashTodo
-        /// The done reminder was deleted in Reminders: the to-do stays, the link goes.
+        /// The done reminder was deleted in Reminders, or the reminder was moved into a list that takes no part: the
+        /// to-do stays, the link goes.
         case unlink
         /// Neither side is there any more: the base goes.
         case forget
@@ -185,6 +186,9 @@ enum ReminderSyncPlan {
             )
             return .update(update)
         }
+        // Moved in Reminders into a list that takes no part (another account, an unlinked or left-out list, an
+        // archived bowl's): the link goes, the to-do stays as it is.
+        if pull, r.listKey == nil { return .unlink }
         let b = base.fields
         var change = PorridgeChange()
 

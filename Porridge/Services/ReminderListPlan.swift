@@ -61,6 +61,8 @@ enum ReminderListPlan {
         var storeUnavailable = false
         /// "Resume" after a pause over lists that disappeared: go on once (those still gone are unlinked).
         var acceptGoneLists = false
+        /// The way back is on (the first import was confirmed): lists that are no bowl are claimed and become bowls.
+        var adoptLists = false
     }
 
     enum Action: Equatable {
@@ -70,7 +72,7 @@ enum ReminderListPlan {
         /// A list made at the same time as another device's (whose claim won): move its reminders into `into`, then
         /// delete it when it is empty.
         case join(bowl: String, from: String, into: String)
-        /// The way back (stage 4): a new list becomes a bowl.
+        /// The way back (stage 4): a list that is no bowl becomes one (this device's claim has settled).
         case createBowl(listID: String, title: String)
         /// The way back (stage 3/4): the list was renamed in Reminders.
         case renameBowl(bowl: String, title: String)
@@ -92,7 +94,19 @@ enum ReminderListPlan {
         var detachedListIDs: Set<String>
         /// Lists that disappeared (one at a time): their bowls are unlinked.
         var goneLists: [String] = []
+        /// Lists that are no bowl and become one (now, after a claim, or once the import is confirmed).
+        var adoptable: [String] = []
+        /// Lists that are no bowl and were left out by the user.
+        var excludedLists: [String] = []
+        /// A claim of this device waits to settle before its bowl is made: run again after `adoptSettle`.
+        var adoptPending = false
     }
+
+    /// A claim for making a bowl of a list stands this long before the bowl is made, so that another device's claim
+    /// made at the same time has reached this one (the earlier claim wins).
+    static let adoptSettle: TimeInterval = 60
+    /// Another device's claim on a list holds this long: it is making that bowl (or its bowl is on the way).
+    static let adoptHold: TimeInterval = 86400
 
     static func plan(_ input: Input) -> Result {
         var result = Result(ledger: input.ledger, local: input.local, detachedListIDs: input.detachedListIDs)
@@ -116,7 +130,10 @@ enum ReminderListPlan {
 
         // The Inbox: the default list, whichever it is now.
         result.targets[ReminderMapping.inboxKey] = defaultID
-        result.ledger = result.ledger.linking(ReminderMapping.inboxKey, title: defaultList.title, now: now)
+        // Left out by the user: its to-dos still go there, only old reminders are not taken in (the engine's part).
+        if result.ledger.lists[ReminderMapping.inboxKey]?.state != .excluded {
+            result.ledger = result.ledger.linking(ReminderMapping.inboxKey, title: defaultList.title, now: now)
+        }
 
         // Lists a bowl may have: writable, not subscribed, in the default list's account, not the default list.
         func isCandidate(_ list: ReminderListSnapshot) -> Bool {
@@ -224,9 +241,8 @@ enum ReminderListPlan {
                 result.ledger = result.ledger.linking(key, title: current, now: now)
                 continue
             }
-            // Not known here: found, or made once the bowl has an open to-do.
-            let isLinked = link?.state == .linked
-            guard bowl.hasOpenTodos || isLinked || link?.isTombstone == true else { continue }
+            // Not known here: found (also a bowl without open to-dos: an existing list of its name is its list), or
+            // made once the bowl has an open to-do.
             if let found = find(bowl, title: link?.title) {
                 let list = byID[found]!
                 result.local[key] = ReminderLocalList(listID: found, title: list.title, createdHere: false)
@@ -256,14 +272,45 @@ enum ReminderListPlan {
         }
 
         // The way back: lists that belong to no bowl become bowls, unless they are a deleted bowl's, carry a bowl's
-        // name, or the ledger knows their title as unlinked.
+        // name (also an archived one's), the ledger knows their title (a bowl's list, on this device not yet), most
+        // of Porridge's reminders in them are of a bowl that has no list here, or the user left them out. Two devices
+        // never make two bowls of one list: a claim in the ledger first, the bowl only once it has stood for
+        // `adoptSettle` (the earlier of two claims wins); another device's claim holds for `adoptHold`.
         let used = Set(result.local.values.map(\.listID))
         let bowlNames = Set(input.bowls.map { ReminderMapping.normalized($0.name) })
-        let knownTitles = Set(result.ledger.lists.values.compactMap { $0.title.map(ReminderMapping.normalized) })
+        let knownTitles = Set(result.ledger.lists.filter { !ReminderListLedger.isReserved($0.key) }.values
+            .compactMap { $0.title.map(ReminderMapping.normalized) })
+        var seenNames: Set<String> = []
         for list in input.lists.sorted(by: { $0.id < $1.id }) where isCandidate(list) && !used.contains(list.id) {
             let name = ReminderMapping.normalized(list.title)
-            guard !name.isEmpty, !bowlNames.contains(name), !knownTitles.contains(name) else { continue }
-            result.actions.append(.createBowl(listID: list.id, title: list.title))
+            guard !name.isEmpty, !bowlNames.contains(name), !knownTitles.contains(name), !seenNames.contains(name) else { continue }
+            seenNames.insert(name)
+            let all = list.porridgeBowls.values.reduce(0, +)
+            if let owner = list.porridgeBowls.max(by: { ($0.value, $1.key) < ($1.value, $0.key) }),
+               owner.key != ReminderMapping.inboxKey, owner.value * 2 > all, bowls[owner.key] != nil, result.local[owner.key] == nil {
+                continue
+            }
+            let key = ReminderListLedger.listKey(list.title)
+            let entry = result.ledger.lists[key]
+            if entry?.state == .excluded {
+                result.excludedLists.append(list.id)
+                continue
+            }
+            result.adoptable.append(list.id)
+            guard input.adoptLists else { continue }
+            if let entry, entry.state == .linked, let device = entry.claimDevice, let claimed = entry.claimedAt {
+                if device == input.device {
+                    if now.timeIntervalSince(claimed) >= adoptSettle {
+                        result.actions.append(.createBowl(listID: list.id, title: list.title))
+                    } else {
+                        result.adoptPending = true
+                    }
+                    continue
+                }
+                if now.timeIntervalSince(claimed) < adoptHold { continue }
+            }
+            result.ledger = result.ledger.claiming(key, title: list.title, device: input.device, now: now)
+            result.adoptPending = true
         }
         return result
     }
