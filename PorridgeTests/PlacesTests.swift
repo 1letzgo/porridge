@@ -82,7 +82,10 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(ListPage.smartFilter(UUID()).place, .bowls)
         XCTAssertEqual(ListPage.archive.place, .bowls)
         XCTAssertEqual(ListPage.trash.place, .bowls)
-        XCTAssertEqual(ListPage.settings.place, .bowls)
+        // Settings and its pages are on Search's stack (d2ea670).
+        XCTAssertEqual(ListPage.settings.place, .search)
+        XCTAssertEqual(ListPage.voices.place, .search)
+        XCTAssertEqual(ListPage.acknowledgements.place, .search)
         XCTAssertEqual(ListPage.chat.place, .chat)
         XCTAssertEqual(ListPage.todos.place, .todos)
         XCTAssertEqual(Place(root: .inbox), .inbox)
