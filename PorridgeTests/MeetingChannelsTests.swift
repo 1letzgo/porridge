@@ -81,10 +81,10 @@ final class MeetingChannelsTests: XCTestCase {
             Word(text: "Hello", start: 0.1, end: 0.5),        // the user
             Word(text: "launch,", start: 2.08, end: 2.45),    // echo, same word
             Word(text: "tomorow", start: 2.5, end: 2.95),     // echo, recognized a letter off
-            Word(text: "banana", start: 2.6, end: 2.9),       // loud on the right, but nobody said it there: kept
+            Word(text: "banana", start: 2.6, end: 2.9),       // nobody said it there, but the microphone has only the echo
         ]
         let kept = SpeakerAssigner.droppingEcho(left: left, right: right, energy: energy)
-        XCTAssertEqual(kept.map(\.text), ["Hello", "banana"])
+        XCTAssertEqual(kept.map(\.text), ["Hello"])
     }
 
     func testTheUsersOwnWordIsKeptEvenWhenTheOthersSayIt() {
@@ -92,10 +92,13 @@ final class MeetingChannelsTests: XCTestCase {
         let right = [Word(text: "launch", start: 0.6, end: 0.9)]
         let left = [Word(text: "launch", start: 0.5, end: 0.9)]
         XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: right, energy: energy).count, 1)
-        // Too far apart in time to be the echo.
+        // Too far apart in time to be the echo (the user's voice on the microphone, quieter than the others).
         let late = [Word(text: "Launch", start: 2.0, end: 2.4)]
         let echoLater = [Word(text: "launch", start: 2.9, end: 3.0)]
-        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: echoLater, right: late, energy: energy).count, 1)
+        var spoken = energy.left
+        for i in 58...60 { spoken[i] = 0.2 }
+        let withVoice = ChannelEnergy(frameDuration: 0.05, left: spoken, right: energy.right)
+        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: echoLater, right: late, energy: withVoice).count, 1)
         // Without words on the right nothing is dropped.
         XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: [], energy: energy).count, 1)
     }
@@ -128,9 +131,13 @@ final class MeetingChannelsTests: XCTestCase {
     }
 
     func testTheUsersShortReplyIsKept() {
-        // "Okay." while the others speak, quieter on the microphone than their sound, but not said by them: kept.
+        // "Okay." while the others speak, quieter on the microphone than their sound (7 dB) but above their echo
+        // (8 dB), not said by them: kept.
+        var okay = callEnergy.left
+        for i in 522...528 { okay[i] = 0.2 }
         let left = [Word(text: "Okay.", start: 26.1, end: 26.4)]
-        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: othersSentence, energy: callEnergy).map(\.text), ["Okay."])
+        let replied = ChannelEnergy(frameDuration: 0.05, left: okay, right: callEnergy.right)
+        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: othersSentence, energy: replied).map(\.text), ["Okay."])
         // "Yes." of the user after the others, loud on the microphone: kept, even when the others said "yes" before.
         var energy = callEnergy
         var louder = energy.left
@@ -139,6 +146,95 @@ final class MeetingChannelsTests: XCTestCase {
         let yes = [Word(text: "Yes.", start: 29.0, end: 29.4)]
         let said = othersSentence + [Word(text: "yes", start: 28.4, end: 28.7)]
         XCTAssertEqual(SpeakerAssigner.droppingEcho(left: yes, right: said, energy: energy).map(\.text), ["Yes."])
+    }
+
+    // MARK: The user said nothing (microphone muted in the call)
+
+    /// The others take turns at 1–9 s and 11–19 s on the Mac's sound; the microphone hears them from the
+    /// loudspeaker 15 dB quieter, 80 ms later and reverberant, over the room's noise (`SyntheticCall`). The user is
+    /// muted in the call and says nothing.
+    nonisolated static func mutedCallSound() -> (microphone: [Float], system: [Float]) {
+        let others = SyntheticCall.speech(seconds: 20, spans: [(1, 9), (11, 19)], seed: 7, level: 0.3)
+        let microphone = SyntheticCall.mix([
+            SyntheticCall.echo(of: others, attenuationDB: 15, delay: 0.08),
+            SyntheticCall.noise(count: others.count, level: 0.0006, seed: 3),
+        ])
+        return (microphone, others)
+    }
+
+    private func mutedCall() throws -> ChannelEnergy {
+        let call = Self.mutedCallSound()
+        return try SyntheticCall.energy(microphone: call.microphone, system: call.system)
+    }
+
+    func testTheOthersEchoIsNoWordOfTheUserEvenWhenTheirWordsDiffer() throws {
+        let energy = try mutedCall()
+        // The others' recognizer heard different words, or none, where the microphone's made something of the echo.
+        let right = [Word(text: "Launch", start: 2.0, end: 2.4), Word(text: "tomorrow", start: 2.4, end: 2.9),
+                     Word(text: "numbers", start: 12.0, end: 12.4)]
+        let left = [
+            Word(text: "lunch", start: 2.1, end: 2.4), Word(text: "to", start: 2.45, end: 2.6), Word(text: "borrow", start: 2.6, end: 2.95),
+            Word(text: "We", start: 4.0, end: 4.2), Word(text: "should", start: 4.2, end: 4.5), Word(text: "ship", start: 4.5, end: 4.8),
+            Word(text: "Okay.", start: 12.5, end: 12.8),
+            Word(text: "Mm.", start: 19.1, end: 19.3),           // the room's echo after the others stopped
+        ]
+        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: right, energy: energy).map(\.text), [])
+        // Nothing recognized on the Mac's side at all.
+        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: [], energy: energy).map(\.text), [])
+    }
+
+    func testWordsMadeUpOnTheMicrophonesNoiseAreDropped() throws {
+        // Headphones: no echo, the microphone only hears the room; the Mac's sound now and then.
+        let others = SyntheticCall.speech(seconds: 12, spans: [(6, 10)], seed: 11, level: 0.3)
+        let microphone = SyntheticCall.noise(count: others.count, level: 0.0006, seed: 5)
+        let energy = try SyntheticCall.energy(microphone: microphone, system: others)
+        let left = [Word(text: "Thank", start: 1.0, end: 1.3), Word(text: "you.", start: 1.3, end: 1.6),
+                    Word(text: "Bye.", start: 7.0, end: 7.3)]
+        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: [], energy: energy).map(\.text), [])
+        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: [Word(text: "So", start: 6.5, end: 6.7)], energy: energy).map(\.text), [])
+    }
+
+    /// The others speak throughout 1–19 s; the user speaks alone at 20–23 s, talks over them at 6–8 s (6 dB
+    /// quieter than their sound) and says a short "Yes." at 12.2–12.5 s (9 dB quieter, 6 dB above their echo); the
+    /// microphone also hears the others' echo as in `mutedCall`.
+    nonisolated static func callWithTheUser() -> (microphone: [Float], system: [Float]) {
+        let others = SyntheticCall.speech(seconds: 24, spans: [(1, 19)], seed: 7, level: 0.3)
+        let user = SyntheticCall.mix([
+            SyntheticCall.speech(seconds: 24, spans: [(20, 23)], seed: 21, level: 0.3),
+            SyntheticCall.speech(seconds: 24, spans: [(6, 8)], seed: 22, level: 0.15),
+            SyntheticCall.speech(seconds: 24, spans: [(12.2, 12.5)], seed: 23, level: 0.106),
+        ])
+        let microphone = SyntheticCall.mix([
+            user,
+            SyntheticCall.echo(of: others, attenuationDB: 15, delay: 0.08),
+            SyntheticCall.noise(count: others.count, level: 0.0006, seed: 3),
+        ])
+        return (microphone, others)
+    }
+
+    func testTheUsersOwnWordsOverTheOthersAndTheirEchoAreKept() throws {
+        let call = Self.callWithTheUser()
+        let energy = try SyntheticCall.energy(microphone: call.microphone, system: call.system)
+        let right = [Word(text: "the", start: 6.2, end: 6.4), Word(text: "plan", start: 6.4, end: 6.8),
+                     Word(text: "Yes,", start: 12.1, end: 12.4)]
+        let left = [
+            Word(text: "No,", start: 6.1, end: 6.4), Word(text: "the", start: 6.4, end: 6.6), Word(text: "plan", start: 6.6, end: 7.0),
+            Word(text: "changed.", start: 7.0, end: 7.8),
+            Word(text: "Yes.", start: 12.2, end: 12.5),
+            Word(text: "banana", start: 15.0, end: 15.3),        // the echo alone
+            Word(text: "Thanks", start: 20.2, end: 20.6), Word(text: "everyone.", start: 20.6, end: 21.2),
+        ]
+        XCTAssertEqual(SpeakerAssigner.droppingEcho(left: left, right: right, energy: energy).map(\.text),
+                       ["No,", "the", "plan", "changed.", "Yes.", "Thanks", "everyone."])
+    }
+
+    func testTheEchoIsMeasuredWithTheRoomsCoupling() throws {
+        let voice = MicrophoneVoice(try mutedCall())
+        // Nothing of the user's own anywhere in the muted call.
+        XCTAssertEqual(try XCTUnwrap(voice.ownSeconds(from: 0, to: 20)), 0, accuracy: 0.051)
+        // Not measured: kept in doubt.
+        XCTAssertNil(voice.ownSeconds(from: 30, to: 31))
+        XCTAssertTrue(voice.mayBeUser(from: 30, to: 31))
     }
 
     func testEchoIslands() {
@@ -288,5 +384,80 @@ final class MeetingChannelsTests: XCTestCase {
         let same = SpeakerNaming.mergingSameName("ch1", speakers: unique, segments: segments)
         XCTAssertEqual(same.speakers, unique)
         XCTAssertEqual(same.segments, segments)
+    }
+}
+
+/// Speech-like test sound for a call: noise in syllables of about 4 per second with varying loudness, the
+/// loudspeaker's echo of it on the microphone (delayed, quieter, with a short reverberation tail), room noise.
+/// Deterministic, 16 kHz, nothing is played.
+enum SyntheticCall {
+    static let rate = 16_000
+
+    /// Noise of `level` (peak) from a seeded generator.
+    static func noise(count: Int, level: Float, seed: UInt64) -> [Float] {
+        var state = seed &* 6364136223846793005 &+ 1442695040888963407
+        return (0..<count).map { _ in
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return level * (Float(state >> 40) / Float(1 << 24) * 2 - 1)
+        }
+    }
+
+    /// Syllables of noise within the given spans (seconds) of `seconds`, at most `level` loud.
+    static func speech(seconds: Double, spans: [(Double, Double)], seed: UInt64, level: Float) -> [Float] {
+        let carrier = noise(count: Int(seconds * Double(rate)), level: 1, seed: seed)
+        let loudness = noise(count: 400, level: 1, seed: seed + 99).map { 0.6 + 0.4 * abs($0) }
+        return carrier.enumerated().map { index, value in
+            let t = Double(index) / Double(rate)
+            guard spans.contains(where: { t >= $0.0 && t < $0.1 }) else { return 0 }
+            let position = t * 4.3
+            let syllable = Int(position)
+            let envelope = Float(max(0, sin((position - Double(syllable)) * .pi)))
+            return value * level * envelope * loudness[syllable % loudness.count]
+        }
+    }
+
+    /// `sound` from a loudspeaker on the microphone: `delay` seconds later, `attenuationDB` quieter, with a few
+    /// reflections falling off over some 160 ms.
+    static func echo(of sound: [Float], attenuationDB: Float, delay: Double) -> [Float] {
+        let taps: [(Double, Float)] = [(0, 1), (0.013, 0.6), (0.029, 0.45), (0.047, 0.35), (0.071, 0.25), (0.11, 0.15), (0.16, 0.08)]
+        let norm = taps.map { $0.1 * $0.1 }.reduce(0, +).squareRoot()
+        let gain = pow(10, -attenuationDB / 20) / norm
+        var out = [Float](repeating: 0, count: sound.count)
+        for (offset, weight) in taps {
+            let shift = Int((delay + offset) * Double(rate))
+            guard shift < sound.count else { continue }
+            for i in shift..<sound.count { out[i] += sound[i - shift] * weight * gain }
+        }
+        return out
+    }
+
+    static func mix(_ parts: [[Float]]) -> [Float] {
+        let count = parts.map(\.count).max() ?? 0
+        var out = [Float](repeating: 0, count: count)
+        for part in parts { for (i, v) in part.enumerated() { out[i] += v } }
+        return out
+    }
+
+    /// The channel levels as the processing measures them: a stereo file (microphone left, Mac's sound right)
+    /// through `AudioPreprocessor`.
+    static func energy(microphone: [Float], system: [Float]) throws -> ChannelEnergy {
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: Double(rate), channels: 2))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: url) }
+        do {
+            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            let count = min(microphone.count, system.count)
+            let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)))
+            buffer.frameLength = AVAudioFrameCount(count)
+            let data = try XCTUnwrap(buffer.floatChannelData)
+            for i in 0..<count {
+                data[0][i] = microphone[i]
+                data[1][i] = system[i]
+            }
+            try file.write(from: buffer)
+        }
+        let prepared = try AudioPreprocessor.prepare(source: url, measureChannels: true)
+        defer { prepared.removeFiles() }
+        return try XCTUnwrap(prepared.channelEnergy)
     }
 }
